@@ -66,7 +66,7 @@ template <size_t bitset_size> struct reorder_global {
                                    // bitsettostring for conversion to ullong)
   reorder_global(int max_readlen_param)
       : numreads(0), numreads_array{0, 0}, maxshift(0), num_thr(0),
-        max_readlen(max_readlen_param), paired_end(false), basemask(NULL) {
+        max_readlen(max_readlen_param), paired_end(false), basemask(nullptr) {
     basemask = new std::bitset<bitset_size> *[max_readlen_param];
     for (int i = 0; i < max_readlen_param; i++)
       basemask[i] = new std::bitset<bitset_size>[128];
@@ -79,6 +79,16 @@ template <size_t bitset_size> struct reorder_global {
     delete[] basemask;
   }
 };
+
+inline void initialize_reorder_dict_ranges(
+    std::array<bbhashdict, NUM_DICT_REORDER> &dict, const int max_readlen) {
+  dict[0].start = max_readlen > 100 ? max_readlen / 2 - 32
+                                    : max_readlen / 2 - max_readlen * 32 / 100;
+  dict[0].end = max_readlen / 2 - 1;
+  dict[1].start = max_readlen / 2;
+  dict[1].end = max_readlen > 100 ? max_readlen / 2 - 1 + 32
+                                  : max_readlen / 2 - 1 + max_readlen * 32 / 100;
+}
 
 template <size_t bitset_size>
 void bitsettostring(std::bitset<bitset_size> b, char *s, const uint16_t readlen,
@@ -768,9 +778,7 @@ void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
 
 template <size_t bitset_size>
 void reorder_main(const std::string &temp_dir, const compression_params &cp) {
-  reorder_global<bitset_size> *rg_pointer =
-      new reorder_global<bitset_size>(cp.max_readlen);
-  reorder_global<bitset_size> &rg = *rg_pointer;
+  reorder_global<bitset_size> rg(cp.max_readlen);
   rg.basedir = temp_dir;
   rg.infile[0] = rg.basedir + "/input_clean_1.dna";
   rg.infile[1] = rg.basedir + "/input_clean_2.dna";
@@ -786,14 +794,7 @@ void reorder_main(const std::string &temp_dir, const compression_params &cp) {
   rg.paired_end = cp.paired_end;
   rg.maxshift = rg.max_readlen / 2;
   std::array<bbhashdict, NUM_DICT_REORDER> dict;
-  dict[0].start = rg.max_readlen > 100
-                      ? rg.max_readlen / 2 - 32
-                      : rg.max_readlen / 2 - rg.max_readlen * 32 / 100;
-  dict[0].end = rg.max_readlen / 2 - 1;
-  dict[1].start = rg.max_readlen / 2;
-  dict[1].end = rg.max_readlen > 100
-                    ? rg.max_readlen / 2 - 1 + 32
-                    : rg.max_readlen / 2 - 1 + rg.max_readlen * 32 / 100;
+  initialize_reorder_dict_ranges(dict, rg.max_readlen);
 
   rg.numreads = cp.num_reads_clean[0] + cp.num_reads_clean[1];
   rg.numreads_array[0] = cp.num_reads_clean[0];
@@ -818,7 +819,6 @@ void reorder_main(const std::string &temp_dir, const compression_params &cp) {
   writetofile<bitset_size>(read, read_lengths, rg);
   delete[] read;
   delete[] read_lengths;
-  delete rg_pointer;
   std::cout << "Done!\n";
 }
 

@@ -44,7 +44,7 @@ template <size_t bitset_size> struct encoder_global_b {
   std::bitset<bitset_size> mask63; // bitset with 63 bits set to 1 (used in
                                    // bitsettostring for conversion to ullong)
   encoder_global_b(int max_readlen_param)
-      : basemask(NULL), max_readlen(max_readlen_param) {
+      : basemask(nullptr), max_readlen(max_readlen_param) {
     basemask = new std::bitset<bitset_size> *[max_readlen_param];
     for (int i = 0; i < max_readlen_param; i++)
       basemask[i] = new std::bitset<bitset_size>[128];
@@ -106,6 +106,22 @@ void pack_compress_seq(const encoder_global &eg, uint64_t *file_len_seq_thr);
 void getDataParams(encoder_global &eg, const compression_params &cp);
 
 void correct_order(uint32_t *order_s, const encoder_global &eg);
+
+inline void initialize_encoder_dict_ranges(
+    std::array<bbhashdict, NUM_DICT_ENCODER> &dict, const int max_readlen) {
+  if (max_readlen > 50) {
+    dict[0].start = 0;
+    dict[0].end = 20;
+    dict[1].start = 21;
+    dict[1].end = 41;
+    return;
+  }
+
+  dict[0].start = 0;
+  dict[0].end = 20 * max_readlen / 50;
+  dict[1].start = 20 * max_readlen / 50 + 1;
+  dict[1].end = 41 * max_readlen / 50;
+}
 
 template <size_t bitset_size>
 std::string bitsettostring(std::bitset<bitset_size> b, const uint16_t readlen,
@@ -586,11 +602,8 @@ void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
 
 template <size_t bitset_size>
 void encoder_main(const std::string &temp_dir, const compression_params &cp) {
-  encoder_global_b<bitset_size> *egb_ptr =
-      new encoder_global_b<bitset_size>(cp.max_readlen);
-  encoder_global *eg_ptr = new encoder_global;
-  encoder_global_b<bitset_size> &egb = *egb_ptr;
-  encoder_global &eg = *eg_ptr;
+  encoder_global_b<bitset_size> egb(cp.max_readlen);
+  encoder_global eg;
 
   eg.basedir = temp_dir;
   eg.infile = eg.basedir + "/temp.dna";
@@ -613,38 +626,26 @@ void encoder_main(const std::string &temp_dir, const compression_params &cp) {
   omp_set_num_threads(eg.num_thr);
   getDataParams(eg, cp); // populate numreads
   setglobalarrays<bitset_size>(eg, egb);
+  const uint32_t singleton_pool_size = eg.numreads_s + eg.numreads_N;
   std::bitset<bitset_size> *read =
-      new std::bitset<bitset_size>[eg.numreads_s + eg.numreads_N];
-  uint32_t *order_s = new uint32_t[eg.numreads_s + eg.numreads_N];
-  uint16_t *read_lengths_s = new uint16_t[eg.numreads_s + eg.numreads_N];
+      new std::bitset<bitset_size>[singleton_pool_size];
+  uint32_t *order_s = new uint32_t[singleton_pool_size];
+  uint16_t *read_lengths_s = new uint16_t[singleton_pool_size];
   readsingletons<bitset_size>(read, order_s, read_lengths_s, eg, egb);
   remove(eg.infile_N.c_str());
   correct_order(order_s, eg);
 
   std::array<bbhashdict, NUM_DICT_ENCODER> dict;
-  if (eg.max_readlen > 50) {
-    dict[0].start = 0;
-    dict[0].end = 20;
-    dict[1].start = 21;
-    dict[1].end = 41;
-  } else {
-    dict[0].start = 0;
-    dict[0].end = 20 * eg.max_readlen / 50;
-    dict[1].start = 20 * eg.max_readlen / 50 + 1;
-    dict[1].end = 41 * eg.max_readlen / 50;
-  }
-  if (eg.numreads_s + eg.numreads_N > 0)
+  initialize_encoder_dict_ranges(dict, eg.max_readlen);
+  if (singleton_pool_size > 0)
     constructdictionary<bitset_size>(read, dict.data(), read_lengths_s,
-                                     eg.numdict_s,
-                                     eg.numreads_s + eg.numreads_N, 3,
+                                     eg.numdict_s, singleton_pool_size, 3,
                                      eg.basedir, eg.num_thr);
   encode<bitset_size>(read, dict.data(), order_s, read_lengths_s, eg, egb);
 
   delete[] read;
   delete[] order_s;
   delete[] read_lengths_s;
-  delete eg_ptr;
-  delete egb_ptr;
 }
 
 } // namespace spring

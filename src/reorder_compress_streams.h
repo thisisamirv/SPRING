@@ -15,10 +15,11 @@ limitations under the License.
 #ifndef SPRING_REORDER_COMPRESS_STREAMS_H_
 #define SPRING_REORDER_COMPRESS_STREAMS_H_
 
-#include "util.h"
 #include <string>
 
 namespace spring {
+
+struct compression_params;
 
 void reorder_compress_streams(const std::string &temp_dir,
                               const compression_params &cp);

@@ -15,11 +15,12 @@ limitations under the License.
 #ifndef SPRING_DECOMPRESS_H_
 #define SPRING_DECOMPRESS_H_
 
-#include "util.h"
 #include <cstdint>
 #include <string>
 
 namespace spring {
+
+struct compression_params;
 
 void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
                       const std::string &outfile_2,

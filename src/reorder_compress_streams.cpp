@@ -19,6 +19,7 @@ limitations under the License.
 #include <iostream>
 #include <omp.h>
 #include <string>
+#include <vector>
 
 #include "libbsc/bsc.h"
 #include "reorder_compress_streams.h"
@@ -26,17 +27,44 @@ limitations under the License.
 
 namespace spring {
 
+namespace {
+
+std::string block_file_path(const std::string &base_path,
+                            const uint64_t block_num) {
+  return base_path + '.' + std::to_string(block_num);
+}
+
+std::string compressed_block_file_path(const std::string &base_path,
+                                       const uint64_t block_num) {
+  return block_file_path(base_path, block_num) + ".bsc";
+}
+
+void compress_block_file(const std::string &input_path,
+                         const std::string &output_path) {
+  bsc::BSC_compress(input_path.c_str(), output_path.c_str());
+  remove(input_path.c_str());
+}
+
+void compress_temp_block(const std::string &temp_base_path,
+                         const std::string &output_base_path,
+                         const uint64_t block_num) {
+  compress_block_file(block_file_path(temp_base_path, block_num),
+                      compressed_block_file_path(output_base_path, block_num));
+}
+
+} // namespace
+
 void reorder_compress_streams(const std::string &temp_dir,
                               const compression_params &cp) {
-  std::string basedir = temp_dir;
-  std::string file_flag = basedir + "/read_flag.txt";
+  const std::string basedir = temp_dir;
+  const std::string file_flag = basedir + "/read_flag.txt";
   // possible flags for PE (for SE):
   // 0: both reads aligned and distance b/w pair < 32767 (SE read aligned)
   // 1: both reads aligned and distance b/w pair >= 32767
   // 2: both reads unaligned (SE read unaligned)
   // 3: first read aligned, second not
   // 4: first read unaligned, second aligned
-  std::string file_pos = basedir + "/read_pos.bin";
+  const std::string file_pos = basedir + "/read_pos.bin";
   // For order preserving mode PE (SE):
   // Flag 0: Store position of first read (Store pos of read)
   // Flag 1: Store position of first and second read
@@ -48,42 +76,42 @@ void reorder_compress_streams(const std::string &temp_dir,
   // position using 8 bytes. For the next reads, we store the delta coded
   // positions. If the difference is < 65535, we write with 2 bytes. Otherwise,
   // we write 65535 in the 2 bytes followed by 8 bytes of absolute position.
-  std::string file_pos_pair = basedir + "/read_pos_pair.bin";
+  const std::string file_pos_pair = basedir + "/read_pos_pair.bin";
   // For PE and flag 0, store the distance b/w PE reads with 2 bytes (signed)
-  std::string file_RC = basedir + "/read_rev.txt";
+  const std::string file_RC = basedir + "/read_rev.txt";
   // PE (SE)
   // Flag 0: Orientation of first read (Orientation of SE read)
   // Flag 1: Orientation of first and second read
   // Flag 2: Nothing (Nothing)
   // Flag 3: Orientation of first read
   // Flag 4: Orientation of second read
-  std::string file_RC_pair = basedir + "/read_rev_pair.txt";
+  const std::string file_RC_pair = basedir + "/read_rev_pair.txt";
   // For PE mode and flag 0, store 0 if PE reads have opposite orientation,
   // otherwise store 1
-  std::string file_readlength = basedir + "/read_lengths.bin";
+  const std::string file_readlength = basedir + "/read_lengths.bin";
   // store read length with 2 bytes for all reads (for PE, store for both
   // reads by interleaving)
-  std::string file_unaligned = basedir + "/read_unaligned.txt";
+  const std::string file_unaligned = basedir + "/read_unaligned.txt";
   // store unaligned reads without any newlines
-  std::string file_noise = basedir + "/read_noise.txt";
+  const std::string file_noise = basedir + "/read_noise.txt";
   // store noise separated by newlines (interleave for PE if flag is 0 or 1)
-  std::string file_noisepos = basedir + "/read_noisepos.bin";
+  const std::string file_noisepos = basedir + "/read_noisepos.bin";
   // store noisepos with 2 bytes, no newlines, otherwise similar to noise
-  std::string file_order = basedir + "/read_order.bin";
+  const std::string file_order = basedir + "/read_order.bin";
 
   // load some params
   uint32_t num_reads = cp.num_reads, num_reads_aligned = 0, num_reads_unaligned;
-  uint32_t num_reads_by_2 = num_reads / 2;
-  int num_thr = cp.num_thr;
-  bool paired_end = cp.paired_end;
-  bool preserve_order = cp.preserve_order;
+  const uint32_t num_reads_by_2 = num_reads / 2;
+  const int num_thr = cp.num_thr;
+  const bool paired_end = cp.paired_end;
+  const bool preserve_order = cp.preserve_order;
 
-  char *RC_arr = new char[num_reads];
-  uint16_t *read_length_arr = new uint16_t[num_reads];
-  bool *flag_arr = new bool[num_reads];
-  uint64_t *pos_in_noise_arr = new uint64_t[num_reads];
-  uint64_t *pos_arr = new uint64_t[num_reads];
-  uint16_t *noise_len_arr = new uint16_t[num_reads];
+  std::vector<char> RC_arr(num_reads);
+  std::vector<uint16_t> read_length_arr(num_reads);
+  std::vector<bool> flag_arr(num_reads);
+  std::vector<uint64_t> pos_in_noise_arr(num_reads);
+  std::vector<uint64_t> pos_arr(num_reads);
+  std::vector<uint16_t> noise_len_arr(num_reads);
 
   // read streams for aligned reads
   std::ifstream f_order;
@@ -98,8 +126,8 @@ void reorder_compress_streams(const std::string &temp_dir,
   uint64_t noise_array_size = f_noisepos.tellg() / 2;
   f_noisepos.seekg(0, f_noisepos.beg);
   // divide by 2 because we have 2 bytes per noise
-  char *noise_arr = new char[noise_array_size];
-  uint16_t *noisepos_arr = new uint16_t[noise_array_size];
+  std::vector<char> noise_arr(noise_array_size);
+  std::vector<uint16_t> noisepos_arr(noise_array_size);
   char rc, noise_char;
   uint32_t order = 0;
   uint64_t current_pos_noise_arr = 0;
@@ -148,13 +176,13 @@ void reorder_compress_streams(const std::string &temp_dir,
   f_unaligned_count.read(byte_ptr(&unaligned_array_size), sizeof(uint64_t));
   f_unaligned_count.close();
   remove(file_unaligned_count.c_str());
-  char *unaligned_arr = new char[unaligned_array_size];
+  std::vector<char> unaligned_arr(unaligned_array_size);
   std::ifstream f_unaligned(file_unaligned, std::ios::binary);
   std::string unaligned_read;
   uint64_t pos_in_unaligned_arr = 0;
   for (uint32_t i = 0; i < num_reads_unaligned; i++) {
     read_dnaN_from_bits(unaligned_read, f_unaligned);
-    std::memcpy(unaligned_arr + pos_in_unaligned_arr, &unaligned_read[0],
+    std::memcpy(unaligned_arr.data() + pos_in_unaligned_arr, &unaligned_read[0],
                 unaligned_read.size());
     pos_in_unaligned_arr += unaligned_read.size();
   }
@@ -192,13 +220,13 @@ void reorder_compress_streams(const std::string &temp_dir,
   // rename some files to debug strange gcsfuse issue
   // related to certain files being deleted and new files with same name
   // being created.
-  std::string tmpfile_pos = basedir + "/a";
-  std::string tmpfile_noise = basedir + "/b";
-  std::string tmpfile_noisepos = basedir + "/c";
-  std::string tmpfile_RC = basedir + "/d";
-  std::string tmpfile_flag = basedir + "/e";
-  std::string tmpfile_unaligned = basedir + "/f";
-  std::string tmpfile_readlength = basedir + "/g";
+  const std::string tmpfile_pos = basedir + "/a";
+  const std::string tmpfile_noise = basedir + "/b";
+  const std::string tmpfile_noisepos = basedir + "/c";
+  const std::string tmpfile_RC = basedir + "/d";
+  const std::string tmpfile_flag = basedir + "/e";
+  const std::string tmpfile_unaligned = basedir + "/f";
+  const std::string tmpfile_readlength = basedir + "/g";
 
 // this is actually number of read pairs per block for PE
 #pragma omp parallel
@@ -225,24 +253,22 @@ void reorder_compress_streams(const std::string &temp_dir,
         }
       }
       // Open files
-      std::ofstream f_flag(tmpfile_flag + '.' + std::to_string(block_num));
-      std::ofstream f_noise(tmpfile_noise + '.' + std::to_string(block_num));
-      std::ofstream f_noisepos(
-          tmpfile_noisepos + '.' + std::to_string(block_num), std::ios::binary);
-      std::ofstream f_pos(tmpfile_pos + '.' + std::to_string(block_num),
+      std::ofstream f_flag(block_file_path(tmpfile_flag, block_num));
+      std::ofstream f_noise(block_file_path(tmpfile_noise, block_num));
+      std::ofstream f_noisepos(block_file_path(tmpfile_noisepos, block_num),
+                               std::ios::binary);
+      std::ofstream f_pos(block_file_path(tmpfile_pos, block_num),
                           std::ios::binary);
-      std::ofstream f_RC(tmpfile_RC + '.' + std::to_string(block_num));
-      std::ofstream f_unaligned(tmpfile_unaligned + '.' +
-                                std::to_string(block_num));
-      std::ofstream f_readlength(tmpfile_readlength + '.' +
-                                     std::to_string(block_num),
+      std::ofstream f_RC(block_file_path(tmpfile_RC, block_num));
+      std::ofstream f_unaligned(block_file_path(tmpfile_unaligned, block_num));
+      std::ofstream f_readlength(block_file_path(tmpfile_readlength, block_num),
                                  std::ios::binary);
       std::ofstream f_pos_pair;
       std::ofstream f_RC_pair;
       if (paired_end) {
-        f_pos_pair.open(file_pos_pair + '.' + std::to_string(block_num),
+        f_pos_pair.open(block_file_path(file_pos_pair, block_num),
                         std::ios::binary);
-        f_RC_pair.open(file_RC_pair + '.' + std::to_string(block_num));
+        f_RC_pair.open(block_file_path(file_RC_pair, block_num));
       }
 
       uint64_t prevpos = 0, diffpos;
@@ -283,7 +309,8 @@ void reorder_compress_streams(const std::string &temp_dir,
             f_noise << "\n";
           } else {
             f_flag << '2';
-            f_unaligned.write(unaligned_arr + pos_arr[i], read_length_arr[i]);
+            f_unaligned.write(unaligned_arr.data() + pos_arr[i],
+                              read_length_arr[i]);
           }
         } else {
           uint64_t i_p = num_reads_by_2 + i; // i_pair
@@ -342,7 +369,8 @@ void reorder_compress_streams(const std::string &temp_dir,
             f_RC << RC_arr[i];
           } else {
             // read 1 is unaligned
-            f_unaligned.write(unaligned_arr + pos_arr[i], read_length_arr[i]);
+            f_unaligned.write(unaligned_arr.data() + pos_arr[i],
+                              read_length_arr[i]);
           }
 
           if (flag == 0 || flag == 1 || flag == 4) {
@@ -360,7 +388,7 @@ void reorder_compress_streams(const std::string &temp_dir,
             }
           } else {
             // read 2 is unaligned
-            f_unaligned.write(unaligned_arr + pos_arr[i_p],
+            f_unaligned.write(unaligned_arr.data() + pos_arr[i_p],
                               read_length_arr[i_p]);
           }
         }
@@ -380,54 +408,22 @@ void reorder_compress_streams(const std::string &temp_dir,
       }
 
       // Compress files with.bsc and remove uncompressed files
-      std::string infile_bsc = tmpfile_flag + '.' + std::to_string(block_num);
-      std::string outfile_bsc =
-          file_flag + '.' + std::to_string(block_num) + ".bsc";
-      bsc::BSC_compress(infile_bsc.c_str(), outfile_bsc.c_str());
-      remove(infile_bsc.c_str());
+      compress_temp_block(tmpfile_flag, file_flag, block_num);
 
       // TODO: Test impact of packing pos file into
       // minimum number of bits
-      infile_bsc = tmpfile_pos + '.' + std::to_string(block_num);
-      outfile_bsc = file_pos + '.' + std::to_string(block_num) + ".bsc";
-      bsc::BSC_compress(infile_bsc.c_str(), outfile_bsc.c_str());
-      remove(infile_bsc.c_str());
-
-      infile_bsc = tmpfile_noise + '.' + std::to_string(block_num);
-      outfile_bsc = file_noise + '.' + std::to_string(block_num) + ".bsc";
-      bsc::BSC_compress(infile_bsc.c_str(), outfile_bsc.c_str());
-      remove(infile_bsc.c_str());
-
-      infile_bsc = tmpfile_noisepos + '.' + std::to_string(block_num);
-      outfile_bsc = file_noisepos + '.' + std::to_string(block_num) + ".bsc";
-      bsc::BSC_compress(infile_bsc.c_str(), outfile_bsc.c_str());
-      remove(infile_bsc.c_str());
-
-      infile_bsc = tmpfile_unaligned + '.' + std::to_string(block_num);
-      outfile_bsc = file_unaligned + '.' + std::to_string(block_num) + ".bsc";
-      bsc::BSC_compress(infile_bsc.c_str(), outfile_bsc.c_str());
-      remove(infile_bsc.c_str());
-
-      infile_bsc = tmpfile_readlength + '.' + std::to_string(block_num);
-      outfile_bsc = file_readlength + '.' + std::to_string(block_num) + ".bsc";
-      bsc::BSC_compress(infile_bsc.c_str(), outfile_bsc.c_str());
-      remove(infile_bsc.c_str());
-
-      infile_bsc = tmpfile_RC + '.' + std::to_string(block_num);
-      outfile_bsc = file_RC + '.' + std::to_string(block_num) + ".bsc";
-      bsc::BSC_compress(infile_bsc.c_str(), outfile_bsc.c_str());
-      remove(infile_bsc.c_str());
+      compress_temp_block(tmpfile_pos, file_pos, block_num);
+      compress_temp_block(tmpfile_noise, file_noise, block_num);
+      compress_temp_block(tmpfile_noisepos, file_noisepos, block_num);
+      compress_temp_block(tmpfile_unaligned, file_unaligned, block_num);
+      compress_temp_block(tmpfile_readlength, file_readlength, block_num);
+      compress_temp_block(tmpfile_RC, file_RC, block_num);
 
       if (paired_end) {
-        infile_bsc = file_pos_pair + '.' + std::to_string(block_num);
-        outfile_bsc = infile_bsc + ".bsc";
-        bsc::BSC_compress(infile_bsc.c_str(), outfile_bsc.c_str());
-        remove(infile_bsc.c_str());
-
-        infile_bsc = file_RC_pair + '.' + std::to_string(block_num);
-        outfile_bsc = infile_bsc + ".bsc";
-        bsc::BSC_compress(infile_bsc.c_str(), outfile_bsc.c_str());
-        remove(infile_bsc.c_str());
+        compress_block_file(block_file_path(file_pos_pair, block_num),
+                            compressed_block_file_path(file_pos_pair, block_num));
+        compress_block_file(block_file_path(file_RC_pair, block_num),
+                            compressed_block_file_path(file_RC_pair, block_num));
       }
 
       block_num += num_thr;
@@ -435,16 +431,6 @@ void reorder_compress_streams(const std::string &temp_dir,
   } // end omp parallel
 
   // deallocate
-  delete[] RC_arr;
-  delete[] read_length_arr;
-  delete[] flag_arr;
-  delete[] pos_in_noise_arr;
-  delete[] pos_arr;
-  delete[] noise_len_arr;
-  delete[] noise_arr;
-  delete[] noisepos_arr;
-  delete[] unaligned_arr;
-
   return;
 }
 

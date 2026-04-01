@@ -501,6 +501,11 @@ iter_range<Iterator> range(Iterator begin, Iterator end) {
   return iter_range<Iterator>(begin, end);
 }
 
+inline std::string temp_level_filename(const int pid, const int level) {
+  return "temp_p" + std::to_string(pid) + "_level_" +
+         std::to_string(level);
+}
+
 class bitVector {
 public:
   bitVector() : _size(0) { _bitArray = nullptr; }
@@ -762,7 +767,7 @@ void *thread_processLevel(void *args);
    operator()(elem_t key, uint64_t seed) */
 template <typename elem_t, typename Hasher_t> class mphf {
   /* this mechanisms gets P hashes out of Hasher_t */
-  typedef XorshiftHashFunctors<elem_t, Hasher_t> MultiHasher_t;
+  using MultiHasher_t = XorshiftHashFunctors<elem_t, Hasher_t>;
   // typedef HashFunctors<elem_t> MultiHasher_t; // original code (but only
   // works for int64 keys)  (seems to be as fast as the current xorshift)
   // typedef IndepHashFunctors<elem_t,Hasher_t> MultiHasher_t; //faster than
@@ -1223,27 +1228,21 @@ private:
     // printf("---process level %i   wr %i fast %i
     // ---\n",i,_writeEachLevel,_fastmode);
 
-    char fname_old[1000];
-    sprintf(fname_old, "temp_p%i_level_%i", _pid, i - 2);
-
-    char fname_curr[1000];
-    sprintf(fname_curr, "temp_p%i_level_%i", _pid, i);
-
-    char fname_prev[1000];
-    sprintf(fname_prev, "temp_p%i_level_%i", _pid, i - 1);
+    const std::string old_level_file = temp_level_filename(_pid, i - 2);
+    const std::string current_level_file = temp_level_filename(_pid, i);
+    const std::string previous_level_file = temp_level_filename(_pid, i - 1);
+    const bool should_delete_previous_file = _writeEachLevel && i > 2;
+    const bool should_write_current_level =
+        _writeEachLevel && i > 0 && i < _nb_levels - 1;
+    const bool should_delete_last_input_file =
+        _writeEachLevel && i == _nb_levels - 1;
 
     if (_writeEachLevel) {
-      // file management :
+      if (should_delete_previous_file)
+        unlink(old_level_file.c_str());
 
-      if (i > 2) // delete previous file
-      {
-        unlink(fname_old);
-      }
-
-      if (i < _nb_levels - 1 && i > 0) // create curr file
-      {
-        _currlevelFile = fopen(fname_curr, "w");
-      }
+      if (should_write_current_level)
+        _currlevelFile = fopen(current_level_file.c_str(), "w");
     }
 
     _cptLevel = 0;
@@ -1264,7 +1263,7 @@ private:
     t_arg.level = i;
 
     if (_writeEachLevel && (i > 1)) {
-      auto data_iterator_level = file_binary<elem_t>(fname_prev);
+      auto data_iterator_level = file_binary<elem_t>(previous_level_file.c_str());
 
       typedef decltype(data_iterator_level.begin()) disklevel_it_type;
 
@@ -1336,15 +1335,13 @@ private:
       setLevelFastmode.resize(_idxLevelsetLevelFastmode);
     }
     if (_writeEachLevel) {
-      if (i < _nb_levels - 1 && i > 0) {
+      if (should_write_current_level) {
         fflush(_currlevelFile);
         fclose(_currlevelFile);
       }
 
-      if (i == _nb_levels - 1) // delete last file
-      {
-        unlink(fname_prev);
-      }
+      if (should_delete_last_input_file)
+        unlink(previous_level_file.c_str());
     }
   }
 

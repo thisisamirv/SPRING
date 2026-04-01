@@ -23,10 +23,21 @@ limitations under the License.
 #include <fstream>
 #include <omp.h>
 #include <string>
+
 namespace spring {
 
-typedef boomphf::SingleHashFunctor<uint64_t> hasher_t;
-typedef boomphf::mphf<uint64_t, hasher_t> boophf_t;
+using hasher_t = boomphf::SingleHashFunctor<uint64_t>;
+using boophf_t = boomphf::mphf<uint64_t, hasher_t>;
+
+inline std::string keys_bin_path(const std::string &basedir, const int tid) {
+  return basedir + "/keys.bin." + std::to_string(tid);
+}
+
+inline std::string hash_bin_path(const std::string &basedir, const int tid,
+                                 const int dict_index) {
+  return basedir + "/hash.bin." + std::to_string(tid) + '.' +
+         std::to_string(dict_index);
+}
 
 class bbhashdict {
 public:
@@ -85,90 +96,90 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
   std::bitset<bitset_size> *mask = new std::bitset<bitset_size>[numdict];
   generateindexmasks<bitset_size>(mask, dict, numdict, bpb);
   for (int j = 0; j < numdict; j++) {
+    bbhashdict &current_dict = dict[j];
     uint64_t *ull = new uint64_t[numreads];
 #pragma omp parallel
     {
       std::bitset<bitset_size> b;
-      int tid = omp_get_thread_num();
+      const int tid = omp_get_thread_num();
+      const int thread_count = omp_get_num_threads();
       uint64_t i, stop;
-      i = uint64_t(tid) * numreads / omp_get_num_threads();
-      stop = uint64_t(tid + 1) * numreads / omp_get_num_threads();
-      if (tid == omp_get_num_threads() - 1)
+      i = uint64_t(tid) * numreads / thread_count;
+      stop = uint64_t(tid + 1) * numreads / thread_count;
+      if (tid == thread_count - 1)
         stop = numreads;
       // compute keys and and store in ull
       for (; i < stop; i++) {
         b = read[i] & mask[j];
-        ull[i] = (b >> bpb * dict[j].start).to_ullong();
+        ull[i] = (b >> bpb * current_dict.start).to_ullong();
       }
     } // parallel end
 
     // remove keys corresponding to reads shorter than dict_end[j]
-    dict[j].dict_numreads = 0;
+    current_dict.dict_numreads = 0;
     for (uint32_t i = 0; i < numreads; i++) {
-      if (read_lengths[i] > dict[j].end) {
-        ull[dict[j].dict_numreads] = ull[i];
-        dict[j].dict_numreads++;
+      if (read_lengths[i] > current_dict.end) {
+        ull[current_dict.dict_numreads] = ull[i];
+        current_dict.dict_numreads++;
       }
     }
 
 // write ull to file
 #pragma omp parallel
     {
-      int tid = omp_get_thread_num();
-      std::ofstream foutkey(basedir + std::string("/keys.bin.") +
-                                std::to_string(tid),
-                            std::ios::binary);
+      const int tid = omp_get_thread_num();
+      const int thread_count = omp_get_num_threads();
+      std::ofstream foutkey(keys_bin_path(basedir, tid), std::ios::binary);
       uint64_t i, stop;
-      i = uint64_t(tid) * dict[j].dict_numreads / omp_get_num_threads();
-      stop = uint64_t(tid + 1) * dict[j].dict_numreads / omp_get_num_threads();
-      if (tid == omp_get_num_threads() - 1)
-        stop = dict[j].dict_numreads;
+      i = uint64_t(tid) * current_dict.dict_numreads / thread_count;
+      stop = uint64_t(tid + 1) * current_dict.dict_numreads / thread_count;
+      if (tid == thread_count - 1)
+        stop = current_dict.dict_numreads;
       for (; i < stop; i++)
         foutkey.write(byte_ptr(&ull[i]), sizeof(uint64_t));
       foutkey.close();
     } // parallel end
 
     // deduplicating ull
-    std::sort(ull, ull + dict[j].dict_numreads);
+    std::sort(ull, ull + current_dict.dict_numreads);
     uint32_t k = 0;
-    for (uint32_t i = 1; i < dict[j].dict_numreads; i++)
+    for (uint32_t i = 1; i < current_dict.dict_numreads; i++)
       if (ull[i] != ull[k])
         ull[++k] = ull[i];
-    dict[j].numkeys = k + 1;
+    current_dict.numkeys = k + 1;
     // construct mphf
     auto data_iterator =
         boomphf::range(static_cast<const uint64_t *>(ull),
-                       static_cast<const uint64_t *>(ull + dict[j].numkeys));
-    double gammaFactor = 5.0; // balance between speed and memory
-    dict[j].bphf = new boomphf::mphf<uint64_t, hasher_t>(
-        dict[j].numkeys, data_iterator, num_thr, gammaFactor, true, false);
+                       static_cast<const uint64_t *>(ull + current_dict.numkeys));
+    const double gamma_factor = 5.0; // balance between speed and memory
+    current_dict.bphf = new boomphf::mphf<uint64_t, hasher_t>(
+        current_dict.numkeys, data_iterator, num_thr, gamma_factor, true,
+        false);
 
     delete[] ull;
 
 // compute hashes for all reads
 #pragma omp parallel
     {
-      int tid = omp_get_thread_num();
-      std::ifstream finkey(basedir + std::string("/keys.bin.") +
-                               std::to_string(tid),
-                           std::ios::binary);
-      std::ofstream fouthash(basedir + std::string("/hash.bin.") +
-                                 std::to_string(tid) + '.' + std::to_string(j),
-                             std::ios::binary);
+      const int tid = omp_get_thread_num();
+      const int thread_count = omp_get_num_threads();
+      const std::string key_path = keys_bin_path(basedir, tid);
+      const std::string hash_path = hash_bin_path(basedir, tid, j);
+      std::ifstream finkey(key_path, std::ios::binary);
+      std::ofstream fouthash(hash_path, std::ios::binary);
       uint64_t currentkey, currenthash;
       uint64_t i, stop;
-      i = uint64_t(tid) * dict[j].dict_numreads / omp_get_num_threads();
-      stop = uint64_t(tid + 1) * dict[j].dict_numreads / omp_get_num_threads();
-      if (tid == omp_get_num_threads() - 1)
-        stop = dict[j].dict_numreads;
+      i = uint64_t(tid) * current_dict.dict_numreads / thread_count;
+      stop = uint64_t(tid + 1) * current_dict.dict_numreads / thread_count;
+      if (tid == thread_count - 1)
+        stop = current_dict.dict_numreads;
       for (; i < stop; i++) {
         finkey.read(byte_ptr(&currentkey), sizeof(uint64_t));
-        currenthash = (dict[j].bphf)->lookup(currentkey);
+        currenthash = current_dict.bphf->lookup(currentkey);
         fouthash.write(byte_ptr(&currenthash), sizeof(uint64_t));
       }
       finkey.close();
-      remove(
-          (basedir + std::string("/keys.bin.") + std::to_string(tid)).c_str());
+      remove(key_path.c_str());
       fouthash.close();
     } // parallel end
   }
@@ -179,52 +190,49 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
   {
 #pragma omp for
     for (int j = 0; j < numdict; j++) {
+      bbhashdict &current_dict = dict[j];
       // fill startpos by first storing numbers and then doing cumulative sum
-      dict[j].startpos =
-          new uint32_t[dict[j].numkeys +
+      current_dict.startpos =
+          new uint32_t[current_dict.numkeys +
                        1](); // 1 extra to store end pos of last key
       uint64_t currenthash;
       for (int tid = 0; tid < num_thr; tid++) {
-        std::ifstream finhash(basedir + std::string("/hash.bin.") +
-                                  std::to_string(tid) + '.' + std::to_string(j),
-                              std::ios::binary);
+        std::ifstream finhash(hash_bin_path(basedir, tid, j), std::ios::binary);
         finhash.read(byte_ptr(&currenthash), sizeof(uint64_t));
         while (!finhash.eof()) {
-          dict[j].startpos[currenthash + 1]++;
+          current_dict.startpos[currenthash + 1]++;
           finhash.read(byte_ptr(&currenthash), sizeof(uint64_t));
         }
         finhash.close();
       }
 
-      dict[j].empty_bin = new bool[dict[j].numkeys]();
-      for (uint32_t i = 1; i < dict[j].numkeys; i++)
-        dict[j].startpos[i] = dict[j].startpos[i] + dict[j].startpos[i - 1];
+      current_dict.empty_bin = new bool[current_dict.numkeys]();
+      for (uint32_t i = 1; i < current_dict.numkeys; i++)
+        current_dict.startpos[i] =
+            current_dict.startpos[i] + current_dict.startpos[i - 1];
 
       // insert elements in the dict array
-      dict[j].read_id = new uint32_t[dict[j].dict_numreads];
+      current_dict.read_id = new uint32_t[current_dict.dict_numreads];
       uint32_t i = 0;
       for (int tid = 0; tid < num_thr; tid++) {
-        std::ifstream finhash(basedir + std::string("/hash.bin.") +
-                                  std::to_string(tid) + '.' + std::to_string(j),
-                              std::ios::binary);
+        const std::string hash_path = hash_bin_path(basedir, tid, j);
+        std::ifstream finhash(hash_path, std::ios::binary);
         finhash.read(byte_ptr(&currenthash), sizeof(uint64_t));
         while (!finhash.eof()) {
-          while (read_lengths[i] <= dict[j].end)
+          while (read_lengths[i] <= current_dict.end)
             i++;
-          dict[j].read_id[dict[j].startpos[currenthash]++] = i;
+          current_dict.read_id[current_dict.startpos[currenthash]++] = i;
           i++;
           finhash.read(byte_ptr(&currenthash), sizeof(uint64_t));
         }
         finhash.close();
-        remove((basedir + std::string("/hash.bin.") + std::to_string(tid) +
-                '.' + std::to_string(j))
-                   .c_str());
+        remove(hash_path.c_str());
       }
 
       // correcting startpos array modified during insertion
-      for (int64_t keynum = dict[j].numkeys; keynum >= 1; keynum--)
-        dict[j].startpos[keynum] = dict[j].startpos[keynum - 1];
-      dict[j].startpos[0] = 0;
+      for (int64_t keynum = current_dict.numkeys; keynum >= 1; keynum--)
+        current_dict.startpos[keynum] = current_dict.startpos[keynum - 1];
+      current_dict.startpos[0] = 0;
     } // for end
   } // parallel end
   omp_set_num_threads(num_thr);

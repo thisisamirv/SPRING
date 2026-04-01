@@ -22,6 +22,7 @@ limitations under the License.
 #include <fstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "id_compression/include/sam_block.h"
@@ -29,6 +30,163 @@ limitations under the License.
 #include "qvz/include/qvz.h"
 
 namespace spring {
+
+namespace {
+
+const char *const kInvalidFastqError =
+    "Invalid FASTQ(A) file. Number of lines not multiple of 4(2)";
+
+struct read_range {
+  uint64_t start;
+  uint64_t end;
+};
+
+void write_fastq_record(std::ostream &out, const std::string &id,
+                        const std::string &read,
+                        const std::string *quality_or_null) {
+  out << id << "\n";
+  out << read << "\n";
+  if (quality_or_null != nullptr) {
+    out << "+\n";
+    out << *quality_or_null << "\n";
+  }
+}
+
+std::vector<read_range> compute_read_ranges(const uint32_t num_reads,
+                                            const int num_thr) {
+  if (num_thr <= 0)
+    throw std::runtime_error("Number of threads must be positive.");
+
+  std::vector<read_range> ranges(static_cast<size_t>(num_thr));
+  const uint64_t num_reads_per_thread = 1 + ((num_reads - 1) / num_thr);
+  uint64_t next_start = 0;
+  for (int thread_index = 0; thread_index < num_thr; ++thread_index) {
+    read_range &range = ranges[static_cast<size_t>(thread_index)];
+    range.start = std::min<uint64_t>(next_start, num_reads);
+    range.end = std::min<uint64_t>(range.start + num_reads_per_thread,
+                                   num_reads);
+    next_start = range.end;
+  }
+  return ranges;
+}
+
+bool matches_paired_id_code(const std::string &id_1, const std::string &id_2,
+                            const uint8_t paired_id_code) {
+  if (id_1.length() != id_2.length())
+    return false;
+
+  const size_t len = id_1.length();
+  switch (paired_id_code) {
+  case 1:
+    if (id_1[len - 1] != '1' || id_2[len - 1] != '2')
+      return false;
+    for (size_t index = 0; index + 1 < len; ++index)
+      if (id_1[index] != id_2[index])
+        return false;
+    return true;
+  case 2:
+    return id_1 == id_2;
+  case 3: {
+    size_t index = 0;
+    while (index < len && id_1[index] == id_2[index]) {
+      if (id_1[index] == ' ') {
+        if (index + 1 < len && id_1[index + 1] == '1' &&
+            id_2[index + 1] == '2') {
+          ++index;
+        } else {
+          return false;
+        }
+      }
+      ++index;
+    }
+    return index == len;
+  }
+  default:
+    throw std::runtime_error("Invalid paired id code.");
+  }
+}
+
+template <size_t BufferSize>
+void write_encoded_read(const std::string &read, std::ofstream &fout,
+                        const uint8_t (&dna_to_int)[128],
+                        const uint8_t bits_per_base,
+                        const uint8_t bases_per_byte) {
+  uint8_t bitarray[BufferSize];
+  uint8_t pos_in_bitarray = 0;
+  const uint16_t readlen = read.size();
+  fout.write(byte_ptr(&readlen), sizeof(uint16_t));
+
+  const int full_groups = readlen / bases_per_byte;
+  for (int group_index = 0; group_index < full_groups; ++group_index) {
+    bitarray[pos_in_bitarray] = 0;
+    for (int base_index = 0; base_index < bases_per_byte; ++base_index)
+      bitarray[pos_in_bitarray] |= dna_to_int[static_cast<uint8_t>(
+                                       read[bases_per_byte * group_index +
+                                            base_index])]
+                                   << (bits_per_base * base_index);
+    ++pos_in_bitarray;
+  }
+
+  const int trailing_bases = readlen % bases_per_byte;
+  if (trailing_bases != 0) {
+    const int group_index = full_groups;
+    bitarray[pos_in_bitarray] = 0;
+    for (int base_index = 0; base_index < trailing_bases; ++base_index)
+      bitarray[pos_in_bitarray] |= dna_to_int[static_cast<uint8_t>(
+                                       read[bases_per_byte * group_index +
+                                            base_index])]
+                                   << (bits_per_base * base_index);
+    ++pos_in_bitarray;
+  }
+
+  fout.write(byte_ptr(&bitarray[0]), pos_in_bitarray);
+}
+
+template <size_t BufferSize, size_t AlphabetSize>
+void read_encoded_read(std::string &read, std::ifstream &fin,
+                       const char (&int_to_dna)[AlphabetSize],
+                       const uint8_t bit_mask,
+                       const uint8_t bits_per_base,
+                       const uint8_t bases_per_byte) {
+  uint16_t readlen;
+  uint8_t bitarray[BufferSize];
+  fin.read(byte_ptr(&readlen), sizeof(uint16_t));
+  read.resize(readlen);
+
+  const uint16_t num_bytes_to_read =
+      ((uint32_t)readlen + bases_per_byte - 1) / bases_per_byte;
+  fin.read(byte_ptr(&bitarray[0]), num_bytes_to_read);
+
+  uint8_t pos_in_bitarray = 0;
+  const int full_groups = readlen / bases_per_byte;
+  for (int group_index = 0; group_index < full_groups; ++group_index) {
+    for (int base_index = 0; base_index < bases_per_byte; ++base_index) {
+      read[bases_per_byte * group_index + base_index] =
+          int_to_dna[bitarray[pos_in_bitarray] & bit_mask];
+      bitarray[pos_in_bitarray] >>= bits_per_base;
+    }
+    ++pos_in_bitarray;
+  }
+
+  const int trailing_bases = readlen % bases_per_byte;
+  if (trailing_bases != 0) {
+    const int group_index = full_groups;
+    for (int base_index = 0; base_index < trailing_bases; ++base_index) {
+      read[bases_per_byte * group_index + base_index] =
+          int_to_dna[bitarray[pos_in_bitarray] & bit_mask];
+      bitarray[pos_in_bitarray] >>= bits_per_base;
+    }
+  }
+}
+
+void fill_reverse_complement(const char *input, char *output,
+                             const int readlen) {
+  for (int index = 0; index < readlen; ++index)
+    output[index] =
+        chartorevchar[static_cast<uint8_t>(input[readlen - index - 1])];
+}
+
+} // namespace
 
 uint32_t read_fastq_block(std::istream *fin, std::string *id_array,
                           std::string *read_array, std::string *quality_array,
@@ -40,17 +198,14 @@ uint32_t read_fastq_block(std::istream *fin, std::string *id_array,
       break;
     remove_CR_from_end(id_array[num_done]);
     if (!std::getline(*fin, read_array[num_done]))
-      throw std::runtime_error(
-          "Invalid FASTQ(A) file. Number of lines not multiple of 4(2)");
+      throw std::runtime_error(kInvalidFastqError);
     remove_CR_from_end(read_array[num_done]);
     if (fasta_flag)
       continue;
     if (!std::getline(*fin, comment))
-      throw std::runtime_error(
-          "Invalid FASTQ(A) file. Number of lines not multiple of 4(2)");
+      throw std::runtime_error(kInvalidFastqError);
     if (!std::getline(*fin, quality_array[num_done]))
-      throw std::runtime_error(
-          "Invalid FASTQ(A) file. Number of lines not multiple of 4(2)");
+      throw std::runtime_error(kInvalidFastqError);
     remove_CR_from_end(quality_array[num_done]);
   }
   return num_done;
@@ -61,53 +216,32 @@ void write_fastq_block(std::ofstream &fout, std::string *id_array,
                        const uint32_t &num_reads, const bool preserve_quality,
                        const int &num_thr, const bool &gzip_flag,
                        const int &gzip_level) {
+  const std::string *quality_or_null = preserve_quality ? quality_array : nullptr;
   if (!gzip_flag) {
-    for (uint32_t i = 0; i < num_reads; i++) {
-      fout << id_array[i] << "\n";
-      fout << read_array[i] << "\n";
-      if (preserve_quality) {
-        fout << "+\n";
-        fout << quality_array[i] << "\n";
-      }
-    }
+    for (uint32_t i = 0; i < num_reads; i++)
+      write_fastq_record(fout, id_array[i], read_array[i],
+                         quality_or_null == nullptr ? nullptr
+                                                    : &quality_or_null[i]);
   } else {
     if (num_reads == 0)
       return;
-    if (num_thr <= 0)
-      throw std::runtime_error("Number of threads must be positive.");
 
     std::vector<std::string> gzip_compressed(static_cast<size_t>(num_thr));
-    std::vector<uint64_t> start_read_num(static_cast<size_t>(num_thr));
-    std::vector<uint64_t> end_read_num(static_cast<size_t>(num_thr));
-    uint64_t num_reads_per_thread =
-        1 + ((num_reads - 1) / num_thr); // ceiling function
-    for (uint32_t i = 0; i < (uint32_t)num_thr; i++) {
-      if (i == 0)
-        start_read_num[i] = 0;
-      else
-        start_read_num[i] = end_read_num[i - 1];
-      if (start_read_num[i] > num_reads)
-        start_read_num[i] = num_reads;
-      end_read_num[i] = start_read_num[i] + num_reads_per_thread;
-      if (end_read_num[i] > num_reads)
-        end_read_num[i] = num_reads;
-    }
+    const std::vector<read_range> thread_ranges =
+        compute_read_ranges(num_reads, num_thr);
 #pragma omp parallel num_threads(num_thr)
     {
-      int tid = omp_get_thread_num();
+      const int tid = omp_get_thread_num();
       boost::iostreams::filtering_ostream out;
       out.push(boost::iostreams::gzip_compressor(
           boost::iostreams::gzip_params(gzip_level)));
       out.push(boost::iostreams::back_inserter(gzip_compressed[tid]));
 
-      for (uint64_t i = start_read_num[tid]; i < end_read_num[tid]; i++) {
-        out << id_array[i] << "\n";
-        out << read_array[i] << "\n";
-        if (preserve_quality) {
-          out << "+\n";
-          out << quality_array[i] << "\n";
-        }
-      }
+      const read_range &range = thread_ranges[static_cast<size_t>(tid)];
+      for (uint64_t i = range.start; i < range.end; i++)
+        write_fastq_record(out, id_array[i], read_array[i],
+                           quality_or_null == nullptr ? nullptr
+                                                      : &quality_or_null[i]);
       boost::iostreams::close(out);
 
     } // end omp parallel
@@ -206,74 +340,15 @@ void generate_binary_binning_table(char *binary_binning_table,
 // code 3: * 1:# and * 2:# where * and # are common to both and * contains no
 // space (used in new versions)
 uint8_t find_id_pattern(const std::string &id_1, const std::string &id_2) {
-  if (id_1.length() != id_2.length())
-    return 0;
-  if (id_1 == id_2)
-    return 2;
-  size_t len = id_1.length();
-  size_t i;
-  if (id_1[len - 1] == '1' && id_2[len - 1] == '2') {
-    // compare rest
-    for (i = 0; i < len - 1; i++)
-      if (id_1[i] != id_2[i])
-        break;
-    if (i == len - 1)
-      return 1;
-  }
-  for (i = 0; i < len; i++) {
-    if (id_1[i] != id_2[i])
-      break;
-    if (id_1[i] == ' ') {
-      if (i < len - 1 && id_1[i + 1] == '1' && id_2[i + 1] == '2')
-        i++;
-      else
-        break;
-    }
-  }
-  if (i == len)
-    return 3;
+  for (uint8_t paired_id_code = 1; paired_id_code <= 3; ++paired_id_code)
+    if (matches_paired_id_code(id_1, id_2, paired_id_code))
+      return paired_id_code;
   return 0;
 }
 
 bool check_id_pattern(const std::string &id_1, const std::string &id_2,
                       const uint8_t paired_id_code) {
-  if (id_1.length() != id_2.length())
-    return false;
-  size_t len = id_1.length();
-  size_t i;
-  switch (paired_id_code) {
-  case 1:
-    if (id_1[len - 1] == '1' && id_2[len - 1] == '2') {
-      // compare rest
-      for (i = 0; i < len - 1; i++)
-        if (id_1[i] != id_2[i])
-          break;
-      if (i == len - 1)
-        return true;
-    }
-    break;
-  case 2:
-    if (id_1 == id_2)
-      return true;
-    break;
-  case 3:
-    for (i = 0; i < len; i++) {
-      if (id_1[i] != id_2[i])
-        break;
-      if (id_1[i] == ' ') {
-        if (i < len - 1 && id_1[i + 1] == '1' && id_2[i + 1] == '2')
-          i++;
-        else
-          break;
-      }
-    }
-    if (i == len)
-      return true;
-    break;
-  default:
-    throw std::runtime_error("Invalid paired id code.");
-  }
-  return false;
+  return matches_paired_id_code(id_1, id_2, paired_id_code);
 }
 
 void modify_id(std::string &id, const uint8_t paired_id_code) {
@@ -292,135 +367,48 @@ void modify_id(std::string &id, const uint8_t paired_id_code) {
 }
 
 void write_dna_in_bits(const std::string &read, std::ofstream &fout) {
-  uint8_t dna2int[128];
+  uint8_t dna2int[128] = {};
   dna2int[(uint8_t)'A'] = 0;
   dna2int[(uint8_t)'C'] = 2; // chosen to align with the bitset representation
   dna2int[(uint8_t)'G'] = 1;
   dna2int[(uint8_t)'T'] = 3;
-  uint8_t bitarray[128];
-  uint8_t pos_in_bitarray = 0;
-  uint16_t readlen = read.size();
-  fout.write(byte_ptr(&readlen), sizeof(uint16_t));
-  for (int i = 0; i < readlen / 4; i++) {
-    bitarray[pos_in_bitarray] = 0;
-    for (int j = 0; j < 4; j++)
-      bitarray[pos_in_bitarray] |=
-          (dna2int[(uint8_t)read[4 * i + j]] << (2 * j));
-    pos_in_bitarray++;
-  }
-  if (readlen % 4 != 0) {
-    int i = readlen / 4;
-    bitarray[pos_in_bitarray] = 0;
-    for (int j = 0; j < readlen % 4; j++)
-      bitarray[pos_in_bitarray] |=
-          (dna2int[(uint8_t)read[4 * i + j]] << (2 * j));
-    pos_in_bitarray++;
-  }
-  fout.write(byte_ptr(&bitarray[0]), pos_in_bitarray);
-  return;
+  write_encoded_read<128>(read, fout, dna2int, 2, 4);
 }
 
 void read_dna_from_bits(std::string &read, std::ifstream &fin) {
-  uint16_t readlen;
-  uint8_t bitarray[128];
   const char int2dna[4] = {'A', 'G', 'C', 'T'};
-  fin.read(byte_ptr(&readlen), sizeof(uint16_t));
-  read.resize(readlen);
-  uint16_t num_bytes_to_read = ((uint32_t)readlen + 4 - 1) / 4;
-  fin.read(byte_ptr(&bitarray[0]), num_bytes_to_read);
-  uint8_t pos_in_bitarray = 0;
-  for (int i = 0; i < readlen / 4; i++) {
-    for (int j = 0; j < 4; j++) {
-      read[4 * i + j] = int2dna[bitarray[pos_in_bitarray] & 3];
-      bitarray[pos_in_bitarray] >>= 2;
-    }
-    pos_in_bitarray++;
-  }
-  if (readlen % 4 != 0) {
-    int i = readlen / 4;
-    for (int j = 0; j < readlen % 4; j++) {
-      read[4 * i + j] = int2dna[bitarray[pos_in_bitarray] & 3];
-      bitarray[pos_in_bitarray] >>= 2;
-    }
-    pos_in_bitarray++;
-  }
+  read_encoded_read<128>(read, fin, int2dna, 3, 2, 4);
 }
 
 void write_dnaN_in_bits(const std::string &read, std::ofstream &fout) {
-  uint8_t dna2int[128];
+  uint8_t dna2int[128] = {};
   dna2int[(uint8_t)'A'] = 0;
   dna2int[(uint8_t)'C'] = 2; // chosen to align with the bitset representation
   dna2int[(uint8_t)'G'] = 1;
   dna2int[(uint8_t)'T'] = 3;
   dna2int[(uint8_t)'N'] = 4;
-  uint8_t bitarray[256];
-  uint8_t pos_in_bitarray = 0;
-  uint16_t readlen = read.size();
-  fout.write(byte_ptr(&readlen), sizeof(uint16_t));
-  for (int i = 0; i < readlen / 2; i++) {
-    bitarray[pos_in_bitarray] = 0;
-    for (int j = 0; j < 2; j++)
-      bitarray[pos_in_bitarray] |=
-          (dna2int[(uint8_t)read[2 * i + j]] << (4 * j));
-    pos_in_bitarray++;
-  }
-  if (readlen % 2 != 0) {
-    int i = readlen / 2;
-    bitarray[pos_in_bitarray] = 0;
-    for (int j = 0; j < readlen % 2; j++)
-      bitarray[pos_in_bitarray] |=
-          (dna2int[(uint8_t)read[2 * i + j]] << (4 * j));
-    pos_in_bitarray++;
-  }
-  fout.write(byte_ptr(&bitarray[0]), pos_in_bitarray);
-  return;
+  write_encoded_read<256>(read, fout, dna2int, 4, 2);
 }
 
 void read_dnaN_from_bits(std::string &read, std::ifstream &fin) {
-  uint16_t readlen;
-  uint8_t bitarray[256];
   const char int2dna[5] = {'A', 'G', 'C', 'T', 'N'};
-  fin.read(byte_ptr(&readlen), sizeof(uint16_t));
-  read.resize(readlen);
-  uint16_t num_bytes_to_read = ((uint32_t)readlen + 2 - 1) / 2;
-  fin.read(byte_ptr(&bitarray[0]), num_bytes_to_read);
-  uint8_t pos_in_bitarray = 0;
-  for (int i = 0; i < readlen / 2; i++) {
-    for (int j = 0; j < 2; j++) {
-      read[2 * i + j] = int2dna[bitarray[pos_in_bitarray] & 15];
-      bitarray[pos_in_bitarray] >>= 4;
-    }
-    pos_in_bitarray++;
-  }
-  if (readlen % 2 != 0) {
-    int i = readlen / 2;
-    for (int j = 0; j < readlen % 2; j++) {
-      read[2 * i + j] = int2dna[bitarray[pos_in_bitarray] & 15];
-      bitarray[pos_in_bitarray] >>= 4;
-    }
-    pos_in_bitarray++;
-  }
+  read_encoded_read<256>(read, fin, int2dna, 15, 4, 2);
 }
 
 void reverse_complement(char *s, char *s1, const int readlen) {
-  for (int j = 0; j < readlen; j++)
-    s1[j] = chartorevchar[(uint8_t)s[readlen - j - 1]];
+  fill_reverse_complement(s, s1, readlen);
   s1[readlen] = '\0';
-  return;
 }
 
 std::string reverse_complement(const std::string &s, const int readlen) {
-  std::string s1;
-  s1.resize(readlen);
-  for (int j = 0; j < readlen; j++)
-    s1[j] = chartorevchar[(uint8_t)s[readlen - j - 1]];
+  std::string s1(readlen, '\0');
+  fill_reverse_complement(s.data(), &s1[0], readlen);
   return s1;
 }
 
 void remove_CR_from_end(std::string &str) {
-  if (str.size())
-    if (str[str.size() - 1] == '\r')
-      str.resize(str.size() - 1);
+  if (!str.empty() && str.back() == '\r')
+    str.resize(str.size() - 1);
 }
 
 size_t get_directory_size(const std::string &temp_dir) {

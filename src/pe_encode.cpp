@@ -15,6 +15,7 @@ limitations under the License.
 #include <cstdio>
 #include <fstream>
 #include <iostream>
+#include <vector>
 
 #include "pe_encode.h"
 #include "util.h"
@@ -23,18 +24,18 @@ namespace spring {
 
 void pe_encode(const std::string &temp_dir, const compression_params &cp) {
   // Read some parameters
-  uint32_t numreads = cp.num_reads;
-  uint32_t numreads_by_2 = numreads / 2;
+  const uint32_t numreads = cp.num_reads;
+  const uint32_t numreads_by_2 = numreads / 2;
 
-  std::string basedir = temp_dir;
-  std::string file_order = basedir + "/read_order.bin";
-  uint32_t *order_array = new uint32_t[numreads];
+  const std::string basedir = temp_dir;
+  const std::string file_order = basedir + "/read_order.bin";
+  std::vector<uint32_t> order_array(numreads);
   // stores index mapping position in reordered file to
   // position in original file
   // later stores index generated in this step - maps position
   // in reordered file to position in intended decompressed file
 
-  uint32_t *inverse_order_array = new uint32_t[numreads];
+  std::vector<uint32_t> inverse_order_array(numreads);
   // stores index mapping position in original file to
   // position in reordered file
 
@@ -60,12 +61,12 @@ void pe_encode(const std::string &temp_dir, const compression_params &cp) {
   // file 2. These are automatically decided by the pairing.
   for (uint32_t i = 0; i < numreads; i++) {
     if (order_array[i] >= numreads_by_2) {
-      uint32_t pos_in_original = order_array[i];
-      uint32_t pos_of_pair_in_original = pos_in_original - numreads_by_2;
-      uint32_t pos_of_pair_in_reordered =
-          inverse_order_array[pos_of_pair_in_original];
-      uint32_t new_order_of_pair = order_array[pos_of_pair_in_reordered];
-      order_array[i] = new_order_of_pair + numreads_by_2;
+      const uint32_t original_pos = order_array[i];
+      const uint32_t pair_original_pos = original_pos - numreads_by_2;
+      const uint32_t pair_reordered_pos =
+          inverse_order_array[pair_original_pos];
+      const uint32_t pair_new_order = order_array[pair_reordered_pos];
+      order_array[i] = pair_new_order + numreads_by_2;
     }
   }
 
@@ -78,10 +79,6 @@ void pe_encode(const std::string &temp_dir, const compression_params &cp) {
 
   remove(file_order.c_str());
   rename((file_order + ".tmp").c_str(), file_order.c_str());
-
-  delete[] order_array;
-  delete[] inverse_order_array;
-  return;
 }
 
 } // namespace spring

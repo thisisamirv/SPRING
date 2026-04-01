@@ -24,6 +24,67 @@ limitations under the License.
 
 namespace spring {
 
+namespace {
+
+std::string block_file_path(const std::string &base_path,
+                            const uint32_t block_num) {
+  return base_path + '.' + std::to_string(block_num);
+}
+
+std::string compressed_block_file_path(const std::string &base_path,
+                                       const uint32_t block_num) {
+  return block_file_path(base_path, block_num) + ".bsc";
+}
+
+void decompress_bsc_block(const std::string &base_path, const uint32_t block_num) {
+  const std::string output_path = block_file_path(base_path, block_num);
+  const std::string input_path = compressed_block_file_path(base_path, block_num);
+  bsc::BSC_decompress(input_path.c_str(), output_path.c_str());
+  remove(input_path.c_str());
+}
+
+void open_output_files(std::ofstream (&fout)[2], const std::string (&outfile)[2],
+                       const bool paired_end, const bool gzip_flag) {
+  for (int j = 0; j < 2; j++) {
+    if (j == 1 && !paired_end)
+      continue;
+    if (gzip_flag)
+      fout[j].open(outfile[j], std::ios::binary);
+    else
+      fout[j].open(outfile[j]);
+  }
+}
+
+void validate_output_files(std::ofstream (&fout)[2], const bool paired_end) {
+  if (!fout[0].is_open())
+    throw std::runtime_error("Error opening output file");
+  if (paired_end && !fout[1].is_open())
+    throw std::runtime_error("Error opening output file");
+}
+
+uint64_t compute_num_reads_per_step(const uint32_t num_reads,
+                                    const uint32_t num_reads_per_block,
+                                    const int num_thr,
+                                    const bool paired_end) {
+  uint64_t num_reads_per_step = static_cast<uint64_t>(num_thr) * num_reads_per_block;
+  const uint64_t total_reads = paired_end ? num_reads / 2 : num_reads;
+  if (num_reads_per_step > total_reads)
+    num_reads_per_step = total_reads;
+  return num_reads_per_step;
+}
+
+uint32_t compute_num_reads_cur_step(const uint32_t num_reads,
+                                    const uint32_t num_reads_done,
+                                    const uint64_t num_reads_per_step,
+                                    const bool paired_end) {
+  const uint32_t total_reads = paired_end ? num_reads / 2 : num_reads;
+  if (num_reads_done + num_reads_per_step >= total_reads)
+    return total_reads - num_reads_done;
+  return static_cast<uint32_t>(num_reads_per_step);
+}
+
+} // namespace
+
 void set_dec_noise_array(char **dec_noise);
 
 void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
@@ -63,32 +124,12 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
   std::string outfile[2] = {outfile_1, outfile_2};
   std::ofstream fout[2];
 
-  for (int j = 0; j < 2; j++) {
-    if (j == 1 && !paired_end)
-      continue;
-    if (gzip_flag)
-      fout[j].open(outfile[j], std::ios::binary);
-    else
-      fout[j].open(outfile[j]);
-  }
+  open_output_files(fout, outfile, paired_end, gzip_flag);
+  validate_output_files(fout, paired_end);
 
-  // Check that we were able to open the output files
-  if (!fout[0].is_open())
-    throw std::runtime_error("Error opening output file");
-  if (paired_end)
-    if (!fout[1].is_open())
-      throw std::runtime_error("Error opening output file");
-
-  uint64_t num_reads_per_step = (uint64_t)num_thr * num_reads_per_block;
-
-  // allocate less if the total number of reads is small
-  if (paired_end) {
-    if (num_reads_per_step > num_reads / 2)
-      num_reads_per_step = num_reads / 2;
-  } else {
-    if (num_reads_per_step > num_reads)
-      num_reads_per_step = num_reads;
-  }
+  const uint64_t num_reads_per_step =
+      compute_num_reads_per_step(num_reads, num_reads_per_block, num_thr,
+                                 paired_end);
 
   std::string *read_array_1 = new std::string[num_reads_per_step];
   std::string *read_array_2 = NULL;
@@ -134,16 +175,9 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
       num_blocks_done *
       num_reads_per_block; // denotes number of pairs done for PE
   while (!done) {
-    uint32_t num_reads_cur_step = num_reads_per_step;
-    if (paired_end) {
-      if (num_reads_done + num_reads_cur_step >= num_reads / 2) {
-        num_reads_cur_step = num_reads / 2 - num_reads_done;
-      }
-    } else {
-      if (num_reads_done + num_reads_cur_step >= num_reads) {
-        num_reads_cur_step = num_reads - num_reads_done;
-      }
-    }
+    uint32_t num_reads_cur_step =
+        compute_num_reads_cur_step(num_reads, num_reads_done,
+                                   num_reads_per_step, paired_end);
     if (num_reads_cur_step == 0)
       break;
     for (int j = 0; j < 2; j++) {
@@ -162,73 +196,35 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
             uint32_t block_num = num_blocks_done + tid;
 
             // Decompress files with bsc
-            std::string outfile_bsc =
-                file_flag + '.' + std::to_string(block_num);
-            std::string infile_bsc = outfile_bsc + ".bsc";
-            bsc::BSC_decompress(infile_bsc.c_str(), outfile_bsc.c_str());
-            remove(infile_bsc.c_str());
-
-            outfile_bsc = file_pos + '.' + std::to_string(block_num);
-            infile_bsc = outfile_bsc + ".bsc";
-            bsc::BSC_decompress(infile_bsc.c_str(), outfile_bsc.c_str());
-            remove(infile_bsc.c_str());
-
-            outfile_bsc = file_noise + '.' + std::to_string(block_num);
-            infile_bsc = outfile_bsc + ".bsc";
-            bsc::BSC_decompress(infile_bsc.c_str(), outfile_bsc.c_str());
-            remove(infile_bsc.c_str());
-
-            outfile_bsc = file_noisepos + '.' + std::to_string(block_num);
-            infile_bsc = outfile_bsc + ".bsc";
-            bsc::BSC_decompress(infile_bsc.c_str(), outfile_bsc.c_str());
-            remove(infile_bsc.c_str());
-
-            outfile_bsc = file_unaligned + '.' + std::to_string(block_num);
-            infile_bsc = outfile_bsc + ".bsc";
-            bsc::BSC_decompress(infile_bsc.c_str(), outfile_bsc.c_str());
-            remove(infile_bsc.c_str());
-
-            outfile_bsc = file_readlength + '.' + std::to_string(block_num);
-            infile_bsc = outfile_bsc + ".bsc";
-            bsc::BSC_decompress(infile_bsc.c_str(), outfile_bsc.c_str());
-            remove(infile_bsc.c_str());
-
-            outfile_bsc = file_RC + '.' + std::to_string(block_num);
-            infile_bsc = outfile_bsc + ".bsc";
-            bsc::BSC_decompress(infile_bsc.c_str(), outfile_bsc.c_str());
-            remove(infile_bsc.c_str());
+            decompress_bsc_block(file_flag, block_num);
+            decompress_bsc_block(file_pos, block_num);
+            decompress_bsc_block(file_noise, block_num);
+            decompress_bsc_block(file_noisepos, block_num);
+            decompress_bsc_block(file_unaligned, block_num);
+            decompress_bsc_block(file_readlength, block_num);
+            decompress_bsc_block(file_RC, block_num);
 
             if (paired_end) {
-              outfile_bsc = file_pos_pair + '.' + std::to_string(block_num);
-              infile_bsc = outfile_bsc + ".bsc";
-              bsc::BSC_decompress(infile_bsc.c_str(), outfile_bsc.c_str());
-              remove(infile_bsc.c_str());
-
-              outfile_bsc = file_RC_pair + '.' + std::to_string(block_num);
-              infile_bsc = outfile_bsc + ".bsc";
-              bsc::BSC_decompress(infile_bsc.c_str(), outfile_bsc.c_str());
-              remove(infile_bsc.c_str());
+              decompress_bsc_block(file_pos_pair, block_num);
+              decompress_bsc_block(file_RC_pair, block_num);
             }
             // Open files
-            std::ifstream f_flag(file_flag + '.' + std::to_string(block_num));
-            std::ifstream f_noise(file_noise + '.' + std::to_string(block_num));
-            std::ifstream f_noisepos(file_noisepos + '.' +
-                                         std::to_string(block_num),
+            std::ifstream f_flag(block_file_path(file_flag, block_num));
+            std::ifstream f_noise(block_file_path(file_noise, block_num));
+            std::ifstream f_noisepos(block_file_path(file_noisepos, block_num),
                                      std::ios::binary);
-            std::ifstream f_pos(file_pos + '.' + std::to_string(block_num),
+            std::ifstream f_pos(block_file_path(file_pos, block_num),
                                 std::ios::binary);
-            std::ifstream f_RC(file_RC + '.' + std::to_string(block_num));
-            std::ifstream f_unaligned(file_unaligned + '.' +
-                                      std::to_string(block_num));
-            std::ifstream f_readlength(file_readlength + '.' +
-                                           std::to_string(block_num),
+            std::ifstream f_RC(block_file_path(file_RC, block_num));
+            std::ifstream f_unaligned(block_file_path(file_unaligned, block_num));
+            std::ifstream f_readlength(block_file_path(file_readlength, block_num),
                                        std::ios::binary);
             std::ifstream f_pos_pair;
             std::ifstream f_RC_pair;
             if (paired_end) {
-              f_pos_pair.open(file_pos_pair + '.' + std::to_string(block_num),
+              f_pos_pair.open(block_file_path(file_pos_pair, block_num),
                               std::ios::binary);
-              f_RC_pair.open(file_RC_pair + '.' + std::to_string(block_num));
+              f_RC_pair.open(block_file_path(file_RC_pair, block_num));
             }
 
             char flag;
@@ -343,25 +339,16 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
               f_RC_pair.close();
             }
             // remove temporary files
-            outfile_bsc = file_flag + '.' + std::to_string(block_num);
-            remove(outfile_bsc.c_str());
-            outfile_bsc = file_pos + '.' + std::to_string(block_num);
-            remove(outfile_bsc.c_str());
-            outfile_bsc = file_noise + '.' + std::to_string(block_num);
-            remove(outfile_bsc.c_str());
-            outfile_bsc = file_noisepos + '.' + std::to_string(block_num);
-            remove(outfile_bsc.c_str());
-            outfile_bsc = file_unaligned + '.' + std::to_string(block_num);
-            remove(outfile_bsc.c_str());
-            outfile_bsc = file_readlength + '.' + std::to_string(block_num);
-            remove(outfile_bsc.c_str());
-            outfile_bsc = file_RC + '.' + std::to_string(block_num);
-            remove(outfile_bsc.c_str());
+            remove(block_file_path(file_flag, block_num).c_str());
+            remove(block_file_path(file_pos, block_num).c_str());
+            remove(block_file_path(file_noise, block_num).c_str());
+            remove(block_file_path(file_noisepos, block_num).c_str());
+            remove(block_file_path(file_unaligned, block_num).c_str());
+            remove(block_file_path(file_readlength, block_num).c_str());
+            remove(block_file_path(file_RC, block_num).c_str());
             if (paired_end) {
-              outfile_bsc = file_pos_pair + '.' + std::to_string(block_num);
-              remove(outfile_bsc.c_str());
-              outfile_bsc = file_RC_pair + '.' + std::to_string(block_num);
-              remove(outfile_bsc.c_str());
+              remove(block_file_path(file_pos_pair, block_num).c_str());
+              remove(block_file_path(file_RC_pair, block_num).c_str());
             }
           }
           // Decompress ids and quality
@@ -480,32 +467,12 @@ void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
   std::string outfile[2] = {outfile_1, outfile_2};
   std::ofstream fout[2];
 
-  for (int j = 0; j < 2; j++) {
-    if (j == 1 && !paired_end)
-      continue;
-    if (gzip_flag)
-      fout[j].open(outfile[j], std::ios::binary);
-    else
-      fout[j].open(outfile[j]);
-  }
+  open_output_files(fout, outfile, paired_end, gzip_flag);
+  validate_output_files(fout, paired_end);
 
-  // Check that we were able to open the output files
-  if (!fout[0].is_open())
-    throw std::runtime_error("Error opening output file");
-  if (paired_end)
-    if (!fout[1].is_open())
-      throw std::runtime_error("Error opening output file");
-
-  uint64_t num_reads_per_step = (uint64_t)num_thr * num_reads_per_block;
-
-  // allocate less if the total number of reads is small
-  if (paired_end) {
-    if (num_reads_per_step > num_reads / 2)
-      num_reads_per_step = num_reads / 2;
-  } else {
-    if (num_reads_per_step > num_reads)
-      num_reads_per_step = num_reads;
-  }
+  const uint64_t num_reads_per_step =
+      compute_num_reads_per_step(num_reads, num_reads_per_block, num_thr,
+                                 paired_end);
 
   std::string *read_array = new std::string[num_reads_per_step];
   std::string *id_array = new std::string[num_reads_per_step];
@@ -523,16 +490,9 @@ void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
       num_blocks_done *
       num_reads_per_block; // denotes number of pairs done for PE
   while (!done) {
-    uint32_t num_reads_cur_step = num_reads_per_step;
-    if (paired_end) {
-      if (num_reads_done + num_reads_cur_step >= num_reads / 2) {
-        num_reads_cur_step = num_reads / 2 - num_reads_done;
-      }
-    } else {
-      if (num_reads_done + num_reads_cur_step >= num_reads) {
-        num_reads_cur_step = num_reads - num_reads_done;
-      }
-    }
+    uint32_t num_reads_cur_step =
+        compute_num_reads_cur_step(num_reads, num_reads_done,
+                                   num_reads_per_step, paired_end);
     if (num_reads_cur_step == 0)
       break;
     for (int j = 0; j < 2; j++) {

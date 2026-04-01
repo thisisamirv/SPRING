@@ -17,21 +17,76 @@ limitations under the License.
 #include <boost/program_options.hpp>
 #include <csignal>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <string>
 #include <vector>
 
+namespace {
+
 std::string temp_dir_global; // for interrupt handling
 bool temp_dir_flag_global = false;
+
+void delete_temp_dir_if_present() {
+  if (!temp_dir_flag_global)
+    return;
+
+  std::cout << "Deleting temporary directory...\n";
+  boost::filesystem::remove_all(temp_dir_global);
+  temp_dir_flag_global = false;
+}
+
+std::string create_temp_dir(const std::string &working_dir) {
+  while (true) {
+    const std::string random_str = "tmp." + spring::random_string(10);
+    const std::string temp_dir = working_dir + "/" + random_str + '/';
+    if (!boost::filesystem::exists(temp_dir) &&
+        boost::filesystem::create_directory(temp_dir)) {
+      return temp_dir;
+    }
+  }
+}
+
+int print_invalid_mode_and_exit(
+    const boost::program_options::options_description &desc) {
+  std::cout
+      << "Exactly one of compress or decompress needs to be specified \n";
+  std::cout << desc << "\n";
+  return 1;
+}
+
+void run_requested_mode(const bool compress_flag, const std::string &temp_dir,
+                        const std::vector<std::string> &infile_vec,
+                        const std::vector<std::string> &outfile_vec,
+                        const int num_thr, const bool pairing_only_flag,
+                        const bool no_quality_flag, const bool no_ids_flag,
+                        const std::vector<std::string> &quality_opts,
+                        const bool long_flag, const bool gzip_flag,
+                        const bool fasta_flag,
+                        const std::vector<uint64_t> &decompress_range_vec,
+                        const int gzip_level) {
+  if (compress_flag) {
+    spring::compress(temp_dir, infile_vec, outfile_vec, num_thr,
+                     pairing_only_flag, no_quality_flag, no_ids_flag,
+                     quality_opts, long_flag, gzip_flag, fasta_flag);
+    return;
+  }
+
+  spring::decompress(temp_dir, infile_vec, outfile_vec, num_thr,
+                     decompress_range_vec, gzip_flag, gzip_level);
+}
+
+} // namespace
 
 void signalHandler(int signum) {
   std::cout << "Interrupt signal (" << signum << ") received.\n";
   std::cout << "Program terminated unexpectedly\n";
   if (temp_dir_flag_global) {
-    std::cout << "Deleting temporary directory:" << temp_dir_global << "\n";
+    std::cout << "Deleting temporary directory: " << temp_dir_global << "\n";
     boost::filesystem::remove_all(temp_dir_global);
+    temp_dir_flag_global = false;
   }
-  exit(signum);
+  std::exit(signum);
 }
 
 int main(int argc, char **argv) {
@@ -103,32 +158,16 @@ int main(int argc, char **argv) {
   }
 
   if ((!compress_flag && !decompress_flag) ||
-      (compress_flag && decompress_flag)) {
-    std::cout
-        << "Exactly one of compress or decompress needs to be specified \n";
-    std::cout << desc << "\n";
-    return 1;
-  }
+      (compress_flag && decompress_flag))
+    return print_invalid_mode_and_exit(desc);
+
   if (num_thr <= 0) {
     std::cout << "Number of threads must be positive.\n";
     return 1;
   }
+
   // generate randomly named temporary directory in the working directory
-  std::string temp_dir;
-  while (true) {
-    std::string random_str = "tmp." + spring::random_string(10);
-    temp_dir = working_dir + "/" + random_str + '/';
-    if (!boost::filesystem::exists(temp_dir)) {
-      if (boost::filesystem::create_directory(temp_dir)) {
-        // successfully created directory, break
-        break;
-      }
-      // otherwise keep trying (it is possible the creation failed because
-      // another process created the directory in that very instant) Note that
-      // boost will throw a runtime error if the creation fails due to
-      // permission issue
-    }
-  }
+  const std::string temp_dir = create_temp_dir(working_dir);
   std::cout << "Temporary directory: " << temp_dir << "\n";
 
   temp_dir_global = temp_dir;
@@ -142,33 +181,23 @@ int main(int argc, char **argv) {
     }
   }
   try {
-    if (compress_flag)
-      spring::compress(temp_dir, infile_vec, outfile_vec, num_thr,
-                       pairing_only_flag, no_quality_flag, no_ids_flag,
-                       quality_opts, long_flag, gzip_flag, fasta_flag);
-    else
-      spring::decompress(temp_dir, infile_vec, outfile_vec, num_thr,
-                         decompress_range_vec, gzip_flag, gzip_level);
-
-  }
-  // Error handling
-  catch (std::runtime_error &e) {
+    run_requested_mode(compress_flag, temp_dir, infile_vec, outfile_vec,
+                       num_thr, pairing_only_flag, no_quality_flag,
+                       no_ids_flag, quality_opts, long_flag, gzip_flag,
+                       fasta_flag, decompress_range_vec, gzip_level);
+  } catch (const std::runtime_error &e) {
     std::cout << "Program terminated unexpectedly with error: " << e.what()
               << "\n";
-    std::cout << "Deleting temporary directory...\n";
-    boost::filesystem::remove_all(temp_dir);
-    temp_dir_flag_global = false;
+    delete_temp_dir_if_present();
     std::cout << desc << "\n";
     return 1;
   } catch (...) {
     std::cout << "Program terminated unexpectedly\n";
-    std::cout << "Deleting temporary directory...\n";
-    boost::filesystem::remove_all(temp_dir);
-    temp_dir_flag_global = false;
+    delete_temp_dir_if_present();
     std::cout << desc << "\n";
     return 1;
   }
-  boost::filesystem::remove_all(temp_dir);
-  temp_dir_flag_global = false;
+
+  delete_temp_dir_if_present();
   return 0;
 }

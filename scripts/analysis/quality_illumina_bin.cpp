@@ -1,34 +1,14 @@
+#include <array>
 #include <cstdint>
 #include <fstream>
 #include <string>
 
-char illumina_binning_table[128];
-void generate_illumina_binning_table();
-void illumina_binning(std::string &quality);
+namespace {
 
-int main(int, char **argv) {
-  generate_illumina_binning_table();
-  std::string infile = std::string(argv[1]);
-  std::string outfile = std::string(argv[2]);
-  std::ifstream f_in(infile);
-  std::ofstream f_out(outfile);
-  std::string quality;
-  while (std::getline(f_in, quality)) {
-    illumina_binning(quality);
-    f_out << quality << "\n";
-  }
-  f_in.close();
-  f_out.close();
-  return 0;
-}
+using illumina_binning_table_t = std::array<char, 128>;
 
-void illumina_binning(std::string &quality) {
-  for (uint8_t i = 0; i < quality.length(); i++)
-    quality[i] = illumina_binning_table[quality[i]];
-  return;
-}
-
-void generate_illumina_binning_table() {
+illumina_binning_table_t generate_illumina_binning_table() {
+  illumina_binning_table_t illumina_binning_table = {};
   for (uint8_t i = 0; i <= 33 + 1; i++)
     illumina_binning_table[i] = 33 + 0;
   for (uint8_t i = 33 + 2; i <= 33 + 9; i++)
@@ -45,5 +25,30 @@ void generate_illumina_binning_table() {
     illumina_binning_table[i] = 33 + 37;
   for (uint8_t i = 33 + 40; i <= 127; i++)
     illumina_binning_table[i] = 33 + 40;
-  return;
+  return illumina_binning_table;
+}
+
+void illumina_binning(std::string &quality,
+                      const illumina_binning_table_t &illumina_binning_table) {
+  for (size_t i = 0; i < quality.length(); i++)
+    quality[i] = illumina_binning_table[static_cast<uint8_t>(quality[i])];
+}
+
+} // namespace
+
+int main(int, char **argv) {
+  const illumina_binning_table_t illumina_binning_table =
+      generate_illumina_binning_table();
+  const std::string infile = std::string(argv[1]);
+  const std::string outfile = std::string(argv[2]);
+  std::ifstream f_in(infile);
+  std::ofstream f_out(outfile);
+  std::string quality;
+  while (std::getline(f_in, quality)) {
+    illumina_binning(quality, illumina_binning_table);
+    f_out << quality << "\n";
+  }
+  f_in.close();
+  f_out.close();
+  return 0;
 }

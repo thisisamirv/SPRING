@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-import sys
-import os
 import numpy as np
 import struct
 
@@ -199,20 +197,54 @@ def compute_2order_entropy(qv_prob_2order, perpos_1order_entropy):
     return entropy
 
 
+def compute_order_entropies(qv_prob_0order, qv_prob_1order, qv_prob_2order):
+    l0 = np.sum(np.nan_to_num(-qv_prob_0order * np.log2(qv_prob_0order)), axis=0)
+    l1 = np.sum(np.nan_to_num(-qv_prob_1order * np.log2(qv_prob_1order)), axis=(0, 1))
+    l2 = np.sum(
+        np.nan_to_num(-qv_prob_2order * np.log2(qv_prob_2order)),
+        axis=(0, 1, 2),
+    )
+
+    zero_order_entropy = np.sum(l0)
+    first_order_entropy = np.sum(l1) - np.sum(l0) + l0[0]
+    second_order_entropy = np.sum(l2) - np.sum(l1) + l1[0]
+    return zero_order_entropy, first_order_entropy, second_order_entropy
+
+
+def print_order_entropies(zero_order_entropy, first_order_entropy,
+                          second_order_entropy):
+    print('Zero order', zero_order_entropy)
+    print('First order', first_order_entropy)
+    print('Second order', second_order_entropy)
+
+
+def main():
+    (qv_prob_0order, qv_prob_1order, qv_prob_2order,
+     qv_prob_0order_cluster, qv_prob_1order_cluster,
+     qv_prob_2order_cluster, num_reads,
+     num_reads_cluster) = quality_value_stats(inFile)
+
+    del qv_prob_0order_cluster
+    del qv_prob_1order_cluster
+    del qv_prob_2order_cluster
+    del num_reads
+    del num_reads_cluster
+
+    zero_order_entropy, first_order_entropy, second_order_entropy = (
+        compute_order_entropies(qv_prob_0order, qv_prob_1order, qv_prob_2order)
+    )
+    print_order_entropies(
+        zero_order_entropy,
+        first_order_entropy,
+        second_order_entropy,
+    )
+
+
 ###########################################################################################################
 
 
-(qv_prob_0order, qv_prob_1order, qv_prob_2order,qv_prob_0order_cluster, qv_prob_1order_cluster, qv_prob_2order_cluster,num_reads,num_reads_cluster) = quality_value_stats(inFile)
-
-l0 = np.sum(np.nan_to_num(-qv_prob_0order*np.log2(qv_prob_0order)),axis=0)
-l1 = np.sum(np.nan_to_num(-qv_prob_1order*np.log2(qv_prob_1order)),axis=(0,1))
-l2 = np.sum(np.nan_to_num(-qv_prob_2order*np.log2(qv_prob_2order)),axis=(0,1,2))
-zero_order_entropy = np.sum(l0)
-first_order_entropy = np.sum(l1) - np.sum(l0) + l0[0]
-second_order_entropy = np.sum(l2) - np.sum(l1) + l1[0]
-print('Zero order',zero_order_entropy)
-print('First order',first_order_entropy)
-print('Second order',second_order_entropy)
+if __name__ == '__main__':
+    main()
 
 #print("Total number of reads: ", num_reads)
 #for cluster in range(num_clusters):

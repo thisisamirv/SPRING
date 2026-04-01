@@ -5,7 +5,7 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "$0")" && pwd)/common.sh"
 
 require_command clang-tidy
-require_compile_commands
+require_command python3
 
 GCC_INCLUDE_DIR=$(g++ -print-file-name=include)
 
@@ -27,22 +27,27 @@ clang_tidy_common_args=(
 )
 
 mapfile -t files < <(collect_cpp_sources "$@")
+mapfile -t python_files < <(collect_python_sources "$@")
 
-if [[ ${#files[@]} -eq 0 ]]; then
-  echo "No C/C++ source files found." >&2
+if [[ ${#files[@]} -eq 0 && ${#python_files[@]} -eq 0 ]]; then
+  echo "No C/C++ or Python source files found." >&2
   exit 1
 fi
 
 compile_db_files=()
 standalone_files=()
 
-for file in "${files[@]}"; do
-  if compile_commands_contains "$file"; then
-    compile_db_files+=("$file")
-  else
-    standalone_files+=("$file")
-  fi
-done
+if [[ ${#files[@]} -gt 0 ]]; then
+  require_compile_commands
+
+  for file in "${files[@]}"; do
+    if compile_commands_contains "$file"; then
+      compile_db_files+=("$file")
+    else
+      standalone_files+=("$file")
+    fi
+  done
+fi
 
 if [[ ${#compile_db_files[@]} -gt 0 ]]; then
   clang-tidy \
@@ -68,4 +73,9 @@ for file in "${standalone_files[@]}"; do
     "${include_args[@]}" \
     -I"$(dirname -- "$file")" \
     -I"$GCC_INCLUDE_DIR"
+done
+
+for file in "${python_files[@]}"; do
+  printf 'Linting python file %s.\n' "$file"
+  python3 -m py_compile "$file"
 done

@@ -28,6 +28,15 @@ limitations under the License.
 
 namespace spring {
 
+namespace {
+
+std::string thread_file_path(const std::string &base_path, const int tid,
+                             const char *suffix = "") {
+  return base_path + '.' + std::to_string(tid) + suffix;
+}
+
+} // namespace
+
 std::string buildcontig(std::list<contig_reads> &current_contig,
                         const uint32_t &list_size) {
   static const char longtochar[5] = {'A', 'C', 'G', 'T', 'N'};
@@ -111,13 +120,15 @@ void writecontig(const std::string &ref,
 void pack_compress_seq(const encoder_global &eg, uint64_t *file_len_seq_thr) {
 #pragma omp parallel
   {
-    int tid = omp_get_thread_num();
+    const int tid = omp_get_thread_num();
+    const std::string seq_path = thread_file_path(eg.outfile_seq, tid);
+    const std::string tmp_seq_path = thread_file_path(eg.outfile_seq, tid, ".tmp");
+    const std::string tail_seq_path = thread_file_path(eg.outfile_seq, tid, ".tail");
+    const std::string compressed_seq_path = thread_file_path(eg.outfile_seq, tid, ".bsc");
     // seq
-    std::ifstream in_seq(eg.outfile_seq + '.' + std::to_string(tid));
-    std::ofstream f_seq(eg.outfile_seq + '.' + std::to_string(tid) + ".tmp",
-                        std::ios::binary);
-    std::ofstream f_seq_tail(eg.outfile_seq + '.' + std::to_string(tid) +
-                             ".tail");
+    std::ifstream in_seq(seq_path);
+    std::ofstream f_seq(tmp_seq_path, std::ios::binary);
+    std::ofstream f_seq_tail(tail_seq_path);
     uint64_t file_len = 0;
     char c;
     while (in_seq >> std::noskipws >> c)
@@ -130,7 +141,7 @@ void pack_compress_seq(const encoder_global &eg, uint64_t *file_len_seq_thr) {
     basetoint[(uint8_t)'T'] = 3;
 
     in_seq.close();
-    in_seq.open(eg.outfile_seq + '.' + std::to_string(tid));
+    in_seq.open(seq_path);
     char dnabase[8];
     uint8_t dnabin;
     for (uint64_t i = 0; i < file_len / 4; i++) {
@@ -140,7 +151,7 @@ void pack_compress_seq(const encoder_global &eg, uint64_t *file_len_seq_thr) {
                16 * basetoint[(uint8_t)dnabase[2]] +
                4 * basetoint[(uint8_t)dnabase[1]] +
                basetoint[(uint8_t)dnabase[0]];
-      f_seq.write((char *)&dnabin, sizeof(uint8_t));
+      f_seq.write(byte_ptr(&dnabin), sizeof(uint8_t));
     }
     f_seq.close();
     in_seq.read(dnabase, file_len % 4);
@@ -148,11 +159,9 @@ void pack_compress_seq(const encoder_global &eg, uint64_t *file_len_seq_thr) {
       f_seq_tail << dnabase[i];
     f_seq_tail.close();
     in_seq.close();
-    bsc::BSC_compress(
-        (eg.outfile_seq + '.' + std::to_string(tid) + ".tmp").c_str(),
-        (eg.outfile_seq + '.' + std::to_string(tid) + ".bsc").c_str());
-    remove((eg.outfile_seq + '.' + std::to_string(tid)).c_str());
-    remove((eg.outfile_seq + '.' + std::to_string(tid) + ".tmp").c_str());
+    bsc::BSC_compress(tmp_seq_path.c_str(), compressed_seq_path.c_str());
+    remove(seq_path.c_str());
+    remove(tmp_seq_path.c_str());
   }
   return;
 }
@@ -166,7 +175,7 @@ void getDataParams(encoder_global &eg, const compression_params &cp) {
                                std::ifstream::in);
   myfile_s_count.read(byte_ptr(&eg.numreads_s), sizeof(uint32_t));
   myfile_s_count.close();
-  std::string file_s_count = eg.infile + ".singleton" + ".count";
+  const std::string file_s_count = eg.infile + ".singleton.count";
   remove(file_s_count.c_str());
   eg.numreads = numreads_clean - eg.numreads_s;
   eg.numreads_N = numreads_total - numreads_clean;
@@ -201,10 +210,11 @@ void correct_order(uint32_t *order_s, const encoder_global &eg) {
 
   // Now correct for clean reads (this is stored on file)
   for (int tid = 0; tid < eg.num_thr; tid++) {
-    std::ifstream fin_order(eg.infile_order + '.' + std::to_string(tid),
-                            std::ios::binary);
-    std::ofstream fout_order(
-        eg.infile_order + '.' + std::to_string(tid) + ".tmp", std::ios::binary);
+    const std::string order_path = thread_file_path(eg.infile_order, tid);
+    const std::string order_tmp_path =
+        thread_file_path(eg.infile_order, tid, ".tmp");
+    std::ifstream fin_order(order_path, std::ios::binary);
+    std::ofstream fout_order(order_tmp_path, std::ios::binary);
     uint32_t pos;
     fin_order.read(byte_ptr(&pos), sizeof(uint32_t));
     while (!fin_order.eof()) {
@@ -214,9 +224,8 @@ void correct_order(uint32_t *order_s, const encoder_global &eg) {
     }
     fin_order.close();
     fout_order.close();
-    remove((eg.infile_order + '.' + std::to_string(tid)).c_str());
-    rename((eg.infile_order + '.' + std::to_string(tid) + ".tmp").c_str(),
-           (eg.infile_order + '.' + std::to_string(tid)).c_str());
+    remove(order_path.c_str());
+    rename(order_tmp_path.c_str(), order_path.c_str());
   }
   remove(eg.infile_order_N.c_str());
   return;

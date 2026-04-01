@@ -32,6 +32,70 @@ limitations under the License.
 
 namespace spring {
 
+namespace {
+
+using gzip_input_buffer =
+    boost::iostreams::filtering_streambuf<boost::iostreams::input>;
+
+std::string block_file_path(const std::string &base_path,
+                            const uint32_t block_num) {
+  return base_path + "." + std::to_string(block_num);
+}
+
+uint32_t block_count(const uint64_t num_reads,
+                     const uint32_t num_reads_per_block) {
+  if (num_reads == 0)
+    return 0;
+  return 1 + (num_reads - 1) / num_reads_per_block;
+}
+
+void open_input_stream(std::ifstream &file_stream, std::istream *&stream,
+                       gzip_input_buffer *&buffer, const std::string &path,
+                       const bool gzip_flag) {
+  if (gzip_flag) {
+    file_stream.open(path, std::ios_base::binary);
+    buffer = new gzip_input_buffer;
+    buffer->push(boost::iostreams::gzip_decompressor());
+    buffer->push(file_stream);
+    stream = new std::istream(buffer);
+    return;
+  }
+
+  file_stream.open(path);
+  stream = &file_stream;
+  buffer = nullptr;
+}
+
+void reset_input_stream(std::ifstream &file_stream, std::istream *&stream,
+                        gzip_input_buffer *&buffer, const std::string &path,
+                        const bool gzip_flag) {
+  if (gzip_flag) {
+    file_stream.close();
+    delete stream;
+    delete buffer;
+    stream = nullptr;
+    buffer = nullptr;
+    open_input_stream(file_stream, stream, buffer, path, true);
+    return;
+  }
+
+  file_stream.clear();
+  file_stream.seekg(0);
+}
+
+void close_input_stream(std::ifstream &file_stream, std::istream *&stream,
+                        gzip_input_buffer *&buffer, const bool gzip_flag) {
+  if (gzip_flag) {
+    delete stream;
+    delete buffer;
+    stream = nullptr;
+    buffer = nullptr;
+  }
+  file_stream.close();
+}
+
+} // namespace
+
 void preprocess(const std::string &infile_1, const std::string &infile_2,
                 const std::string &temp_dir, compression_params &cp,
                 const bool &gzip_flag, const bool &fasta_flag) {
@@ -65,22 +129,13 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   std::ofstream fout_order_N[2];
   std::ofstream fout_id[2];
   std::ofstream fout_quality[2];
-  std::istream *fin[2] = {&fin_f[0], &fin_f[1]};
-  boost::iostreams::filtering_streambuf<boost::iostreams::input> *inbuf[2];
+  std::istream *fin[2] = {nullptr, nullptr};
+  gzip_input_buffer *inbuf[2] = {nullptr, nullptr};
 
   for (int j = 0; j < 2; j++) {
     if (j == 1 && !cp.paired_end)
       continue;
-    if (gzip_flag) {
-      fin_f[j].open(infile[j], std::ios_base::binary);
-      inbuf[j] =
-          new boost::iostreams::filtering_streambuf<boost::iostreams::input>;
-      inbuf[j]->push(boost::iostreams::gzip_decompressor());
-      inbuf[j]->push(fin_f[j]);
-      fin[j] = new std::istream(inbuf[j]);
-    } else {
-      fin_f[j].open(infile[j]);
-    }
+    open_input_stream(fin_f[j], fin[j], inbuf[j], infile[j], gzip_flag);
     if (!cp.long_flag) {
       fout_clean[j].open(outfileclean[j], std::ios::binary);
       fout_N[j].open(outfileN[j], std::ios::binary);
@@ -127,22 +182,8 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       if (paired_id_code != 0)
         paired_id_match = true;
       // bring back to start
-      if (gzip_flag) {
-        for (int j = 0; j < 2; j++) {
-          fin_f[j].close();
-          delete fin[j];
-          delete inbuf[j];
-          fin_f[j].open(infile[j], std::ios_base::binary);
-          inbuf[j] = new boost::iostreams::filtering_streambuf<
-              boost::iostreams::input>;
-          inbuf[j]->push(boost::iostreams::gzip_decompressor());
-          inbuf[j]->push(fin_f[j]);
-          fin[j] = new std::istream(inbuf[j]);
-        }
-      } else {
-        fin_f[0].seekg(0);
-        fin_f[1].seekg(0);
-      }
+      for (int j = 0; j < 2; j++)
+        reset_input_stream(fin_f[j], fin[j], inbuf[j], infile[j], gzip_flag);
     }
   }
   if (cp.num_thr <= 0)
@@ -167,10 +208,10 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       if (j == 1 && !cp.paired_end)
         continue;
       done[j] = false;
-        std::string *id_array = (j == 0) ? id_array_1.data() : id_array_2.data();
+      std::string *id_array = (j == 0) ? id_array_1.data() : id_array_2.data();
       uint32_t num_reads_read =
           read_fastq_block(fin[j], id_array, read_array.data(),
-                   quality_array.data(),
+                           quality_array.data(),
                            num_reads_per_step, fasta_flag);
       if (num_reads_read < num_reads_per_step)
         done[j] = true;
@@ -188,14 +229,14 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
           paired_id_match_array[tid] = paired_id_match;
         if (tid * num_reads_per_block >= num_reads_read)
           done = true;
+        const uint32_t block_num = num_blocks_done + static_cast<uint32_t>(tid);
         uint32_t num_reads_thr = std::min((uint64_t)num_reads_read,
                                           (tid + 1) * num_reads_per_block) -
                                  tid * num_reads_per_block;
         std::ofstream fout_readlength;
         if (!done) {
           if (cp.long_flag)
-            fout_readlength.open(outfilereadlength[j] + "." +
-                                     std::to_string(num_blocks_done + tid),
+            fout_readlength.open(block_file_path(outfilereadlength[j], block_num),
                                  std::ios::binary);
           // check if reads and qualities have equal lengths
           for (uint32_t i = tid * num_reads_per_block;
@@ -271,25 +312,22 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
             }
           } else {
             // Compress read lengths file
-            std::string infile_name = outfilereadlength[j] + "." +
-                                      std::to_string(num_blocks_done + tid);
-            std::string outfile_name = outfilereadlength[j] + "." +
-                                       std::to_string(num_blocks_done + tid) +
-                                       ".bsc";
+            std::string infile_name =
+                block_file_path(outfilereadlength[j], block_num);
+            std::string outfile_name = infile_name + ".bsc";
             bsc::BSC_compress(infile_name.c_str(), outfile_name.c_str());
             remove(infile_name.c_str());
             // Compress ids
             if (cp.preserve_id) {
-              std::string outfile_name =
-                  outfileid[j] + "." + std::to_string(num_blocks_done + tid);
+              std::string outfile_name = block_file_path(outfileid[j], block_num);
               compress_id_block(outfile_name.c_str(),
                                 id_array + tid * num_reads_per_block,
                                 num_reads_thr);
             }
             // Compress qualities
             if (cp.preserve_quality) {
-              std::string outfile_name = outfilequality[j] + "." +
-                                         std::to_string(num_blocks_done + tid);
+              std::string outfile_name =
+                  block_file_path(outfilequality[j], block_num);
               bsc::BSC_str_array_compress(
                   outfile_name.c_str(),
                   quality_array.data() + tid * num_reads_per_block,
@@ -297,8 +335,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                   read_lengths_array.data() + tid * num_reads_per_block);
             }
             // Compress reads
-            outfile_name =
-                outfileread[j] + "." + std::to_string(num_blocks_done + tid);
+            outfile_name = block_file_path(outfileread[j], block_num);
             bsc::BSC_str_array_compress(
                 outfile_name.c_str(),
                 read_array.data() + tid * num_reads_per_block, num_reads_thr,
@@ -352,24 +389,12 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   }
 
   delete[] quality_binning_table;
-  if (gzip_flag) {
-    for (int j = 0; j < 2; j++) {
-      if (j == 1 && !cp.paired_end)
-        continue;
-      delete fin[j];
-      delete inbuf[j];
-    }
-  }
   // close files
-  if (cp.long_flag) {
-    fin_f[0].close();
-    if (cp.paired_end)
-      fin_f[1].close();
-  } else {
-    for (int j = 0; j < 2; j++) {
-      if (j == 1 && !cp.paired_end)
-        continue;
-      fin_f[j].close();
+  for (int j = 0; j < 2; j++) {
+    if (j == 1 && !cp.paired_end)
+      continue;
+    close_input_stream(fin_f[j], fin[j], inbuf[j], gzip_flag);
+    if (!cp.long_flag) {
       fout_clean[j].close();
       fout_N[j].close();
       fout_order_N[j].close();
@@ -412,12 +437,9 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
     if (!cp.long_flag && !cp.preserve_order) {
       remove(outfileid[1].c_str());
     } else {
-      uint32_t num_blocks =
-          1 +
-          (num_reads[0] - 1) /
-              num_reads_per_block; // ceil of num_reads[0]/num_reads_per_block
+      const uint32_t num_blocks = block_count(num_reads[0], num_reads_per_block);
       for (uint32_t i = 0; i < num_blocks; i++)
-        remove((outfileid[1] + "." + std::to_string(i)).c_str());
+        remove(block_file_path(outfileid[1], i).c_str());
     }
   }
   cp.paired_id_code = paired_id_code;

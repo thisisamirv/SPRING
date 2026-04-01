@@ -15,10 +15,11 @@ limitations under the License.
 #ifndef SPRING_PE_ENCODE_H_
 #define SPRING_PE_ENCODE_H_
 
-#include "util.h"
 #include <string>
 
 namespace spring {
+
+struct compression_params;
 
 void pe_encode(const std::string &temp_dir, const compression_params &cp);
 

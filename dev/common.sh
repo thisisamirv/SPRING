@@ -8,6 +8,7 @@ BUILD_DIR="$ROOT_DIR/build"
 SPRING_BIN="$BUILD_DIR/spring"
 COMPILE_COMMANDS="$BUILD_DIR/compile_commands.json"
 readonly DEFAULT_CPP_ROOTS=("$ROOT_DIR/src" "$ROOT_DIR/scripts" "$ROOT_DIR/tests")
+readonly DEFAULT_PY_ROOTS=("$ROOT_DIR/scripts" "$ROOT_DIR/tests" "$ROOT_DIR/dev")
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -48,6 +49,20 @@ is_cpp_source() {
   esac
 }
 
+is_python_source() {
+  case "$1" in
+    *.py) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+normalize_repo_path() {
+  case "$1" in
+    /*) printf '%s\n' "$1" ;;
+    *) printf '%s\n' "$ROOT_DIR/$1" ;;
+  esac
+}
+
 collect_cpp_sources() {
   local -a paths=()
   local path
@@ -60,6 +75,8 @@ collect_cpp_sources() {
   fi
 
   for path in "${paths[@]}"; do
+    path=$(normalize_repo_path "$path")
+
     if [[ -d "$path" ]]; then
       while IFS= read -r file; do
         printf '%s\n' "$file"
@@ -68,6 +85,33 @@ collect_cpp_sources() {
     fi
 
     if [[ -f "$path" ]] && is_cpp_source "$path"; then
+      printf '%s\n' "$path"
+    fi
+  done
+}
+
+collect_python_sources() {
+  local -a paths=()
+  local path
+  local file
+
+  if [[ $# -gt 0 ]]; then
+    paths=("$@")
+  else
+    paths=("${DEFAULT_PY_ROOTS[@]}")
+  fi
+
+  for path in "${paths[@]}"; do
+    path=$(normalize_repo_path "$path")
+
+    if [[ -d "$path" ]]; then
+      while IFS= read -r file; do
+        printf '%s\n' "$file"
+      done < <(find "$path" -type f -name '*.py' | sort)
+      continue
+    fi
+
+    if [[ -f "$path" ]] && is_python_source "$path"; then
       printf '%s\n' "$path"
     fi
   done

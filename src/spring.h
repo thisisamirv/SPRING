@@ -15,25 +15,27 @@ limitations under the License.
 #ifndef SPRING_SPRING_H_
 #define SPRING_SPRING_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
 
 namespace spring {
 
+using string_list = std::vector<std::string>;
+using read_range = std::vector<uint64_t>;
+
 void compress(const std::string &temp_dir,
-              const std::vector<std::string> &infile_vec,
-              const std::vector<std::string> &outfile_vec, const int &num_thr,
+                            const string_list &infile_vec, const string_list &outfile_vec,
+                            const int &num_thr,
               const bool &pairing_only_flag, const bool &no_quality_flag,
-              const bool &no_ids_flag,
-              const std::vector<std::string> &quality_opts,
+                            const bool &no_ids_flag, const string_list &quality_opts,
               const bool &long_flag, const bool &gzip_flag,
               const bool &fasta_flag);
 
 void decompress(const std::string &temp_dir,
-                const std::vector<std::string> &infile_vec,
-                const std::vector<std::string> &outfile_vec, const int &num_thr,
-                const std::vector<uint64_t> &decompress_range_vec,
+                                const string_list &infile_vec, const string_list &outfile_vec,
+                                const int &num_thr, const read_range &decompress_range_vec,
                 const bool &gzip_flag, const int &gzip_level);
 
 std::string random_string(size_t length);

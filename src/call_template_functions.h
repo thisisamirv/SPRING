@@ -1,10 +1,11 @@
 #ifndef SPRING_CALL_TEMPLATE_FUNCTIONS_H_
 #define SPRING_CALL_TEMPLATE_FUNCTIONS_H_
 
-#include "util.h"
 #include <string>
 
 namespace spring {
+
+struct compression_params;
 
 void call_reorder(const std::string &temp_dir, compression_params &cp);
 

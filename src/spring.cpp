@@ -24,6 +24,7 @@ limitations under the License.
 #include <omp.h>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "call_template_functions.h"
@@ -39,6 +40,36 @@ limitations under the License.
 namespace spring {
 
 namespace {
+
+using clock_type = std::chrono::steady_clock;
+
+void print_step_summary(const char *step_name,
+                        const clock_type::time_point &step_start,
+                        const clock_type::time_point &step_end) {
+  std::cout << step_name << " done!\n";
+  std::cout << "Time for this step: "
+            << std::chrono::duration_cast<std::chrono::seconds>(step_end -
+                                                                step_start)
+                   .count()
+            << " s\n";
+}
+
+template <typename Func>
+void run_timed_step(const char *start_message, const char *step_name,
+                    Func &&step) {
+  std::cout << start_message << "\n";
+  const auto step_start = clock_type::now();
+  std::forward<Func>(step)();
+  const auto step_end = clock_type::now();
+  print_step_summary(step_name, step_start, step_end);
+}
+
+void run_system_command_or_throw(const std::string &command,
+                                 const char *error_message) {
+  const int command_status = std::system(command.c_str());
+  if (command_status != 0)
+    throw std::runtime_error(error_message);
+}
 
 double parse_double_or_throw(const std::string &value,
                              const char *error_message) {
@@ -84,7 +115,7 @@ void compress(const std::string &temp_dir,
   omp_set_dynamic(0);
 
   std::cout << "Starting compression...\n";
-  auto compression_start = std::chrono::steady_clock::now();
+  const auto compression_start = clock_type::now();
 
   std::string infile_1, infile_2, outfile;
   bool paired_end, preserve_quality, preserve_id, preserve_order;
@@ -174,86 +205,43 @@ void compress(const std::string &temp_dir,
     }
   }
 
-  std::cout << "Preprocessing ...\n";
-  auto preprocess_start = std::chrono::steady_clock::now();
-  preprocess(infile_1, infile_2, temp_dir, cp, gzip_flag, fasta_flag);
-  auto preprocess_end = std::chrono::steady_clock::now();
-  std::cout << "Preprocessing done!\n";
-  std::cout << "Time for this step: "
-            << std::chrono::duration_cast<std::chrono::seconds>(
-                   preprocess_end - preprocess_start)
-                   .count()
-            << " s\n";
+  run_timed_step("Preprocessing ...", "Preprocessing", [&] {
+    preprocess(infile_1, infile_2, temp_dir, cp, gzip_flag, fasta_flag);
+  });
   std::cout << "Temporary directory size: " << get_directory_size(temp_dir)
             << "\n";
 
   if (!long_flag) {
-    std::cout << "Reordering ...\n";
-    auto reorder_start = std::chrono::steady_clock::now();
-    call_reorder(temp_dir, cp);
-    auto reorder_end = std::chrono::steady_clock::now();
-    std::cout << "Reordering done!\n";
-    std::cout << "Time for this step: "
-              << std::chrono::duration_cast<std::chrono::seconds>(reorder_end -
-                                                                  reorder_start)
-                     .count()
-              << " s\n";
+    run_timed_step("Reordering ...", "Reordering",
+                   [&] { call_reorder(temp_dir, cp); });
 
     std::cout << "temp_dir size: " << get_directory_size(temp_dir) << "\n";
 
-    std::cout << "Encoding ...\n";
-    auto encoder_start = std::chrono::steady_clock::now();
-    call_encoder(temp_dir, cp);
-    auto encoder_end = std::chrono::steady_clock::now();
-    std::cout << "Encoding done!\n";
-    std::cout << "Time for this step: "
-              << std::chrono::duration_cast<std::chrono::seconds>(encoder_end -
-                                                                  encoder_start)
-                     .count()
-              << " s\n";
+    run_timed_step("Encoding ...", "Encoding",
+                   [&] { call_encoder(temp_dir, cp); });
     std::cout << "Temporary directory size: " << get_directory_size(temp_dir)
               << "\n";
 
     if (!preserve_order && (preserve_quality || preserve_id)) {
-      std::cout << "Reordering and compressing quality and/or ids ...\n";
-      auto rcqi_start = std::chrono::steady_clock::now();
-      reorder_compress_quality_id(temp_dir, cp);
-      auto rcqi_end = std::chrono::steady_clock::now();
-      std::cout << "Reordering and compressing quality and/or ids done!\n";
-      std::cout << "Time for this step: "
-                << std::chrono::duration_cast<std::chrono::seconds>(rcqi_end -
-                                                                    rcqi_start)
-                       .count()
-                << " s\n";
+      run_timed_step("Reordering and compressing quality and/or ids ...",
+                     "Reordering and compressing quality and/or ids", [&] {
+                       reorder_compress_quality_id(temp_dir, cp);
+                     });
       std::cout << "Temporary directory size: " << get_directory_size(temp_dir)
                 << "\n";
     }
 
     if (!preserve_order && paired_end) {
-      std::cout << "Encoding pairing information ...\n";
-      auto pe_encode_start = std::chrono::steady_clock::now();
-      pe_encode(temp_dir, cp);
-      auto pe_encode_end = std::chrono::steady_clock::now();
-      std::cout << "Encoding pairing information done!\n";
-      std::cout << "Time for this step: "
-                << std::chrono::duration_cast<std::chrono::seconds>(
-                       pe_encode_end - pe_encode_start)
-                       .count()
-                << " s\n";
+      run_timed_step("Encoding pairing information ...",
+                     "Encoding pairing information",
+                     [&] { pe_encode(temp_dir, cp); });
       std::cout << "Temporary directory size: " << get_directory_size(temp_dir)
                 << "\n";
     }
 
-    std::cout << "Reordering and compressing streams ...\n";
-    auto rcs_start = std::chrono::steady_clock::now();
-    reorder_compress_streams(temp_dir, cp);
-    auto rcs_end = std::chrono::steady_clock::now();
-    std::cout << "Reordering and compressing streams done!\n";
-    std::cout << "Time for this step: "
-              << std::chrono::duration_cast<std::chrono::seconds>(rcs_end -
-                                                                  rcs_start)
-                     .count()
-              << " s\n";
+    run_timed_step("Reordering and compressing streams ...",
+                   "Reordering and compressing streams",
+                   [&] { reorder_compress_streams(temp_dir, cp); });
     std::cout << "Temporary directory size: " << get_directory_size(temp_dir)
               << "\n";
   }
@@ -291,21 +279,14 @@ void compress(const std::string &temp_dir,
   std::cout << "Quality:    " << std::setw(12) << size_quality << " bytes\n";
   std::cout << "ID:         " << std::setw(12) << size_id << " bytes\n";
 
-  auto tar_start = std::chrono::steady_clock::now();
-  std::cout << "Creating tar archive ...";
-  std::string tar_command = "tar -cf " + outfile + " -C " + temp_dir + " . ";
-  int tar_status = std::system(tar_command.c_str());
-  if (tar_status != 0)
-    throw std::runtime_error("Error occurred during tar archive generation.");
-  std::cout << "Tar archive done!\n";
-  auto tar_end = std::chrono::steady_clock::now();
-  std::cout << "Time for this step: "
-            << std::chrono::duration_cast<std::chrono::seconds>(tar_end -
-                                                                tar_start)
-                   .count()
-            << " s\n";
+  run_timed_step("Creating tar archive ...", "Tar archive", [&] {
+    const std::string tar_command =
+        "tar -cf " + outfile + " -C " + temp_dir + " . ";
+    run_system_command_or_throw(tar_command,
+                                "Error occurred during tar archive generation.");
+  });
 
-  auto compression_end = std::chrono::steady_clock::now();
+  const auto compression_end = clock_type::now();
   std::cout << "Compression done!\n";
   std::cout << "Total time for compression: "
             << std::chrono::duration_cast<std::chrono::seconds>(
@@ -332,7 +313,7 @@ void decompress(const std::string &temp_dir,
   omp_set_dynamic(0);
 
   std::cout << "Starting decompression...\n";
-  auto decompression_start = std::chrono::steady_clock::now();
+  const auto decompression_start = clock_type::now();
   compression_params cp{};
 
   std::string infile, outfile_1, outfile_2;
@@ -342,12 +323,11 @@ void decompress(const std::string &temp_dir,
   else
     throw std::runtime_error("Number of input files not equal to 1");
 
-  std::cout << "Untarring tar archive ...\n";
-  std::string untar_command = "tar -xf " + infile + " -C " + temp_dir;
-  int untar_status = std::system(untar_command.c_str());
-  if (untar_status != 0)
-    throw std::runtime_error("Error occurred during untarring.");
-  std::cout << "Untarring archive done!\n";
+  run_timed_step("Untarring tar archive ...", "Untarring archive", [&] {
+    const std::string untar_command = "tar -xf " + infile + " -C " + temp_dir;
+    run_system_command_or_throw(untar_command,
+                                "Error occurred during untarring.");
+  });
 
   // Read compression params
   std::string compression_params_file = temp_dir + "/cp.bin";
@@ -402,16 +382,16 @@ void decompress(const std::string &temp_dir,
     end_num = decompress_range_vec[1];
   }
 
-  std::cout << "Decompressing ...\n";
-  if (long_flag)
-    decompress_long(temp_dir, outfile_1, outfile_2, cp, num_thr, start_num,
-                    end_num, gzip_flag, gzip_level);
-  else
-    decompress_short(temp_dir, outfile_1, outfile_2, cp, num_thr, start_num,
-                     end_num, gzip_flag, gzip_level);
+  run_timed_step("Decompressing ...", "Decompressing", [&] {
+    if (long_flag)
+      decompress_long(temp_dir, outfile_1, outfile_2, cp, num_thr, start_num,
+                      end_num, gzip_flag, gzip_level);
+    else
+      decompress_short(temp_dir, outfile_1, outfile_2, cp, num_thr, start_num,
+                       end_num, gzip_flag, gzip_level);
+  });
 
-  auto decompression_end = std::chrono::steady_clock::now();
-  std::cout << "Decompression done!\n";
+  const auto decompression_end = clock_type::now();
   std::cout << "Total time for decompression: "
             << std::chrono::duration_cast<std::chrono::seconds>(
                    decompression_end - decompression_start)

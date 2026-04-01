@@ -97,87 +97,80 @@ set(source_dir ${CMAKE_SOURCE_DIR}/src)
 set(third_party_dir ${CMAKE_SOURCE_DIR}/third_party)
 set(include_dir ${CMAKE_SOURCE_DIR}/src)
 
-# spring
-set(source_files ${source_files} ${source_dir}/main.cpp)
-set(source_files ${source_files} ${source_dir}/spring.cpp)
-set(source_files ${source_files} ${source_dir}/util.cpp)
-set(source_files ${source_files} ${source_dir}/bitset_util.cpp)
-set(source_files ${source_files} ${source_dir}/preprocess.cpp)
-set(source_files ${source_files} ${source_dir}/encoder.cpp)
-set(source_files ${source_files} ${source_dir}/reorder_compress_streams.cpp)
-set(source_files ${source_files} ${source_dir}/pe_encode.cpp)
-set(source_files ${source_files} ${source_dir}/reorder_compress_quality_id.cpp)
-set(source_files ${source_files} ${source_dir}/decompress.cpp)
-set(source_files ${source_files} ${source_dir}/call_template_functions.cpp)
+list(APPEND source_files
+    # spring
+    ${source_dir}/main.cpp
+    ${source_dir}/spring.cpp
+    ${source_dir}/util.cpp
+    ${source_dir}/bitset_util.cpp
+    ${source_dir}/preprocess.cpp
+    ${source_dir}/encoder.cpp
+    ${source_dir}/reorder_compress_streams.cpp
+    ${source_dir}/pe_encode.cpp
+    ${source_dir}/reorder_compress_quality_id.cpp
+    ${source_dir}/decompress.cpp
+    ${source_dir}/call_template_functions.cpp
 
-# id compression
-set(source_files ${source_files} ${third_party_dir}/id_compression/src/Arithmetic_stream.cpp)
-set(source_files ${source_files} ${third_party_dir}/id_compression/src/compression.cpp)
-set(source_files ${source_files} ${third_party_dir}/id_compression/src/id_compression.cpp)
-set(source_files ${source_files} ${third_party_dir}/id_compression/src/io_functions.cpp)
-set(source_files ${source_files} ${third_party_dir}/id_compression/src/sam_file_allocation.cpp)
-set(source_files ${source_files} ${third_party_dir}/id_compression/src/sam_models.cpp)
-set(source_files ${source_files} ${third_party_dir}/id_compression/src/stream_model.cpp)
+    # id compression
+    ${third_party_dir}/id_compression/src/Arithmetic_stream.cpp
+    ${third_party_dir}/id_compression/src/compression.cpp
+    ${third_party_dir}/id_compression/src/id_compression.cpp
+    ${third_party_dir}/id_compression/src/io_functions.cpp
+    ${third_party_dir}/id_compression/src/sam_file_allocation.cpp
+    ${third_party_dir}/id_compression/src/sam_models.cpp
+    ${third_party_dir}/id_compression/src/stream_model.cpp
 
-# bsc
-set(source_files ${source_files} ${third_party_dir}/libbsc/bsc.cpp)
-set(source_files ${source_files} ${third_party_dir}/libbsc/bsc_str_array.cpp)
-set(source_files ${source_files} ${third_party_dir}/libbsc/libbsc/adler32/adler32.cpp)
-set(source_files ${source_files} ${third_party_dir}/libbsc/libbsc/bwt/libsais/libsais.c)
-set(source_files ${source_files} ${third_party_dir}/libbsc/libbsc/bwt/bwt.cpp)
-set(source_files ${source_files} ${third_party_dir}/libbsc/libbsc/coder/coder.cpp)
-set(source_files ${source_files} ${third_party_dir}/libbsc/libbsc/coder/qlfc/qlfc.cpp)
-set(source_files ${source_files} ${third_party_dir}/libbsc/libbsc/coder/qlfc/qlfc_model.cpp)
-set(source_files ${source_files} ${third_party_dir}/libbsc/libbsc/filters/detectors.cpp)
-set(source_files ${source_files} ${third_party_dir}/libbsc/libbsc/filters/preprocessing.cpp)
-set(source_files ${source_files} ${third_party_dir}/libbsc/libbsc/libbsc/libbsc.cpp)
-set(source_files ${source_files} ${third_party_dir}/libbsc/libbsc/lzp/lzp.cpp)
-set(source_files ${source_files} ${third_party_dir}/libbsc/libbsc/platform/platform.cpp)
-set(source_files ${source_files} ${third_party_dir}/libbsc/libbsc/st/st.cpp)
+    # bsc
+    ${third_party_dir}/libbsc/bsc.cpp
+    ${third_party_dir}/libbsc/bsc_str_array.cpp
+    ${third_party_dir}/libbsc/libbsc/adler32/adler32.cpp
+    ${third_party_dir}/libbsc/libbsc/bwt/libsais/libsais.c
+    ${third_party_dir}/libbsc/libbsc/bwt/bwt.cpp
+    ${third_party_dir}/libbsc/libbsc/coder/coder.cpp
+    ${third_party_dir}/libbsc/libbsc/coder/qlfc/qlfc.cpp
+    ${third_party_dir}/libbsc/libbsc/coder/qlfc/qlfc_model.cpp
+    ${third_party_dir}/libbsc/libbsc/filters/detectors.cpp
+    ${third_party_dir}/libbsc/libbsc/filters/preprocessing.cpp
+    ${third_party_dir}/libbsc/libbsc/libbsc/libbsc.cpp
+    ${third_party_dir}/libbsc/libbsc/lzp/lzp.cpp
+    ${third_party_dir}/libbsc/libbsc/platform/platform.cpp
+    ${third_party_dir}/libbsc/libbsc/st/st.cpp
 
-# qvz
-set(source_files ${source_files} ${third_party_dir}/qvz/src/cluster.cpp)
-set(source_files ${source_files} ${third_party_dir}/qvz/src/codebook.cpp)
-set(source_files ${source_files} ${third_party_dir}/qvz/src/distortion.cpp)
-set(source_files ${source_files} ${third_party_dir}/qvz/src/lines.cpp)
-set(source_files ${source_files} ${third_party_dir}/qvz/src/pmf.cpp)
-set(source_files ${source_files} ${third_party_dir}/qvz/src/quantizer.cpp)
-set(source_files ${source_files} ${third_party_dir}/qvz/src/qv_compressor.cpp)
-set(source_files ${source_files} ${third_party_dir}/qvz/src/qvz.cpp)
-set(source_files ${source_files} ${third_party_dir}/qvz/src/util.cpp)
-set(source_files ${source_files} ${third_party_dir}/qvz/src/well.cpp)
+    # qvz
+    ${third_party_dir}/qvz/src/cluster.cpp
+    ${third_party_dir}/qvz/src/codebook.cpp
+    ${third_party_dir}/qvz/src/distortion.cpp
+    ${third_party_dir}/qvz/src/lines.cpp
+    ${third_party_dir}/qvz/src/pmf.cpp
+    ${third_party_dir}/qvz/src/quantizer.cpp
+    ${third_party_dir}/qvz/src/qv_compressor.cpp
+    ${third_party_dir}/qvz/src/qvz.cpp
+    ${third_party_dir}/qvz/src/util.cpp
+    ${third_party_dir}/qvz/src/well.cpp
+)
+
+function(add_dev_script_target target_name script_name)
+    add_custom_target(${target_name}
+            COMMAND ${CMAKE_SOURCE_DIR}/dev/${script_name}
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            USES_TERMINAL
+    )
+endfunction()
 
 add_executable (spring ${source_files})
 
 target_include_directories(spring PRIVATE ${include_dir} ${third_party_dir})
-target_link_libraries(spring PUBLIC Boost::filesystem)
-target_link_libraries(spring PUBLIC Boost::system)
-target_link_libraries(spring PUBLIC Boost::program_options)
-target_link_libraries(spring PUBLIC Boost::iostreams)
-
-add_custom_target(dev-lint
-    COMMAND ${CMAKE_SOURCE_DIR}/dev/lint.sh
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    USES_TERMINAL
+target_link_libraries(spring PUBLIC
+    Boost::filesystem
+    Boost::system
+    Boost::program_options
+    Boost::iostreams
 )
 
-add_custom_target(dev-cppcheck
-    COMMAND ${CMAKE_SOURCE_DIR}/dev/cppcheck.sh
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    USES_TERMINAL
-)
-
-add_custom_target(dev-cbindgen-check
-    COMMAND ${CMAKE_SOURCE_DIR}/dev/cbindgen-check.sh
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    USES_TERMINAL
-)
-
-add_custom_target(dev-valgrind-smoke
-    COMMAND ${CMAKE_SOURCE_DIR}/dev/valgrind-smoke.sh
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    USES_TERMINAL
-)
+add_dev_script_target(dev-lint lint.sh)
+add_dev_script_target(dev-cppcheck cppcheck.sh)
+add_dev_script_target(dev-cbindgen-check cbindgen-check.sh)
+add_dev_script_target(dev-valgrind-smoke valgrind-smoke.sh)
 
 add_dependencies(dev-lint spring)
 add_dependencies(dev-valgrind-smoke spring)

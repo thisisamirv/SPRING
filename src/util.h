@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef SPRING_UTIL_H_
 #define SPRING_UTIL_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <fstream>
 #include <string>
@@ -36,6 +37,7 @@ static const char chartorevchar[128] = {
     0, 'G', 0, 0, 0, 'C', 0, 0, 0, 0, 0, 0, 'N', 0, 0, 0, 0, 0, 'A', 0, 0, 0,
     0, 0,   0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0,   0, 0, 0,
     0, 0,   0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0};
+
 struct compression_params {
   bool paired_end;
   bool preserve_order;
