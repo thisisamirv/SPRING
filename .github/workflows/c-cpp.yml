@@ -1,0 +1,29 @@
+name: C/C++ CI
+
+on:
+    push:
+        branches: [ "master" ]
+    pull_request:
+        branches: [ "master" ]
+
+jobs:
+    build_test:
+        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                cpp-version: [gcc-4.9, gcc-5, gcc-6, gcc-7, gcc-8, gcc-9, gcc-10]
+        steps:
+            - uses: actions/checkout@v3
+            - name: Spring build and test
+              run: |
+                  mkdir build
+                  cd build
+                  wget https://cmake.org/files/v3.12/cmake-3.12.4.tar.gz
+                  tar -xzf cmake-3.12.4.tar.gz
+                  cd cmake-3.12.4
+                  ./configure
+                  make
+                  cd ..
+                  ./cmake-3.12.4/bin/cmake ..
+                  make
+                  ./../util/test_script.sh  

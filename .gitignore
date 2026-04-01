@@ -1,0 +1,42 @@
+# Directory attributes files
+.directory
+.DS_Store
+
+# Regeneratables
+build/
+data/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+.clangd
+
+# Binaries and libraries
+spring
+*.o
+*.a
+*.so
+*.obj
+*.lib
+*.dll
+*.dylib
+
+# Specific build artifacts (subprojects)
+boost-cmake/CMakeFiles/
+boost-cmake/Makefile
+boost-cmake/cmake_install.cmake
+boost-cmake/*.a
+
+# Temporary and IDE
+.vscode/
+.idea/
+*.swp
+*.patch
+*.diff
+
+# Logs
+logs/
