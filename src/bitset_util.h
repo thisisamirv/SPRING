@@ -16,6 +16,7 @@ limitations under the License.
 #define SPRING_BITSET_UTIL_H_
 
 #include "BooPHF.h"
+#include "util.h"
 #include <algorithm>
 #include <bitset>
 #include <cstdint>
@@ -38,14 +39,13 @@ public:
   uint32_t *read_id;
   bool *empty_bin;
   void findpos(int64_t *dictidx, const uint64_t &startposidx);
-  void remove(int64_t *dictidx, const uint64_t &startposidx,
+  void remove(const int64_t *dictidx, const uint64_t &startposidx,
               const int64_t current);
-  bbhashdict() {
-    bphf = NULL;
-    startpos = NULL;
-    read_id = NULL;
-    empty_bin = NULL;
-  }
+  bbhashdict()
+      : bphf(NULL), start(0), end(0), numkeys(0), dict_numreads(0),
+        startpos(NULL), read_id(NULL), empty_bin(NULL) {}
+  bbhashdict(const bbhashdict &) = delete;
+  bbhashdict &operator=(const bbhashdict &) = delete;
   ~bbhashdict() {
     if (startpos != NULL)
       delete[] startpos;
@@ -124,7 +124,7 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
       if (tid == omp_get_num_threads() - 1)
         stop = dict[j].dict_numreads;
       for (; i < stop; i++)
-        foutkey.write((char *)&ull[i], sizeof(uint64_t));
+        foutkey.write(byte_ptr(&ull[i]), sizeof(uint64_t));
       foutkey.close();
     } // parallel end
 
@@ -162,9 +162,9 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
       if (tid == omp_get_num_threads() - 1)
         stop = dict[j].dict_numreads;
       for (; i < stop; i++) {
-        finkey.read((char *)&currentkey, sizeof(uint64_t));
+        finkey.read(byte_ptr(&currentkey), sizeof(uint64_t));
         currenthash = (dict[j].bphf)->lookup(currentkey);
-        fouthash.write((char *)&currenthash, sizeof(uint64_t));
+        fouthash.write(byte_ptr(&currenthash), sizeof(uint64_t));
       }
       finkey.close();
       remove(
@@ -188,10 +188,10 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
         std::ifstream finhash(basedir + std::string("/hash.bin.") +
                                   std::to_string(tid) + '.' + std::to_string(j),
                               std::ios::binary);
-        finhash.read((char *)&currenthash, sizeof(uint64_t));
+        finhash.read(byte_ptr(&currenthash), sizeof(uint64_t));
         while (!finhash.eof()) {
           dict[j].startpos[currenthash + 1]++;
-          finhash.read((char *)&currenthash, sizeof(uint64_t));
+          finhash.read(byte_ptr(&currenthash), sizeof(uint64_t));
         }
         finhash.close();
       }
@@ -207,13 +207,13 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
         std::ifstream finhash(basedir + std::string("/hash.bin.") +
                                   std::to_string(tid) + '.' + std::to_string(j),
                               std::ios::binary);
-        finhash.read((char *)&currenthash, sizeof(uint64_t));
+        finhash.read(byte_ptr(&currenthash), sizeof(uint64_t));
         while (!finhash.eof()) {
           while (read_lengths[i] <= dict[j].end)
             i++;
           dict[j].read_id[dict[j].startpos[currenthash]++] = i;
           i++;
-          finhash.read((char *)&currenthash, sizeof(uint64_t));
+          finhash.read(byte_ptr(&currenthash), sizeof(uint64_t));
         }
         finhash.close();
         remove((basedir + std::string("/hash.bin.") + std::to_string(tid) +

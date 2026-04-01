@@ -7,6 +7,7 @@
 //
 
 #include "id_compression/include/sam_block.h"
+#include <cstring>
 
 // devuelve la longitud del PRIMER read?
 // se asume que todos lso reads son de la misma longitud.

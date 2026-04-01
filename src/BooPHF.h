@@ -18,6 +18,7 @@
 #include <array>
 #include <assert.h>
 #include <memory> // for make_shared
+#include <stdexcept>
 #include <string.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -189,6 +190,8 @@ public:
   double steps; // steps = todo/subidv
 
   void init(uint64_t ntasks, const char *msg, int nthreads = 1) {
+    if (nthreads <= 0)
+      throw std::invalid_argument("BooPHF thread count must be positive.");
     _nthreads = nthreads;
     message = std::string(msg);
     gettimeofday(&timestamp, NULL);
@@ -780,6 +783,8 @@ public:
         _num_thread(num_thread),
         _percent_elem_loaded_for_fastMode(perc_elem_loaded),
         _withprogress(progress) {
+    if (_num_thread <= 0)
+      throw std::invalid_argument("BooPHF thread count must be positive.");
     if (n == 0)
       return;
 
@@ -1246,7 +1251,7 @@ private:
     _idxLevelsetLevelFastmode = 0;
     _nb_living = 0;
     // create  threads
-    pthread_t *tab_threads = new pthread_t[_num_thread];
+    std::vector<pthread_t> tab_threads(static_cast<size_t>(_num_thread));
     typedef decltype(input_range.begin()) it_type;
     thread_args<Range, it_type> t_arg; // meme arg pour tous
     t_arg.boophf = this;
@@ -1330,8 +1335,6 @@ private:
       // \n",_idxLevelsetLevelFastmode);
       setLevelFastmode.resize(_idxLevelsetLevelFastmode);
     }
-    delete[] tab_threads;
-
     if (_writeEachLevel) {
       if (i < _nb_levels - 1 && i > 0) {
         fflush(_currlevelFile);

@@ -1,8 +1,10 @@
 cmake_minimum_required (VERSION 4.2)
 project (SPRING)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(CheckIPOSupported)
+include(FetchContent)
 
 if (NOT UNIX)
 	message(FATAL_ERROR "Non Unix platforms not supported currently.")
@@ -81,7 +83,15 @@ set( ENV{ZLIB_ROOT} ${CMAKE_SOURCE_DIR}/third_party/cloudflare_zlib/ )
 
 #######################################################
 
-add_subdirectory(third_party/boost-cmake)
+set(BUILD_TESTING OFF CACHE BOOL "Disable third-party tests" FORCE)
+set(BOOST_INCLUDE_LIBRARIES filesystem iostreams program_options system)
+
+FetchContent_Declare(
+    boost_local
+    URL ${CMAKE_SOURCE_DIR}/third_party/boost/boost-1.90.0-cmake.tar.xz
+    URL_HASH SHA256=aca59f889f0f32028ad88ba6764582b63c916ce5f77b31289ad19421a96c555f
+)
+FetchContent_MakeAvailable(boost_local)
 
 set(source_dir ${CMAKE_SOURCE_DIR}/src)
 set(third_party_dir ${CMAKE_SOURCE_DIR}/third_party)
@@ -141,5 +151,33 @@ add_executable (spring ${source_files})
 
 target_include_directories(spring PRIVATE ${include_dir} ${third_party_dir})
 target_link_libraries(spring PUBLIC Boost::filesystem)
+target_link_libraries(spring PUBLIC Boost::system)
 target_link_libraries(spring PUBLIC Boost::program_options)
 target_link_libraries(spring PUBLIC Boost::iostreams)
+
+add_custom_target(dev-lint
+    COMMAND ${CMAKE_SOURCE_DIR}/dev/lint.sh
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    USES_TERMINAL
+)
+
+add_custom_target(dev-cppcheck
+    COMMAND ${CMAKE_SOURCE_DIR}/dev/cppcheck.sh
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    USES_TERMINAL
+)
+
+add_custom_target(dev-cbindgen-check
+    COMMAND ${CMAKE_SOURCE_DIR}/dev/cbindgen-check.sh
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    USES_TERMINAL
+)
+
+add_custom_target(dev-valgrind-smoke
+    COMMAND ${CMAKE_SOURCE_DIR}/dev/valgrind-smoke.sh
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    USES_TERMINAL
+)
+
+add_dependencies(dev-lint spring)
+add_dependencies(dev-valgrind-smoke spring)

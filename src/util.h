@@ -21,6 +21,14 @@ limitations under the License.
 
 namespace spring {
 
+template <typename T> inline char *byte_ptr(T *value) {
+  return reinterpret_cast<char *>(value);
+}
+
+template <typename T> inline const char *byte_ptr(const T *value) {
+  return reinterpret_cast<const char *>(value);
+}
+
 static const char chartorevchar[128] = {
     0, 0,   0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0,   0, 0, 0,
     0, 0,   0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0,   0, 0, 0,

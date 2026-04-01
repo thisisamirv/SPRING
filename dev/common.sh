@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
+BUILD_DIR="$ROOT_DIR/build"
+SPRING_BIN="$BUILD_DIR/spring"
+COMPILE_COMMANDS="$BUILD_DIR/compile_commands.json"
+readonly DEFAULT_CPP_ROOTS=("$ROOT_DIR/src" "$ROOT_DIR/scripts" "$ROOT_DIR/tests")
+
+require_command() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "Missing required command: $1" >&2
+    exit 1
+  fi
+}
+
+require_build_dir() {
+  if [[ ! -d "$BUILD_DIR" ]]; then
+    echo "Expected build directory at $BUILD_DIR" >&2
+    echo "Configure SPRING first, for example: cmake -S $ROOT_DIR -B $BUILD_DIR" >&2
+    exit 1
+  fi
+}
+
+require_compile_commands() {
+  require_build_dir
+  if [[ ! -f "$COMPILE_COMMANDS" ]]; then
+    echo "Expected compilation database at $COMPILE_COMMANDS" >&2
+    echo "Re-run CMake so clang-tidy can use the generated compile commands." >&2
+    exit 1
+  fi
+}
+
+require_spring_binary() {
+  if [[ ! -x "$SPRING_BIN" ]]; then
+    echo "Expected built binary at $SPRING_BIN" >&2
+    echo "Build SPRING first, for example: cmake --build $BUILD_DIR" >&2
+    exit 1
+  fi
+}
+
+is_cpp_source() {
+  case "$1" in
+    *.c|*.cc|*.cpp|*.cxx) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+collect_cpp_sources() {
+  local -a paths=()
+  local path
+  local file
+
+  if [[ $# -gt 0 ]]; then
+    paths=("$@")
+  else
+    paths=("${DEFAULT_CPP_ROOTS[@]}")
+  fi
+
+  for path in "${paths[@]}"; do
+    if [[ -d "$path" ]]; then
+      while IFS= read -r file; do
+        printf '%s\n' "$file"
+      done < <(find "$path" -type f \( -name '*.c' -o -name '*.cc' -o -name '*.cpp' -o -name '*.cxx' \) | sort)
+      continue
+    fi
+
+    if [[ -f "$path" ]] && is_cpp_source "$path"; then
+      printf '%s\n' "$path"
+    fi
+  done
+}
+
+compile_commands_contains() {
+  local path="$1"
+  grep -F -- "\"file\": \"$path\"" "$COMPILE_COMMANDS" >/dev/null 2>&1
+}

@@ -24,6 +24,7 @@ limitations under the License.
 #include <omp.h>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "libbsc/bsc.h"
 #include "params.h"
@@ -144,14 +145,17 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       }
     }
   }
+  if (cp.num_thr <= 0)
+    throw std::runtime_error("Number of threads must be positive.");
+
   uint64_t num_reads_per_step = (uint64_t)cp.num_thr * num_reads_per_block;
-  std::string *read_array = new std::string[num_reads_per_step];
-  std::string *id_array_1 = new std::string[num_reads_per_step];
-  std::string *id_array_2 = new std::string[num_reads_per_step];
-  std::string *quality_array = new std::string[num_reads_per_step];
-  bool *read_contains_N_array = new bool[num_reads_per_step];
-  uint32_t *read_lengths_array = new uint32_t[num_reads_per_step];
-  bool *paired_id_match_array = new bool[cp.num_thr];
+  std::vector<std::string> read_array(num_reads_per_step);
+  std::vector<std::string> id_array_1(num_reads_per_step);
+  std::vector<std::string> id_array_2(num_reads_per_step);
+  std::vector<std::string> quality_array(num_reads_per_step);
+  std::vector<bool> read_contains_N_array(num_reads_per_step);
+  std::vector<uint32_t> read_lengths_array(num_reads_per_step);
+  std::vector<bool> paired_id_match_array(static_cast<size_t>(cp.num_thr));
 
   omp_set_num_threads(cp.num_thr);
 
@@ -163,9 +167,10 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       if (j == 1 && !cp.paired_end)
         continue;
       done[j] = false;
-      std::string *id_array = (j == 0) ? id_array_1 : id_array_2;
+        std::string *id_array = (j == 0) ? id_array_1.data() : id_array_2.data();
       uint32_t num_reads_read =
-          read_fastq_block(fin[j], id_array, read_array, quality_array,
+          read_fastq_block(fin[j], id_array, read_array.data(),
+                   quality_array.data(),
                            num_reads_per_step, fasta_flag);
       if (num_reads_read < num_reads_per_step)
         done[j] = true;
@@ -221,7 +226,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
 
             // Write read length to a file (for long mode)
             if (cp.long_flag)
-              fout_readlength.write((char *)&read_lengths_array[i],
+              fout_readlength.write(byte_ptr(&read_lengths_array[i]),
                                     sizeof(uint32_t));
 
             if (j == 1 && paired_id_match_array[tid])
@@ -232,14 +237,16 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
             fout_readlength.close();
           // apply binning (if asked to do so)
           if (cp.preserve_quality && (cp.ill_bin_flag || cp.bin_thr_flag))
-            quantize_quality(quality_array + tid * num_reads_per_block,
+            quantize_quality(quality_array.data() + tid * num_reads_per_block,
                              num_reads_thr, quality_binning_table);
 
           // apply qvz quantization (if flag specified and order preserving)
           if (cp.preserve_quality && cp.qvz_flag && cp.preserve_order)
             quantize_quality_qvz(
-                quality_array + tid * num_reads_per_block, num_reads_thr,
-                read_lengths_array + tid * num_reads_per_block, cp.qvz_ratio);
+                quality_array.data() + tid * num_reads_per_block,
+                num_reads_thr,
+                read_lengths_array.data() + tid * num_reads_per_block,
+                cp.qvz_ratio);
           if (!cp.long_flag) {
             if (cp.preserve_order) {
               // Compress ids
@@ -257,8 +264,9 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                     std::to_string(num_blocks_done + tid);
                 bsc::BSC_str_array_compress(
                     outfile_name.c_str(),
-                    quality_array + tid * num_reads_per_block, num_reads_thr,
-                    read_lengths_array + tid * num_reads_per_block);
+                    quality_array.data() + tid * num_reads_per_block,
+                    num_reads_thr,
+                    read_lengths_array.data() + tid * num_reads_per_block);
               }
             }
           } else {
@@ -284,15 +292,17 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                                          std::to_string(num_blocks_done + tid);
               bsc::BSC_str_array_compress(
                   outfile_name.c_str(),
-                  quality_array + tid * num_reads_per_block, num_reads_thr,
-                  read_lengths_array + tid * num_reads_per_block);
+                  quality_array.data() + tid * num_reads_per_block,
+                  num_reads_thr,
+                  read_lengths_array.data() + tid * num_reads_per_block);
             }
             // Compress reads
             outfile_name =
                 outfileread[j] + "." + std::to_string(num_blocks_done + tid);
             bsc::BSC_str_array_compress(
-                outfile_name.c_str(), read_array + tid * num_reads_per_block,
-                num_reads_thr, read_lengths_array + tid * num_reads_per_block);
+                outfile_name.c_str(),
+                read_array.data() + tid * num_reads_per_block, num_reads_thr,
+                read_lengths_array.data() + tid * num_reads_per_block);
           }
         } // if(!done)
       } // omp parallel
@@ -312,7 +322,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
             num_reads_clean[j]++;
           } else {
             uint32_t pos_N = num_reads[j] + i;
-            fout_order_N[j].write((char *)&pos_N, sizeof(uint32_t));
+            fout_order_N[j].write(byte_ptr(&pos_N), sizeof(uint32_t));
             write_dnaN_in_bits(read_array[i], fout_N[j]);
           }
         }
@@ -328,8 +338,9 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       num_reads[j] += num_reads_read;
       max_readlen =
           std::max(max_readlen,
-                   *(std::max_element(read_lengths_array,
-                                      read_lengths_array + num_reads_read)));
+               *(std::max_element(read_lengths_array.begin(),
+                        read_lengths_array.begin() +
+                          num_reads_read)));
     }
     if (cp.paired_end)
       if (num_reads[0] != num_reads[1])
@@ -340,14 +351,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
     num_blocks_done += cp.num_thr;
   }
 
-  delete[] read_array;
-  delete[] id_array_1;
-  delete[] id_array_2;
-  delete[] quality_array;
-  delete[] read_contains_N_array;
-  delete[] read_lengths_array;
   delete[] quality_binning_table;
-  delete[] paired_id_match_array;
   if (gzip_flag) {
     for (int j = 0; j < 2; j++) {
       if (j == 1 && !cp.paired_end)
@@ -394,9 +398,9 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
     uint32_t num_N_file_2 = num_reads[1] - num_reads_clean[1];
     uint32_t order_N;
     for (uint32_t i = 0; i < num_N_file_2; i++) {
-      fin_order_N.read((char *)&order_N, sizeof(uint32_t));
+      fin_order_N.read(byte_ptr(&order_N), sizeof(uint32_t));
       order_N += num_reads[0];
-      fout_order_N.write((char *)&order_N, sizeof(uint32_t));
+      fout_order_N.write(byte_ptr(&order_N), sizeof(uint32_t));
     }
     fin_order_N.close();
     fout_order_N.close();

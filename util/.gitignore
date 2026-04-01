@@ -1,9 +1,0 @@
-# Ignore .out
-*.out
-
-#except this file
-!.gitignore
-
-# even subfolders
-*./
-

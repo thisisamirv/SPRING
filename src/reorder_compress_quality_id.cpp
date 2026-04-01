@@ -107,7 +107,7 @@ void generate_order_pe(const std::string &file_order, uint32_t *order_array,
   uint32_t pos_after_reordering = 0;
   uint32_t numreads_by_2 = numreads / 2;
   for (uint32_t i = 0; i < numreads; i++) {
-    fin_order.read((char *)&order, sizeof(uint32_t));
+    fin_order.read(byte_ptr(&order), sizeof(uint32_t));
     if (order < numreads_by_2) {
       order_array[order] = pos_after_reordering++;
     }
@@ -120,7 +120,7 @@ void generate_order_se(const std::string &file_order, uint32_t *order_array,
   std::ifstream fin_order(file_order, std::ios::binary);
   uint32_t order;
   for (uint32_t i = 0; i < numreads; i++) {
-    fin_order.read((char *)&order, sizeof(uint32_t));
+    fin_order.read(byte_ptr(&order), sizeof(uint32_t));
     order_array[order] = i;
   }
   fin_order.close();

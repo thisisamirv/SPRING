@@ -93,14 +93,14 @@ void writecontig(const std::string &ref,
         f_noise << eg.enc_noise[(uint8_t)ref[currentpos + j]]
                                [(uint8_t)(*current_contig_it).read[j]];
         pos_var = j - prevj;
-        f_noisepos.write((char *)&pos_var, sizeof(uint16_t));
+        f_noisepos.write(byte_ptr(&pos_var), sizeof(uint16_t));
         prevj = j;
       }
     f_noise << "\n";
     abs_current_pos = abs_pos + currentpos;
-    f_pos.write((char *)&abs_current_pos, sizeof(uint64_t));
-    f_order.write((char *)&((*current_contig_it).order), sizeof(uint32_t));
-    f_readlength.write((char *)&((*current_contig_it).read_length),
+    f_pos.write(byte_ptr(&abs_current_pos), sizeof(uint64_t));
+    f_order.write(byte_ptr(&((*current_contig_it).order)), sizeof(uint32_t));
+    f_readlength.write(byte_ptr(&((*current_contig_it).read_length)),
                        sizeof(uint16_t));
     f_RC << (*current_contig_it).RC;
   }
@@ -164,7 +164,7 @@ void getDataParams(encoder_global &eg, const compression_params &cp) {
 
   std::ifstream myfile_s_count(eg.infile + ".singleton" + ".count",
                                std::ifstream::in);
-  myfile_s_count.read((char *)&eg.numreads_s, sizeof(uint32_t));
+  myfile_s_count.read(byte_ptr(&eg.numreads_s), sizeof(uint32_t));
   myfile_s_count.close();
   std::string file_s_count = eg.infile + ".singleton" + ".count";
   remove(file_s_count.c_str());
@@ -179,17 +179,17 @@ void getDataParams(encoder_global &eg, const compression_params &cp) {
 
 void correct_order(uint32_t *order_s, const encoder_global &eg) {
   uint32_t numreads_total = eg.numreads + eg.numreads_s + eg.numreads_N;
-  bool *read_flag_N = new bool[numreads_total]();
+  std::vector<uint8_t> read_flag_N(numreads_total, 0);
   // bool array indicating N reads
   for (uint32_t i = 0; i < eg.numreads_N; i++) {
-    read_flag_N[order_s[eg.numreads_s + i]] = true;
+    read_flag_N[order_s[eg.numreads_s + i]] = 1;
   }
 
-  uint32_t *cumulative_N_reads = new uint32_t[eg.numreads + eg.numreads_s];
+  std::vector<uint32_t> cumulative_N_reads(eg.numreads + eg.numreads_s, 0);
   // number of reads occuring before pos in clean reads
   uint32_t pos_in_clean = 0, num_N_reads_till_now = 0;
   for (uint32_t i = 0; i < numreads_total; i++) {
-    if (read_flag_N[i] == true)
+    if (read_flag_N[i])
       num_N_reads_till_now++;
     else
       cumulative_N_reads[pos_in_clean++] = num_N_reads_till_now;
@@ -206,11 +206,11 @@ void correct_order(uint32_t *order_s, const encoder_global &eg) {
     std::ofstream fout_order(
         eg.infile_order + '.' + std::to_string(tid) + ".tmp", std::ios::binary);
     uint32_t pos;
-    fin_order.read((char *)&pos, sizeof(uint32_t));
+    fin_order.read(byte_ptr(&pos), sizeof(uint32_t));
     while (!fin_order.eof()) {
       pos += cumulative_N_reads[pos];
-      fout_order.write((char *)&pos, sizeof(uint32_t));
-      fin_order.read((char *)&pos, sizeof(uint32_t));
+      fout_order.write(byte_ptr(&pos), sizeof(uint32_t));
+      fin_order.read(byte_ptr(&pos), sizeof(uint32_t));
     }
     fin_order.close();
     fout_order.close();
@@ -219,8 +219,6 @@ void correct_order(uint32_t *order_s, const encoder_global &eg) {
            (eg.infile_order + '.' + std::to_string(tid)).c_str());
   }
   remove(eg.infile_order_N.c_str());
-  delete[] read_flag_N;
-  delete[] cumulative_N_reads;
   return;
 }
 

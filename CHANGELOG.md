@@ -9,13 +9,31 @@
 
 * **Upgraded Python 2 to Python 3**: Migrated all Python utilities to **Python 3**. Standardized indentation and updated `print` statements to resolve `SyntaxError` and `TabError` issues.
 
-* **Upgraded CMake Requirements**: Bumped minimum CMake version to **4.2** across the main project and `boost-cmake` dependency to align with modern standards and silence deprecation warnings.
+* **Upgraded CMake Requirements**: Bumped the main project to **CMake 4.2** and aligned the temporary Boost integration path with modern CMake behavior while completing the dependency refresh.
 
 * **Optimized Main Configuration**: Reordered the top-level `CMakeLists.txt` to ensure `cmake_minimum_required` precedes the `project()` initialization, resolving implicit developer warnings.
 
 * **Dynamic IDE Support**: Implemented automated `.clangd` generation within the CMake configuration. This dynamically queries the active compiler for its internal include paths to resolve OpenMP headers (`omp.h`) generically across different Linux environments and GCC versions.
 
 * **Standardized Code Style**: Integrated a project-wide `.clang-format` configuration based on the **LLVM** standard. Systematically applied this style across the entire codebase to ensure consistent indentation, brace placement, and overall readability.
+
+* **Restored CMake 4.3 Compatibility for Vendored Boost**: Updated `third_party/boost-cmake/CMakeLists.txt` to set policy `CMP0169` to `OLD`, allowing the bundled Boost build logic to continue using `FetchContent_Populate` under newer CMake releases.
+
+* **Migrated to Native Boost 1.90 CMake**: Replaced the old `boost-cmake` wrapper and bundled `boost_1_67_0.tar.xz` payload with the local `third_party/boost/boost-1.90.0-cmake.tar.xz` source archive, using Boost's own CMake build and removing the obsolete wrapper directory from the repository.
+
+* **Reorganized Repository Utilities**: Split the old mixed-purpose `util/` directory into `tests` for bundled regression assets and smoke checks, `scripts/analysis` and `scripts/preprocessing` for standalone helpers, and removed the obsolete archival benchmark and dependency-probe leftovers.
+
+* **Removed Broken Legacy Benchmark Scripts**: Deleted archived benchmark shell scripts that no longer work with the current repository because they hardcoded external `/raid/...` datasets, depended on missing third-party comparator installs, or referenced obsolete custom `spring_*` binaries.
+
+* **Removed Broken Legacy Dependency Probes**: Deleted the old `tests/legacy` Boost/OpenMP probe sources after confirming they no longer compile cleanly against the current project include layout, while retaining the remaining self-contained legacy analysis helpers that still build independently.
+
+* **Flattened Tests and Analysis Helpers**: Moved the smoke assets and runner from `tests/smoke` into `tests/`, folded `scripts/analysis/legacy` into `scripts/analysis`, and removed the now-unused `benchmarks/` directory entirely.
+
+* **Added Developer Tooling Directory**: Introduced a dedicated `dev/` directory for repository maintenance scripts. It now contains shared path/build helpers in `common.sh`, static analysis entrypoints in `lint.sh` and `cppcheck.sh`, the smoke-test Valgrind wrapper in `valgrind-smoke.sh`, and the corresponding Valgrind suppressions in `valgrind.supp`.
+
+* **Cleaned Up Static Analysis Tooling**: Tuned `dev/lint.sh` and `dev/cppcheck.sh` for actionable first-party checks, broadened them to cover `src/`, `scripts/`, and `tests/`, suppressed bundled `src/BooPHF.h` noise in `cppcheck`, and fixed the reported Spring-owned issues including binary I/O cast cleanup, missing member initialization in owning/template-heavy headers, an uninitialized flag in stream reordering, signed-shift portability in zigzag encoding, and exception-safe `compression_params` lifetime handling.
+
+* **Stabilized Valgrind Smoke Checks**: Updated `dev/valgrind-smoke.sh` to treat only definite and indirect leaks as failures, added targeted suppressions for known OpenMP/glibc TLS startup noise in `dev/valgrind.supp`, and restored a clean `Tests successful!` smoke run without masking actionable memory leaks.
 
 ### Compiler Compatibility
 
@@ -35,6 +53,11 @@
 * **Standard Type Migration**: Systematically replaced non-standard BSD/Linux type aliases (specifically `u_int64_t`) with the standard C++11 `uint64_t` across the entire codebase to ensure cross-compiler compatibility.
 
 * **BSC Library Fixes**: Added missing `<string>` and `<cstdint>` inclusions to `src/libbsc/bsc.h` to ensure standalone header validity in modern C++ environments.
+
+* **GCC 15 Compatibility for id_compression**: Added missing `<cstring>` includes to `third_party/id_compression/src/id_compression.cpp` and `third_party/id_compression/src/sam_file_allocation.cpp` so `strcpy`, `memcpy`, and `memset` resolve correctly with newer GCC toolchains.
+
+* **GCC 15 Allocation Warning Cleanup**: Eliminated `-Walloc-size-larger-than` warnings by validating positive thread counts in `src/main.cpp`, replacing thread-sized scratch buffers in `src/util.cpp`, `src/preprocess.cpp`, `src/encoder.h`, and `src/reorder.h` with standard containers, and tightening thread-count handling in `src/BooPHF.h`.
+* **Preprocess and BooPHF Hardening**: Completed the follow-up sweep in `src/preprocess.cpp` and `src/BooPHF.h` by converting remaining thread-indexed scratch storage to standard containers and enforcing positive thread counts in internal helper paths.
 
 * **Header Cleanup**: Removed redundant `#includes` to satisfy modern linters and improve compilation efficiency:
   * `"params.h"` from `src/bitset_util.h`.
@@ -68,3 +91,6 @@
 * Fixed "Non-void function does not return a value" errors in `util/io_experiments.cpp` by converting experimental functions to `void` and ensuring `main` returns a valid integer.
 * Resolved "undeclared identifier" errors for standard integer types in `util/` by adding missing `#include <cstdint>` to several utility files including `quality_counts.cpp`, `quality_pack.cpp`, `quality_unpack.cpp`, `quality_illumina_bin.cpp`, and `RLE.cpp`.
 * **id_compression Maintenance**: Commented out unimplemented `compress_rname` and `decompress_rname` declarations in `id_compression.h` that relied on the undefined `rname_models` type, resolving a blocking compilation error.
+* **Boost Linker Fix**: Linked `Boost::system` explicitly in the top-level `CMakeLists.txt` so the `spring` target links successfully when using the bundled static Boost build with `Boost::filesystem`.
+* **Thread Count Validation**: Added explicit checks that thread counts are positive in CLI and internal helper paths, preventing signed-to-unsigned size underflow in thread-indexed allocations.
+* **Binary Quality Range Validation**: Bounded binary quality binning to the 128-entry ASCII table and rejected out-of-range `-q binary` parameters, eliminating GCC 15 `-Wstringop-overflow` warnings in preprocessing.

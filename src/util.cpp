@@ -22,6 +22,7 @@ limitations under the License.
 #include <fstream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "id_compression/include/sam_block.h"
 #include "omp.h"
@@ -72,10 +73,12 @@ void write_fastq_block(std::ofstream &fout, std::string *id_array,
   } else {
     if (num_reads == 0)
       return;
-    std::string *gzip_compressed = new std::string[num_thr];
+    if (num_thr <= 0)
+      throw std::runtime_error("Number of threads must be positive.");
 
-    uint64_t *start_read_num = new uint64_t[num_thr];
-    uint64_t *end_read_num = new uint64_t[num_thr];
+    std::vector<std::string> gzip_compressed(static_cast<size_t>(num_thr));
+    std::vector<uint64_t> start_read_num(static_cast<size_t>(num_thr));
+    std::vector<uint64_t> end_read_num(static_cast<size_t>(num_thr));
     uint64_t num_reads_per_thread =
         1 + ((num_reads - 1) / num_thr); // ceiling function
     for (uint32_t i = 0; i < (uint32_t)num_thr; i++) {
@@ -110,9 +113,6 @@ void write_fastq_block(std::ofstream &fout, std::string *id_array,
     } // end omp parallel
     for (uint32_t i = 0; i < (uint32_t)num_thr; i++)
       fout.write(&(gzip_compressed[i][0]), gzip_compressed[i].size());
-    delete[] gzip_compressed;
-    delete[] start_read_num;
-    delete[] end_read_num;
   }
 }
 
@@ -192,9 +192,10 @@ void generate_binary_binning_table(char *binary_binning_table,
                                    const unsigned int thr,
                                    const unsigned int high,
                                    const unsigned int low) {
-  for (uint8_t i = 0; i < 33 + thr; i++)
+  const unsigned int split = std::min(127U, 33U + thr);
+  for (unsigned int i = 0; i < split; i++)
     binary_binning_table[i] = 33 + low;
-  for (uint8_t i = 33 + thr; i <= 127; i++)
+  for (unsigned int i = split; i <= 127; i++)
     binary_binning_table[i] = 33 + high;
 }
 
@@ -299,7 +300,7 @@ void write_dna_in_bits(const std::string &read, std::ofstream &fout) {
   uint8_t bitarray[128];
   uint8_t pos_in_bitarray = 0;
   uint16_t readlen = read.size();
-  fout.write((char *)&readlen, sizeof(uint16_t));
+  fout.write(byte_ptr(&readlen), sizeof(uint16_t));
   for (int i = 0; i < readlen / 4; i++) {
     bitarray[pos_in_bitarray] = 0;
     for (int j = 0; j < 4; j++)
@@ -315,7 +316,7 @@ void write_dna_in_bits(const std::string &read, std::ofstream &fout) {
           (dna2int[(uint8_t)read[4 * i + j]] << (2 * j));
     pos_in_bitarray++;
   }
-  fout.write((char *)&bitarray[0], pos_in_bitarray);
+  fout.write(byte_ptr(&bitarray[0]), pos_in_bitarray);
   return;
 }
 
@@ -323,10 +324,10 @@ void read_dna_from_bits(std::string &read, std::ifstream &fin) {
   uint16_t readlen;
   uint8_t bitarray[128];
   const char int2dna[4] = {'A', 'G', 'C', 'T'};
-  fin.read((char *)&readlen, sizeof(uint16_t));
+  fin.read(byte_ptr(&readlen), sizeof(uint16_t));
   read.resize(readlen);
   uint16_t num_bytes_to_read = ((uint32_t)readlen + 4 - 1) / 4;
-  fin.read((char *)&bitarray[0], num_bytes_to_read);
+  fin.read(byte_ptr(&bitarray[0]), num_bytes_to_read);
   uint8_t pos_in_bitarray = 0;
   for (int i = 0; i < readlen / 4; i++) {
     for (int j = 0; j < 4; j++) {
@@ -355,7 +356,7 @@ void write_dnaN_in_bits(const std::string &read, std::ofstream &fout) {
   uint8_t bitarray[256];
   uint8_t pos_in_bitarray = 0;
   uint16_t readlen = read.size();
-  fout.write((char *)&readlen, sizeof(uint16_t));
+  fout.write(byte_ptr(&readlen), sizeof(uint16_t));
   for (int i = 0; i < readlen / 2; i++) {
     bitarray[pos_in_bitarray] = 0;
     for (int j = 0; j < 2; j++)
@@ -371,7 +372,7 @@ void write_dnaN_in_bits(const std::string &read, std::ofstream &fout) {
           (dna2int[(uint8_t)read[2 * i + j]] << (4 * j));
     pos_in_bitarray++;
   }
-  fout.write((char *)&bitarray[0], pos_in_bitarray);
+  fout.write(byte_ptr(&bitarray[0]), pos_in_bitarray);
   return;
 }
 
@@ -379,10 +380,10 @@ void read_dnaN_from_bits(std::string &read, std::ifstream &fin) {
   uint16_t readlen;
   uint8_t bitarray[256];
   const char int2dna[5] = {'A', 'G', 'C', 'T', 'N'};
-  fin.read((char *)&readlen, sizeof(uint16_t));
+  fin.read(byte_ptr(&readlen), sizeof(uint16_t));
   read.resize(readlen);
   uint16_t num_bytes_to_read = ((uint32_t)readlen + 2 - 1) / 2;
-  fin.read((char *)&bitarray[0], num_bytes_to_read);
+  fin.read(byte_ptr(&bitarray[0]), num_bytes_to_read);
   uint8_t pos_in_bitarray = 0;
   for (int i = 0; i < readlen / 2; i++) {
     for (int j = 0; j < 2; j++) {
@@ -438,10 +439,13 @@ size_t get_directory_size(const std::string &temp_dir) {
 // https://github.com/shubhamchandak94/CDTC/blob/master/src/util.cpp
 
 // Used to pack some temporary files efficiently
-uint64_t zigzag_encode64(const int64_t n) { return (n << 1) ^ (n >> 63); }
+uint64_t zigzag_encode64(const int64_t n) {
+  const uint64_t sign_mask = (n < 0) ? UINT64_MAX : 0U;
+  return (static_cast<uint64_t>(n) << 1) ^ sign_mask;
+}
 
 int64_t zigzag_decode64(const uint64_t n) {
-  return (n >> 1) ^ -((int64_t)(n & 1));
+  return static_cast<int64_t>(n >> 1) ^ -static_cast<int64_t>(n & 1U);
 }
 
 void write_var_int64(const int64_t val, std::ofstream &fout) {
@@ -449,11 +453,11 @@ void write_var_int64(const int64_t val, std::ofstream &fout) {
   uint8_t byte;
   while (uval > 127) {
     byte = (uint8_t)(uval & 0x7f) | 0x80;
-    fout.write((char *)&byte, sizeof(uint8_t));
+    fout.write(byte_ptr(&byte), sizeof(uint8_t));
     uval >>= 7;
   }
   byte = (uint8_t)(uval & 0x7f);
-  fout.write((char *)&byte, sizeof(uint8_t));
+  fout.write(byte_ptr(&byte), sizeof(uint8_t));
 }
 
 int64_t read_var_int64(std::ifstream &fin) {
@@ -461,7 +465,7 @@ int64_t read_var_int64(std::ifstream &fin) {
   uint8_t byte;
   uint8_t shift = 0;
   do {
-    fin.read((char *)&byte, sizeof(uint8_t));
+    fin.read(byte_ptr(&byte), sizeof(uint8_t));
     uval |= ((byte & 0x7f) << shift);
     shift += 7;
   } while (byte & 0x80);

@@ -110,9 +110,9 @@ void reorder_compress_streams(const std::string &temp_dir,
 
   while (f_RC.get(rc)) {
     if (paired_end || preserve_order)
-      f_order.read((char *)&order, sizeof(uint32_t));
-    f_readlength.read((char *)&read_length, sizeof(uint16_t));
-    f_pos.read((char *)&pos, sizeof(uint64_t));
+      f_order.read(byte_ptr(&order), sizeof(uint32_t));
+    f_readlength.read(byte_ptr(&read_length), sizeof(uint16_t));
+    f_pos.read(byte_ptr(&pos), sizeof(uint64_t));
     RC_arr[order] = rc;
     read_length_arr[order] = read_length;
     flag_arr[order] = true; // aligned
@@ -126,7 +126,7 @@ void reorder_compress_streams(const std::string &temp_dir,
       f_noise.get(noise_char);
     }
     for (uint16_t i = 0; i < num_noise_in_curr_read; i++) {
-      f_noisepos.read((char *)&noisepos, sizeof(uint16_t));
+      f_noisepos.read(byte_ptr(&noisepos), sizeof(uint16_t));
       noisepos_arr[current_pos_noisepos_arr] = noisepos;
       current_pos_noisepos_arr++;
     }
@@ -145,7 +145,7 @@ void reorder_compress_streams(const std::string &temp_dir,
   std::string file_unaligned_count = file_unaligned + ".count";
   std::ifstream f_unaligned_count(file_unaligned_count);
   uint64_t unaligned_array_size;
-  f_unaligned_count.read((char *)&unaligned_array_size, sizeof(uint64_t));
+  f_unaligned_count.read(byte_ptr(&unaligned_array_size), sizeof(uint64_t));
   f_unaligned_count.close();
   remove(file_unaligned_count.c_str());
   char *unaligned_arr = new char[unaligned_array_size];
@@ -162,8 +162,8 @@ void reorder_compress_streams(const std::string &temp_dir,
   uint64_t current_pos_in_unaligned_arr = 0;
   for (uint32_t i = 0; i < num_reads_unaligned; i++) {
     if (paired_end || preserve_order)
-      f_order.read((char *)&order, sizeof(uint32_t));
-    f_readlength.read((char *)&read_length, sizeof(uint16_t));
+      f_order.read(byte_ptr(&order), sizeof(uint32_t));
+    f_readlength.read(byte_ptr(&read_length), sizeof(uint16_t));
     read_length_arr[order] = read_length;
     pos_arr[order] = current_pos_in_unaligned_arr;
     current_pos_in_unaligned_arr += read_length;
@@ -250,34 +250,34 @@ void reorder_compress_streams(const std::string &temp_dir,
       // Write streams
       for (uint64_t i = start_read_num; i < end_read_num; i++) {
         if (!paired_end) {
-          f_readlength.write((char *)&read_length_arr[i], sizeof(uint16_t));
+          f_readlength.write(byte_ptr(&read_length_arr[i]), sizeof(uint16_t));
           if (flag_arr[i] == true) {
             f_flag << '0';
             f_RC << RC_arr[i];
             if (preserve_order)
-              f_pos.write((char *)&pos_arr[i], sizeof(uint64_t));
+              f_pos.write(byte_ptr(&pos_arr[i]), sizeof(uint64_t));
             else {
               if (i == start_read_num) {
                 // Note: In order non-preserving mode, if the first read of
                 // the block is a singleton, then the rest are too.
-                f_pos.write((char *)&pos_arr[i], sizeof(uint64_t));
+                f_pos.write(byte_ptr(&pos_arr[i]), sizeof(uint64_t));
                 prevpos = pos_arr[i];
               } else {
                 diffpos = pos_arr[i] - prevpos;
                 if (diffpos < 65535) {
                   diffpos_16 = (uint16_t)diffpos;
-                  f_pos.write((char *)&diffpos_16, sizeof(uint16_t));
+                  f_pos.write(byte_ptr(&diffpos_16), sizeof(uint16_t));
                 } else {
                   diffpos_16 = 65535;
-                  f_pos.write((char *)&diffpos_16, sizeof(uint16_t));
-                  f_pos.write((char *)&pos_arr[i], sizeof(uint64_t));
+                  f_pos.write(byte_ptr(&diffpos_16), sizeof(uint16_t));
+                  f_pos.write(byte_ptr(&pos_arr[i]), sizeof(uint64_t));
                 }
                 prevpos = pos_arr[i];
               }
             }
             for (uint16_t j = 0; j < noise_len_arr[i]; j++) {
               f_noise << noise_arr[pos_in_noise_arr[i] + j];
-              f_noisepos.write((char *)&noisepos_arr[pos_in_noise_arr[i] + j],
+              f_noisepos.write(byte_ptr(&noisepos_arr[pos_in_noise_arr[i] + j]),
                                sizeof(uint16_t));
             }
             f_noise << "\n";
@@ -287,10 +287,10 @@ void reorder_compress_streams(const std::string &temp_dir,
           }
         } else {
           uint64_t i_p = num_reads_by_2 + i; // i_pair
-          f_readlength.write((char *)&read_length_arr[i], sizeof(uint16_t));
-          f_readlength.write((char *)&read_length_arr[i_p], sizeof(uint16_t));
+          f_readlength.write(byte_ptr(&read_length_arr[i]), sizeof(uint16_t));
+          f_readlength.write(byte_ptr(&read_length_arr[i_p]), sizeof(uint16_t));
           int64_t pos_pair = (int64_t)pos_arr[i_p] - (int64_t)pos_arr[i];
-          int flag;
+          int flag = 2;
           if (flag_arr[i] && flag_arr[i_p] && std::abs(pos_pair) < 32767)
             flag = 0;
           else if (flag_arr[i] && flag_arr[i_p])
@@ -304,7 +304,7 @@ void reorder_compress_streams(const std::string &temp_dir,
           f_flag << flag;
           if (flag == 0 && paired_end) {
             int16_t pos_pair_16 = (int16_t)pos_pair;
-            f_pos_pair.write((char *)&pos_pair_16, sizeof(int16_t));
+            f_pos_pair.write(byte_ptr(&pos_pair_16), sizeof(int16_t));
             if (RC_arr[i] != RC_arr[i_p])
               f_RC_pair << '0';
             else
@@ -313,29 +313,29 @@ void reorder_compress_streams(const std::string &temp_dir,
           if (flag == 0 || flag == 1 || flag == 3) {
             // read 1 is aligned
             if (preserve_order)
-              f_pos.write((char *)&pos_arr[i], sizeof(uint64_t));
+              f_pos.write(byte_ptr(&pos_arr[i]), sizeof(uint64_t));
             else {
               if (i == start_read_num) {
                 // Note: In order non-preserving mode, if read 1 of
                 // first pair the block is a singleton, then the rest are too.
-                f_pos.write((char *)&pos_arr[i], sizeof(uint64_t));
+                f_pos.write(byte_ptr(&pos_arr[i]), sizeof(uint64_t));
                 prevpos = pos_arr[i];
               } else {
                 diffpos = pos_arr[i] - prevpos;
                 if (diffpos < 65535) {
                   diffpos_16 = (uint16_t)diffpos;
-                  f_pos.write((char *)&diffpos_16, sizeof(uint16_t));
+                  f_pos.write(byte_ptr(&diffpos_16), sizeof(uint16_t));
                 } else {
                   diffpos_16 = 65535;
-                  f_pos.write((char *)&diffpos_16, sizeof(uint16_t));
-                  f_pos.write((char *)&pos_arr[i], sizeof(uint64_t));
+                  f_pos.write(byte_ptr(&diffpos_16), sizeof(uint16_t));
+                  f_pos.write(byte_ptr(&pos_arr[i]), sizeof(uint64_t));
                 }
                 prevpos = pos_arr[i];
               }
             }
             for (uint16_t j = 0; j < noise_len_arr[i]; j++) {
               f_noise << noise_arr[pos_in_noise_arr[i] + j];
-              f_noisepos.write((char *)&noisepos_arr[pos_in_noise_arr[i] + j],
+              f_noisepos.write(byte_ptr(&noisepos_arr[pos_in_noise_arr[i] + j]),
                                sizeof(uint16_t));
             }
             f_noise << "\n";
@@ -349,13 +349,13 @@ void reorder_compress_streams(const std::string &temp_dir,
             // read 2 is aligned
             for (uint16_t j = 0; j < noise_len_arr[i_p]; j++) {
               f_noise << noise_arr[pos_in_noise_arr[i_p] + j];
-              f_noisepos.write((char *)&noisepos_arr[pos_in_noise_arr[i_p] + j],
+              f_noisepos.write(byte_ptr(&noisepos_arr[pos_in_noise_arr[i_p] + j]),
                                sizeof(uint16_t));
             }
             f_noise << "\n";
             if (flag == 1 || flag == 4) {
               // read 2 is aligned but not paired properly
-              f_pos.write((char *)&pos_arr[i_p], sizeof(uint64_t));
+              f_pos.write(byte_ptr(&pos_arr[i_p]), sizeof(uint64_t));
               f_RC << RC_arr[i_p];
             }
           } else {

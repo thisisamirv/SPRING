@@ -241,23 +241,23 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
             for (uint32_t i = tid * num_reads_per_block;
                  i < tid * num_reads_per_block + num_reads_thr; i++) {
               f_flag >> flag;
-              f_readlength.read((char *)&rl, sizeof(uint16_t));
+              f_readlength.read(byte_ptr(&rl), sizeof(uint16_t));
               read_lengths_array_1[i] = rl;
               singleton_1 = (flag == '2') || (flag == '4');
               if (!singleton_1) {
                 if (preserve_order)
-                  f_pos.read((char *)&pos_1, sizeof(uint64_t));
+                  f_pos.read(byte_ptr(&pos_1), sizeof(uint64_t));
                 else {
                   if (first_read_of_block) {
                     // in order non-preserving mode, if first read (or read 1 in
                     // first pair) is a singleton, then all the rest are.
                     first_read_of_block = false;
-                    f_pos.read((char *)&pos_1, sizeof(uint64_t));
+                    f_pos.read(byte_ptr(&pos_1), sizeof(uint64_t));
                     prevpos = pos_1;
                   } else {
-                    f_pos.read((char *)&diffpos_16, sizeof(uint16_t));
+                    f_pos.read(byte_ptr(&diffpos_16), sizeof(uint16_t));
                     if (diffpos_16 == 65535)
-                      f_pos.read((char *)&pos_1, sizeof(uint64_t));
+                      f_pos.read(byte_ptr(&pos_1), sizeof(uint64_t));
                     else
                       pos_1 = prevpos + diffpos_16;
                     prevpos = pos_1;
@@ -269,7 +269,7 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
                 uint16_t noisepos, prevnoisepos = 0;
                 std::getline(f_noise, noise);
                 for (uint16_t k = 0; k < noise.size(); k++) {
-                  f_noisepos.read((char *)&noisepos, sizeof(uint16_t));
+                  f_noisepos.read(byte_ptr(&noisepos), sizeof(uint16_t));
                   noisepos += prevnoisepos;
                   read[noisepos] =
                       dec_noise[(uint8_t)read[noisepos]][(uint8_t)noise[k]];
@@ -288,17 +288,17 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
               if (paired_end) {
                 int16_t pos_pair_16;
                 singleton_2 = (flag == '2') || (flag == '3');
-                f_readlength.read((char *)&rl, sizeof(uint16_t));
+                f_readlength.read(byte_ptr(&rl), sizeof(uint16_t));
                 read_lengths_array_2[i] = rl;
                 if (!singleton_2) {
                   if (flag == '1' || flag == '4') {
                     // reads 1 and 2 encoded independently
-                    f_pos.read((char *)&pos_2, sizeof(uint64_t));
+                    f_pos.read(byte_ptr(&pos_2), sizeof(uint64_t));
                     f_RC >> RC_2;
                   } else {
                     // read 2 pos and RC encoded in terms of read 1
                     char RC_relative;
-                    f_pos_pair.read((char *)&pos_pair_16, sizeof(int16_t));
+                    f_pos_pair.read(byte_ptr(&pos_pair_16), sizeof(int16_t));
                     pos_2 = pos_1 + pos_pair_16;
                     f_RC_pair >> RC_relative;
                     if (RC_relative == '0')
@@ -311,7 +311,7 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
                   uint16_t noisepos, prevnoisepos = 0;
                   std::getline(f_noise, noise);
                   for (uint16_t k = 0; k < noise.size(); k++) {
-                    f_noisepos.read((char *)&noisepos, sizeof(uint16_t));
+                    f_noisepos.read(byte_ptr(&noisepos), sizeof(uint16_t));
                     noisepos += prevnoisepos;
                     read[noisepos] =
                         dec_noise[(uint8_t)read[noisepos]][(uint8_t)noise[k]];
@@ -557,7 +557,7 @@ void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
           std::ifstream fin_readlength(outfile_name, std::ios::binary);
           for (uint32_t i = tid * num_reads_per_block;
                i < tid * num_reads_per_block + num_reads_thr; i++)
-            fin_readlength.read((char *)&read_lengths_array[i],
+            fin_readlength.read(byte_ptr(&read_lengths_array[i]),
                                 sizeof(uint32_t));
           fin_readlength.close();
           remove(outfile_name.c_str());

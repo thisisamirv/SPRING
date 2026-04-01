@@ -41,7 +41,7 @@ void pe_encode(const std::string &temp_dir, const compression_params &cp) {
   std::ifstream fin_order(file_order, std::ios::binary);
   uint32_t order;
   for (uint32_t i = 0; i < numreads; i++) {
-    fin_order.read((char *)&order, sizeof(uint32_t));
+    fin_order.read(byte_ptr(&order), sizeof(uint32_t));
     order_array[i] = order;
     inverse_order_array[order] = i;
   }
@@ -72,7 +72,7 @@ void pe_encode(const std::string &temp_dir, const compression_params &cp) {
   // Write to tmp file and replace
   std::ofstream fout_order(file_order + ".tmp", std::ios::binary);
   for (uint32_t i = 0; i < numreads; i++) {
-    fout_order.write((char *)&order_array[i], sizeof(uint32_t));
+    fout_order.write(byte_ptr(&order_array[i]), sizeof(uint32_t));
   }
   fout_order.close();
 

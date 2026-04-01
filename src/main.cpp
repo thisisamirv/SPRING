@@ -109,6 +109,10 @@ int main(int argc, char **argv) {
     std::cout << desc << "\n";
     return 1;
   }
+  if (num_thr <= 0) {
+    std::cout << "Number of threads must be positive.\n";
+    return 1;
+  }
   // generate randomly named temporary directory in the working directory
   std::string temp_dir;
   while (true) {

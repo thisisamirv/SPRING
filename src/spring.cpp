@@ -38,6 +38,37 @@ limitations under the License.
 
 namespace spring {
 
+namespace {
+
+double parse_double_or_throw(const std::string &value,
+                             const char *error_message) {
+  try {
+    size_t parsed_chars = 0;
+    double parsed_value = std::stod(value, &parsed_chars);
+    if (parsed_chars != value.size()) {
+      throw std::invalid_argument("trailing characters");
+    }
+    return parsed_value;
+  } catch (const std::exception &) {
+    throw std::runtime_error(error_message);
+  }
+}
+
+int parse_int_or_throw(const std::string &value, const char *error_message) {
+  try {
+    size_t parsed_chars = 0;
+    int parsed_value = std::stoi(value, &parsed_chars);
+    if (parsed_chars != value.size()) {
+      throw std::invalid_argument("trailing characters");
+    }
+    return parsed_value;
+  } catch (const std::exception &) {
+    throw std::runtime_error(error_message);
+  }
+}
+
+} // namespace
+
 void compress(const std::string &temp_dir,
               const std::vector<std::string> &infile_vec,
               const std::vector<std::string> &outfile_vec, const int &num_thr,
@@ -84,9 +115,7 @@ void compress(const std::string &temp_dir,
   else
     throw std::runtime_error("Number of output files not equal to 1");
 
-  compression_params *cp_ptr = new compression_params;
-  memset(cp_ptr, 0, sizeof(compression_params)); // remove valgrind error
-  compression_params &cp = *cp_ptr;
+  compression_params cp{};
   cp.paired_end = paired_end;
   cp.preserve_order = preserve_order;
   cp.preserve_id = preserve_id;
@@ -105,7 +134,8 @@ void compress(const std::string &temp_dir,
       if (quality_opts.size() != 2) {
         throw std::runtime_error("Invalid quality options.");
       } else {
-        cp.qvz_ratio = atof(quality_opts[1].c_str());
+        cp.qvz_ratio =
+            parse_double_or_throw(quality_opts[1], "Invalid qvz ratio provided.");
         if (cp.qvz_ratio == 0.0) {
           throw std::runtime_error("Invalid qvz ratio provided.");
         }
@@ -119,9 +149,17 @@ void compress(const std::string &temp_dir,
       if (quality_opts.size() != 4) {
         throw std::runtime_error("Invalid quality options.");
       } else {
-        cp.bin_thr_thr = atoi(quality_opts[1].c_str());
-        cp.bin_thr_high = atoi(quality_opts[2].c_str());
-        cp.bin_thr_low = atoi(quality_opts[3].c_str());
+        cp.bin_thr_thr = parse_int_or_throw(quality_opts[1],
+                                            "Invalid binary quality threshold.");
+        cp.bin_thr_high = parse_int_or_throw(quality_opts[2],
+                                             "Invalid binary high quality value.");
+        cp.bin_thr_low = parse_int_or_throw(quality_opts[3],
+                                            "Invalid binary low quality value.");
+        if (cp.bin_thr_thr > 94 || cp.bin_thr_high > 94 ||
+          cp.bin_thr_low > 94) {
+          throw std::runtime_error(
+            "Binary quality options must be in the range [0, 94].");
+        }
         if (cp.bin_thr_high < cp.bin_thr_thr ||
             cp.bin_thr_low > cp.bin_thr_thr ||
             cp.bin_thr_high < cp.bin_thr_low) {
@@ -223,7 +261,7 @@ void compress(const std::string &temp_dir,
   // Write compression params to a file
   std::string compression_params_file = temp_dir + "/cp.bin";
   std::ofstream f_cp(compression_params_file, std::ios::binary);
-  f_cp.write((char *)&cp, sizeof(compression_params));
+  f_cp.write(byte_ptr(&cp), sizeof(compression_params));
   f_cp.close();
 
   // Print out sizes of reads, quality and id after compression
@@ -267,7 +305,6 @@ void compress(const std::string &temp_dir,
                    .count()
             << " s\n";
 
-  delete cp_ptr;
   auto compression_end = std::chrono::steady_clock::now();
   std::cout << "Compression done!\n";
   std::cout << "Total time for compression: "
@@ -296,8 +333,7 @@ void decompress(const std::string &temp_dir,
 
   std::cout << "Starting decompression...\n";
   auto decompression_start = std::chrono::steady_clock::now();
-  compression_params *cp_ptr = new compression_params;
-  compression_params &cp = *cp_ptr;
+  compression_params cp{};
 
   std::string infile, outfile_1, outfile_2;
 
@@ -318,7 +354,7 @@ void decompress(const std::string &temp_dir,
   std::ifstream f_cp(compression_params_file, std::ios::binary);
   if (!f_cp.is_open())
     throw std::runtime_error("Can't open parameter file.");
-  f_cp.read((char *)&cp, sizeof(compression_params));
+  f_cp.read(byte_ptr(&cp), sizeof(compression_params));
   if (!f_cp.good())
     throw std::runtime_error("Can't read compression parameters.");
   f_cp.close();
@@ -374,7 +410,6 @@ void decompress(const std::string &temp_dir,
     decompress_short(temp_dir, outfile_1, outfile_2, cp, num_thr, start_num,
                      end_num, gzip_flag, gzip_level);
 
-  delete cp_ptr;
   auto decompression_end = std::chrono::steady_clock::now();
   std::cout << "Decompression done!\n";
   std::cout << "Total time for decompression: "

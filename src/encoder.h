@@ -18,6 +18,7 @@ limitations under the License.
 #include "bitset_util.h"
 #include "params.h"
 #include "util.h"
+#include <array>
 #include <algorithm>
 #include <bitset>
 #include <boost/iostreams/filter/gzip.hpp>
@@ -31,6 +32,7 @@ limitations under the License.
 #include <list>
 #include <omp.h>
 #include <string>
+#include <vector>
 
 namespace spring {
 
@@ -41,12 +43,14 @@ template <size_t bitset_size> struct encoder_global_b {
   // used in stringtobitset, and bitsettostring
   std::bitset<bitset_size> mask63; // bitset with 63 bits set to 1 (used in
                                    // bitsettostring for conversion to ullong)
-  encoder_global_b(int max_readlen_param) {
-    max_readlen = max_readlen_param;
+  encoder_global_b(int max_readlen_param)
+      : basemask(NULL), max_readlen(max_readlen_param) {
     basemask = new std::bitset<bitset_size> *[max_readlen_param];
     for (int i = 0; i < max_readlen_param; i++)
       basemask[i] = new std::bitset<bitset_size>[128];
   }
+  encoder_global_b(const encoder_global_b &) = delete;
+  encoder_global_b &operator=(const encoder_global_b &) = delete;
   ~encoder_global_b() {
     for (int i = 0; i < max_readlen; i++)
       delete[] basemask[i];
@@ -205,7 +209,7 @@ void encode(std::bitset<bitset_size> *read, bbhashdict *dict, uint32_t *order_s,
     uint32_t ord, list_size = 0; // list_size variable introduced because
                                  // list::size() was running very slowly
                                  // on UIUC machine
-    std::list<uint32_t> *deleted_rids = new std::list<uint32_t>[eg.numdict_s];
+    std::array<std::list<uint32_t>, NUM_DICT_ENCODER> deleted_rids;
     bool done = false;
     while (!done) {
       if (!(in_flag >> c))
@@ -213,9 +217,9 @@ void encode(std::bitset<bitset_size> *read, bbhashdict *dict, uint32_t *order_s,
       if (!done) {
         read_dna_from_bits(current, f);
         rc = in_RC.get();
-        in_pos.read((char *)&p, sizeof(int64_t));
-        in_order.read((char *)&ord, sizeof(uint32_t));
-        in_readlength.read((char *)&rl, sizeof(uint16_t));
+        in_pos.read(byte_ptr(&p), sizeof(int64_t));
+        in_order.read(byte_ptr(&ord), sizeof(uint32_t));
+        in_readlength.read(byte_ptr(&rl), sizeof(uint16_t));
       }
       if (c == '0' || done || list_size > 10000000) // limit on list size so
                                                     // that memory doesn't get
@@ -386,7 +390,6 @@ void encode(std::bitset<bitset_size> *read, bbhashdict *dict, uint32_t *order_s,
     f_order.close();
     f_readlength.close();
     f_RC.close();
-    delete[] deleted_rids;
   } // end omp parallel
 
   // Combine files produced by the threads
@@ -441,8 +444,8 @@ void encode(std::bitset<bitset_size> *read, bbhashdict *dict, uint32_t *order_s,
   for (uint32_t i = 0; i < eg.numreads_s; i++)
     if (remainingreads[i] == 1) {
       matched_s--;
-      f_order.write((char *)&order_s[i], sizeof(uint32_t));
-      f_readlength.write((char *)&read_lengths_s[i], sizeof(uint16_t));
+      f_order.write(byte_ptr(&order_s[i]), sizeof(uint32_t));
+      f_readlength.write(byte_ptr(&read_lengths_s[i]), sizeof(uint16_t));
       std::string unaligned_read =
           bitsettostring<bitset_size>(read[i], read_lengths_s[i], egb);
       write_dnaN_in_bits(unaligned_read, f_unaligned);
@@ -455,8 +458,8 @@ void encode(std::bitset<bitset_size> *read, bbhashdict *dict, uint32_t *order_s,
       std::string unaligned_read =
           bitsettostring<bitset_size>(read[i], read_lengths_s[i], egb);
       write_dnaN_in_bits(unaligned_read, f_unaligned);
-      f_order.write((char *)&order_s[i], sizeof(uint32_t));
-      f_readlength.write((char *)&read_lengths_s[i], sizeof(uint16_t));
+      f_order.write(byte_ptr(&order_s[i]), sizeof(uint32_t));
+      f_readlength.write(byte_ptr(&read_lengths_s[i]), sizeof(uint16_t));
       len_unaligned += read_lengths_s[i];
     }
   f_order.close();
@@ -473,34 +476,32 @@ void encode(std::bitset<bitset_size> *read, bbhashdict *dict, uint32_t *order_s,
   // write length of unaligned array
   std::ofstream f_unaligned_count(eg.outfile_unaligned + ".count",
                                   std::ios::binary);
-  f_unaligned_count.write((char *)&len_unaligned, sizeof(uint64_t));
+  f_unaligned_count.write(byte_ptr(&len_unaligned), sizeof(uint64_t));
   f_unaligned_count.close();
 
   // pack read_Seq and convert read_pos into 8 byte non-diff (absolute)
   // positions
-  uint64_t *file_len_seq_thr = new uint64_t[eg.num_thr];
+  std::vector<uint64_t> file_len_seq_thr(static_cast<size_t>(eg.num_thr));
   uint64_t abs_pos = 0;
   uint64_t abs_pos_thr;
-  pack_compress_seq(eg, file_len_seq_thr);
+  pack_compress_seq(eg, file_len_seq_thr.data());
   std::ofstream fout_pos(eg.outfile_pos, std::ios::binary);
   for (int tid = 0; tid < eg.num_thr; tid++) {
     std::ifstream fin_pos(eg.outfile_pos + '.' + std::to_string(tid),
                           std::ios::binary);
-    fin_pos.read((char *)&abs_pos_thr, sizeof(uint64_t));
+    fin_pos.read(byte_ptr(&abs_pos_thr), sizeof(uint64_t));
     while (!fin_pos.eof()) {
       abs_pos_thr += abs_pos;
-      fout_pos.write((char *)&abs_pos_thr, sizeof(uint64_t));
-      fin_pos.read((char *)&abs_pos_thr, sizeof(uint64_t));
+      fout_pos.write(byte_ptr(&abs_pos_thr), sizeof(uint64_t));
+      fin_pos.read(byte_ptr(&abs_pos_thr), sizeof(uint64_t));
     }
     fin_pos.close();
     remove((eg.outfile_pos + '.' + std::to_string(tid)).c_str());
     abs_pos += file_len_seq_thr[tid];
   }
   fout_pos.close();
-  delete[] file_len_seq_thr;
 
   std::cout << "Encoding done:\n";
-  std::cout << matched_s << " singleton reads were aligned\n";
   std::cout << matched_N << " reads with N were aligned\n";
   return;
 }
@@ -574,12 +575,12 @@ void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
   }
   std::ifstream f_order_s(eg.infile_order + ".singleton", std::ios::binary);
   for (uint32_t i = 0; i < eg.numreads_s; i++)
-    f_order_s.read((char *)&order_s[i], sizeof(uint32_t));
+    f_order_s.read(byte_ptr(&order_s[i]), sizeof(uint32_t));
   f_order_s.close();
   remove((eg.infile_order + ".singleton").c_str());
   std::ifstream f_order_N(eg.infile_order_N, std::ios::binary);
   for (uint32_t i = eg.numreads_s; i < eg.numreads_s + eg.numreads_N; i++)
-    f_order_N.read((char *)&order_s[i], sizeof(uint32_t));
+    f_order_N.read(byte_ptr(&order_s[i]), sizeof(uint32_t));
   f_order_N.close();
 }
 
@@ -620,7 +621,7 @@ void encoder_main(const std::string &temp_dir, const compression_params &cp) {
   remove(eg.infile_N.c_str());
   correct_order(order_s, eg);
 
-  bbhashdict *dict = new bbhashdict[eg.numdict_s];
+  std::array<bbhashdict, NUM_DICT_ENCODER> dict;
   if (eg.max_readlen > 50) {
     dict[0].start = 0;
     dict[0].end = 20;
@@ -633,13 +634,13 @@ void encoder_main(const std::string &temp_dir, const compression_params &cp) {
     dict[1].end = 41 * eg.max_readlen / 50;
   }
   if (eg.numreads_s + eg.numreads_N > 0)
-    constructdictionary<bitset_size>(read, dict, read_lengths_s, eg.numdict_s,
+    constructdictionary<bitset_size>(read, dict.data(), read_lengths_s,
+                                     eg.numdict_s,
                                      eg.numreads_s + eg.numreads_N, 3,
                                      eg.basedir, eg.num_thr);
-  encode<bitset_size>(read, dict, order_s, read_lengths_s, eg, egb);
+  encode<bitset_size>(read, dict.data(), order_s, read_lengths_s, eg, egb);
 
   delete[] read;
-  delete[] dict;
   delete[] order_s;
   delete[] read_lengths_s;
   delete eg_ptr;

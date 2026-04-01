@@ -18,6 +18,7 @@ limitations under the License.
 #include "bitset_util.h"
 #include "params.h"
 #include "util.h"
+#include <array>
 #include <algorithm>
 #include <bitset>
 #include <boost/iostreams/device/file.hpp>
@@ -34,6 +35,7 @@ limitations under the License.
 #include <omp.h>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace spring {
 
@@ -62,11 +64,15 @@ template <size_t bitset_size> struct reorder_global {
   // construtctor)
   std::bitset<bitset_size> mask64; // bitset with 64 bits set to 1 (used in
                                    // bitsettostring for conversion to ullong)
-  reorder_global(int max_readlen_param) {
+  reorder_global(int max_readlen_param)
+      : numreads(0), numreads_array{0, 0}, maxshift(0), num_thr(0),
+        max_readlen(max_readlen_param), paired_end(false), basemask(NULL) {
     basemask = new std::bitset<bitset_size> *[max_readlen_param];
     for (int i = 0; i < max_readlen_param; i++)
       basemask[i] = new std::bitset<bitset_size>[128];
   }
+  reorder_global(const reorder_global &) = delete;
+  reorder_global &operator=(const reorder_global &) = delete;
   ~reorder_global() {
     for (int i = 0; i < max_readlen; i++)
       delete[] basemask[i];
@@ -233,9 +239,9 @@ void readDnaFile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
                  const reorder_global<bitset_size> &rg) {
   std::ifstream f(rg.infile[0], std::ifstream::in | std::ios::binary);
   for (uint32_t i = 0; i < rg.numreads_array[0]; i++) {
-    f.read((char *)&read_lengths[i], sizeof(uint16_t));
+    f.read(byte_ptr(&read_lengths[i]), sizeof(uint16_t));
     uint16_t num_bytes_to_read = ((uint32_t)read_lengths[i] + 4 - 1) / 4;
-    f.read((char *)&read[i], num_bytes_to_read);
+    f.read(byte_ptr(&read[i]), num_bytes_to_read);
   }
   f.close();
   remove(rg.infile[0].c_str());
@@ -243,9 +249,9 @@ void readDnaFile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
     std::ifstream f(rg.infile[1], std::ifstream::in | std::ios::binary);
     for (uint32_t i = rg.numreads_array[0];
          i < rg.numreads_array[0] + rg.numreads_array[1]; i++) {
-      f.read((char *)&read_lengths[i], sizeof(uint16_t));
+      f.read(byte_ptr(&read_lengths[i]), sizeof(uint16_t));
       uint16_t num_bytes_to_read = ((uint32_t)read_lengths[i] + 4 - 1) / 4;
-      f.read((char *)&read[i], num_bytes_to_read);
+      f.read(byte_ptr(&read[i]), num_bytes_to_read);
     }
     f.close();
     remove(rg.infile[1].c_str());
@@ -364,7 +370,7 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
   // from bin arrays
 
   uint32_t firstread = 0;
-  uint32_t *unmatched = new uint32_t[rg.num_thr];
+  std::vector<uint32_t> unmatched(static_cast<size_t>(rg.num_thr));
 #pragma omp parallel
   {
     int tid = omp_get_thread_num();
@@ -393,8 +399,8 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
     int64_t first_rid;
     // first_rid represents first read of contig, used for left searching
 
-    std::list<std::pair<uint32_t, uint64_t>> *to_delete_from_bin =
-        new std::list<std::pair<uint32_t, uint64_t>>[rg.numdict];
+    std::array<std::list<std::pair<uint32_t, uint64_t>>, NUM_DICT_REORDER>
+      to_delete_from_bin;
 
     // variables for early stopping
     bool stop_searching = false;
@@ -524,17 +530,17 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
             if (prev_unmatched == true) // prev read not singleton, write it now
             {
               foutRC << 'd';
-              foutorder.write((char *)&prev, sizeof(uint32_t));
+              foutorder.write(byte_ptr(&prev), sizeof(uint32_t));
               foutflag << 0; // for unmatched
               int64_t zero = 0;
-              foutpos.write((char *)&zero, sizeof(int64_t));
-              foutlength.write((char *)&read_lengths[prev], sizeof(uint16_t));
+              foutpos.write(byte_ptr(&zero), sizeof(int64_t));
+              foutlength.write(byte_ptr(&read_lengths[prev]), sizeof(uint16_t));
             }
             foutRC << (left_search ? 'r' : 'd');
-            foutorder.write((char *)&current, sizeof(uint32_t));
+            foutorder.write(byte_ptr(&current), sizeof(uint32_t));
             foutflag << 1; // for matched
-            foutpos.write((char *)&cur_read_pos, sizeof(int64_t));
-            foutlength.write((char *)&read_lengths[current], sizeof(uint16_t));
+            foutpos.write(byte_ptr(&cur_read_pos), sizeof(int64_t));
+            foutlength.write(byte_ptr(&read_lengths[current]), sizeof(uint16_t));
 
             prev_unmatched = false;
             break;
@@ -561,17 +567,17 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
             if (prev_unmatched == true) // prev read not singleton, write it now
             {
               foutRC << 'd';
-              foutorder.write((char *)&prev, sizeof(uint32_t));
+              foutorder.write(byte_ptr(&prev), sizeof(uint32_t));
               foutflag << 0; // for unmatched
               int64_t zero = 0;
-              foutpos.write((char *)&zero, sizeof(int64_t));
-              foutlength.write((char *)&read_lengths[prev], sizeof(uint16_t));
+              foutpos.write(byte_ptr(&zero), sizeof(int64_t));
+              foutlength.write(byte_ptr(&read_lengths[prev]), sizeof(uint16_t));
             }
             foutRC << (left_search ? 'd' : 'r');
-            foutorder.write((char *)&current, sizeof(uint32_t));
+            foutorder.write(byte_ptr(&current), sizeof(uint32_t));
             foutflag << 1; // for matched
-            foutpos.write((char *)&cur_read_pos, sizeof(int64_t));
-            foutlength.write((char *)&read_lengths[current], sizeof(uint16_t));
+            foutpos.write(byte_ptr(&cur_read_pos), sizeof(int64_t));
+            foutlength.write(byte_ptr(&read_lengths[current]), sizeof(uint16_t));
 
             prev_unmatched = false;
             break;
@@ -619,7 +625,7 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
           if (flag == 0) {
             if (prev_unmatched == true) // last read was singleton, write it now
             {
-              foutorder_s.write((char *)&prev, sizeof(uint32_t));
+              foutorder_s.write(byte_ptr(&prev), sizeof(uint32_t));
             }
             done = 1; // no reads left
           } else {
@@ -630,7 +636,7 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
             cur_read_pos = 0;
             if (prev_unmatched == true) // prev read singleton, write it now
             {
-              foutorder_s.write((char *)&prev, sizeof(uint32_t));
+              foutorder_s.write(byte_ptr(&prev), sizeof(uint32_t));
             }
             prev_unmatched = true;
             first_rid = current;
@@ -649,7 +655,6 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
     for (int i = 0; i < 4; i++)
       delete[] count[i];
     delete[] count;
-    delete[] to_delete_from_bin;
   } // parallel end
 
   delete[] remainingreads;
@@ -657,13 +662,12 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
   delete[] read_lock;
   delete[] remaining_read_lock;
   std::cout << "Reordering done, "
-            << std::accumulate(unmatched, unmatched + rg.num_thr, 0)
+            << std::accumulate(unmatched.begin(), unmatched.end(), 0)
             << " were unmatched\n";
   for (int i = 0; i < rg.max_readlen; i++)
     delete[] mask[i];
   delete[] mask;
   delete[] mask1;
-  delete[] unmatched;
   return;
 }
 
@@ -694,12 +698,12 @@ void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
     char c;
     while (inRC >> std::noskipws >> c) // read character by character
     {
-      finorder.read((char *)&current, sizeof(uint32_t));
+      finorder.read(byte_ptr(&current), sizeof(uint32_t));
       if (c == 'd') {
         uint16_t num_bytes_to_write =
             ((uint32_t)read_lengths[current] + 4 - 1) / 4;
-        fout.write((char *)&read_lengths[current], sizeof(uint16_t));
-        fout.write((char *)&read[current], num_bytes_to_write);
+        fout.write(byte_ptr(&read_lengths[current]), sizeof(uint16_t));
+        fout.write(byte_ptr(&read[current]), num_bytes_to_write);
       } else {
         bitsettostring<bitset_size>(read[current], s, read_lengths[current],
                                     rg);
@@ -707,14 +711,14 @@ void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
         write_dna_in_bits(s1, fout);
       }
     }
-    finorder_s.read((char *)&current, sizeof(uint32_t));
+    finorder_s.read(byte_ptr(&current), sizeof(uint32_t));
     while (!finorder_s.eof()) {
       numreads_s_thr[tid]++;
       uint16_t num_bytes_to_write =
           ((uint32_t)read_lengths[current] + 4 - 1) / 4;
-      fout_s.write((char *)&read_lengths[current], sizeof(uint16_t));
-      fout_s.write((char *)&read[current], num_bytes_to_write);
-      finorder_s.read((char *)&current, sizeof(uint32_t));
+      fout_s.write(byte_ptr(&read_lengths[current]), sizeof(uint16_t));
+      fout_s.write(byte_ptr(&read[current]), num_bytes_to_write);
+      finorder_s.read(byte_ptr(&current), sizeof(uint32_t));
     }
     fout.close();
     fout_s.close();
@@ -729,7 +733,7 @@ void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
   // write numreads_s to a file
   std::ofstream fout_s_count(rg.outfile + ".singleton" + ".count",
                              std::ofstream::out | std::ios::binary);
-  fout_s_count.write((char *)&numreads_s, sizeof(uint32_t));
+  fout_s_count.write(byte_ptr(&numreads_s), sizeof(uint32_t));
   fout_s_count.close();
 
   // Now combine the num_thr order files
@@ -781,7 +785,7 @@ void reorder_main(const std::string &temp_dir, const compression_params &cp) {
   rg.num_thr = cp.num_thr;
   rg.paired_end = cp.paired_end;
   rg.maxshift = rg.max_readlen / 2;
-  bbhashdict *dict = new bbhashdict[rg.numdict];
+  std::array<bbhashdict, NUM_DICT_REORDER> dict;
   dict[0].start = rg.max_readlen > 100
                       ? rg.max_readlen / 2 - 32
                       : rg.max_readlen / 2 - rg.max_readlen * 32 / 100;
@@ -804,15 +808,15 @@ void reorder_main(const std::string &temp_dir, const compression_params &cp) {
 
   if (rg.numreads > 0) {
     std::cout << "Constructing dictionaries\n";
-    constructdictionary<bitset_size>(read, dict, read_lengths, rg.numdict,
-                                     rg.numreads, 2, rg.basedir, rg.num_thr);
+    constructdictionary<bitset_size>(read, dict.data(), read_lengths,
+                                     rg.numdict, rg.numreads, 2, rg.basedir,
+                                     rg.num_thr);
   }
   std::cout << "Reordering reads\n";
-  reorder<bitset_size>(read, dict, read_lengths, rg);
+  reorder<bitset_size>(read, dict.data(), read_lengths, rg);
   std::cout << "Writing to file\n";
   writetofile<bitset_size>(read, read_lengths, rg);
   delete[] read;
-  delete[] dict;
   delete[] read_lengths;
   delete rg_pointer;
   std::cout << "Done!\n";
