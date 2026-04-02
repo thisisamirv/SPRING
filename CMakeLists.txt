@@ -4,7 +4,7 @@
 cmake_minimum_required (VERSION 4.2)
 project (SPRING)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(CheckIPOSupported)
 include(FetchContent)

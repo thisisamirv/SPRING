@@ -69,7 +69,7 @@ for file in "${standalone_files[@]}"; do
   clang-tidy \
     "${clang_tidy_common_args[@]}" \
     "$file" -- \
-    -std=c++11 \
+    -std=c++20 \
     -x c++ \
     -fopenmp \
     "${include_args[@]}" \

@@ -14,6 +14,8 @@
 
 * **Upgraded Python 2 to Python 3**: Migrated all Python utilities to **Python 3**. Standardized indentation and updated `print` statements to resolve `SyntaxError` and `TabError` issues.
 
+* **Upgraded project from C++11 to C++20**: Uphraded the C++ version to support more modern features.
+
 * **Upgraded CMake Requirements**: Bumped the main project to **CMake 4.2** and aligned the temporary Boost integration path with modern CMake behavior while completing the dependency refresh.
 
 * **Optimized Main Configuration**: Reordered the top-level `CMakeLists.txt` to ensure `cmake_minimum_required` precedes the `project()` initialization, resolving implicit developer warnings.
