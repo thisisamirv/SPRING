@@ -12,8 +12,8 @@ license (the "License");
 limitations under the License.
 */
 
-#ifndef SPRING_REORDER_COMPRESS_STREAMS_H_
-#define SPRING_REORDER_COMPRESS_STREAMS_H_
+#ifndef SPRING_REORDERED_QUALITY_ID_H_
+#define SPRING_REORDERED_QUALITY_ID_H_
 
 #include <string>
 
@@ -21,10 +21,10 @@ namespace spring {
 
 struct compression_params;
 
-// Rebuild the aligned and unaligned side streams into per-block archives.
-void reorder_compress_streams(const std::string &temp_dir,
-                              const compression_params &cp);
+// Reorder preserved ids and qualities to match the post-reorder read layout.
+void reorder_compress_quality_id(const std::string &temp_dir,
+                                 const compression_params &cp);
 
 } // namespace spring
 
-#endif // SPRING_REORDER_COMPRESS_STREAMS_H_
+#endif // SPRING_REORDERED_QUALITY_ID_H_

@@ -12,7 +12,7 @@ license (the "License");
 limitations under the License.
 */
 
-#include "bitset_util.h"
+#include "bitset_dictionary.h"
 #include "params.h"
 #include <cstdint>
 

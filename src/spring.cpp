@@ -27,13 +27,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "call_template_functions.h"
+#include "template_dispatch.h"
 #include "decompress.h"
 #include "params.h"
-#include "pe_encode.h"
+#include "paired_end_order.h"
 #include "preprocess.h"
-#include "reorder_compress_quality_id.h"
-#include "reorder_compress_streams.h"
+#include "reordered_quality_id.h"
+#include "reordered_streams.h"
 #include "spring.h"
 #include "util.h"
 

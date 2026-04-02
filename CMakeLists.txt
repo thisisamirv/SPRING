@@ -102,14 +102,14 @@ list(APPEND source_files
     ${source_dir}/main.cpp
     ${source_dir}/spring.cpp
     ${source_dir}/util.cpp
-    ${source_dir}/bitset_util.cpp
+    ${source_dir}/bitset_dictionary.cpp
     ${source_dir}/preprocess.cpp
     ${source_dir}/encoder.cpp
-    ${source_dir}/reorder_compress_streams.cpp
-    ${source_dir}/pe_encode.cpp
-    ${source_dir}/reorder_compress_quality_id.cpp
+    ${source_dir}/reordered_streams.cpp
+    ${source_dir}/paired_end_order.cpp
+    ${source_dir}/reordered_quality_id.cpp
     ${source_dir}/decompress.cpp
-    ${source_dir}/call_template_functions.cpp
+    ${source_dir}/template_dispatch.cpp
 
     # id compression
     ${third_party_dir}/id_compression/src/Arithmetic_stream.cpp

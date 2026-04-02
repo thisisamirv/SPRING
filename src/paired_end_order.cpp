@@ -17,7 +17,7 @@ limitations under the License.
 #include <iostream>
 #include <vector>
 
-#include "pe_encode.h"
+#include "paired_end_order.h"
 #include "util.h"
 
 namespace spring {

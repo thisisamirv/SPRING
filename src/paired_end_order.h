@@ -12,8 +12,8 @@ license (the "License");
 limitations under the License.
 */
 
-#ifndef SPRING_REORDER_COMPRESS_QUALITY_ID_H_
-#define SPRING_REORDER_COMPRESS_QUALITY_ID_H_
+#ifndef SPRING_PAIRED_END_ORDER_H_
+#define SPRING_PAIRED_END_ORDER_H_
 
 #include <string>
 
@@ -21,10 +21,9 @@ namespace spring {
 
 struct compression_params;
 
-// Reorder preserved ids and qualities to match the post-reorder read layout.
-void reorder_compress_quality_id(const std::string &temp_dir,
-                                 const compression_params &cp);
+// Rewrite paired-end read order so mate pairs land in decompression order.
+void pe_encode(const std::string &temp_dir, const compression_params &cp);
 
 } // namespace spring
 
-#endif // SPRING_REORDER_COMPRESS_QUALITY_ID_H_
+#endif // SPRING_PAIRED_END_ORDER_H_

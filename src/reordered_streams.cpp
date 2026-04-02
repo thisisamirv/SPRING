@@ -22,7 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "libbsc/bsc.h"
-#include "reorder_compress_streams.h"
+#include "reordered_streams.h"
 #include "util.h"
 
 namespace spring {

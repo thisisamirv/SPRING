@@ -12,8 +12,8 @@ license (the "License");
 limitations under the License.
 */
 
-#ifndef SPRING_PE_ENCODE_H_
-#define SPRING_PE_ENCODE_H_
+#ifndef SPRING_REORDERED_STREAMS_H_
+#define SPRING_REORDERED_STREAMS_H_
 
 #include <string>
 
@@ -21,9 +21,10 @@ namespace spring {
 
 struct compression_params;
 
-// Rewrite paired-end read order so mate pairs land in decompression order.
-void pe_encode(const std::string &temp_dir, const compression_params &cp);
+// Rebuild the aligned and unaligned side streams into per-block archives.
+void reorder_compress_streams(const std::string &temp_dir,
+                              const compression_params &cp);
 
 } // namespace spring
 
-#endif // SPRING_PE_ENCODE_H_
+#endif // SPRING_REORDERED_STREAMS_H_

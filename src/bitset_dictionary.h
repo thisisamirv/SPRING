@@ -12,8 +12,8 @@ license (the "License");
 limitations under the License.
 */
 
-#ifndef SPRING_BITSET_UTIL_H_
-#define SPRING_BITSET_UTIL_H_
+#ifndef SPRING_BITSET_DICTIONARY_H_
+#define SPRING_BITSET_DICTIONARY_H_
 
 #include "BooPHF.h"
 #include "util.h"
@@ -266,4 +266,4 @@ void chartobitset(char *s, const int readlen, std::bitset<bitset_size> &b,
 
 } // namespace spring
 
-#endif // SPRING_BITSET_UTIL_H_
+#endif // SPRING_BITSET_DICTIONARY_H_

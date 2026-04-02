@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef SPRING_REORDER_H_
 #define SPRING_REORDER_H_
 
-#include "bitset_util.h"
+#include "bitset_dictionary.h"
 #include "params.h"
 #include "util.h"
 #include <array>

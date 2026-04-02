@@ -1,5 +1,5 @@
-#ifndef SPRING_CALL_TEMPLATE_FUNCTIONS_H_
-#define SPRING_CALL_TEMPLATE_FUNCTIONS_H_
+#ifndef SPRING_TEMPLATE_DISPATCH_H_
+#define SPRING_TEMPLATE_DISPATCH_H_
 
 #include <string>
 
@@ -15,4 +15,4 @@ void call_encoder(const std::string &temp_dir, compression_params &cp);
 
 } // namespace spring
 
-#endif // SPRING_CALL_TEMPLATE_FUNCTIONS_H_
+#endif // SPRING_TEMPLATE_DISPATCH_H_
