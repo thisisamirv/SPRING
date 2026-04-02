@@ -5,6 +5,7 @@
 #include <csignal>
 #include <cstdint>
 #include <cstdlib>
+#include <system_error>
 #include <filesystem>
 #include <iostream>
 #include <sstream>
@@ -34,6 +35,8 @@ struct command_line_options {
 
 std::string temp_dir_global;
 bool temp_dir_flag_global = false;
+std::string working_dir_global;
+bool remove_working_dir_flag_global = false;
 
 void delete_temp_dir_if_present() {
   if (!temp_dir_flag_global)
@@ -44,13 +47,27 @@ void delete_temp_dir_if_present() {
   temp_dir_flag_global = false;
 }
 
+void delete_working_dir_if_present() {
+  if (!remove_working_dir_flag_global)
+    return;
+
+  std::error_code error;
+  if (std::filesystem::is_directory(working_dir_global, error) &&
+      std::filesystem::is_empty(working_dir_global, error)) {
+    std::cout << "Deleting working directory...\n";
+    std::filesystem::remove(working_dir_global, error);
+  }
+  remove_working_dir_flag_global = false;
+}
+
 std::string create_temp_dir(const std::string &working_dir) {
+  const std::filesystem::path working_dir_path(working_dir);
   while (true) {
     const std::string random_str = "tmp." + spring::random_string(10);
-    const std::string temp_dir = working_dir + "/" + random_str + '/';
-    if (!std::filesystem::exists(temp_dir) &&
-        std::filesystem::create_directory(temp_dir)) {
-      return temp_dir;
+    const std::filesystem::path temp_dir_path = working_dir_path / random_str;
+    if (!std::filesystem::exists(temp_dir_path) &&
+        std::filesystem::create_directory(temp_dir_path)) {
+      return temp_dir_path.string() + '/';
     }
   }
 }
@@ -227,6 +244,14 @@ bool has_valid_thread_count(const command_line_options &options) {
 }
 
 std::string create_and_register_temp_dir(const std::string &working_dir) {
+  const bool working_dir_exists = std::filesystem::exists(working_dir);
+  if (!working_dir_exists) {
+    std::filesystem::create_directories(working_dir);
+  }
+
+  working_dir_global = working_dir;
+  remove_working_dir_flag_global = !working_dir_exists;
+
   const std::string temp_dir = create_temp_dir(working_dir);
   std::cout << "Temporary directory: " << temp_dir << "\n";
   temp_dir_global = temp_dir;
@@ -250,6 +275,7 @@ int print_unexpected_error_and_exit(
     const std::string &error_message) {
   std::cout << error_message << "\n";
   delete_temp_dir_if_present();
+  delete_working_dir_if_present();
   std::cout << options_description << "\n";
   return 1;
 }
@@ -280,6 +306,7 @@ void signalHandler(int signum) {
     std::filesystem::remove_all(temp_dir_global);
     temp_dir_flag_global = false;
   }
+  delete_working_dir_if_present();
   std::exit(signum);
 }
 
@@ -326,5 +353,6 @@ int main(int argc, char **argv) {
   }
 
   delete_temp_dir_if_present();
+  delete_working_dir_if_present();
   return 0;
 }

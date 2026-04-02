@@ -8,11 +8,25 @@ SPRING_BIN=${SPRING_BIN:-"$ROOT_DIR/build/spring"}
 THREADS=${THREADS:-8}
 BUILD_DIR="$ROOT_DIR/build"
 TMP_DIR="$SCRIPT_DIR/tmp"
+TMP_INPUT_DIR="$TMP_DIR/input"
+TMP_LOG_DIR="$TMP_DIR/logs"
+TMP_OUTPUT_DIR="$TMP_DIR/output"
+TMP_WORK_DIR="$TMP_DIR/work"
 DOWNLOAD_URL="https://figshare.com/ndownloader/files/38965664"
-DEFAULT_INPUT_FASTQ="$TMP_DIR/04-CC002-659-M_S4_L001_R2_001.fastq.gz"
+DEFAULT_INPUT_FASTQ="$TMP_INPUT_DIR/04-CC002-659-M_S4_L001_R2_001.fastq.gz"
 INPUT_FASTQ=${INPUT_FASTQ:-"$DEFAULT_INPUT_FASTQ"}
-BUILD_LOG="$TMP_DIR/build.log"
+BUILD_LOG="$TMP_LOG_DIR/build.log"
 SPRING_V1_ENV_NAME="spring_v1"
+
+remove_empty_dir_if_present() {
+  local dir_path="$1"
+
+  if [[ -d "$dir_path" ]] && [[ -z "$(find "$dir_path" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
+    rmdir "$dir_path"
+  fi
+}
+
+trap 'remove_empty_dir_if_present "$TMP_WORK_DIR"' EXIT
 
 TIME_BIN=""
 if [[ -x /usr/bin/time ]]; then
@@ -64,7 +78,7 @@ compute_normalized_input_checksum() {
 }
 
 ensure_benchmark_input() {
-  mkdir -p "$TMP_DIR"
+  mkdir -p "$TMP_INPUT_DIR" "$TMP_LOG_DIR" "$TMP_OUTPUT_DIR" "$TMP_WORK_DIR"
 
   if [[ "$INPUT_FASTQ" != "$DEFAULT_INPUT_FASTQ" ]]; then
     if [[ ! -f "$INPUT_FASTQ" ]]; then
@@ -82,7 +96,7 @@ ensure_benchmark_input() {
 Benchmark input not found:
   $DEFAULT_INPUT_FASTQ
 
-Create benchmark/tmp/ and download this file from:
+Create benchmark/tmp/input/ and download this file from:
   $DOWNLOAD_URL
 
 Save it as:
@@ -99,7 +113,7 @@ ensure_spring_binary() {
     return
   fi
 
-  mkdir -p "$TMP_DIR"
+  mkdir -p "$TMP_LOG_DIR"
   echo "Spring binary not found; configuring and building quietly..."
 
   if ! cmake -S "$ROOT_DIR" -B "$BUILD_DIR" >"$BUILD_LOG" 2>&1; then
@@ -146,7 +160,8 @@ EOF
     exit 1
   fi
 
-  SPRING_V1_RUNNER="$TMP_DIR/spring_v1_runner.sh"
+  mkdir -p "$TMP_LOG_DIR"
+  SPRING_V1_RUNNER="$TMP_LOG_DIR/spring_v1_runner.sh"
   cat > "$SPRING_V1_RUNNER" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
@@ -365,13 +380,13 @@ run_benchmark() {
   local display_name="$2"
   local runner="$3"
 
-  local output_prefix="$TMP_DIR/$INPUT_STEM.$label"
+  local output_prefix="$TMP_OUTPUT_DIR/$INPUT_STEM.$label"
   local output_file="$output_prefix.spring"
   local decompressed_output_file="$output_prefix.roundtrip.fastq"
-  local work_dir="$output_prefix.work"
-  local compress_resource_log="$TMP_DIR/${label}_compress_resource_usage.log"
-  local decompress_resource_log="$TMP_DIR/${label}_decompress_resource_usage.log"
-  local metrics_path="$TMP_DIR/${label}.metrics"
+  local work_dir="$TMP_WORK_DIR/$INPUT_STEM.$label.work"
+  local compress_resource_log="$TMP_LOG_DIR/${label}_compress_resource_usage.log"
+  local decompress_resource_log="$TMP_LOG_DIR/${label}_decompress_resource_usage.log"
+  local metrics_path="$TMP_LOG_DIR/${label}.metrics"
   local input_size
   local output_size
   local decompressed_size
@@ -381,7 +396,7 @@ run_benchmark() {
   local checksum_status="unavailable"
   local roundtrip_status="different"
 
-  mkdir -p "$TMP_DIR"
+  mkdir -p "$TMP_INPUT_DIR" "$TMP_LOG_DIR" "$TMP_OUTPUT_DIR" "$TMP_WORK_DIR"
   rm -rf "$work_dir"
   mkdir -p "$work_dir"
   rm -f "$output_file" "$decompressed_output_file"
@@ -507,10 +522,14 @@ run_benchmark() {
     "compression_ratio=$compression_ratio" \
     "compress_elapsed_seconds=$compress_elapsed" \
     "decompress_elapsed_seconds=$decompress_elapsed" \
+    "compress_cpu_percent=$compress_cpu" \
+    "decompress_cpu_percent=$decompress_cpu" \
     "compress_max_rss_kb=$compress_rss" \
     "decompress_max_rss_kb=$decompress_rss" \
     "checksum_status=$checksum_status" \
     "roundtrip_status=$roundtrip_status"
+
+  remove_empty_dir_if_present "$work_dir"
 }
 
 print_comparison_summary() {
@@ -531,8 +550,14 @@ print_comparison_summary() {
     -v v1_compress_elapsed="$v1_compress_elapsed_seconds" \
     -v current_decompress_elapsed="$current_decompress_elapsed_seconds" \
     -v v1_decompress_elapsed="$v1_decompress_elapsed_seconds" \
+    -v current_compress_cpu="$current_compress_cpu_percent" \
+    -v v1_compress_cpu="$v1_compress_cpu_percent" \
+    -v current_decompress_cpu="$current_decompress_cpu_percent" \
+    -v v1_decompress_cpu="$v1_decompress_cpu_percent" \
     -v current_compress_rss="$current_compress_max_rss_kb" \
-    -v v1_compress_rss="$v1_compress_max_rss_kb" '
+    -v v1_compress_rss="$v1_compress_max_rss_kb" \
+    -v current_decompress_rss="$current_decompress_max_rss_kb" \
+    -v v1_decompress_rss="$v1_decompress_max_rss_kb" '
 BEGIN {
   output_delta = v1_output_size - current_output_size
   printf("\nComparison summary\n")
@@ -557,9 +582,21 @@ BEGIN {
     printf("  current decompression time: %ss\n", current_decompress_elapsed)
     printf("  spring v1 decompression time:%ss\n", v1_decompress_elapsed)
   }
+  if (current_compress_cpu != "" && v1_compress_cpu != "") {
+    printf("  current compression CPU usage:   %s\n", current_compress_cpu)
+    printf("  spring v1 compression CPU usage: %s\n", v1_compress_cpu)
+  }
+  if (current_decompress_cpu != "" && v1_decompress_cpu != "") {
+    printf("  current decompression CPU usage: %s\n", current_decompress_cpu)
+    printf("  spring v1 decompression CPU usage:%s\n", v1_decompress_cpu)
+  }
   if (current_compress_rss != "" && current_compress_rss != "unavailable" && v1_compress_rss != "" && v1_compress_rss != "unavailable") {
     printf("  current peak compression RSS: %s KB\n", current_compress_rss)
     printf("  spring v1 peak compression RSS: %s KB\n", v1_compress_rss)
+  }
+  if (current_decompress_rss != "" && current_decompress_rss != "unavailable" && v1_decompress_rss != "" && v1_decompress_rss != "unavailable") {
+    printf("  current peak decompression RSS: %s KB\n", current_decompress_rss)
+    printf("  spring v1 peak decompression RSS: %s KB\n", v1_decompress_rss)
   }
 }
 '
@@ -582,4 +619,4 @@ fi
 
 run_benchmark "current" "Current Spring" "$SPRING_BIN"
 run_benchmark "spring_v1" "Spring v1" "$SPRING_V1_RUNNER"
-print_comparison_summary "$TMP_DIR/current.metrics" "$TMP_DIR/spring_v1.metrics"
+print_comparison_summary "$TMP_LOG_DIR/current.metrics" "$TMP_LOG_DIR/spring_v1.metrics"

@@ -39,6 +39,7 @@ struct reference_chunk {
   uint64_t size;
   std::string path;
   int fd = -1;
+  void *mapping = nullptr;
   const char *data = nullptr;
 };
 
@@ -49,7 +50,7 @@ std::runtime_error file_error(const std::string &prefix,
 }
 
 void open_reference_chunk(reference_chunk &chunk) {
-  chunk.fd = open(chunk.path.c_str(), O_RDONLY);
+  chunk.fd = open(chunk.path.c_str(), O_RDONLY | O_CLOEXEC);
   if (chunk.fd < 0) {
     throw file_error("Error opening decoded reference chunk", chunk.path);
   }
@@ -69,12 +70,14 @@ void open_reference_chunk(reference_chunk &chunk) {
     throw file_error("Error mapping decoded reference chunk", chunk.path);
   }
 
+  chunk.mapping = mapped;
   chunk.data = static_cast<const char *>(mapped);
 }
 
 void close_reference_chunk(reference_chunk &chunk) {
-  if (chunk.data != nullptr) {
-    munmap(const_cast<char *>(chunk.data), static_cast<size_t>(chunk.size));
+  if (chunk.mapping != nullptr) {
+    munmap(chunk.mapping, static_cast<size_t>(chunk.size));
+    chunk.mapping = nullptr;
     chunk.data = nullptr;
   }
   if (chunk.fd >= 0) {
@@ -85,6 +88,12 @@ void close_reference_chunk(reference_chunk &chunk) {
 
 class reference_sequence_store {
 public:
+  reference_sequence_store(const reference_sequence_store &) = delete;
+  reference_sequence_store &operator=(const reference_sequence_store &) =
+      delete;
+  reference_sequence_store(reference_sequence_store &&) = delete;
+  reference_sequence_store &operator=(reference_sequence_store &&) = delete;
+
   reference_sequence_store(const std::string &packed_seq_path,
                            const int encoding_thread_count,
                            const int decode_thread_count) {
@@ -117,7 +126,8 @@ public:
     }
   }
 
-  std::string read(uint64_t start_offset, uint32_t read_length) const {
+  [[nodiscard]] std::string read(uint64_t start_offset,
+                                 uint32_t read_length) const {
     std::string read;
     read.reserve(read_length);
 
@@ -129,7 +139,7 @@ public:
       const uint64_t offset_in_chunk = current_offset - chunk.start_offset;
       const uint64_t copy_size =
           std::min<uint64_t>(remaining, chunk.size - offset_in_chunk);
-        read.append(chunk.data + offset_in_chunk,
+      read.append(chunk.data + offset_in_chunk,
                   static_cast<size_t>(copy_size));
 
       current_offset += copy_size;
@@ -141,7 +151,7 @@ public:
   }
 
 private:
-  size_t find_chunk_index(const uint64_t offset) const {
+  [[nodiscard]] size_t find_chunk_index(const uint64_t offset) const {
     for (size_t chunk_index = 0; chunk_index < chunks_.size(); ++chunk_index) {
       const reference_chunk &chunk = chunks_[chunk_index];
       if (offset >= chunk.start_offset &&
@@ -305,9 +315,7 @@ void decode_packed_sequence_chunk(const std::string &packed_seq_base_path,
 }
 
 bool has_suffix(const std::string &value, const std::string &suffix) {
-  return value.size() >= suffix.size() &&
-         value.compare(value.size() - suffix.size(), suffix.size(), suffix) ==
-             0;
+  return value.ends_with(suffix);
 }
 
 bool is_gzip_output_path(const std::string &output_path) {

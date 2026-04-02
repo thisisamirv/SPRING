@@ -422,10 +422,11 @@ std::string gzip_compress_string(const std::string &input, const int gzip_level)
   std::string output;
   output.reserve(input.size() / 2 + 256);
   std::array<char, 1 << 15> output_buffer;
+    std::vector<Bytef> input_bytes(input.begin(), input.end());
 
-  stream.next_in = reinterpret_cast<Bytef *>(const_cast<char *>(input.data()));
+    stream.next_in = input_bytes.data();
   stream.avail_in = static_cast<uInt>(
-      std::min<std::size_t>(input.size(), std::numeric_limits<uInt>::max()));
+      std::min<std::size_t>(input_bytes.size(), std::numeric_limits<uInt>::max()));
   std::size_t input_offset = stream.avail_in;
 
   int flush = input_offset == input.size() ? Z_FINISH : Z_NO_FLUSH;
@@ -442,9 +443,8 @@ std::string gzip_compress_string(const std::string &input, const int gzip_level)
                   output_buffer.size() - stream.avail_out);
 
     if (stream.avail_in == 0 && input_offset < input.size()) {
-      const std::size_t remaining = input.size() - input_offset;
-      stream.next_in =
-          reinterpret_cast<Bytef *>(const_cast<char *>(input.data() + input_offset));
+      const std::size_t remaining = input_bytes.size() - input_offset;
+      stream.next_in = input_bytes.data() + input_offset;
       stream.avail_in = static_cast<uInt>(
           std::min<std::size_t>(remaining, std::numeric_limits<uInt>::max()));
       input_offset += stream.avail_in;

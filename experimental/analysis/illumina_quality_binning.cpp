@@ -45,7 +45,8 @@ void illumina_binning(std::string &quality,
 }
 
 quality_binning_paths parse_paths(char **argv) {
-  return {std::string(argv[1]), std::string(argv[2])};
+  return {.input_path = std::string(argv[1]),
+          .output_path = std::string(argv[2])};
 }
 
 void bin_quality_stream(std::ifstream &input_stream,

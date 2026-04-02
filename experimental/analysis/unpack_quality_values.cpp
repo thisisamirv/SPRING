@@ -47,8 +47,9 @@ void unpack_quality_stream(std::ifstream &packed_input,
 
 unpack_quality_paths build_paths(char **argv) {
   const std::string input_path = std::string(argv[1]);
-  return {input_path + ".packed", input_path + ".packed.tail",
-          input_path + ".unpacked"};
+  return {.packed_input_path = input_path + ".packed",
+          .tail_input_path = input_path + ".packed.tail",
+          .output_path = input_path + ".unpacked"};
 }
 
 void append_tail(std::ifstream &tail_input, std::ofstream &output_stream) {

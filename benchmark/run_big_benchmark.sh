@@ -8,12 +8,26 @@ SPRING_BIN=${SPRING_BIN:-"$ROOT_DIR/build/spring"}
 THREADS=${THREADS:-8}
 BUILD_DIR="$ROOT_DIR/build"
 TMP_DIR="$SCRIPT_DIR/tmp"
+TMP_INPUT_DIR="$TMP_DIR/input"
+TMP_LOG_DIR="$TMP_DIR/logs"
+TMP_OUTPUT_DIR="$TMP_DIR/output"
+TMP_WORK_DIR="$TMP_DIR/work"
 DOWNLOAD_URL="https://figshare.com/ndownloader/files/38965664"
-DEFAULT_INPUT_FASTQ="$TMP_DIR/04-CC002-659-M_S4_L001_R2_001.fastq.gz"
+DEFAULT_INPUT_FASTQ="$TMP_INPUT_DIR/04-CC002-659-M_S4_L001_R2_001.fastq.gz"
 INPUT_FASTQ=${INPUT_FASTQ:-"$DEFAULT_INPUT_FASTQ"}
-BUILD_LOG="$TMP_DIR/build.log"
-COMPRESS_RESOURCE_LOG="$TMP_DIR/compress_resource_usage.log"
-DECOMPRESS_RESOURCE_LOG="$TMP_DIR/decompress_resource_usage.log"
+BUILD_LOG="$TMP_LOG_DIR/build.log"
+COMPRESS_RESOURCE_LOG="$TMP_LOG_DIR/compress_resource_usage.log"
+DECOMPRESS_RESOURCE_LOG="$TMP_LOG_DIR/decompress_resource_usage.log"
+
+remove_empty_dir_if_present() {
+  local dir_path="$1"
+
+  if [[ -d "$dir_path" ]] && [[ -z "$(find "$dir_path" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
+    rmdir "$dir_path"
+  fi
+}
+
+trap 'remove_empty_dir_if_present "$TMP_WORK_DIR"' EXIT
 
 TIME_BIN=""
 if [[ -x /usr/bin/time ]]; then
@@ -62,7 +76,7 @@ compute_normalized_input_checksum() {
 }
 
 ensure_benchmark_input() {
-  mkdir -p "$TMP_DIR"
+  mkdir -p "$TMP_INPUT_DIR" "$TMP_LOG_DIR" "$TMP_OUTPUT_DIR" "$TMP_WORK_DIR"
 
   if [[ "$INPUT_FASTQ" != "$DEFAULT_INPUT_FASTQ" ]]; then
     if [[ ! -f "$INPUT_FASTQ" ]]; then
@@ -80,7 +94,7 @@ ensure_benchmark_input() {
 Benchmark input not found:
   $DEFAULT_INPUT_FASTQ
 
-Create benchmark/tmp/ and download this file from:
+Create benchmark/tmp/input/ and download this file from:
   $DOWNLOAD_URL
 
 Save it as:
@@ -97,7 +111,7 @@ ensure_spring_binary() {
     return
   fi
 
-  mkdir -p "$TMP_DIR"
+  mkdir -p "$TMP_LOG_DIR"
   echo "Spring binary not found; configuring and building quietly..."
 
   if ! cmake -S "$ROOT_DIR" -B "$BUILD_DIR" >"$BUILD_LOG" 2>&1; then
@@ -172,8 +186,8 @@ ensure_spring_binary
 INPUT_ABS=$(realpath -m -- "$INPUT_FASTQ")
 INPUT_BASENAME=$(basename -- "$INPUT_ABS")
 INPUT_STEM=${INPUT_BASENAME%.*}
-OUTPUT_DIR="$TMP_DIR"
-WORK_DIR="$TMP_DIR/$INPUT_STEM.work"
+OUTPUT_DIR="$TMP_OUTPUT_DIR"
+WORK_DIR="$TMP_WORK_DIR/$INPUT_STEM.work"
 OUTPUT_FILE="$OUTPUT_DIR/$INPUT_STEM.spring"
 DECOMPRESSED_OUTPUT_FILE="$OUTPUT_DIR/$INPUT_STEM.roundtrip.fastq"
 MAX_SHORT_READ_LENGTH=511
@@ -185,7 +199,7 @@ if (( MAX_READ_LENGTH > MAX_SHORT_READ_LENGTH )); then
   LONG_MODE_ARGS=(-l)
 fi
 
-mkdir -p "$OUTPUT_DIR"
+mkdir -p "$TMP_INPUT_DIR" "$TMP_LOG_DIR" "$OUTPUT_DIR" "$TMP_WORK_DIR"
 rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR"
 rm -f "$OUTPUT_FILE"
@@ -228,6 +242,8 @@ decompress_args=(
 )
 
 run_with_resource_log "$DECOMPRESS_RESOURCE_LOG" "$SPRING_BIN" "${decompress_args[@]}"
+
+remove_empty_dir_if_present "$WORK_DIR"
 
 INPUT_SIZE=$(stat -c%s "$INPUT_ABS")
 OUTPUT_SIZE=$(stat -c%s "$OUTPUT_FILE")

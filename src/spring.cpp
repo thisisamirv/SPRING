@@ -113,9 +113,7 @@ int parse_int_or_throw(const std::string &value, const char *error_message) {
 }
 
 bool has_suffix(const std::string &value, const std::string &suffix) {
-  return value.size() >= suffix.size() &&
-         value.compare(value.size() - suffix.size(), suffix.size(), suffix) ==
-             0;
+  return value.ends_with(suffix);
 }
 
 bool is_gzip_input_path(const std::string &input_path) {
@@ -145,9 +143,11 @@ void decompress_gzip_input_file(const std::string &input_path,
 
 prepared_compression_inputs prepare_compression_inputs(
     const compression_io_config &io_config, const std::string &temp_dir) {
-  prepared_compression_inputs prepared_inputs{io_config.input_path_1,
-                                              io_config.input_path_2, false,
-                                              false};
+  prepared_compression_inputs prepared_inputs{
+      .input_path_1 = io_config.input_path_1,
+      .input_path_2 = io_config.input_path_2,
+      .input_1_was_gzipped = false,
+      .input_2_was_gzipped = false};
 
   const bool input_1_is_gzipped = is_gzip_input_path(io_config.input_path_1);
   if (input_1_is_gzipped) {
@@ -346,7 +346,8 @@ decompression_io_config resolve_decompression_io(const string_list &input_paths,
 
 decompression_span resolve_decompression_span(const read_range &decompress_range,
                                               const uint64_t total_read_pairs) {
-  decompression_span span{0, total_read_pairs};
+  decompression_span span{.start_read_index = 0,
+                          .end_read_index = total_read_pairs};
   if (decompress_range.empty())
     return span;
 

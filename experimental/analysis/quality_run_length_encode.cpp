@@ -29,7 +29,9 @@ void flush_run(std::ofstream &run_length_output,
 
 run_length_paths build_paths(char **argv) {
   const std::string input_path = std::string(argv[1]);
-  return {input_path, input_path + ".rl.len", input_path + ".rl.char"};
+  return {.input_path = input_path,
+          .run_length_path = input_path + ".rl.len",
+          .run_value_path = input_path + ".rl.char"};
 }
 
 void encode_run_lengths(std::ifstream &input_stream,

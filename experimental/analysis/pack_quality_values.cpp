@@ -50,7 +50,9 @@ void write_tail(std::ifstream &input_stream, std::ofstream &tail_output,
 
 pack_quality_paths build_paths(char **argv) {
   const std::string input_path = std::string(argv[1]);
-  return {input_path, input_path + ".packed", input_path + ".packed.tail"};
+  return {.input_path = input_path,
+          .packed_output_path = input_path + ".packed",
+          .tail_output_path = input_path + ".packed.tail"};
 }
 
 void write_packed_chunks(std::ifstream &input_stream,

@@ -38,6 +38,5 @@ boost-cmake/*.a
 *.patch
 *.diff
 benchmark/tmp/*
-
-# Logs
-logs/
+**/__pycache__/
+*.pyc

@@ -4,13 +4,27 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
+INPUT_DIR="$SCRIPT_DIR/input"
+LOG_DIR="$SCRIPT_DIR/logs"
+OUTPUT_DIR="$SCRIPT_DIR/output"
+WORK_ROOT_DIR="$SCRIPT_DIR/work"
 SPRING_BIN=${SPRING_BIN:-"$ROOT_DIR/build/spring"}
-INPUT_FASTQ=${1:-"$SCRIPT_DIR/sample.fastq"}
+INPUT_FASTQ=${1:-"$INPUT_DIR/sample.fastq"}
 THREADS=${THREADS:-8}
 BUILD_DIR="$ROOT_DIR/build"
-BUILD_LOG="$SCRIPT_DIR/build.log"
-COMPRESS_RESOURCE_LOG="$SCRIPT_DIR/compress_resource_usage.log"
-DECOMPRESS_RESOURCE_LOG="$SCRIPT_DIR/decompress_resource_usage.log"
+BUILD_LOG="$LOG_DIR/build.log"
+COMPRESS_RESOURCE_LOG="$LOG_DIR/compress_resource_usage.log"
+DECOMPRESS_RESOURCE_LOG="$LOG_DIR/decompress_resource_usage.log"
+
+remove_empty_dir_if_present() {
+  local dir_path="$1"
+
+  if [[ -d "$dir_path" ]] && [[ -z "$(find "$dir_path" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
+    rmdir "$dir_path"
+  fi
+}
+
+trap 'remove_empty_dir_if_present "$WORK_ROOT_DIR"' EXIT
 
 TIME_BIN=""
 if [[ -x /usr/bin/time ]]; then
@@ -37,6 +51,8 @@ ensure_spring_binary() {
   if [[ -x "$SPRING_BIN" ]]; then
     return
   fi
+
+  mkdir -p "$LOG_DIR"
 
   echo "Spring binary not found; configuring and building quietly..."
 
@@ -116,8 +132,7 @@ fi
 INPUT_ABS=$(realpath -m -- "$INPUT_FASTQ")
 INPUT_BASENAME=$(basename -- "$INPUT_ABS")
 INPUT_STEM=${INPUT_BASENAME%.*}
-OUTPUT_DIR="$SCRIPT_DIR/output"
-WORK_DIR="$SCRIPT_DIR/scratch/$INPUT_STEM"
+WORK_DIR="$WORK_ROOT_DIR/$INPUT_STEM.work"
 OUTPUT_FILE="$OUTPUT_DIR/$INPUT_STEM.spring"
 DECOMPRESSED_OUTPUT_FILE="$OUTPUT_DIR/$INPUT_STEM.roundtrip.fastq"
 MAX_SHORT_READ_LENGTH=511
@@ -129,7 +144,7 @@ if (( MAX_READ_LENGTH > MAX_SHORT_READ_LENGTH )); then
   LONG_MODE_ARGS=(-l)
 fi
 
-mkdir -p "$OUTPUT_DIR"
+mkdir -p "$INPUT_DIR" "$LOG_DIR" "$OUTPUT_DIR" "$WORK_ROOT_DIR"
 rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR"
 rm -f "$OUTPUT_FILE"
@@ -172,6 +187,8 @@ decompress_args=(
 )
 
 run_with_resource_log "$DECOMPRESS_RESOURCE_LOG" "$SPRING_BIN" "${decompress_args[@]}"
+
+remove_empty_dir_if_present "$WORK_DIR"
 
 INPUT_SIZE=$(stat -c%s "$INPUT_ABS")
 OUTPUT_SIZE=$(stat -c%s "$OUTPUT_FILE")

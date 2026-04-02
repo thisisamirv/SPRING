@@ -34,8 +34,10 @@ bool has_matching_quality_length(const fastq_record &record) {
 
 split_config parse_config(char **argv) {
   const std::string input_path = std::string(argv[1]);
-  return {input_path, input_path + ".split",
-          static_cast<std::size_t>(std::strtol(argv[2], nullptr, 10))};
+  return {.input_path = input_path,
+          .output_path = input_path + ".split",
+          .max_readlen =
+              static_cast<std::size_t>(std::strtol(argv[2], nullptr, 10))};
 }
 
 void write_split_chunk(std::ofstream &output_stream,

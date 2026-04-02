@@ -13,6 +13,7 @@
 #include <list>
 #include <omp.h>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace spring {
@@ -164,7 +165,7 @@ std::string buildcontig(std::list<contig_reads> &current_contig,
     }
     base_counts.insert(base_counts.end(), positions_to_append, {0, 0, 0, 0});
     contig_size = contig_size + positions_to_append;
-    for (long i = 0; i < (*current_contig_it).read_length; i++)
+    for (long i = 0; std::cmp_less(i, (*current_contig_it).read_length); i++)
       base_counts[current_position + i]
                 [base_index_lookup[(uint8_t)(*current_contig_it).read[i]]] +=
           1;
@@ -198,7 +199,8 @@ void writecontig(const std::string &ref,
   for (; current_contig_it != current_contig.end(); ++current_contig_it) {
     current_position = (*current_contig_it).pos;
     previous_noise_offset = 0;
-    for (long read_offset = 0; read_offset < (*current_contig_it).read_length;
+    for (long read_offset = 0;
+         std::cmp_less(read_offset, (*current_contig_it).read_length);
          read_offset++)
       if ((*current_contig_it).read[read_offset] !=
           ref[current_position + read_offset]) {

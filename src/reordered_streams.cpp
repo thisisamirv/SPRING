@@ -71,22 +71,26 @@ void compress_temp_block(const std::string &temp_base_path,
 }
 
 reordered_stream_paths build_reordered_stream_paths(const std::string &temp_dir) {
-  return {temp_dir + "/read_flag.txt",
-          temp_dir + "/read_pos.bin",
-          temp_dir + "/read_pos_pair.bin",
-          temp_dir + "/read_rev.txt",
-          temp_dir + "/read_rev_pair.txt",
-          temp_dir + "/read_lengths.bin",
-          temp_dir + "/read_unaligned.txt",
-          temp_dir + "/read_noise.txt",
-          temp_dir + "/read_noisepos.bin",
-          temp_dir + "/read_order.bin"};
+  return {.flag_path = temp_dir + "/read_flag.txt",
+    .position_path = temp_dir + "/read_pos.bin",
+    .mate_position_path = temp_dir + "/read_pos_pair.bin",
+    .orientation_path = temp_dir + "/read_rev.txt",
+    .mate_orientation_path = temp_dir + "/read_rev_pair.txt",
+    .read_length_path = temp_dir + "/read_lengths.bin",
+    .unaligned_path = temp_dir + "/read_unaligned.txt",
+    .noise_path = temp_dir + "/read_noise.txt",
+    .noise_position_path = temp_dir + "/read_noisepos.bin",
+    .order_path = temp_dir + "/read_order.bin"};
 }
 
 temporary_stream_paths build_temporary_stream_paths(const std::string &temp_dir) {
-  return {temp_dir + "/a", temp_dir + "/b", temp_dir + "/c",
-          temp_dir + "/d", temp_dir + "/e", temp_dir + "/f",
-          temp_dir + "/g"};
+  return {.position_path = temp_dir + "/a",
+    .noise_path = temp_dir + "/b",
+    .noise_position_path = temp_dir + "/c",
+    .orientation_path = temp_dir + "/d",
+    .flag_path = temp_dir + "/e",
+    .unaligned_path = temp_dir + "/f",
+    .read_length_path = temp_dir + "/g"};
 }
 
 block_range block_read_range(const uint64_t block_num,
@@ -94,11 +98,11 @@ block_range block_read_range(const uint64_t block_num,
                              const uint64_t read_limit) {
   const uint64_t begin = block_num * num_reads_per_block;
   if (begin >= read_limit)
-    return {0, 0, false};
+    return {.begin = 0, .end = 0, .valid = false};
 
   const uint64_t end =
       std::min((block_num + 1) * uint64_t(num_reads_per_block), read_limit);
-  return {begin, end, true};
+  return {.begin = begin, .end = end, .valid = true};
 }
 
 void write_noise_for_read(std::ofstream &noise_output,

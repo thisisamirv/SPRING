@@ -61,7 +61,7 @@ batch_range batch_read_range(const uint32_t batch_index,
                              const uint32_t total_reads) {
   const uint32_t batch_begin = batch_index * batch_size;
   const uint32_t batch_end = std::min(batch_begin + batch_size, total_reads);
-  return {batch_begin, batch_end};
+  return {.begin = batch_begin, .end = batch_end};
 }
 
 uint32_t block_read_count(const uint64_t block_begin,
@@ -115,9 +115,10 @@ void partition_reordered_batches(
 
   for (uint32_t batch_index = 0; batch_index < num_batches; batch_index++) {
     batch_paths[batch_index] = batch_temp_path(input_path, batch_index);
-    batch_files.push_back(
-        {batch_paths[batch_index], std::ofstream(batch_paths[batch_index],
-                                                 std::ios::binary), {}});
+    batch_files.push_back({.path = batch_paths[batch_index],
+                           .output = std::ofstream(batch_paths[batch_index],
+                                                   std::ios::binary),
+                           .buffer = {}});
     batch_files.back().buffer.reserve(kBatchIoBufferSize);
   }
 
@@ -129,8 +130,9 @@ void partition_reordered_batches(
 
     const uint32_t reordered_position = reordered_positions[read_index];
     const uint32_t batch_index = reordered_position / batch_size;
-    batch_record record{reordered_position % batch_size,
-                        static_cast<uint32_t>(current_string.size())};
+    batch_record record{.relative_position = reordered_position % batch_size,
+                        .string_length =
+                            static_cast<uint32_t>(current_string.size())};
     append_batch_record(batch_files[batch_index], record, current_string);
   }
 

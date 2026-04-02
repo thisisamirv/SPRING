@@ -62,9 +62,10 @@ int find_cluster(const double avg_qv) {
   return cluster_num;
 }
 
-  count_paths parse_paths(char **argv) {
-    return {std::string(argv[1]), std::string(argv[2])};
-  }
+count_paths parse_paths(char **argv) {
+  return {.input_path = std::string(argv[1]),
+          .output_path = std::string(argv[2])};
+}
 
   void update_count_tables(const std::string &quality_line,
                const int cluster_num,
