@@ -9,6 +9,38 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(CheckIPOSupported)
 include(FetchContent)
 
+function(extract_archive_if_needed archive_path destination_dir expected_path)
+    file(SHA256 "${archive_path}" archive_hash)
+    set(stamp_path "${destination_dir}/.spring-archive-sha256")
+    set(should_extract TRUE)
+
+    if (EXISTS "${expected_path}" AND EXISTS "${stamp_path}")
+        file(READ "${stamp_path}" recorded_hash)
+        string(STRIP "${recorded_hash}" recorded_hash)
+        if (recorded_hash STREQUAL archive_hash)
+            set(should_extract FALSE)
+        endif ()
+    endif ()
+
+    if (should_extract)
+        file(REMOVE_RECURSE "${destination_dir}")
+        file(MAKE_DIRECTORY "${destination_dir}")
+        file(ARCHIVE_EXTRACT INPUT "${archive_path}" DESTINATION "${destination_dir}")
+        file(WRITE "${stamp_path}" "${archive_hash}\n")
+    endif ()
+endfunction()
+
+function(run_command_checked working_directory description)
+    execute_process(
+        COMMAND ${ARGN}
+        WORKING_DIRECTORY "${working_directory}"
+        RESULT_VARIABLE command_result
+    )
+    if (NOT command_result EQUAL 0)
+        message(FATAL_ERROR "${description} failed with exit code ${command_result}")
+    endif ()
+endfunction()
+
 # Spring currently targets Unix-like environments only.
 if (NOT UNIX)
 	message(FATAL_ERROR "Non Unix platforms not supported currently.")
@@ -67,31 +99,25 @@ message(STATUS "** CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
 message(STATUS "** CMAKE_C_FLAGS: ${CMAKE_C_FLAGS}")
 
 #######################################################
-# Build Cloudflare zlib during configuration so the bundled Boost build can
-# discover and link against the same zlib implementation.
+# Build Cloudflare zlib during configuration so Spring can link against the
+# bundled zlib implementation directly.
 
 set(CLOUDFLARE_ZLIB_DIR ${CMAKE_BINARY_DIR}/cloudflare_zlib-src)
+set(CLOUDFLARE_ZLIB_ARCHIVE ${CMAKE_SOURCE_DIR}/vendor/cloudflare_zlib.tar.xz)
 
 message(STATUS "Building zlib")
 message(STATUS "CMAKE_SOURCE_DIR: ${CMAKE_SOURCE_DIR}")
-file(REMOVE_RECURSE ${CLOUDFLARE_ZLIB_DIR})
-file(MAKE_DIRECTORY ${CLOUDFLARE_ZLIB_DIR})
-execute_process(
-    COMMAND ${CMAKE_COMMAND} -E tar xJf ${CMAKE_SOURCE_DIR}/vendor/cloudflare_zlib.tar.xz
-    WORKING_DIRECTORY ${CLOUDFLARE_ZLIB_DIR}
+extract_archive_if_needed(
+    "${CLOUDFLARE_ZLIB_ARCHIVE}"
+    "${CLOUDFLARE_ZLIB_DIR}"
+    "${CLOUDFLARE_ZLIB_DIR}/zlib.h"
 )
-execute_process(
-    COMMAND ./configure
-    WORKING_DIRECTORY ${CLOUDFLARE_ZLIB_DIR}
-)
-execute_process(
-    COMMAND make clean
-    WORKING_DIRECTORY ${CLOUDFLARE_ZLIB_DIR}
-)
-execute_process(
-    COMMAND make libz.a
-    WORKING_DIRECTORY ${CLOUDFLARE_ZLIB_DIR}
-)
+if (NOT EXISTS "${CLOUDFLARE_ZLIB_DIR}/Makefile")
+    run_command_checked("${CLOUDFLARE_ZLIB_DIR}" "Configuring Cloudflare zlib" ./configure)
+endif ()
+if (NOT EXISTS "${CLOUDFLARE_ZLIB_DIR}/libz.a")
+    run_command_checked("${CLOUDFLARE_ZLIB_DIR}" "Building Cloudflare zlib" make libz.a)
+endif ()
 
 set( ENV{ZLIB_ROOT} ${CLOUDFLARE_ZLIB_DIR} )
 set(ZLIB_ROOT ${CLOUDFLARE_ZLIB_DIR} CACHE PATH "Path to the vendored zlib build" FORCE)
@@ -100,17 +126,6 @@ set(ZLIB_LIBRARY ${CLOUDFLARE_ZLIB_DIR}/libz.a CACHE FILEPATH "Path to the vendo
 set(ZLIB_LIBRARY_RELEASE ${CLOUDFLARE_ZLIB_DIR}/libz.a CACHE FILEPATH "Path to the vendored zlib release library" FORCE)
 
 #######################################################
-
-# Fetch only the Boost components Spring links directly.
-set(BUILD_TESTING OFF CACHE BOOL "Disable third-party tests" FORCE)
-set(BOOST_INCLUDE_LIBRARIES filesystem iostreams program_options system)
-
-FetchContent_Declare(
-    boost_local
-    URL ${CMAKE_SOURCE_DIR}/vendor/boost.tar.xz
-    URL_HASH SHA256=4f5880384f4aac2a0d5400043038fb4cea07f8495ea49575e300b357e5dd1b9f
-)
-FetchContent_MakeAvailable(boost_local)
 
 set(source_dir ${CMAKE_SOURCE_DIR}/src)
 set(vendor_dir ${CMAKE_SOURCE_DIR}/vendor)
@@ -121,32 +136,28 @@ set(LIBBSC_DIR ${build_vendor_dir}/libbsc)
 set(QVZ_DIR ${build_vendor_dir}/qvz)
 set(include_dir ${CMAKE_SOURCE_DIR}/src)
 
-file(REMOVE_RECURSE ${BBHASH_DIR})
-file(MAKE_DIRECTORY ${BBHASH_DIR})
-execute_process(
-    COMMAND ${CMAKE_COMMAND} -E tar xJf ${CMAKE_SOURCE_DIR}/vendor/BBHash.tar.xz
-    WORKING_DIRECTORY ${BBHASH_DIR}
+extract_archive_if_needed(
+    "${CMAKE_SOURCE_DIR}/vendor/BBHash.tar.xz"
+    "${BBHASH_DIR}"
+    "${BBHASH_DIR}/BooPHF.h"
 )
 
-file(REMOVE_RECURSE ${ID_COMPRESSION_DIR})
-file(MAKE_DIRECTORY ${ID_COMPRESSION_DIR})
-execute_process(
-    COMMAND ${CMAKE_COMMAND} -E tar xJf ${CMAKE_SOURCE_DIR}/vendor/id_compression.tar.xz
-    WORKING_DIRECTORY ${ID_COMPRESSION_DIR}
+extract_archive_if_needed(
+    "${CMAKE_SOURCE_DIR}/vendor/id_compression.tar.xz"
+    "${ID_COMPRESSION_DIR}"
+    "${ID_COMPRESSION_DIR}/include/sam_block.h"
 )
 
-file(REMOVE_RECURSE ${LIBBSC_DIR})
-file(MAKE_DIRECTORY ${LIBBSC_DIR})
-execute_process(
-    COMMAND ${CMAKE_COMMAND} -E tar xJf ${CMAKE_SOURCE_DIR}/vendor/libbsc.tar.xz
-    WORKING_DIRECTORY ${LIBBSC_DIR}
+extract_archive_if_needed(
+    "${CMAKE_SOURCE_DIR}/vendor/libbsc.tar.xz"
+    "${LIBBSC_DIR}"
+    "${LIBBSC_DIR}/bsc.cpp"
 )
 
-file(REMOVE_RECURSE ${QVZ_DIR})
-file(MAKE_DIRECTORY ${QVZ_DIR})
-execute_process(
-    COMMAND ${CMAKE_COMMAND} -E tar xJf ${CMAKE_SOURCE_DIR}/vendor/qvz.tar.xz
-    WORKING_DIRECTORY ${QVZ_DIR}
+extract_archive_if_needed(
+    "${CMAKE_SOURCE_DIR}/vendor/qvz.tar.xz"
+    "${QVZ_DIR}"
+    "${QVZ_DIR}/src/qvz.cpp"
 )
 
 # The Spring executable is built from the core pipeline plus bundled
@@ -217,11 +228,9 @@ add_executable (spring ${source_files})
 # Spring headers live in src/, while vendor/ exposes bundled libraries such
 # as BBHash, libbsc, id_compression, qvz, and Cloudflare zlib.
 target_include_directories(spring PRIVATE ${include_dir} ${vendor_dir} ${build_vendor_dir})
+target_link_directories(spring PRIVATE ${CLOUDFLARE_ZLIB_DIR})
 target_link_libraries(spring PUBLIC
-    Boost::filesystem
-    Boost::system
-    Boost::program_options
-    Boost::iostreams
+    z
 )
 
 add_dev_script_target(dev-lint lint.sh)

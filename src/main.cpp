@@ -2,18 +2,17 @@
 // temporary-directory management, and dispatch to compress/decompress modes.
 
 #include "spring.h"
-#include <boost/filesystem.hpp>
-#include <boost/program_options.hpp>
 #include <csignal>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <iostream>
+#include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 namespace {
-
-namespace po = boost::program_options;
 
 struct command_line_options {
   bool help_flag = false;
@@ -41,7 +40,7 @@ void delete_temp_dir_if_present() {
     return;
 
   std::cout << "Deleting temporary directory...\n";
-  boost::filesystem::remove_all(temp_dir_global);
+  std::filesystem::remove_all(temp_dir_global);
   temp_dir_flag_global = false;
 }
 
@@ -49,78 +48,174 @@ std::string create_temp_dir(const std::string &working_dir) {
   while (true) {
     const std::string random_str = "tmp." + spring::random_string(10);
     const std::string temp_dir = working_dir + "/" + random_str + '/';
-    if (!boost::filesystem::exists(temp_dir) &&
-        boost::filesystem::create_directory(temp_dir)) {
+    if (!std::filesystem::exists(temp_dir) &&
+        std::filesystem::create_directory(temp_dir)) {
       return temp_dir;
     }
   }
 }
 
 int print_invalid_mode_and_exit(
-    const po::options_description &options_description) {
+    const std::string &options_description) {
   std::cout
       << "Exactly one of compress or decompress needs to be specified \n";
   std::cout << options_description << "\n";
   return 1;
 }
 
-po::options_description build_options_description(command_line_options &options) {
-  po::options_description options_description("Allowed options");
-  options_description.add_options()("help,h", po::bool_switch(&options.help_flag),
-                                    "produce help message")(
-      "compress,c", po::bool_switch(&options.compress_flag), "compress")(
-      "decompress,d", po::bool_switch(&options.decompress_flag), "decompress")(
-      "decompress-range",
-      po::value<std::vector<uint64_t>>(&options.decompress_range)->multitoken(),
-      "--decompress-range start end\n(optional) decompress only reads (or read "
-      "pairs for PE datasets) from start to end (both inclusive) (1 <= start "
-      "<= end <= num_reads (or num_read_pairs for PE)). If -r was specified "
-      "during compression, the range of reads does not correspond to the "
-      "original order of reads in the FASTQ file.")(
-      "input-file,i",
-      po::value<std::vector<std::string>>(&options.input_paths)->multitoken(),
-      "input file name (two files for paired end)")(
-      "output-file,o",
-      po::value<std::vector<std::string>>(&options.output_paths)->multitoken(),
-      "output file name (for paired end decompression, if only one file is "
-      "specified, two output files will be created by suffixing .1 and .2.)")(
-      "working-dir,w",
-      po::value<std::string>(&options.working_dir)->default_value("."),
-      "directory to create temporary files (default current directory)")(
-      "num-threads,t", po::value<int>(&options.num_threads)->default_value(8),
-      "number of threads (default 8)")(
-      "allow-read-reordering,r", po::bool_switch(&options.pairing_only_flag),
-      "do not retain read order during compression (paired reads still remain "
-      "paired)")("no-quality", po::bool_switch(&options.no_quality_flag),
-                   "do not retain quality values during compression")(
-      "no-ids", po::bool_switch(&options.no_ids_flag),
-      "do not retain read identifiers during compression")(
-      "quality-opts,q",
-      po::value<std::vector<std::string>>(&options.quality_options)->multitoken(),
-      "quality mode: possible modes are\n1. -q lossless (default)\n2. -q qvz "
-      "qv_ratio (QVZ lossy compression, parameter qv_ratio roughly corresponds "
-      "to bits used per quality value)\n3. -q ill_bin (Illumina 8-level "
-      "binning)\n4. -q binary thr high low (binary (2-level) thresholding, "
-      "quality binned to high if >= thr and to low if < thr)")(
-      "long,l", po::bool_switch(&options.long_flag),
-      "Use for compression of arbitrarily long read lengths. Can also provide "
-      "better compression for reads with significant number of indels. "
-      "-r disabled in this mode. For Illumina short "
-      "reads, compression is better without -l flag.")(
-      "gzip-level", po::value<int>(&options.gzip_level)->default_value(6),
-      "gzip level (0-9) to use when decompression output path ends in .gz "
-      "(default: 6)")(
-      "fasta-input", po::bool_switch(&options.fasta_flag),
-      "enable if compression input is fasta file (i.e., no qualities)");
-  return options_description;
+std::string build_options_description() {
+  return R"(Allowed options:
+  -h [ --help ]                   produce help message
+  -c [ --compress ]               compress
+  -d [ --decompress ]             decompress
+  --decompress-range arg          --decompress-range start end
+                                  (optional) decompress only reads (or read 
+                                  pairs for PE datasets) from start to end 
+                                  (both inclusive) (1 <= start <= end <= 
+                                  num_reads (or num_read_pairs for PE)). If -r 
+                                  was specified during compression, the range 
+                                  of reads does not correspond to the original 
+                                  order of reads in the FASTQ file.
+  -i [ --input-file ] arg         input file name (two files for paired end)
+  -o [ --output-file ] arg        output file name (for paired end 
+                                  decompression, if only one file is specified,
+                                  two output files will be created by suffixing
+                                  .1 and .2.)
+  -w [ --working-dir ] arg (=.)   directory to create temporary files (default 
+                                  current directory)
+  -t [ --num-threads ] arg (=8)   number of threads (default 8)
+  -r [ --allow-read-reordering ]  do not retain read order during compression 
+                                  (paired reads still remain paired)
+  --no-quality                    do not retain quality values during 
+                                  compression
+  --no-ids                        do not retain read identifiers during 
+                                  compression
+  -q [ --quality-opts ] arg       quality mode: possible modes are
+                                  1. -q lossless (default)
+                                  2. -q qvz qv_ratio (QVZ lossy compression, 
+                                  parameter qv_ratio roughly corresponds to 
+                                  bits used per quality value)
+                                  3. -q ill_bin (Illumina 8-level binning)
+                                  4. -q binary thr high low (binary (2-level) 
+                                  thresholding, quality binned to high if >= 
+                                  thr and to low if < thr)
+  -l [ --long ]                   Use for compression of arbitrarily long read 
+                                  lengths. Can also provide better compression 
+                                  for reads with significant number of indels. 
+                                  -r disabled in this mode. For Illumina short 
+                                  reads, compression is better without -l flag.
+  --gzip-level arg (=6)           gzip level (0-9) to use when decompression 
+                                  output path ends in .gz (default: 6)
+  --fasta-input                   enable if compression input is fasta file 
+                                  (i.e., no qualities))";
 }
 
-void parse_command_line(int argc, char **argv,
-                        const po::options_description &options_description) {
-  po::variables_map variables_map;
-  po::store(po::parse_command_line(argc, argv, options_description),
-            variables_map);
-  po::notify(variables_map);
+bool is_option_token(const std::string &token) {
+  return !token.empty() && token[0] == '-';
+}
+
+int parse_int_or_throw(const std::string &value, const char *error_message) {
+  try {
+    size_t parsed_chars = 0;
+    int parsed_value = std::stoi(value, &parsed_chars);
+    if (parsed_chars != value.size())
+      throw std::invalid_argument("trailing characters");
+    return parsed_value;
+  } catch (const std::exception &) {
+    throw std::runtime_error(error_message);
+  }
+}
+
+uint64_t parse_uint64_or_throw(const std::string &value,
+                               const char *error_message) {
+  try {
+    size_t parsed_chars = 0;
+    uint64_t parsed_value = std::stoull(value, &parsed_chars);
+    if (parsed_chars != value.size())
+      throw std::invalid_argument("trailing characters");
+    return parsed_value;
+  } catch (const std::exception &) {
+    throw std::runtime_error(error_message);
+  }
+}
+
+void require_value(const std::vector<std::string> &args, size_t index,
+                   const char *option_name) {
+  if (index >= args.size())
+    throw std::runtime_error(std::string("Missing value for ") + option_name);
+}
+
+std::vector<std::string> collect_option_values(const std::vector<std::string> &args,
+                                               size_t &index) {
+  std::vector<std::string> values;
+  while (index < args.size() && !is_option_token(args[index])) {
+    values.push_back(args[index]);
+    index++;
+  }
+  return values;
+}
+
+void parse_command_line(int argc, char **argv, command_line_options &options) {
+  const std::vector<std::string> args(argv + 1, argv + argc);
+  size_t index = 0;
+
+  while (index < args.size()) {
+    const std::string &arg = args[index++];
+
+    if (arg == "-h" || arg == "--help") {
+      options.help_flag = true;
+    } else if (arg == "-c" || arg == "--compress") {
+      options.compress_flag = true;
+    } else if (arg == "-d" || arg == "--decompress") {
+      options.decompress_flag = true;
+    } else if (arg == "-r" || arg == "--allow-read-reordering") {
+      options.pairing_only_flag = true;
+    } else if (arg == "--no-quality") {
+      options.no_quality_flag = true;
+    } else if (arg == "--no-ids") {
+      options.no_ids_flag = true;
+    } else if (arg == "-l" || arg == "--long") {
+      options.long_flag = true;
+    } else if (arg == "--fasta-input") {
+      options.fasta_flag = true;
+    } else if (arg == "-w" || arg == "--working-dir") {
+      require_value(args, index, "--working-dir");
+      options.working_dir = args[index++];
+    } else if (arg == "-t" || arg == "--num-threads") {
+      require_value(args, index, "--num-threads");
+      options.num_threads = parse_int_or_throw(args[index++],
+                                               "Invalid number of threads.");
+    } else if (arg == "--gzip-level") {
+      require_value(args, index, "--gzip-level");
+      options.gzip_level = parse_int_or_throw(args[index++],
+                                              "Invalid gzip level.");
+    } else if (arg == "--decompress-range") {
+      require_value(args, index, "--decompress-range");
+      const std::vector<std::string> values = collect_option_values(args, index);
+      if (values.size() != 2)
+        throw std::runtime_error("--decompress-range requires exactly 2 values.");
+      options.decompress_range = {
+          parse_uint64_or_throw(values[0], "Invalid decompression range value."),
+          parse_uint64_or_throw(values[1], "Invalid decompression range value.")};
+    } else if (arg == "-i" || arg == "--input-file") {
+      require_value(args, index, "--input-file");
+      options.input_paths = collect_option_values(args, index);
+      if (options.input_paths.empty())
+        throw std::runtime_error("--input-file requires at least 1 value.");
+    } else if (arg == "-o" || arg == "--output-file") {
+      require_value(args, index, "--output-file");
+      options.output_paths = collect_option_values(args, index);
+      if (options.output_paths.empty())
+        throw std::runtime_error("--output-file requires at least 1 value.");
+    } else if (arg == "-q" || arg == "--quality-opts") {
+      require_value(args, index, "--quality-opts");
+      options.quality_options = collect_option_values(args, index);
+      if (options.quality_options.empty())
+        throw std::runtime_error("--quality-opts requires at least 1 value.");
+    } else {
+      throw std::runtime_error(std::string("Unknown option: ") + arg);
+    }
+  }
 }
 
 bool has_exactly_one_mode(const command_line_options &options) {
@@ -151,7 +246,7 @@ void normalize_compression_options(command_line_options &options) {
 }
 
 int print_unexpected_error_and_exit(
-    const po::options_description &options_description,
+  const std::string &options_description,
     const std::string &error_message) {
   std::cout << error_message << "\n";
   delete_temp_dir_if_present();
@@ -182,7 +277,7 @@ void signalHandler(int signum) {
   std::cout << "Program terminated unexpectedly\n";
   if (temp_dir_flag_global) {
     std::cout << "Deleting temporary directory: " << temp_dir_global << "\n";
-    boost::filesystem::remove_all(temp_dir_global);
+    std::filesystem::remove_all(temp_dir_global);
     temp_dir_flag_global = false;
   }
   std::exit(signum);
@@ -191,9 +286,15 @@ void signalHandler(int signum) {
 int main(int argc, char **argv) {
   signal(SIGINT, signalHandler);
   command_line_options options;
-  po::options_description options_description =
-      build_options_description(options);
-  parse_command_line(argc, argv, options_description);
+  const std::string options_description = build_options_description();
+
+  try {
+    parse_command_line(argc, argv, options);
+  } catch (const std::runtime_error &e) {
+    std::cout << e.what() << "\n";
+    std::cout << options_description << "\n";
+    return 1;
+  }
 
   if (options.help_flag) {
     std::cout << options_description << "\n";

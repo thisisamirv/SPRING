@@ -2,14 +2,11 @@
 // layout, temporary-file coordination, and user-facing workflow decisions.
 
 #include <algorithm>
-#include <boost/filesystem.hpp>
-#include <boost/iostreams/copy.hpp>
-#include <boost/iostreams/filter/gzip.hpp>
-#include <boost/iostreams/filtering_streambuf.hpp>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iomanip> // std::setw
 #include <iostream>
@@ -52,9 +49,6 @@ struct decompression_span {
   uint64_t start_read_index;
   uint64_t end_read_index;
 };
-
-using gzip_input_buffer =
-    boost::iostreams::filtering_streambuf<boost::iostreams::input>;
 
 struct prepared_compression_inputs {
   std::string input_path_1;
@@ -138,7 +132,7 @@ std::string strip_gzip_suffix(const std::string &input_path) {
 std::string decompressed_input_path(const std::string &temp_dir,
                                     const std::string &input_path,
                                     const int input_index) {
-  const boost::filesystem::path stripped_input_path(strip_gzip_suffix(input_path));
+  const std::filesystem::path stripped_input_path(strip_gzip_suffix(input_path));
   const std::string filename = stripped_input_path.filename().string();
   return temp_dir + "/compression_input_" + std::to_string(input_index) +
          "." + filename;
@@ -146,21 +140,7 @@ std::string decompressed_input_path(const std::string &temp_dir,
 
 void decompress_gzip_input_file(const std::string &input_path,
                                 const std::string &output_path) {
-  std::ifstream compressed_input(input_path, std::ios::binary);
-  if (!compressed_input.is_open()) {
-    throw std::runtime_error("Error opening gzipped input file");
-  }
-
-  gzip_input_buffer gzip_stream_buffer;
-  gzip_stream_buffer.push(boost::iostreams::gzip_decompressor());
-  gzip_stream_buffer.push(compressed_input);
-  std::istream gzip_input_stream(&gzip_stream_buffer);
-  std::ofstream decompressed_output(output_path, std::ios::binary);
-  if (!decompressed_output.is_open()) {
-    throw std::runtime_error("Error creating temporary decompressed input file");
-  }
-
-  boost::iostreams::copy(gzip_input_stream, decompressed_output);
+  decompress_gzip_file(input_path, output_path);
 }
 
 prepared_compression_inputs prepare_compression_inputs(
@@ -197,10 +177,10 @@ prepared_compression_inputs prepare_compression_inputs(
 void cleanup_prepared_compression_inputs(
     const prepared_compression_inputs &prepared_inputs) {
   if (prepared_inputs.input_1_was_gzipped) {
-    boost::filesystem::remove(prepared_inputs.input_path_1);
+    std::filesystem::remove(prepared_inputs.input_path_1);
   }
   if (prepared_inputs.input_2_was_gzipped) {
-    boost::filesystem::remove(prepared_inputs.input_path_2);
+    std::filesystem::remove(prepared_inputs.input_path_2);
   }
 }
 
@@ -298,7 +278,7 @@ void print_temp_dir_size(const std::string &temp_dir,
 }
 
 void print_compressed_stream_sizes(const std::string &temp_dir) {
-  namespace fs = boost::filesystem;
+  namespace fs = std::filesystem;
 
   uint64_t size_read = 0;
   uint64_t size_quality = 0;
@@ -486,8 +466,8 @@ void compress(const std::string &temp_dir,
                    .count()
             << " s\n";
 
-            namespace fs = boost::filesystem;
-            fs::path archive_file_path{io_config.archive_path};
+  namespace fs = std::filesystem;
+  fs::path archive_file_path{io_config.archive_path};
   std::cout << "\n";
   std::cout << "Total size: " << std::setw(12)
             << fs::file_size(archive_file_path)

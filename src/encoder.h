@@ -10,8 +10,6 @@
 #include <array>
 #include <algorithm>
 #include <bitset>
-#include <boost/iostreams/filter/gzip.hpp>
-#include <boost/iostreams/filtering_stream.hpp>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -270,35 +268,13 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
     std::ifstream read_input(eg.infile + '.' + std::to_string(thread_id),
                              std::ios::binary);
 
-    std::ifstream flag_input(eg.infile_flag + '.' + std::to_string(thread_id));
-    boost::iostreams::filtering_streambuf<boost::iostreams::input>
-        flag_stream_buffer;
-    flag_stream_buffer.push(boost::iostreams::gzip_decompressor());
-    flag_stream_buffer.push(flag_input);
-    std::istream flag_stream(&flag_stream_buffer);
-    std::ifstream position_input(eg.infile_pos + '.' + std::to_string(thread_id),
-                                 std::ios::binary);
-    boost::iostreams::filtering_streambuf<boost::iostreams::input>
-        position_stream_buffer;
-    position_stream_buffer.push(boost::iostreams::gzip_decompressor());
-    position_stream_buffer.push(position_input);
-    std::istream position_stream(&position_stream_buffer);
+    gzip_istream flag_stream(eg.infile_flag + '.' + std::to_string(thread_id));
+    gzip_istream position_stream(eg.infile_pos + '.' + std::to_string(thread_id));
     std::ifstream order_input(eg.infile_order + '.' + std::to_string(thread_id),
                            std::ios::binary);
-    std::ifstream orientation_input(eg.infile_RC + '.' + std::to_string(thread_id));
-    boost::iostreams::filtering_streambuf<boost::iostreams::input>
-        orientation_stream_buffer;
-    orientation_stream_buffer.push(boost::iostreams::gzip_decompressor());
-    orientation_stream_buffer.push(orientation_input);
-    std::istream orientation_stream(&orientation_stream_buffer);
-    std::ifstream read_length_input(
-        eg.infile_readlength + '.' + std::to_string(thread_id),
-        std::ios::binary);
-    boost::iostreams::filtering_streambuf<boost::iostreams::input>
-        read_length_stream_buffer;
-    read_length_stream_buffer.push(boost::iostreams::gzip_decompressor());
-    read_length_stream_buffer.push(read_length_input);
-    std::istream read_length_stream(&read_length_stream_buffer);
+    gzip_istream orientation_stream(eg.infile_RC + '.' + std::to_string(thread_id));
+    gzip_istream read_length_stream(
+      eg.infile_readlength + '.' + std::to_string(thread_id));
     std::ofstream sequence_output(eg.outfile_seq + '.' + std::to_string(thread_id));
     std::ofstream position_output(eg.outfile_pos + '.' + std::to_string(thread_id),
                                   std::ios::binary);
@@ -329,11 +305,11 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
     std::array<std::list<uint32_t>, NUM_DICT_ENCODER> deleted_rids;
     bool done = false;
     while (!done) {
-      if (!(flag_stream >> read_flag))
+      if (!flag_stream.get(read_flag))
         done = true;
       if (!done) {
         read_dna_from_bits(current_read, read_input);
-        orientation = orientation_stream.get();
+        orientation_stream.get(orientation);
         position_stream.read(byte_ptr(&relative_position), sizeof(int64_t));
         order_input.read(byte_ptr(&read_order), sizeof(uint32_t));
         read_length_stream.read(byte_ptr(&read_length), sizeof(uint16_t));
@@ -513,11 +489,11 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
       }
     }
     read_input.close();
-    flag_input.close();
-    position_input.close();
+    flag_stream.close();
+    position_stream.close();
     order_input.close();
-    orientation_input.close();
-    read_length_input.close();
+    orientation_stream.close();
+    read_length_stream.close();
     sequence_output.close();
     position_output.close();
     noise_output.close();

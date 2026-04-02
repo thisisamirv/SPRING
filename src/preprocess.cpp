@@ -4,9 +4,6 @@
 #include "preprocess.h"
 #include <array>
 #include <algorithm>
-#include <boost/iostreams/copy.hpp>
-#include <boost/iostreams/filter/gzip.hpp>
-#include <boost/iostreams/filtering_streambuf.hpp>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -23,9 +20,6 @@
 namespace spring {
 
 namespace {
-
-using gzip_input_buffer =
-    boost::iostreams::filtering_streambuf<boost::iostreams::input>;
 
 struct preprocess_paths {
   std::array<std::string, 2> input_paths;
@@ -51,32 +45,28 @@ uint32_t block_count(const uint64_t num_reads,
 }
 
 void open_input_stream(std::ifstream &file_stream, std::istream *&input_stream,
-                       gzip_input_buffer *&gzip_buffer,
+                       gzip_istream *&gzip_stream,
                        const std::string &path, const bool gzip_enabled) {
   if (gzip_enabled) {
-    file_stream.open(path, std::ios_base::binary);
-    gzip_buffer = new gzip_input_buffer;
-    gzip_buffer->push(boost::iostreams::gzip_decompressor());
-    gzip_buffer->push(file_stream);
-    input_stream = new std::istream(gzip_buffer);
+    gzip_stream = new gzip_istream(path);
+    input_stream = gzip_stream;
     return;
   }
 
   file_stream.open(path);
   input_stream = &file_stream;
-  gzip_buffer = nullptr;
+  gzip_stream = nullptr;
 }
 
 void reset_input_stream(std::ifstream &file_stream, std::istream *&input_stream,
-                        gzip_input_buffer *&gzip_buffer,
+                        gzip_istream *&gzip_stream,
                         const std::string &path, const bool gzip_enabled) {
   if (gzip_enabled) {
     file_stream.close();
-    delete input_stream;
-    delete gzip_buffer;
+    delete gzip_stream;
     input_stream = nullptr;
-    gzip_buffer = nullptr;
-    open_input_stream(file_stream, input_stream, gzip_buffer, path, true);
+    gzip_stream = nullptr;
+    open_input_stream(file_stream, input_stream, gzip_stream, path, true);
     return;
   }
 
@@ -85,13 +75,12 @@ void reset_input_stream(std::ifstream &file_stream, std::istream *&input_stream,
 }
 
 void close_input_stream(std::ifstream &file_stream, std::istream *&input_stream,
-                        gzip_input_buffer *&gzip_buffer,
+                        gzip_istream *&gzip_stream,
                         const bool gzip_enabled) {
   if (gzip_enabled) {
-    delete input_stream;
-    delete gzip_buffer;
+    delete gzip_stream;
     input_stream = nullptr;
-    gzip_buffer = nullptr;
+    gzip_stream = nullptr;
   }
   file_stream.close();
 }
@@ -130,7 +119,7 @@ void open_preprocess_streams(
     std::array<std::ofstream, 2> &id_outputs,
     std::array<std::ofstream, 2> &quality_outputs,
     std::array<std::istream *, 2> &input_streams,
-    std::array<gzip_input_buffer *, 2> &gzip_buffers,
+    std::array<gzip_istream *, 2> &gzip_streams,
     const preprocess_paths &paths, const compression_params &compression_params,
     const bool gzip_enabled) {
   for (int stream_index = 0; stream_index < 2; stream_index++) {
@@ -138,7 +127,7 @@ void open_preprocess_streams(
       continue;
 
     open_input_stream(input_files[stream_index], input_streams[stream_index],
-                      gzip_buffers[stream_index],
+                      gzip_streams[stream_index],
                       paths.input_paths[stream_index], gzip_enabled);
     if (compression_params.long_flag)
       continue;
@@ -167,14 +156,14 @@ void close_preprocess_streams(
     std::array<std::ofstream, 2> &id_outputs,
     std::array<std::ofstream, 2> &quality_outputs,
     std::array<std::istream *, 2> &input_streams,
-    std::array<gzip_input_buffer *, 2> &gzip_buffers,
+    std::array<gzip_istream *, 2> &gzip_streams,
     const compression_params &compression_params, const bool gzip_enabled) {
   for (int stream_index = 0; stream_index < 2; stream_index++) {
     if (stream_index == 1 && !compression_params.paired_end)
       continue;
 
     close_input_stream(input_files[stream_index], input_streams[stream_index],
-                       gzip_buffers[stream_index], gzip_enabled);
+                       gzip_streams[stream_index], gzip_enabled);
     if (compression_params.long_flag)
       continue;
 
@@ -193,7 +182,7 @@ void close_preprocess_streams(
 void detect_paired_id_pattern(
     std::array<std::ifstream, 2> &input_files,
     std::array<std::istream *, 2> &input_streams,
-    std::array<gzip_input_buffer *, 2> &gzip_buffers,
+  std::array<gzip_istream *, 2> &gzip_streams,
     const preprocess_paths &paths, const compression_params &compression_params,
     const bool gzip_enabled, uint8_t &paired_id_code,
     bool &paired_id_match) {
@@ -209,7 +198,7 @@ void detect_paired_id_pattern(
 
   for (int stream_index = 0; stream_index < 2; stream_index++) {
     reset_input_stream(input_files[stream_index], input_streams[stream_index],
-                       gzip_buffers[stream_index],
+                       gzip_streams[stream_index],
                        paths.input_paths[stream_index], gzip_enabled);
   }
 }
@@ -276,11 +265,11 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   std::array<std::ofstream, 2> id_outputs;
   std::array<std::ofstream, 2> quality_outputs;
   std::array<std::istream *, 2> input_streams = {nullptr, nullptr};
-  std::array<gzip_input_buffer *, 2> gzip_buffers = {nullptr, nullptr};
+  std::array<gzip_istream *, 2> gzip_streams = {nullptr, nullptr};
 
   open_preprocess_streams(input_files, clean_outputs, n_read_outputs,
                           n_read_order_outputs, id_outputs, quality_outputs,
-                          input_streams, gzip_buffers, paths, cp, false);
+                          input_streams, gzip_streams, paths, cp, false);
 
   uint32_t max_readlen = 0;
   std::array<uint64_t, 2> num_reads = {0, 0};
@@ -306,7 +295,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
     if (!input_files[1].is_open())
       throw std::runtime_error("Error opening input file");
   }
-  detect_paired_id_pattern(input_files, input_streams, gzip_buffers, paths, cp,
+  detect_paired_id_pattern(input_files, input_streams, gzip_streams, paths, cp,
                            false, paired_id_code, paired_id_match);
   if (cp.num_thr <= 0)
     throw std::runtime_error("Number of threads must be positive.");
@@ -519,7 +508,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   delete[] quality_binning_table;
   close_preprocess_streams(input_files, clean_outputs, n_read_outputs,
                            n_read_order_outputs, id_outputs, quality_outputs,
-                           input_streams, gzip_buffers, cp, false);
+                           input_streams, gzip_streams, cp, false);
   if (num_reads[0] == 0)
     throw std::runtime_error("No reads found.");
 

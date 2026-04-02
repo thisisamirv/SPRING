@@ -24,6 +24,12 @@
 
 * **Removed the Obsolete `-g` CLI Flag**: Simplified `src/main.cpp` and the Spring CLI surface by removing the old `--gzipped-fastq/-g` option now that gzipped compression inputs are auto-detected and gzipped decompression output is inferred from the output filename.
 
+* **Removed the Final Boost Dependency**: Replaced the remaining Boost.Iostreams gzip and mapped-file usage with local zlib-backed gzip wrappers and a POSIX `mmap`-based reference-chunk reader, then removed Boost from the top-level `CMakeLists.txt` so Spring now builds without linking any Boost components.
+
+* **Removed the Unused Vendored Boost Archive**: Deleted the stale `vendor/boost.tar.xz` payload and removed its license-manifest entry now that the Spring build no longer references any Boost components.
+
+* **Fixed Decompression Failures on Empty Reference Chunks**: Updated `src/decompress.cpp` so decoded packed-sequence chunks are opened through the local mapping wrapper, which safely handles zero-length chunk files produced by all-singleton blocks instead of aborting on Boost's zero-length mapped-file error path.
+
 * **Reduced Decompression Peak Memory Usage**: Reworked `src/decompress.cpp` to avoid rebuilding the full decoded reference into one large in-memory string, using chunk-backed reference access instead so large reference data can be read on demand during decompression.
 
 * **Reduced Decompression Write Overhead**: Updated `src/decompress.cpp` to replace char-by-char packed-sequence decode output with buffered block writes, reducing per-character stream overhead while preserving lossless FASTQ reconstruction.
@@ -33,6 +39,8 @@
 ### Build System & Tooling
 
 * **Updated libbsc to Latest Version**: Replaced the `src/libbsc` internal library with its latest upstream version. Ensured preservation of project-specific API wrappers (`bsc.h`, `bsc.cpp`, `bsc_str_array.cpp`) to maintain compatibility with the Spring codebase.
+
+* **Made Configure-Time Vendor Extraction Idempotent**: Updated the top-level `CMakeLists.txt` so vendored archives under `vendor/` are only re-extracted when their archive hash changes, and the Cloudflare zlib configure/build step is only rerun when its extracted tree or `libz.a` is missing. Repeated `cmake -S . -B build` runs in an existing build directory now complete cleanly instead of requiring a fresh build tree after dependency changes.
 
 * **Pruned and Compressed Vendored Dependencies**: Reduced repository size by removing non-essential vendored materials such as unused documentation, examples, tests, CI assets, and other unneeded packaging content where appropriate, and by repackaging retained third-party dependencies as local archive payloads under `vendor/`. These reductions were made to support distribution and build efficiency while preserving required license notices and the project-specific compatibility adjustments needed by the Spring codebase.
 

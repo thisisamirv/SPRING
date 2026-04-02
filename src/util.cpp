@@ -4,12 +4,12 @@
 #include "util.h"
 #include <algorithm>
 #include <array>
-#include <boost/filesystem.hpp>
-#include <boost/iostreams/device/back_inserter.hpp>
-#include <boost/iostreams/filter/gzip.hpp>
-#include <boost/iostreams/filtering_stream.hpp>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
+#include <limits>
+#include <sstream>
+#include <streambuf>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -26,12 +26,49 @@ namespace {
 const char *const kInvalidFastqError =
     "Invalid FASTQ(A) file. Number of lines not multiple of 4(2)";
 
+constexpr std::streamsize kGzipChunkSize = 1 << 15;
+
 struct read_range {
   uint64_t start;
   uint64_t end;
 };
 
 std::vector<read_range> compute_read_ranges(uint32_t num_reads, int num_thr);
+
+std::runtime_error gzip_runtime_error(gzFile file_handle,
+                                      const std::string &prefix) {
+  int error_code = Z_OK;
+  const char *message = gzerror(file_handle, &error_code);
+  if (message == nullptr || error_code == Z_OK) {
+    return std::runtime_error(prefix);
+  }
+  return std::runtime_error(prefix + ": " + message);
+}
+
+std::string gzip_mode_string(const char mode, const int level) {
+  if (level == Z_DEFAULT_COMPRESSION) {
+    return std::string() + mode + 'b';
+  }
+  if (level < 0 || level > 9) {
+    throw std::runtime_error("gzip level must be between 0 and 9.");
+  }
+  return std::string() + mode + 'b' + static_cast<char>('0' + level);
+}
+
+void write_gzip_data(gzFile file_handle, const char *data,
+                     std::streamsize size) {
+  std::streamsize written_total = 0;
+  while (written_total < size) {
+    const std::streamsize chunk_size =
+        std::min<std::streamsize>(size - written_total, kGzipChunkSize);
+    const int written =
+        gzwrite(file_handle, data + written_total, static_cast<unsigned int>(chunk_size));
+    if (written == 0) {
+      throw gzip_runtime_error(file_handle, "Failed writing gzip stream");
+    }
+    written_total += written;
+  }
+}
 
 const std::array<uint8_t, 128> &dna_to_int_lookup() {
   static const std::array<uint8_t, 128> lookup = []() {
@@ -108,15 +145,11 @@ void write_gzip_fastq_block(std::ofstream &output_stream, std::string *id_array,
 #pragma omp parallel num_threads(num_thr)
   {
     const int tid = omp_get_thread_num();
-    boost::iostreams::filtering_ostream output_buffer;
-    output_buffer.push(boost::iostreams::gzip_compressor(
-        boost::iostreams::gzip_params(gzip_level)));
-    output_buffer.push(boost::iostreams::back_inserter(gzip_compressed[tid]));
-
+    std::ostringstream plain_output;
     const read_range &range = thread_ranges[static_cast<size_t>(tid)];
-    write_fastq_records_range(output_buffer, id_array, read_array,
+    write_fastq_records_range(plain_output, id_array, read_array,
                               quality_or_null, range.start, range.end);
-    boost::iostreams::close(output_buffer);
+    gzip_compressed[tid] = gzip_compress_string(plain_output.str(), gzip_level);
   }
 
   for (int thread_index = 0; thread_index < num_thr; thread_index++) {
@@ -263,6 +296,192 @@ void fill_reverse_complement(const char *input_bases, char *output_bases,
 }
 
 } // namespace
+
+gzip_istreambuf::gzip_istreambuf() : file_(nullptr) {
+  setg(buffer_, buffer_, buffer_);
+}
+
+gzip_istreambuf::gzip_istreambuf(const std::string &path) : gzip_istreambuf() {
+  open(path);
+}
+
+gzip_istreambuf::~gzip_istreambuf() { close(); }
+
+bool gzip_istreambuf::open(const std::string &path) {
+  close();
+  file_ = gzopen(path.c_str(), gzip_mode_string('r', Z_DEFAULT_COMPRESSION).c_str());
+  if (file_ == nullptr) {
+    return false;
+  }
+  gzbuffer(file_, static_cast<unsigned int>(kGzipChunkSize));
+  setg(buffer_, buffer_, buffer_);
+  return true;
+}
+
+void gzip_istreambuf::close() {
+  if (file_ != nullptr) {
+    gzclose(file_);
+    file_ = nullptr;
+  }
+  setg(buffer_, buffer_, buffer_);
+}
+
+bool gzip_istreambuf::is_open() const { return file_ != nullptr; }
+
+gzip_istreambuf::int_type gzip_istreambuf::underflow() {
+  if (file_ == nullptr) {
+    return traits_type::eof();
+  }
+  if (gptr() < egptr()) {
+    return traits_type::to_int_type(*gptr());
+  }
+
+  const int bytes_read =
+      gzread(file_, buffer_, static_cast<unsigned int>(sizeof(buffer_)));
+  if (bytes_read < 0) {
+    throw gzip_runtime_error(file_, "Failed reading gzip stream");
+  }
+  if (bytes_read == 0) {
+    return traits_type::eof();
+  }
+
+  setg(buffer_, buffer_, buffer_ + bytes_read);
+  return traits_type::to_int_type(*gptr());
+}
+
+gzip_istream::gzip_istream() : std::istream(&buffer_) {}
+
+gzip_istream::gzip_istream(const std::string &path) : gzip_istream() {
+  open(path);
+}
+
+bool gzip_istream::open(const std::string &path) {
+  clear();
+  if (!buffer_.open(path)) {
+    setstate(std::ios::failbit);
+    return false;
+  }
+  return true;
+}
+
+void gzip_istream::close() { buffer_.close(); }
+
+bool gzip_istream::is_open() const { return buffer_.is_open(); }
+
+gzip_ostream::gzip_ostream() : file_(nullptr) {}
+
+gzip_ostream::gzip_ostream(const std::string &path, const int level)
+    : gzip_ostream() {
+  open(path, level);
+}
+
+gzip_ostream::~gzip_ostream() { close(); }
+
+bool gzip_ostream::open(const std::string &path, const int level) {
+  close();
+  file_ = gzopen(path.c_str(), gzip_mode_string('w', level).c_str());
+  if (file_ == nullptr) {
+    return false;
+  }
+  gzbuffer(file_, static_cast<unsigned int>(kGzipChunkSize));
+  return true;
+}
+
+void gzip_ostream::write(const char *data, const std::streamsize size) {
+  if (file_ == nullptr) {
+    throw std::runtime_error("Gzip output stream is not open.");
+  }
+  write_gzip_data(file_, data, size);
+}
+
+void gzip_ostream::put(const char value) { write(&value, 1); }
+
+void gzip_ostream::close() {
+  if (file_ != nullptr) {
+    if (gzclose(file_) != Z_OK) {
+      file_ = nullptr;
+      throw std::runtime_error("Failed closing gzip stream");
+    }
+    file_ = nullptr;
+  }
+}
+
+bool gzip_ostream::is_open() const { return file_ != nullptr; }
+
+std::string gzip_compress_string(const std::string &input, const int gzip_level) {
+  if (gzip_level < 0 || gzip_level > 9) {
+    throw std::runtime_error("gzip level must be between 0 and 9.");
+  }
+
+  z_stream stream = {};
+  if (deflateInit2(&stream, gzip_level, Z_DEFLATED, 15 + 16, 8,
+                   Z_DEFAULT_STRATEGY) != Z_OK) {
+    throw std::runtime_error("Failed initializing gzip compressor.");
+  }
+
+  std::string output;
+  output.reserve(input.size() / 2 + 256);
+  std::array<char, 1 << 15> output_buffer;
+
+  stream.next_in = reinterpret_cast<Bytef *>(const_cast<char *>(input.data()));
+  stream.avail_in = static_cast<uInt>(
+      std::min<std::size_t>(input.size(), std::numeric_limits<uInt>::max()));
+  std::size_t input_offset = stream.avail_in;
+
+  int flush = input_offset == input.size() ? Z_FINISH : Z_NO_FLUSH;
+  while (true) {
+    stream.next_out = reinterpret_cast<Bytef *>(output_buffer.data());
+    stream.avail_out = static_cast<uInt>(output_buffer.size());
+    const int status = deflate(&stream, flush);
+    if (status != Z_OK && status != Z_STREAM_END) {
+      deflateEnd(&stream);
+      throw std::runtime_error("Failed compressing gzip payload.");
+    }
+
+    output.append(output_buffer.data(),
+                  output_buffer.size() - stream.avail_out);
+
+    if (stream.avail_in == 0 && input_offset < input.size()) {
+      const std::size_t remaining = input.size() - input_offset;
+      stream.next_in =
+          reinterpret_cast<Bytef *>(const_cast<char *>(input.data() + input_offset));
+      stream.avail_in = static_cast<uInt>(
+          std::min<std::size_t>(remaining, std::numeric_limits<uInt>::max()));
+      input_offset += stream.avail_in;
+      flush = input_offset == input.size() ? Z_FINISH : Z_NO_FLUSH;
+      continue;
+    }
+
+    if (status == Z_STREAM_END) {
+      break;
+    }
+  }
+
+  deflateEnd(&stream);
+  return output;
+}
+
+void decompress_gzip_file(const std::string &input_path,
+                          const std::string &output_path) {
+  gzip_istream compressed_input(input_path);
+  if (!compressed_input.is_open()) {
+    throw std::runtime_error("Error opening gzipped input file");
+  }
+
+  std::ofstream decompressed_output(output_path, std::ios::binary);
+  if (!decompressed_output.is_open()) {
+    throw std::runtime_error("Error creating temporary decompressed input file");
+  }
+
+  std::array<char, 1 << 15> buffer;
+  while (compressed_input.good()) {
+    compressed_input.read(buffer.data(), buffer.size());
+    const std::streamsize count = compressed_input.gcount();
+    if (count > 0) {
+      decompressed_output.write(buffer.data(), count);
+    }
+  }
+}
 
 uint32_t read_fastq_block(std::istream *input_stream, std::string *id_array,
                           std::string *read_array, std::string *quality_array,
@@ -453,7 +672,7 @@ void remove_CR_from_end(std::string &str) {
 }
 
 size_t get_directory_size(const std::string &temp_dir) {
-  namespace fs = boost::filesystem;
+  namespace fs = std::filesystem;
   size_t size = 0;
   fs::path p{temp_dir};
   fs::directory_iterator itr{p};

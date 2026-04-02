@@ -4,11 +4,16 @@
 #include "decompress.h"
 #include "libbsc/bsc.h"
 #include "util.h"
-#include <boost/iostreams/device/mapped_file.hpp>
+#include <cerrno>
 #include <cstdint>
+#include <cstring>
 #include <cstdio>
 #include <fstream>
 #include <iostream>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <omp.h>
 #include <stdexcept>
 #include <string>
@@ -33,7 +38,49 @@ struct reference_chunk {
   uint64_t start_offset;
   uint64_t size;
   std::string path;
-  boost::iostreams::mapped_file_source data;
+  int fd = -1;
+  const char *data = nullptr;
+};
+
+std::runtime_error file_error(const std::string &prefix,
+                              const std::string &path) {
+  return std::runtime_error(prefix + ": " + path + ": " +
+                            std::string(strerror(errno)));
+}
+
+void open_reference_chunk(reference_chunk &chunk) {
+  chunk.fd = open(chunk.path.c_str(), O_RDONLY);
+  if (chunk.fd < 0) {
+    throw file_error("Error opening decoded reference chunk", chunk.path);
+  }
+
+  if (chunk.size == 0) {
+    return;
+  }
+
+  void *mapped =
+      mmap(nullptr, static_cast<size_t>(chunk.size), PROT_READ, MAP_PRIVATE,
+           chunk.fd, 0);
+  if (mapped == MAP_FAILED) {
+    const int saved_errno = errno;
+    close(chunk.fd);
+    chunk.fd = -1;
+    errno = saved_errno;
+    throw file_error("Error mapping decoded reference chunk", chunk.path);
+  }
+
+  chunk.data = static_cast<const char *>(mapped);
+}
+
+void close_reference_chunk(reference_chunk &chunk) {
+  if (chunk.data != nullptr) {
+    munmap(const_cast<char *>(chunk.data), static_cast<size_t>(chunk.size));
+    chunk.data = nullptr;
+  }
+  if (chunk.fd >= 0) {
+    close(chunk.fd);
+    chunk.fd = -1;
+  }
 };
 
 class reference_sequence_store {
@@ -57,10 +104,7 @@ public:
       chunk.start_offset = next_start_offset;
       next_start_offset += chunk.size;
 
-      chunk.data.open(chunk.path);
-      if (!chunk.data.is_open()) {
-        throw std::runtime_error("Error mapping decoded reference chunk");
-      }
+      open_reference_chunk(chunk);
 
       chunks_.push_back(std::move(chunk));
     }
@@ -68,7 +112,7 @@ public:
 
   ~reference_sequence_store() {
     for (reference_chunk &chunk : chunks_) {
-      chunk.data.close();
+      close_reference_chunk(chunk);
       remove(chunk.path.c_str());
     }
   }
@@ -85,7 +129,7 @@ public:
       const uint64_t offset_in_chunk = current_offset - chunk.start_offset;
       const uint64_t copy_size =
           std::min<uint64_t>(remaining, chunk.size - offset_in_chunk);
-      read.append(chunk.data.data() + offset_in_chunk,
+        read.append(chunk.data + offset_in_chunk,
                   static_cast<size_t>(copy_size));
 
       current_offset += copy_size;

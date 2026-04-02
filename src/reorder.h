@@ -10,9 +10,6 @@
 #include <array>
 #include <algorithm>
 #include <bitset>
-#include <boost/iostreams/device/file.hpp>
-#include <boost/iostreams/filter/gzip.hpp>
-#include <boost/iostreams/filtering_stream.hpp>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -429,32 +426,20 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
 #pragma omp parallel
   {
     int thread_id = omp_get_thread_num();
-    boost::iostreams::filtering_ostream orientation_output;
-    orientation_output.push(boost::iostreams::gzip_compressor());
-    orientation_output.push(
-    boost::iostreams::file_sink(
-      detail::thread_output_path(rg.outfileRC, thread_id)));
-    boost::iostreams::filtering_ostream flag_output;
-    flag_output.push(boost::iostreams::gzip_compressor());
-    flag_output.push(
-    boost::iostreams::file_sink(
-      detail::thread_output_path(rg.outfileflag, thread_id)));
-    boost::iostreams::filtering_ostream position_output;
-    position_output.push(boost::iostreams::gzip_compressor());
-    position_output.push(boost::iostreams::file_sink(
-    detail::thread_output_path(rg.outfilepos, thread_id),
-    std::ios::binary));
-  std::ofstream order_output(detail::thread_output_path(rg.outfileorder,
+    gzip_ostream orientation_output(
+        detail::thread_output_path(rg.outfileRC, thread_id));
+    gzip_ostream flag_output(detail::thread_output_path(rg.outfileflag,
+                                                        thread_id));
+    gzip_ostream position_output(detail::thread_output_path(rg.outfilepos,
+                                                            thread_id));
+    std::ofstream order_output(detail::thread_output_path(rg.outfileorder,
                               thread_id),
                  std::ios::binary);
     std::ofstream singleton_order_output(
     detail::thread_singleton_output_path(rg.outfileorder, thread_id),
     std::ios::binary);
-    boost::iostreams::filtering_ostream read_length_output;
-    read_length_output.push(boost::iostreams::gzip_compressor());
-    read_length_output.push(boost::iostreams::file_sink(
-    detail::thread_output_path(rg.outfilereadlength, thread_id),
-    std::ios::binary));
+    gzip_ostream read_length_output(
+        detail::thread_output_path(rg.outfilereadlength, thread_id));
 
     unmatched_counts[thread_id] = 0;
     std::bitset<bitset_size> reference_read, reverse_reference_read,
@@ -592,17 +577,17 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
                   reference_length;
             }
             if (previous_read_unmatched == true) {
-              orientation_output << 'd';
+              orientation_output.put('d');
               order_output.write(byte_ptr(&previous_read_id), sizeof(uint32_t));
-              flag_output << 0;
+              flag_output.put('0');
               int64_t zero = 0;
               position_output.write(byte_ptr(&zero), sizeof(int64_t));
               read_length_output.write(byte_ptr(&read_lengths[previous_read_id]),
                                        sizeof(uint16_t));
             }
-            orientation_output << (left_search ? 'r' : 'd');
+            orientation_output.put(left_search ? 'r' : 'd');
             order_output.write(byte_ptr(&current_read_id), sizeof(uint32_t));
-            flag_output << 1;
+            flag_output.put('1');
             position_output.write(byte_ptr(&current_read_position),
                                   sizeof(int64_t));
             read_length_output.write(byte_ptr(&read_lengths[current_read_id]),
@@ -638,17 +623,17 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
             }
             if (previous_read_unmatched == true) // prev read not singleton, write it now
             {
-              orientation_output << 'd';
+              orientation_output.put('d');
               order_output.write(byte_ptr(&previous_read_id), sizeof(uint32_t));
-              flag_output << 0;
+              flag_output.put('0');
               int64_t zero = 0;
               position_output.write(byte_ptr(&zero), sizeof(int64_t));
               read_length_output.write(byte_ptr(&read_lengths[previous_read_id]),
                                        sizeof(uint16_t));
             }
-            orientation_output << (left_search ? 'd' : 'r');
+            orientation_output.put(left_search ? 'd' : 'r');
             order_output.write(byte_ptr(&current_read_id), sizeof(uint32_t));
-            flag_output << 1;
+            flag_output.put('1');
             position_output.write(byte_ptr(&current_read_position),
                                   sizeof(int64_t));
             read_length_output.write(byte_ptr(&read_lengths[current_read_id]),
@@ -722,12 +707,12 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
       }
     }
 
-    orientation_output.pop();
+    orientation_output.close();
     order_output.close();
-    flag_output.pop();
-    position_output.pop();
+    flag_output.close();
+    position_output.close();
     singleton_order_output.close();
-    read_length_output.pop();
+    read_length_output.close();
     for (int base_index = 0; base_index < 4; base_index++)
       delete[] base_counts[base_index];
     delete[] base_counts;
@@ -760,12 +745,7 @@ void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
                        std::ofstream::out | std::ios::binary);
     std::ofstream fout_s(detail::thread_singleton_output_path(rg.outfile, tid),
                          std::ofstream::out | std::ios::binary);
-    std::ifstream finRC(detail::thread_output_path(rg.outfileRC, tid),
-                        std::ifstream::in);
-    boost::iostreams::filtering_streambuf<boost::iostreams::input> inbufRC;
-    inbufRC.push(boost::iostreams::gzip_decompressor());
-    inbufRC.push(finRC);
-    std::istream inRC(&inbufRC);
+    gzip_istream inRC(detail::thread_output_path(rg.outfileRC, tid));
     std::ifstream finorder(detail::thread_output_path(rg.outfileorder, tid),
                            std::ifstream::in | std::ios::binary);
     std::ifstream finorder_s(
@@ -774,7 +754,7 @@ void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
     char s[MAX_READ_LEN + 1], s1[MAX_READ_LEN + 1];
     uint32_t current;
     char c;
-    while (inRC >> std::noskipws >> c) {
+    while (inRC.get(c)) {
       finorder.read(byte_ptr(&current), sizeof(uint32_t));
       if (c == 'd') {
         uint16_t num_bytes_to_write =
@@ -799,7 +779,7 @@ void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
     }
     fout.close();
     fout_s.close();
-    finRC.close();
+    inRC.close();
     finorder.close();
     finorder_s.close();
   }

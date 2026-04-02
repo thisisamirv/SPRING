@@ -15,7 +15,6 @@ The upstream Spring license PDF is stored at `LICENSES/SPRING-upstream-license.p
 ## Vendored third-party code
 
 - `vendor/BBHash.tar.xz` — MIT License
-- `vendor/boost.tar.xz` — Boost Software License 1.0
 - `vendor/cloudflare_zlib.tar.xz` — zlib License
 - `vendor/id_compression.tar.xz` — no license identified; current vendored sources only preserve a provenance notice with "All rights reserved"
 - `vendor/libbsc.tar.xz` — Apache License 2.0

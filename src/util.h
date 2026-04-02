@@ -7,7 +7,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
+#include <istream>
+#include <ostream>
+#include <streambuf>
 #include <string>
+
+#include <zlib.h>
 
 namespace spring {
 
@@ -49,6 +54,66 @@ struct compression_params {
   int num_reads_per_block_long;
   int num_thr;
 };
+
+class gzip_istreambuf : public std::streambuf {
+public:
+  gzip_istreambuf();
+  explicit gzip_istreambuf(const std::string &path);
+  gzip_istreambuf(const gzip_istreambuf &) = delete;
+  gzip_istreambuf &operator=(const gzip_istreambuf &) = delete;
+  ~gzip_istreambuf() override;
+
+  bool open(const std::string &path);
+  void close();
+  bool is_open() const;
+
+protected:
+  int_type underflow() override;
+
+private:
+  static constexpr std::size_t kBufferSize = 1 << 15;
+
+  gzFile file_;
+  char buffer_[kBufferSize];
+};
+
+class gzip_istream : public std::istream {
+public:
+  gzip_istream();
+  explicit gzip_istream(const std::string &path);
+  gzip_istream(const gzip_istream &) = delete;
+  gzip_istream &operator=(const gzip_istream &) = delete;
+
+  bool open(const std::string &path);
+  void close();
+  bool is_open() const;
+
+private:
+  gzip_istreambuf buffer_;
+};
+
+class gzip_ostream {
+public:
+  gzip_ostream();
+  explicit gzip_ostream(const std::string &path, int level = Z_DEFAULT_COMPRESSION);
+  gzip_ostream(const gzip_ostream &) = delete;
+  gzip_ostream &operator=(const gzip_ostream &) = delete;
+  ~gzip_ostream();
+
+  bool open(const std::string &path, int level = Z_DEFAULT_COMPRESSION);
+  void write(const char *data, std::streamsize size);
+  void put(char value);
+  void close();
+  bool is_open() const;
+
+private:
+  gzFile file_;
+};
+
+std::string gzip_compress_string(const std::string &input, int gzip_level);
+
+void decompress_gzip_file(const std::string &input_path,
+                          const std::string &output_path);
 
 // FASTQ block helpers.
 uint32_t read_fastq_block(std::istream *input_stream,
