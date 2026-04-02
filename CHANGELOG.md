@@ -6,6 +6,8 @@
 
 * **Updated libbsc to Latest Version**: Replaced the `src/libbsc` internal library with its latest upstream version. Ensured preservation of project-specific API wrappers (`bsc.h`, `bsc.cpp`, `bsc_str_array.cpp`) to maintain compatibility with the Spring codebase.
 
+* **Pruned and Compressed Vendored Dependencies**: Reduced repository size by removing non-essential vendored materials such as unused documentation, examples, tests, CI assets, and other unneeded packaging content where appropriate, and by repackaging retained third-party dependencies as local archive payloads under `vendor/`. These reductions were made to support distribution and build efficiency while preserving required license notices and the project-specific compatibility adjustments needed by the Spring codebase.
+
 * **Updated cloudflare-zlib**: Synchronized the bundled zlib dependency with its latest configuration.
 
 * **Updated BBHash**: Updated BooPHF.h script to the latest version of BBHash.
@@ -20,9 +22,9 @@
 
 * **Standardized Code Style**: Integrated a project-wide `.clang-format` configuration based on the **LLVM** standard. Systematically applied this style across the entire codebase to ensure consistent indentation, brace placement, and overall readability.
 
-* **Restored CMake 4.3 Compatibility for Vendored Boost**: Updated `third_party/boost-cmake/CMakeLists.txt` to set policy `CMP0169` to `OLD`, allowing the bundled Boost build logic to continue using `FetchContent_Populate` under newer CMake releases.
+* **Restored CMake 4.3 Compatibility for Vendored Boost**: Updated `vendor/boost-cmake/CMakeLists.txt` to set policy `CMP0169` to `OLD`, allowing the bundled Boost build logic to continue using `FetchContent_Populate` under newer CMake releases.
 
-* **Migrated to Native Boost 1.90 CMake**: Replaced the old `boost-cmake` wrapper and bundled `boost_1_67_0.tar.xz` payload with the local `third_party/boost/boost-1.90.0-cmake.tar.xz` source archive, using Boost's own CMake build and removing the obsolete wrapper directory from the repository.
+* **Migrated to Native Boost 1.90 CMake**: Replaced the old `boost-cmake` wrapper and bundled `boost_1_67_0.tar.xz` payload with the local `vendor/boost/boost-1.90.0-cmake.tar.xz` source archive, using Boost's own CMake build and removing the obsolete wrapper directory from the repository.
 
 * **Reorganized Repository Utilities**: Split the old mixed-purpose `util/` directory into `tests` for bundled regression assets and smoke checks, `scripts/analysis` and `scripts/preprocessing` for standalone helpers, and removed the obsolete archival benchmark and dependency-probe leftovers.
 
@@ -60,7 +62,7 @@
 
 * **BSC Library Fixes**: Added missing `<string>` and `<cstdint>` inclusions to `src/libbsc/bsc.h` to ensure standalone header validity in modern C++ environments.
 
-* **GCC 15 Compatibility for id_compression**: Added missing `<cstring>` includes to `third_party/id_compression/src/id_compression.cpp` and `third_party/id_compression/src/sam_file_allocation.cpp` so `strcpy`, `memcpy`, and `memset` resolve correctly with newer GCC toolchains.
+* **GCC 15 Compatibility for id_compression**: Added missing `<cstring>` includes to `vendor/id_compression/src/id_compression.cpp` and `vendor/id_compression/src/sam_file_allocation.cpp` so `strcpy`, `memcpy`, and `memset` resolve correctly with newer GCC toolchains.
 
 * **GCC 15 Allocation Warning Cleanup**: Eliminated `-Walloc-size-larger-than` warnings by validating positive thread counts in `src/main.cpp`, replacing thread-sized scratch buffers in `src/util.cpp`, `src/preprocess.cpp`, `src/encoder.h`, and `src/reorder.h` with standard containers, and tightening thread-count handling in `src/BooPHF.h`.
 * **Preprocess and BooPHF Hardening**: Completed the follow-up sweep in `src/preprocess.cpp` and `src/BooPHF.h` by converting remaining thread-indexed scratch storage to standard containers and enforcing positive thread counts in internal helper paths.

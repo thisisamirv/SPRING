@@ -70,22 +70,34 @@ message(STATUS "** CMAKE_C_FLAGS: ${CMAKE_C_FLAGS}")
 # Build Cloudflare zlib during configuration so the bundled Boost build can
 # discover and link against the same zlib implementation.
 
+set(CLOUDFLARE_ZLIB_DIR ${CMAKE_BINARY_DIR}/cloudflare_zlib-src)
+
 message(STATUS "Building zlib")
 message(STATUS "CMAKE_SOURCE_DIR: ${CMAKE_SOURCE_DIR}")
+file(REMOVE_RECURSE ${CLOUDFLARE_ZLIB_DIR})
+file(MAKE_DIRECTORY ${CLOUDFLARE_ZLIB_DIR})
+execute_process(
+    COMMAND ${CMAKE_COMMAND} -E tar xJf ${CMAKE_SOURCE_DIR}/vendor/cloudflare_zlib.tar.xz
+    WORKING_DIRECTORY ${CLOUDFLARE_ZLIB_DIR}
+)
 execute_process(
     COMMAND ./configure
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/third_party/cloudflare_zlib/
+    WORKING_DIRECTORY ${CLOUDFLARE_ZLIB_DIR}
 )
 execute_process(
     COMMAND make clean
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/third_party/cloudflare_zlib/
+    WORKING_DIRECTORY ${CLOUDFLARE_ZLIB_DIR}
 )
 execute_process(
-    COMMAND make static
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/third_party/cloudflare_zlib/
+    COMMAND make libz.a
+    WORKING_DIRECTORY ${CLOUDFLARE_ZLIB_DIR}
 )
 
-set( ENV{ZLIB_ROOT} ${CMAKE_SOURCE_DIR}/third_party/cloudflare_zlib/ )
+set( ENV{ZLIB_ROOT} ${CLOUDFLARE_ZLIB_DIR} )
+set(ZLIB_ROOT ${CLOUDFLARE_ZLIB_DIR} CACHE PATH "Path to the vendored zlib build" FORCE)
+set(ZLIB_INCLUDE_DIR ${CLOUDFLARE_ZLIB_DIR} CACHE PATH "Path to the vendored zlib headers" FORCE)
+set(ZLIB_LIBRARY ${CLOUDFLARE_ZLIB_DIR}/libz.a CACHE FILEPATH "Path to the vendored zlib library" FORCE)
+set(ZLIB_LIBRARY_RELEASE ${CLOUDFLARE_ZLIB_DIR}/libz.a CACHE FILEPATH "Path to the vendored zlib release library" FORCE)
 
 #######################################################
 
@@ -95,14 +107,47 @@ set(BOOST_INCLUDE_LIBRARIES filesystem iostreams program_options system)
 
 FetchContent_Declare(
     boost_local
-    URL ${CMAKE_SOURCE_DIR}/third_party/boost/boost-1.90.0-cmake.tar.xz
-    URL_HASH SHA256=aca59f889f0f32028ad88ba6764582b63c916ce5f77b31289ad19421a96c555f
+    URL ${CMAKE_SOURCE_DIR}/vendor/boost.tar.xz
+    URL_HASH SHA256=4f5880384f4aac2a0d5400043038fb4cea07f8495ea49575e300b357e5dd1b9f
 )
 FetchContent_MakeAvailable(boost_local)
 
 set(source_dir ${CMAKE_SOURCE_DIR}/src)
-set(third_party_dir ${CMAKE_SOURCE_DIR}/third_party)
+set(vendor_dir ${CMAKE_SOURCE_DIR}/vendor)
+set(build_vendor_dir ${CMAKE_BINARY_DIR}/vendor)
+set(BBHASH_DIR ${build_vendor_dir}/BBHash)
+set(ID_COMPRESSION_DIR ${build_vendor_dir}/id_compression)
+set(LIBBSC_DIR ${build_vendor_dir}/libbsc)
+set(QVZ_DIR ${build_vendor_dir}/qvz)
 set(include_dir ${CMAKE_SOURCE_DIR}/src)
+
+file(REMOVE_RECURSE ${BBHASH_DIR})
+file(MAKE_DIRECTORY ${BBHASH_DIR})
+execute_process(
+    COMMAND ${CMAKE_COMMAND} -E tar xJf ${CMAKE_SOURCE_DIR}/vendor/BBHash.tar.xz
+    WORKING_DIRECTORY ${BBHASH_DIR}
+)
+
+file(REMOVE_RECURSE ${ID_COMPRESSION_DIR})
+file(MAKE_DIRECTORY ${ID_COMPRESSION_DIR})
+execute_process(
+    COMMAND ${CMAKE_COMMAND} -E tar xJf ${CMAKE_SOURCE_DIR}/vendor/id_compression.tar.xz
+    WORKING_DIRECTORY ${ID_COMPRESSION_DIR}
+)
+
+file(REMOVE_RECURSE ${LIBBSC_DIR})
+file(MAKE_DIRECTORY ${LIBBSC_DIR})
+execute_process(
+    COMMAND ${CMAKE_COMMAND} -E tar xJf ${CMAKE_SOURCE_DIR}/vendor/libbsc.tar.xz
+    WORKING_DIRECTORY ${LIBBSC_DIR}
+)
+
+file(REMOVE_RECURSE ${QVZ_DIR})
+file(MAKE_DIRECTORY ${QVZ_DIR})
+execute_process(
+    COMMAND ${CMAKE_COMMAND} -E tar xJf ${CMAKE_SOURCE_DIR}/vendor/qvz.tar.xz
+    WORKING_DIRECTORY ${QVZ_DIR}
+)
 
 # The Spring executable is built from the core pipeline plus bundled
 # third-party compression libraries.
@@ -121,41 +166,41 @@ list(APPEND source_files
     ${source_dir}/template_dispatch.cpp
 
     # id compression
-    ${third_party_dir}/id_compression/src/Arithmetic_stream.cpp
-    ${third_party_dir}/id_compression/src/compression.cpp
-    ${third_party_dir}/id_compression/src/id_compression.cpp
-    ${third_party_dir}/id_compression/src/io_functions.cpp
-    ${third_party_dir}/id_compression/src/sam_file_allocation.cpp
-    ${third_party_dir}/id_compression/src/sam_models.cpp
-    ${third_party_dir}/id_compression/src/stream_model.cpp
+    ${ID_COMPRESSION_DIR}/src/Arithmetic_stream.cpp
+    ${ID_COMPRESSION_DIR}/src/compression.cpp
+    ${ID_COMPRESSION_DIR}/src/id_compression.cpp
+    ${ID_COMPRESSION_DIR}/src/io_functions.cpp
+    ${ID_COMPRESSION_DIR}/src/sam_file_allocation.cpp
+    ${ID_COMPRESSION_DIR}/src/sam_models.cpp
+    ${ID_COMPRESSION_DIR}/src/stream_model.cpp
 
     # bsc
-    ${third_party_dir}/libbsc/bsc.cpp
-    ${third_party_dir}/libbsc/bsc_str_array.cpp
-    ${third_party_dir}/libbsc/libbsc/adler32/adler32.cpp
-    ${third_party_dir}/libbsc/libbsc/bwt/libsais/libsais.c
-    ${third_party_dir}/libbsc/libbsc/bwt/bwt.cpp
-    ${third_party_dir}/libbsc/libbsc/coder/coder.cpp
-    ${third_party_dir}/libbsc/libbsc/coder/qlfc/qlfc.cpp
-    ${third_party_dir}/libbsc/libbsc/coder/qlfc/qlfc_model.cpp
-    ${third_party_dir}/libbsc/libbsc/filters/detectors.cpp
-    ${third_party_dir}/libbsc/libbsc/filters/preprocessing.cpp
-    ${third_party_dir}/libbsc/libbsc/libbsc/libbsc.cpp
-    ${third_party_dir}/libbsc/libbsc/lzp/lzp.cpp
-    ${third_party_dir}/libbsc/libbsc/platform/platform.cpp
-    ${third_party_dir}/libbsc/libbsc/st/st.cpp
+    ${LIBBSC_DIR}/bsc.cpp
+    ${LIBBSC_DIR}/bsc_str_array.cpp
+    ${LIBBSC_DIR}/libbsc/adler32/adler32.cpp
+    ${LIBBSC_DIR}/libbsc/bwt/libsais/libsais.c
+    ${LIBBSC_DIR}/libbsc/bwt/bwt.cpp
+    ${LIBBSC_DIR}/libbsc/coder/coder.cpp
+    ${LIBBSC_DIR}/libbsc/coder/qlfc/qlfc.cpp
+    ${LIBBSC_DIR}/libbsc/coder/qlfc/qlfc_model.cpp
+    ${LIBBSC_DIR}/libbsc/filters/detectors.cpp
+    ${LIBBSC_DIR}/libbsc/filters/preprocessing.cpp
+    ${LIBBSC_DIR}/libbsc/libbsc/libbsc.cpp
+    ${LIBBSC_DIR}/libbsc/lzp/lzp.cpp
+    ${LIBBSC_DIR}/libbsc/platform/platform.cpp
+    ${LIBBSC_DIR}/libbsc/st/st.cpp
 
     # qvz
-    ${third_party_dir}/qvz/src/cluster.cpp
-    ${third_party_dir}/qvz/src/codebook.cpp
-    ${third_party_dir}/qvz/src/distortion.cpp
-    ${third_party_dir}/qvz/src/lines.cpp
-    ${third_party_dir}/qvz/src/pmf.cpp
-    ${third_party_dir}/qvz/src/quantizer.cpp
-    ${third_party_dir}/qvz/src/qv_compressor.cpp
-    ${third_party_dir}/qvz/src/qvz.cpp
-    ${third_party_dir}/qvz/src/util.cpp
-    ${third_party_dir}/qvz/src/well.cpp
+    ${QVZ_DIR}/src/cluster.cpp
+    ${QVZ_DIR}/src/codebook.cpp
+    ${QVZ_DIR}/src/distortion.cpp
+    ${QVZ_DIR}/src/lines.cpp
+    ${QVZ_DIR}/src/pmf.cpp
+    ${QVZ_DIR}/src/quantizer.cpp
+    ${QVZ_DIR}/src/qv_compressor.cpp
+    ${QVZ_DIR}/src/qvz.cpp
+    ${QVZ_DIR}/src/util.cpp
+    ${QVZ_DIR}/src/well.cpp
 )
 
 # Convenience targets for repository development checks.
@@ -169,9 +214,9 @@ endfunction()
 
 add_executable (spring ${source_files})
 
-# Spring headers live in src/, while third_party/ exposes bundled libraries such
+# Spring headers live in src/, while vendor/ exposes bundled libraries such
 # as BBHash, libbsc, id_compression, qvz, and Cloudflare zlib.
-target_include_directories(spring PRIVATE ${include_dir} ${third_party_dir})
+target_include_directories(spring PRIVATE ${include_dir} ${vendor_dir} ${build_vendor_dir})
 target_link_libraries(spring PUBLIC
     Boost::filesystem
     Boost::system

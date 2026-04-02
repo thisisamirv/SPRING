@@ -4,6 +4,11 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "$0")" && pwd)/common.sh"
 
+if [[ $# -gt 0 ]]; then
+	echo "valgrind-smoke.sh does not accept file or directory targets; it only runs the Spring smoke test." >&2
+	exit 1
+fi
+
 require_command valgrind
 require_spring_binary
 
