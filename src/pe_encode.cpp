@@ -23,21 +23,13 @@ limitations under the License.
 namespace spring {
 
 void pe_encode(const std::string &temp_dir, const compression_params &cp) {
-  // Read some parameters
   const uint32_t numreads = cp.num_reads;
   const uint32_t numreads_by_2 = numreads / 2;
 
   const std::string basedir = temp_dir;
   const std::string file_order = basedir + "/read_order.bin";
   std::vector<uint32_t> order_array(numreads);
-  // stores index mapping position in reordered file to
-  // position in original file
-  // later stores index generated in this step - maps position
-  // in reordered file to position in intended decompressed file
-
   std::vector<uint32_t> inverse_order_array(numreads);
-  // stores index mapping position in original file to
-  // position in reordered file
 
   std::ifstream fin_order(file_order, std::ios::binary);
   uint32_t order;
@@ -48,17 +40,13 @@ void pe_encode(const std::string &temp_dir, const compression_params &cp) {
   }
   fin_order.close();
 
-  // First fill positions in new order array corresponding to reads
-  // in file 1. These reads are decompressed in the same order as
-  // in the reordered file
+  // File 1 keeps its reordered traversal; file 2 follows its mate positions.
   uint32_t pos_in_file_1 = 0;
   for (uint32_t i = 0; i < numreads; i++) {
     if (order_array[i] < numreads_by_2)
       order_array[i] = pos_in_file_1++;
   }
 
-  // Now fill positions in new order array corresponding to reads in
-  // file 2. These are automatically decided by the pairing.
   for (uint32_t i = 0; i < numreads; i++) {
     if (order_array[i] >= numreads_by_2) {
       const uint32_t original_pos = order_array[i];
@@ -70,7 +58,6 @@ void pe_encode(const std::string &temp_dir, const compression_params &cp) {
     }
   }
 
-  // Write to tmp file and replace
   std::ofstream fout_order(file_order + ".tmp", std::ios::binary);
   for (uint32_t i = 0; i < numreads; i++) {
     fout_order.write(byte_ptr(&order_array[i]), sizeof(uint32_t));

@@ -7,7 +7,6 @@ inFile = "logs/ERP001775_1.quality_counts"
 num_clusters = 4
 NOISE_ENTROPY = -(0.3*np.log(0.15)+0.7*np.log(0.7))/np.log(2.0)
 
-###################################
 def quality_to_prob(qual_string):
     _q = [ord(c) for c in qual_string]
 
@@ -32,7 +31,6 @@ def qv_to_prob():
 
 
 def quality_value_stats(inFile):
-  
     qv_counts_0order = np.zeros((42,readlen))
     qv_counts_1order = np.zeros((42,42,readlen))
     qv_counts_2order = np.zeros((42,42,42,readlen))
@@ -294,6 +292,7 @@ def main():
     si_prob = compute_Si_prob(qv_prob_0order)
     si_prob_cluster = compute_cluster_substitution_probs(qv_prob_0order_cluster)
 
+    # Compare clustered and unclustered entropy estimates at each model order.
     (Ni_perpos_entropy,
      total_Ni_entropy_cluster,
      Ni_perpos_entropy_cluster) = report_0order_entropy(
@@ -316,8 +315,6 @@ def main():
         num_reads,
         num_reads_cluster,
     )
-###########################################################################################################
-
 
 if __name__ == '__main__':
     main()

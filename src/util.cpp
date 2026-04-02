@@ -333,12 +333,7 @@ void generate_binary_binning_table(char *binary_binning_table,
     binary_binning_table[i] = 33 + high;
 }
 
-// ID patterns
-// code 0: no pattern found
-// code 1: */1 and */2 where * are same in both
-// code 2: * and * where * are same in both
-// code 3: * 1:# and * 2:# where * and # are common to both and * contains no
-// space (used in new versions)
+// Detect the paired-id conventions Spring knows how to reconstruct implicitly.
 uint8_t find_id_pattern(const std::string &id_1, const std::string &id_2) {
   for (uint8_t paired_id_code = 1; paired_id_code <= 3; ++paired_id_code)
     if (matches_paired_id_code(id_1, id_2, paired_id_code))
@@ -369,7 +364,7 @@ void modify_id(std::string &id, const uint8_t paired_id_code) {
 void write_dna_in_bits(const std::string &read, std::ofstream &fout) {
   uint8_t dna2int[128] = {};
   dna2int[(uint8_t)'A'] = 0;
-  dna2int[(uint8_t)'C'] = 2; // chosen to align with the bitset representation
+  dna2int[(uint8_t)'C'] = 2;
   dna2int[(uint8_t)'G'] = 1;
   dna2int[(uint8_t)'T'] = 3;
   write_encoded_read<128>(read, fout, dna2int, 2, 4);
@@ -383,7 +378,7 @@ void read_dna_from_bits(std::string &read, std::ifstream &fin) {
 void write_dnaN_in_bits(const std::string &read, std::ofstream &fout) {
   uint8_t dna2int[128] = {};
   dna2int[(uint8_t)'A'] = 0;
-  dna2int[(uint8_t)'C'] = 2; // chosen to align with the bitset representation
+  dna2int[(uint8_t)'C'] = 2;
   dna2int[(uint8_t)'G'] = 1;
   dna2int[(uint8_t)'T'] = 3;
   dna2int[(uint8_t)'N'] = 4;
@@ -422,11 +417,7 @@ size_t get_directory_size(const std::string &temp_dir) {
   return size;
 }
 
-// below functions based on code at
-// https://github.com/sean-/postgresql-varint/blob/trunk/src/varint.c also on
-// https://github.com/shubhamchandak94/CDTC/blob/master/src/util.cpp
-
-// Used to pack some temporary files efficiently
+// Use zigzag plus varint encoding for compact temporary integer streams.
 uint64_t zigzag_encode64(const int64_t n) {
   const uint64_t sign_mask = (n < 0) ? UINT64_MAX : 0U;
   return (static_cast<uint64_t>(n) << 1) ^ sign_mask;

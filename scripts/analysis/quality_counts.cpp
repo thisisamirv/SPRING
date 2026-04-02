@@ -117,6 +117,7 @@ void compute_counts(const std::string &infile, const std::string &outfile) {
                                kQualityValueCount * kQualityValueCount);
   std::vector<uint64_t> num_reads(static_cast<size_t>(kNumClusters));
 
+  // Accumulate 0th-, 1st-, and 2nd-order quality statistics in one pass.
   while (std::getline(myfile, line)) {
     int total_qv = 0;
     for (int position = 0; position < kReadLen; ++position) {

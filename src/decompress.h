@@ -22,6 +22,7 @@ namespace spring {
 
 struct compression_params;
 
+// Short-read and long-read streams use different reconstruction paths.
 void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
                       const std::string &outfile_2,
                       const compression_params &cp, const int &num_thr,

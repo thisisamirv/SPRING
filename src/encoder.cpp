@@ -54,7 +54,7 @@ std::string buildcontig(std::list<contig_reads> &current_contig,
   int64_t currentpos = 0, currentsize = 0, to_insert;
   std::vector<std::array<long, 4>> count;
   for (; current_contig_it != current_contig.end(); ++current_contig_it) {
-    if (current_contig_it == current_contig.begin()) // first read
+    if (current_contig_it == current_contig.begin())
       to_insert = (*current_contig_it).read_length;
     else {
       currentpos = (*current_contig_it).pos;
@@ -125,7 +125,6 @@ void pack_compress_seq(const encoder_global &eg, uint64_t *file_len_seq_thr) {
     const std::string tmp_seq_path = thread_file_path(eg.outfile_seq, tid, ".tmp");
     const std::string tail_seq_path = thread_file_path(eg.outfile_seq, tid, ".tail");
     const std::string compressed_seq_path = thread_file_path(eg.outfile_seq, tid, ".bsc");
-    // seq
     std::ifstream in_seq(seq_path);
     std::ofstream f_seq(tmp_seq_path, std::ios::binary);
     std::ofstream f_seq_tail(tail_seq_path);
@@ -189,13 +188,11 @@ void getDataParams(encoder_global &eg, const compression_params &cp) {
 void correct_order(uint32_t *order_s, const encoder_global &eg) {
   uint32_t numreads_total = eg.numreads + eg.numreads_s + eg.numreads_N;
   std::vector<uint8_t> read_flag_N(numreads_total, 0);
-  // bool array indicating N reads
   for (uint32_t i = 0; i < eg.numreads_N; i++) {
     read_flag_N[order_s[eg.numreads_s + i]] = 1;
   }
 
   std::vector<uint32_t> cumulative_N_reads(eg.numreads + eg.numreads_s, 0);
-  // number of reads occuring before pos in clean reads
   uint32_t pos_in_clean = 0, num_N_reads_till_now = 0;
   for (uint32_t i = 0; i < numreads_total; i++) {
     if (read_flag_N[i])
@@ -204,11 +201,10 @@ void correct_order(uint32_t *order_s, const encoder_global &eg) {
       cumulative_N_reads[pos_in_clean++] = num_N_reads_till_now;
   }
 
-  // First correct the order for singletons
+  // Insert the removed N-read slots back into singleton and clean-read orderings.
   for (uint32_t i = 0; i < eg.numreads_s; i++)
     order_s[i] += cumulative_N_reads[order_s[i]];
 
-  // Now correct for clean reads (this is stored on file)
   for (int tid = 0; tid < eg.num_thr; tid++) {
     const std::string order_path = thread_file_path(eg.infile_order, tid);
     const std::string order_tmp_path =

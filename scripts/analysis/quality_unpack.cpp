@@ -41,6 +41,7 @@ int main(int, char **argv) {
   std::ofstream f_out(infile + ".unpacked");
   const quality_decode_table_t int_to_qual = build_quality_decode_table();
 
+  // Rehydrate packed bytes first, then append the leftover tail characters.
   unpack_quality_stream(f_in, f_out, int_to_qual);
 
   f_in.close();

@@ -52,6 +52,7 @@ int main(int, char **argv) {
   quality_chunk_t quality = {};
 
   std::cout << file_len << "\n";
+  // Pack four quality symbols into each byte and spill any remainder to tail.
   for (long i = 0; i < file_len / 4; i++) {
     f_in.read(quality.data(), quality.size());
     const uint8_t quality_bin = pack_quality_chunk(quality, qual_to_int);

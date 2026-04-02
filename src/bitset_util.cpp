@@ -21,6 +21,7 @@ namespace spring {
 void bbhashdict::findpos(int64_t *dictidx, const uint64_t &startposidx) {
   dictidx[0] = startpos[startposidx];
   const uint32_t endidx = startpos[startposidx + 1];
+  // Tail markers record whether deletions have compacted the logical bin end.
   const uint32_t tail_marker = read_id[endidx - 1];
 
   if (tail_marker == MAX_NUM_READS) {

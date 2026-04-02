@@ -45,7 +45,7 @@ public:
   int start;
   int end;
   uint32_t numkeys;
-  uint32_t dict_numreads; // number of reads in this dict (for variable length)
+  uint32_t dict_numreads; // Number of reads long enough to participate here.
   uint32_t *startpos;
   uint32_t *read_id;
   bool *empty_bin;
@@ -108,14 +108,14 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
       stop = uint64_t(tid + 1) * numreads / thread_count;
       if (tid == thread_count - 1)
         stop = numreads;
-      // compute keys and and store in ull
+      // Compute this dictionary's masked keys for the thread's slice.
       for (; i < stop; i++) {
         b = read[i] & mask[j];
         ull[i] = (b >> bpb * current_dict.start).to_ullong();
       }
-    } // parallel end
+    }
 
-    // remove keys corresponding to reads shorter than dict_end[j]
+    // Discard reads that are shorter than the dictionary's end position.
     current_dict.dict_numreads = 0;
     for (uint32_t i = 0; i < numreads; i++) {
       if (read_lengths[i] > current_dict.end) {
@@ -124,7 +124,7 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
       }
     }
 
-// write ull to file
+  // Materialize per-thread key chunks so later passes can stream them again.
 #pragma omp parallel
     {
       const int tid = omp_get_thread_num();
@@ -138,16 +138,17 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
       for (; i < stop; i++)
         foutkey.write(byte_ptr(&ull[i]), sizeof(uint64_t));
       foutkey.close();
-    } // parallel end
+    }
 
-    // deduplicating ull
+    // Deduplicate the sorted key list before building the MPHF.
     std::sort(ull, ull + current_dict.dict_numreads);
     uint32_t k = 0;
     for (uint32_t i = 1; i < current_dict.dict_numreads; i++)
       if (ull[i] != ull[k])
         ull[++k] = ull[i];
     current_dict.numkeys = k + 1;
-    // construct mphf
+
+    // Build the MPHF over the distinct keys.
     auto data_iterator =
         boomphf::range(static_cast<const uint64_t *>(ull),
                        static_cast<const uint64_t *>(ull + current_dict.numkeys));
@@ -158,7 +159,7 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
 
     delete[] ull;
 
-// compute hashes for all reads
+  // Re-read the stored keys and materialize their hash buckets.
 #pragma omp parallel
     {
       const int tid = omp_get_thread_num();
@@ -181,17 +182,17 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
       finkey.close();
       remove(key_path.c_str());
       fouthash.close();
-    } // parallel end
+    }
   }
 
-  // for rest of the function, use numdict threads to parallelize
+  // The remaining passes parallelize across dictionaries instead of reads.
   omp_set_num_threads(std::min(numdict, num_thr));
 #pragma omp parallel
   {
 #pragma omp for
     for (int j = 0; j < numdict; j++) {
       bbhashdict &current_dict = dict[j];
-      // fill startpos by first storing numbers and then doing cumulative sum
+      // Count bucket sizes, then prefix-sum them into start positions.
       current_dict.startpos =
           new uint32_t[current_dict.numkeys +
                        1](); // 1 extra to store end pos of last key
@@ -211,7 +212,7 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
         current_dict.startpos[i] =
             current_dict.startpos[i] + current_dict.startpos[i - 1];
 
-      // insert elements in the dict array
+      // Populate the per-key read lists using the streamed hash files.
       current_dict.read_id = new uint32_t[current_dict.dict_numreads];
       uint32_t i = 0;
       for (int tid = 0; tid < num_thr; tid++) {
@@ -229,12 +230,12 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
         remove(hash_path.c_str());
       }
 
-      // correcting startpos array modified during insertion
+      // Restore the prefix offsets after the insertion walk above.
       for (int64_t keynum = current_dict.numkeys; keynum >= 1; keynum--)
         current_dict.startpos[keynum] = current_dict.startpos[keynum - 1];
       current_dict.startpos[0] = 0;
-    } // for end
-  } // parallel end
+    }
+  }
   omp_set_num_threads(num_thr);
   delete[] mask;
   return;
@@ -243,8 +244,7 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
 template <size_t bitset_size>
 void generatemasks(std::bitset<bitset_size> **mask, const int max_readlen,
                    const int bpb) {
-  // mask for zeroing the end bits (needed while reordering to compute Hamming
-  // distance between shifted reads)
+  // Zero trailing positions so shifted reads can be compared consistently.
   for (int i = 0; i < max_readlen; i++) {
     for (int j = 0; j < max_readlen; j++) {
       mask[i][j].reset();

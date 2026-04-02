@@ -33,6 +33,7 @@ void write_split_chunk(std::ofstream &f_out, const fastq_record &record,
 void write_split_record(std::ofstream &f_out, const fastq_record &record,
                         const std::size_t max_readlen) {
   std::size_t chunk_start = 0;
+  // Emit fixed-size chunks until the final tail fragment.
   while (chunk_start + max_readlen < record.read.length()) {
     write_split_chunk(f_out, record, chunk_start, max_readlen);
     chunk_start += max_readlen;

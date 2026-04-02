@@ -167,21 +167,19 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
     generate_binary_binning_table(quality_binning_table, cp.bin_thr_thr,
                                   cp.bin_thr_high, cp.bin_thr_low);
 
-  // Check that we were able to open the input files and also look for
-  // paired end matching ids if relevant
   if (!fin_f[0].is_open())
     throw std::runtime_error("Error opening input file");
   if (cp.paired_end) {
     if (!fin_f[1].is_open())
       throw std::runtime_error("Error opening input file");
     if (cp.preserve_id) {
+      // Probe the mate-id pattern once so later stages can drop redundant ids.
       std::string id_1, id_2;
       std::getline(*fin[0], id_1);
       std::getline(*fin[1], id_2);
       paired_id_code = find_id_pattern(id_1, id_2);
       if (paired_id_code != 0)
         paired_id_match = true;
-      // bring back to start
       for (int j = 0; j < 2; j++)
         reset_input_stream(fin_f[j], fin[j], inbuf[j], infile[j], gzip_flag);
     }
@@ -238,7 +236,6 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
           if (cp.long_flag)
             fout_readlength.open(block_file_path(outfilereadlength[j], block_num),
                                  std::ios::binary);
-          // check if reads and qualities have equal lengths
           for (uint32_t i = tid * num_reads_per_block;
                i < tid * num_reads_per_block + num_reads_thr; i++) {
             size_t len = read_array[i].size();
@@ -260,12 +257,10 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                   "Read length does not match quality length.");
             read_lengths_array[i] = (uint32_t)len;
 
-            // mark reads with N
             if (!cp.long_flag)
               read_contains_N_array[i] =
                   (read_array[i].find('N') != std::string::npos);
 
-            // Write read length to a file (for long mode)
             if (cp.long_flag)
               fout_readlength.write(byte_ptr(&read_lengths_array[i]),
                                     sizeof(uint32_t));
@@ -276,12 +271,10 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
           }
           if (cp.long_flag)
             fout_readlength.close();
-          // apply binning (if asked to do so)
           if (cp.preserve_quality && (cp.ill_bin_flag || cp.bin_thr_flag))
             quantize_quality(quality_array.data() + tid * num_reads_per_block,
                              num_reads_thr, quality_binning_table);
 
-          // apply qvz quantization (if flag specified and order preserving)
           if (cp.preserve_quality && cp.qvz_flag && cp.preserve_order)
             quantize_quality_qvz(
                 quality_array.data() + tid * num_reads_per_block,
@@ -290,7 +283,6 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                 cp.qvz_ratio);
           if (!cp.long_flag) {
             if (cp.preserve_order) {
-              // Compress ids
               if (cp.preserve_id) {
                 std::string outfile_name =
                     outfileid[j] + "." + std::to_string(num_blocks_done + tid);
@@ -298,7 +290,6 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                                   id_array + tid * num_reads_per_block,
                                   num_reads_thr);
               }
-              // Compress qualities
               if (cp.preserve_quality) {
                 std::string outfile_name =
                     outfilequality[j] + "." +
@@ -311,20 +302,17 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
               }
             }
           } else {
-            // Compress read lengths file
             std::string infile_name =
                 block_file_path(outfilereadlength[j], block_num);
             std::string outfile_name = infile_name + ".bsc";
             bsc::BSC_compress(infile_name.c_str(), outfile_name.c_str());
             remove(infile_name.c_str());
-            // Compress ids
             if (cp.preserve_id) {
               std::string outfile_name = block_file_path(outfileid[j], block_num);
               compress_id_block(outfile_name.c_str(),
                                 id_array + tid * num_reads_per_block,
                                 num_reads_thr);
             }
-            // Compress qualities
             if (cp.preserve_quality) {
               std::string outfile_name =
                   block_file_path(outfilequality[j], block_num);
@@ -334,16 +322,14 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                   num_reads_thr,
                   read_lengths_array.data() + tid * num_reads_per_block);
             }
-            // Compress reads
             outfile_name = block_file_path(outfileread[j], block_num);
             bsc::BSC_str_array_compress(
                 outfile_name.c_str(),
                 read_array.data() + tid * num_reads_per_block, num_reads_thr,
                 read_lengths_array.data() + tid * num_reads_per_block);
           }
-        } // if(!done)
-      } // omp parallel
-      // if id match not found in any thread, set to false
+        }
+      }
       if (cp.paired_end && (j == 1)) {
         if (paired_id_match)
           for (int tid = 0; tid < cp.num_thr; tid++)
@@ -352,7 +338,6 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
           paired_id_code = 0;
       }
       if (!cp.long_flag) {
-        // write reads and read_order_N to respective files
         for (uint32_t i = 0; i < num_reads_read; i++) {
           if (!read_contains_N_array[i]) {
             write_dna_in_bits(read_array[i], fout_clean[j]);
@@ -364,10 +349,8 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
           }
         }
         if (!cp.preserve_order) {
-          // write qualities to file
           for (uint32_t i = 0; i < num_reads_read; i++)
             fout_quality[j] << quality_array[i] << "\n";
-          // write ids to file
           for (uint32_t i = 0; i < num_reads_read; i++)
             fout_id[j] << id_array[i] << "\n";
         }
@@ -389,7 +372,6 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   }
 
   delete[] quality_binning_table;
-  // close files
   for (int j = 0; j < 2; j++) {
     if (j == 1 && !cp.paired_end)
       continue;
@@ -410,7 +392,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
     throw std::runtime_error("No reads found.");
 
   if (!cp.long_flag && cp.paired_end) {
-    // merge input_N and input_order_N for the two files
+    // Shift mate-2 N-read positions by file-1 length before merging the streams.
     std::ofstream fout_N(outfileN[0], std::ios::app | std::ios::binary);
     std::ifstream fin_N(outfileN[1], std::ios::binary);
     fout_N << fin_N.rdbuf();
@@ -433,7 +415,6 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   }
 
   if (cp.paired_end && paired_id_match) {
-    // delete id files for second file since we found a pattern
     if (!cp.long_flag && !cp.preserve_order) {
       remove(outfileid[1].c_str());
     } else {

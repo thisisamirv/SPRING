@@ -26,10 +26,9 @@ constexpr uint32_t MAX_NUM_READS = 4294967290U;
 constexpr int NUM_DICT_REORDER = 2;
 constexpr int MAX_SEARCH_REORDER = 1000;
 constexpr int THRESH_REORDER = 4;
-constexpr int NUM_LOCKS_REORDER =
-    0x1000000; // limits on number of locks (power of 2 for fast mod)
+// Keep this a power of two so lock sharding can use fast masking.
+constexpr int NUM_LOCKS_REORDER = 0x1000000;
 constexpr float STOP_CRITERIA_REORDER = 0.5F;
-// fraction of unmatched reads in last 1M for thread to give up on searching
 
 constexpr int NUM_DICT_ENCODER = 2;
 constexpr int MAX_SEARCH_ENCODER = 1000;
@@ -37,7 +36,7 @@ constexpr int THRESH_ENCODER = 24;
 
 constexpr int NUM_READS_PER_BLOCK = 256000;
 constexpr int NUM_READS_PER_BLOCK_LONG = 10000;
-constexpr int BSC_BLOCK_SIZE = 64; // 64 MB
+constexpr int BSC_BLOCK_SIZE = 64;
 } // namespace spring
 
 #endif // SPRING_PARAMS_H_

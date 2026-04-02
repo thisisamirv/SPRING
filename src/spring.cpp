@@ -108,10 +108,6 @@ void compress(const std::string &temp_dir,
               const std::vector<std::string> &quality_opts,
               const bool &long_flag, const bool &gzip_flag,
               const bool &fasta_flag) {
-  //
-  // Ensure that omp parallel regions are executed with the requested
-  // #threads.
-  //
   omp_set_dynamic(0);
 
   std::cout << "Starting compression...\n";
@@ -119,7 +115,6 @@ void compress(const std::string &temp_dir,
 
   std::string infile_1, infile_2, outfile;
   bool paired_end, preserve_quality, preserve_id, preserve_order;
-  // Check options
   preserve_order = !pairing_only_flag;
   preserve_id = !no_ids_flag;
   preserve_quality = !no_quality_flag;
@@ -246,13 +241,11 @@ void compress(const std::string &temp_dir,
               << "\n";
   }
 
-  // Write compression params to a file
   std::string compression_params_file = temp_dir + "/cp.bin";
   std::ofstream f_cp(compression_params_file, std::ios::binary);
   f_cp.write(byte_ptr(&cp), sizeof(compression_params));
   f_cp.close();
 
-  // Print out sizes of reads, quality and id after compression
   namespace fs = boost::filesystem;
   uint64_t size_read = 0;
   uint64_t size_quality = 0;
@@ -306,10 +299,6 @@ void decompress(const std::string &temp_dir,
                 const std::vector<std::string> &outfile_vec, const int &num_thr,
                 const std::vector<uint64_t> &decompress_range_vec,
                 const bool &gzip_flag, const int &gzip_level) {
-  //
-  // Ensure that omp parallel regions are executed with the requested
-  // #threads.
-  //
   omp_set_dynamic(0);
 
   std::cout << "Starting decompression...\n";
@@ -329,7 +318,6 @@ void decompress(const std::string &temp_dir,
                                 "Error occurred during untarring.");
   });
 
-  // Read compression params
   std::string compression_params_file = temp_dir + "/cp.bin";
   std::ifstream f_cp(compression_params_file, std::ios::binary);
   if (!f_cp.is_open())
@@ -382,6 +370,7 @@ void decompress(const std::string &temp_dir,
     end_num = decompress_range_vec[1];
   }
 
+  // Long-read and short-read archives diverge only at the reconstruction step.
   run_timed_step("Decompressing ...", "Decompressing", [&] {
     if (long_flag)
       decompress_long(temp_dir, outfile_1, outfile_2, cp, num_thr, start_num,

@@ -148,7 +148,6 @@ void reorder_compress(const std::string &file_name,
 
 void reorder_compress_quality_id(const std::string &temp_dir,
                                  const compression_params &cp) {
-  // Read some parameters
   const uint32_t numreads = cp.num_reads;
   const int num_thr = cp.num_thr;
   const bool preserve_id = cp.preserve_id;
@@ -168,8 +167,6 @@ void reorder_compress_quality_id(const std::string &temp_dir,
   file_quality[1] = basedir + "/quality_2";
 
   std::vector<uint32_t> order_array;
-  // array containing index mapping position in original fastq to
-  // position after reordering
   if (paired_end) {
     order_array.resize(numreads / 2);
     generate_order_pe(file_order, order_array, numreads);
@@ -182,11 +179,8 @@ void reorder_compress_quality_id(const std::string &temp_dir,
 
   const uint32_t str_array_size =
       (1 + (numreads / 4 - 1) / num_reads_per_block) * num_reads_per_block;
-  // smallest multiple of num_reads_per_block bigger than numreads/4
-  // numreads/4 chosen so that these many qualities/ids can be stored in
-  // memory without exceeding the RAM consumption of reordering stage
   std::vector<std::string> str_array(str_array_size);
-  // array to load ids and/or qualities into
+  // Bound the working set so this stage stays within the reorder memory budget.
 
   if (preserve_quality) {
     std::cout << "Compressing qualities\n";

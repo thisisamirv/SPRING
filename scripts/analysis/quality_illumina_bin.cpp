@@ -37,6 +37,7 @@ void illumina_binning(std::string &quality,
 } // namespace
 
 int main(int, char **argv) {
+  // Apply the standard Illumina 8-bin remapping to each quality string.
   const illumina_binning_table_t illumina_binning_table =
       generate_illumina_binning_table();
   const std::string infile = std::string(argv[1]);

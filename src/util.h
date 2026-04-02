@@ -61,6 +61,7 @@ struct compression_params {
   int num_thr;
 };
 
+// Shared FASTQ, ID, quality, DNA packing, and temporary-stream helpers.
 uint32_t read_fastq_block(std::istream *fin, std::string *id_array,
                           std::string *read_array, std::string *quality_array,
                           const uint32_t &num_reads, const bool &fasta_flag);

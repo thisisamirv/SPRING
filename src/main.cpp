@@ -24,7 +24,7 @@ limitations under the License.
 
 namespace {
 
-std::string temp_dir_global; // for interrupt handling
+std::string temp_dir_global;
 bool temp_dir_flag_global = false;
 
 void delete_temp_dir_if_present() {
@@ -90,7 +90,6 @@ void signalHandler(int signum) {
 }
 
 int main(int argc, char **argv) {
-  // register signal SIGINT and signal handler
   signal(SIGINT, signalHandler);
   namespace po = boost::program_options;
   bool help_flag = false, compress_flag = false, decompress_flag = false,
@@ -166,7 +165,7 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  // generate randomly named temporary directory in the working directory
+  // Isolate intermediate artifacts so cleanup is one directory removal.
   const std::string temp_dir = create_temp_dir(working_dir);
   std::cout << "Temporary directory: " << temp_dir << "\n";
 

@@ -11,7 +11,6 @@ from tqdm import tqdm
 LOG2 = np.log(2.0)
 
 
-###################################
 def quality_to_prob(qual_string):
 	quality_values = [ord(c) for c in qual_string]
 	quality_values = (33.0 - np.array(quality_values)) / 10.0
@@ -19,7 +18,6 @@ def quality_to_prob(qual_string):
 	return prob
 
 
-###################################
 def get_read_count_and_length(in_file):
 	read_count = 0
 	read_length = 0
@@ -29,7 +27,6 @@ def get_read_count_and_length(in_file):
 			read_length = len(line) - 1
 	return read_count, read_length
 
-###################################
 def compute_entropy(probs):
 	entropy_per_position = -(
 		probs * np.log(probs)
@@ -84,7 +81,6 @@ def print_summary(probs, entropy_per_position, read_count, read_length,
 	print("Compressed Output bits per base: ", output_bpb)
 
 
-###################################
 def main():
 	in_file = sys.argv[1]
 	genome_file = sys.argv[2]
@@ -117,6 +113,7 @@ def main():
 	output_size = os.stat(output_file).st_size
 	output_bpb = output_size * 8.0 / (read_count * read_length)
 
+	# Report the theoretical noise budget alongside the observed archive size.
 	print_summary(
 		probs,
 		entropy_per_position,
@@ -134,7 +131,6 @@ def main():
 		noise_bpb,
 	)
 
-###################################
 if __name__ == '__main__':
     main()
 

@@ -38,7 +38,7 @@ static uint64_t printPt(pthread_t pt) {
   return res;
 }
 
-// iterator from disk file of uint64_t with buffered read,   todo template
+// Buffered iterator over binary values streamed from disk.
 template <typename basetype>
 class bfile_iterator
     : public std::iterator<std::forward_iterator_tag, basetype> {
@@ -60,10 +60,8 @@ public:
   }
 
   bfile_iterator(FILE *is) : _is(is), _pos(0), _inbuff(0), _cptread(0) {
-    // printf("bf it %p\n",_is);
     _buffsize = 10000;
     _buffer = (basetype *)malloc(_buffsize * sizeof(basetype));
-    // int reso =
     fseek(_is, 0, SEEK_SET);
     advance();
   }
@@ -98,14 +96,10 @@ public:
 
 private:
   void advance() {
-    // printf("_cptread %i _inbuff %i \n",_cptread,_inbuff);
-
     _pos++;
 
     if (_cptread >= _inbuff) {
       int res = fread(_buffer, sizeof(basetype), _buffsize, _is);
-
-      // printf("read %i new elem last %llu  %p\n",res,_buffer[res-1],_is);
       _inbuff = res;
       _cptread = 0;
 
@@ -146,7 +140,7 @@ public:
 
   bfile_iterator<type_elem> end() const { return bfile_iterator<type_elem>(); }
 
-  size_t size() const { return 0; } // todo ?
+  size_t size() const { return 0; }
 
 private:
   FILE *_is;
@@ -171,7 +165,7 @@ inline unsigned int popcount_64(uint64_t x) {
   return (popcount_32(low) + popcount_32(high));
 }
 
-///// progress bar
+// Progress reporting helper used during MPHF construction.
 class Progress {
 public:
   int timer_mode;
@@ -181,13 +175,13 @@ public:
 
   uint64_t done;
   uint64_t todo;
-  int subdiv; // progress printed every 1/subdiv of total to do
+  int subdiv; // Emit a progress update every 1/subdiv of the total work.
   double partial;
   int _nthreads;
   std::vector<double> partial_threaded;
   std::vector<uint64_t> done_threaded;
 
-  double steps; // steps = todo/subidv
+  double steps; // Number of items between progress updates.
 
   void init(uint64_t ntasks, const char *msg, int nthreads = 1) {
     if (nthreads <= 0)
@@ -196,8 +190,6 @@ public:
     message = std::string(msg);
     gettimeofday(&timestamp, NULL);
     heure_debut = timestamp.tv_sec + (timestamp.tv_usec / 1000000.0);
-
-    // fprintf(stderr,"| %-*s |\n",98,msg);
 
     todo = ntasks;
     done = 0;
@@ -231,8 +223,8 @@ public:
     done = 0;
     partial = 0;
   }
-  void finish_threaded() // called by only one of the threads
-  {
+  // Aggregate the per-thread counters once all workers have finished.
+  void finish_threaded() {
     done = 0;
     for (int ii = 0; ii < _nthreads; ii++)
       done += (done_threaded[ii]);
@@ -273,9 +265,8 @@ public:
     }
   }
 
-  void inc(uint64_t ntasks_done,
-           int tid) // threads collaborate to this same progress bar
-  {
+  // Thread-aware progress accounting for shared parallel work.
+  void inc(uint64_t ntasks_done, int tid) {
     partial_threaded[tid] += ntasks_done;
     done_threaded[tid] += ntasks_done;
     while (partial_threaded[tid] >= steps) {
@@ -315,7 +306,6 @@ public:
       inc(ntasks_done - done);
   }
   Progress() : timer_mode(0) {}
-  // include timer, to print ETA ?
 };
 
 typedef std::array<uint64_t, 10> hash_set_t;
@@ -333,7 +323,6 @@ public:
     generate_hash_seed();
   }
 
-  // return one hash
   uint64_t operator()(const Item &key, size_t idx) const {
     return hash64(key, _seed_tab[idx]);
   }
@@ -342,8 +331,6 @@ public:
     return hash64(key, seed);
   }
 
-  // this one returns all the 7 hashes
-  // maybe use xorshift instead, for faster hash compute
   hash_set_t operator()(const Item &key) {
     hash_set_t hset;
 
@@ -399,7 +386,7 @@ unordered_map.
 (rayan)
 */
 
-// wrapper around HashFunctors to return only one value instead of 7
+// Wrapper around HashFunctors that exposes a single seeded hash.
 template <typename Item> class SingleHashFunctor {
 public:
   uint64_t operator()(const Item &key,
@@ -429,8 +416,6 @@ template <typename Item, class SingleHasher_t> class XorshiftHashFunctors {
      a nonzero 64-bit seed, we suggest to pass it twice through
      MurmurHash3's avalanching function. */
 
-  //  uint64_t s[ 2 ];
-
   uint64_t next(uint64_t *s) {
     uint64_t s1 = s[0];
     const uint64_t s0 = s[1];
@@ -450,7 +435,7 @@ public:
     return s[1];
   }
 
-  // return next hash an update state s
+  // Return the next hash and update the xorshift state.
   uint64_t next(hash_pair_t &s) {
     uint64_t s1 = s[0];
     const uint64_t s0 = s[1];
@@ -459,7 +444,6 @@ public:
     return (s[1] = (s1 ^ s0 ^ (s1 >> 17) ^ (s0 >> 26))) + s0; // b, c
   }
 
-  // this one returns all the  hashes
   hash_set_t operator()(const Item &key) {
     uint64_t s[2];
 
@@ -545,7 +529,6 @@ public:
 
   // Move assignment operator
   bitVector &operator=(bitVector &&r) {
-    // printf("bitVector move assignment \n");
     if (&r != this) {
       if (_bitArray != nullptr)
         free(_bitArray);
@@ -598,7 +581,6 @@ public:
     memset(_bitArray + (start / 64ULL), 0, (size / 64ULL) * sizeof(uint64_t));
   }
 
-  // for debug purposes
   void print() const {
     printf("bit array of size %lli: \n", (long long int)_size);
     for (uint64_t ii = 0; ii < _size; ii++) {
@@ -619,9 +601,6 @@ public:
 
   // return value at pos
   uint64_t operator[](uint64_t pos) const {
-    // unsigned char * _bitArray8 = (unsigned char *) _bitArray;
-    // return (_bitArray8[pos >> 3ULL] >> (pos & 7 ) ) & 1;
-
     return (_bitArray[pos >> 6ULL] >> (pos & 63)) & 1;
   }
 
@@ -640,13 +619,11 @@ public:
   // set bit pos to 1
   void set(uint64_t pos) {
     assert(pos < _size);
-    //_bitArray [pos >> 6] |=   (1ULL << (pos & 63) ) ;
     __sync_fetch_and_or(_bitArray + (pos >> 6ULL), (1ULL << (pos & 63)));
   }
 
   // set bit pos to 0
   void reset(uint64_t pos) {
-    //_bitArray [pos >> 6] &=   ~(1ULL << (pos & 63) ) ;
     __sync_fetch_and_and(_bitArray + (pos >> 6ULL), ~(1ULL << (pos & 63)));
   }
 
@@ -708,7 +685,6 @@ public:
 
 protected:
   uint64_t *_bitArray;
-  // uint64_t* _bitArray;
   uint64_t _size;
   uint64_t _nchar;
 
@@ -719,8 +695,6 @@ protected:
 };
 
 static inline uint64_t fastrange64(uint64_t word, uint64_t p) {
-  // return word %  p;
-
   return (uint64_t)(((__uint128_t)word * (__uint128_t)p) >> 64);
 }
 
@@ -731,9 +705,6 @@ public:
   ~level() {}
 
   uint64_t get(uint64_t hash_raw) {
-    //  uint64_t hashi =    hash_raw %  hash_domain; //
-    // uint64_t hashi = (uint64_t)(  ((__uint128_t) hash_raw * (__uint128_t)
-    // hash_domain) >> 64ULL);
     uint64_t hashi = fastrange64(hash_raw, hash_domain);
     return bitset.get(hashi);
   }
@@ -744,7 +715,6 @@ public:
 };
 
 #define NBBUFF 10000
-// #define NBBUFF 2
 
 template <typename Range, typename Iterator> struct thread_args {
   void *boophf;
@@ -768,18 +738,13 @@ void *thread_processLevel(void *args);
 template <typename elem_t, typename Hasher_t> class mphf {
   /* this mechanisms gets P hashes out of Hasher_t */
   using MultiHasher_t = XorshiftHashFunctors<elem_t, Hasher_t>;
-  // typedef HashFunctors<elem_t> MultiHasher_t; // original code (but only
-  // works for int64 keys)  (seems to be as fast as the current xorshift)
-  // typedef IndepHashFunctors<elem_t,Hasher_t> MultiHasher_t; //faster than
-  // xorshift
 
 public:
   mphf() : _built(false) {}
 
   ~mphf() {}
 
-  // allow perc_elem_loaded  elements to be loaded in ram for faster
-  // construction (default 3%), set to 0 to desactivate
+  // Load a small fraction of elements into RAM for faster later levels.
   template <typename Range>
   mphf(size_t n, Range const &input_range, int num_thread = 1,
        double gamma = 2.0, bool writeEach = true, bool progress = true,
@@ -836,7 +801,7 @@ public:
     uint64_t offset = 0;
     for (int ii = 0; ii < _nb_levels; ii++) {
       _tempBitset = new bitVector(
-          _levels[ii].hash_domain); // temp collision bitarray for this level
+          _levels[ii].hash_domain); // Tracks collisions while this level fills.
 
       processLevel(input_range, ii);
 
@@ -853,9 +818,6 @@ public:
 
     _lastbitsetrank = offset;
 
-    // printf("used temp ram for construction : %lli MB
-    // \n",setLevelFastmode.capacity()* sizeof(elem_t) /1024ULL/1024ULL);
-
     std::vector<elem_t>().swap(
         setLevelFastmode); // clear setLevelFastmode reallocating
 
@@ -868,7 +830,6 @@ public:
     if (!_built)
       return ULLONG_MAX;
 
-    // auto hashes = _hasher(elem);
     uint64_t non_minimal_hp, minimal_hp;
 
     hash_pair_t bbhash = {0, 0};
@@ -878,23 +839,17 @@ public:
     if (level == (_nb_levels - 1)) {
       auto in_final_map = _final_hash.find(elem);
       if (in_final_map == _final_hash.end()) {
-        // elem was not in orignal set of keys
-        return ULLONG_MAX; //  means elem not in set
+        // Element was not present in the original key set.
+        return ULLONG_MAX;
       } else {
         minimal_hp = in_final_map->second + _lastbitsetrank;
-        // printf("lookup %llu  level %i   --> %llu \n",elem,level,minimal_hp);
 
         return minimal_hp;
       }
-      //        minimal_hp = _final_hash[elem] + _lastbitsetrank;
-      //        return minimal_hp;
     } else {
-      // non_minimal_hp =  level_hash %  _levels[level].hash_domain; // in fact
-      // non minimal hp would be  + _levels[level]->idx_begin
       non_minimal_hp = fastrange64(level_hash, _levels[level].hash_domain);
     }
     minimal_hp = _levels[level].bitset.rank(non_minimal_hp);
-    //  printf("lookup %llu  level %i   --> %llu \n",elem,level,minimal_hp);
 
     return minimal_hp;
   }
@@ -922,7 +877,7 @@ public:
     return totalsize;
   }
 
-  template <typename Iterator> // typename Range,
+  template <typename Iterator>
   void pthread_processLevel(std::vector<elem_t> &buffer,
                             std::shared_ptr<Iterator> shared_it,
                             std::shared_ptr<Iterator> until_p, int i) {
@@ -945,14 +900,10 @@ public:
         isRunning = false;
       pthread_mutex_unlock(&_mutex);
 
-      // do work on the n elems of the buffer
-      //  printf("filling input  buff \n");
+      // Process the buffered elements outside the critical section.
 
       for (uint64_t ii = 0; ii < inbuff; ii++) {
         elem_t val = buffer[ii];
-        // printf("processing %llu  level %i\n",val, i);
-
-        // auto hashes = _hasher(val);
         hash_pair_t bbhash = {0, 0};
         int level;
         uint64_t level_hash;
@@ -961,45 +912,30 @@ public:
         else
           getLevel(bbhash, val, &level, i);
 
-        // uint64_t level_hash = getLevel(bbhash,val,&level, i);
-
-        //__sync_fetch_and_add(& _cptTotalProcessed,1);
-
         if (level == i) // insert into lvl i
         {
-          //  __sync_fetch_and_add(& _cptLevel,1);
-
           if (_fastmode && i == _fastModeLevel) {
             uint64_t idxl2 =
                 __sync_fetch_and_add(&_idxLevelsetLevelFastmode, 1);
-            // si depasse taille attendue pour setLevelFastmode, fall back sur
-            // slow mode mais devrait pas arriver si hash ok et proba avec nous
+            // If the optimistic fast-mode buffer overflows, fall back to the
+            // regular streaming path for the remaining levels.
             if (idxl2 >= setLevelFastmode.size())
               _fastmode = false;
             else
-              setLevelFastmode[idxl2] = val; // create set for fast mode
+              setLevelFastmode[idxl2] = val;
           }
 
-          // insert to level i+1 : either next level of the cascade or final
-          // hash if last level reached
-          if (i == _nb_levels - 1) // stop cascade here, insert into exact hash
-          {
+          // Either spill to the next level or, at the end, record the exact
+          // final hash position.
+          if (i == _nb_levels - 1) {
             uint64_t hashidx = __sync_fetch_and_add(&_hashidx, 1);
 
-            pthread_mutex_lock(&_mutex); // see later if possible to avoid
-                                         // this, mais pas bcp item vont la
-            // calc rank de fin  precedent level qq part, puis init hashidx avec
-            // ce rank, direct minimal, pas besoin inser ds bitset et rank
+            pthread_mutex_lock(&_mutex);
             _final_hash[val] = hashidx;
             pthread_mutex_unlock(&_mutex);
           } else {
-            // ils ont reach ce level
-            // insert elem into curr level on disk --> sera utilise au level+1 ,
-            // (mais encore besoin filtre)
-
             if (_writeEachLevel && i > 0 && i < _nb_levels - 1) {
               if (writebuff >= NBBUFF) {
-                // flush buffer
                 flockfile(_currlevelFile);
                 fwrite(myWriteBuff.data(), sizeof(elem_t), writebuff,
                        _currlevelFile);
@@ -1009,8 +945,6 @@ public:
 
               myWriteBuff[writebuff++] = val;
             }
-
-            // computes next hash
 
             if (level == 0)
               level_hash = _hasher.h0(bbhash, val);
@@ -1034,7 +968,6 @@ public:
     }
 
     if (_writeEachLevel && writebuff > 0) {
-      // flush buffer
       flockfile(_currlevelFile);
       fwrite(myWriteBuff.data(), sizeof(elem_t), writebuff, _currlevelFile);
       funlockfile(_currlevelFile);
@@ -1074,18 +1007,16 @@ public:
     _levels.resize(_nb_levels);
 
     for (int ii = 0; ii < _nb_levels; ii++) {
-      //_levels[ii].bitset = new bitVector();
       _levels[ii].bitset.load(is);
     }
 
-    // mini setup, recompute size of each level
+    // Reconstruct the derived per-level sizing metadata.
     _proba_collision =
         1.0 - pow(((_gamma * (double)_nelem - 1) / (_gamma * (double)_nelem)),
                   _nelem - 1);
     uint64_t previous_idx = 0;
     _hash_domain = (size_t)(ceil(double(_nelem) * _gamma));
     for (int ii = 0; ii < _nb_levels; ii++) {
-      //_levels[ii] = new level();
       _levels[ii].idx_begin = previous_idx;
       _levels[ii].hash_domain =
           (((uint64_t)(_hash_domain * pow(_proba_collision, ii)) + 63) / 64) *
@@ -1094,8 +1025,6 @@ public:
         _levels[ii].hash_domain = 64;
       previous_idx += _levels[ii].hash_domain;
     }
-
-    // restore final hash
 
     _final_hash.clear();
     size_t final_hash_size;
@@ -1119,7 +1048,6 @@ private:
     pthread_mutex_init(&_mutex, NULL);
 
     _pid = getpid() + printPt(pthread_self()); // + pthread_self();
-    // printf("pt self %llu  pid %i \n",printPt(pthread_self()),_pid);
 
     _cptTotalProcessed = 0;
 
@@ -1139,54 +1067,38 @@ private:
         1.0 - pow(((_gamma * (double)_nelem - 1) / (_gamma * (double)_nelem)),
                   _nelem - 1);
 
-    // double sum_geom =
-    //    _gamma * (1.0 + _proba_collision / (1.0 - _proba_collision));
-    // printf("proba collision %f  sum_geom  %f \n",_proba_collision,sum_geom);
-
     _nb_levels = 25;
     _levels.resize(_nb_levels);
 
-    // build levels
     uint64_t previous_idx = 0;
     for (int ii = 0; ii < _nb_levels; ii++) {
       _levels[ii].idx_begin = previous_idx;
 
-      // round size to nearest superior multiple of 64, makes it easier to clear
-      // a level
+      // Round up to a whole number of 64-bit words for faster clearing.
       _levels[ii].hash_domain =
           (((uint64_t)(_hash_domain * pow(_proba_collision, ii)) + 63) / 64) *
           64;
       if (_levels[ii].hash_domain == 0)
         _levels[ii].hash_domain = 64;
       previous_idx += _levels[ii].hash_domain;
-
-      // printf("build level %i bit array : start %12llu, size %12llu
-      // ",ii,_levels[ii]->idx_begin,_levels[ii]->hash_domain );
-      // printf(" expected elems : %.2f %% total
-      // \n",100.0*pow(_proba_collision,ii));
     }
 
     for (int ii = 0; ii < _nb_levels; ii++) {
       if (pow(_proba_collision, ii) < _percent_elem_loaded_for_fastMode) {
         _fastModeLevel = ii;
-        // printf("fast mode level :  %i \n",ii);
         break;
       }
     }
   }
 
-  // compute level and returns hash of last level reached
+  // Return the last hash examined and report the deepest reached level.
   uint64_t getLevel(hash_pair_t &bbhash, elem_t val, int *res_level,
                     int maxlevel = 100, int minlevel = 0)
-  // uint64_t getLevel(hash_pair_t & bbhash, elem_t val,int * res_level, int
-  // maxlevel = 100, int minlevel =0)
-
   {
     int level = 0;
     uint64_t hash_raw = 0;
 
     for (int ii = 0; ii < (_nb_levels - 1) && ii < maxlevel; ii++) {
-      // calc le hash suivant
       if (ii == 0)
         hash_raw = _hasher.h0(bbhash, val);
       else if (ii == 1)
@@ -1195,10 +1107,7 @@ private:
         hash_raw = _hasher.next(bbhash);
       }
 
-      if (ii >= minlevel && _levels[ii].get(hash_raw)) //
-      // if (  _levels[ii].get(hash_raw) ) //
-
-      {
+      if (ii >= minlevel && _levels[ii].get(hash_raw)) {
         break;
       }
 
@@ -1209,9 +1118,7 @@ private:
     return hash_raw;
   }
 
-  // insert into bitarray
   void insertIntoLevel(uint64_t level_hash, int i) {
-    //  uint64_t hashl =  level_hash % _levels[i].hash_domain;
     uint64_t hashl = fastrange64(level_hash, _levels[i].hash_domain);
 
     if (_levels[i].bitset.atomic_test_and_set(hashl)) {
@@ -1219,14 +1126,8 @@ private:
     }
   }
 
-  // loop to insert into level i
   template <typename Range> void processLevel(Range const &input_range, int i) {
-    ////alloc the bitset for this level
     _levels[i].bitset = bitVector(_levels[i].hash_domain);
-    ;
-
-    // printf("---process level %i   wr %i fast %i
-    // ---\n",i,_writeEachLevel,_fastmode);
 
     const std::string old_level_file = temp_level_filename(_pid, i - 2);
     const std::string current_level_file = temp_level_filename(_pid, i);
@@ -1249,10 +1150,10 @@ private:
     _hashidx = 0;
     _idxLevelsetLevelFastmode = 0;
     _nb_living = 0;
-    // create  threads
+
     std::vector<pthread_t> tab_threads(static_cast<size_t>(_num_thread));
     typedef decltype(input_range.begin()) it_type;
-    thread_args<Range, it_type> t_arg; // meme arg pour tous
+    thread_args<Range, it_type> t_arg;
     t_arg.boophf = this;
     t_arg.range = &input_range;
     t_arg.it_p = std::static_pointer_cast<void>(
@@ -1267,7 +1168,6 @@ private:
 
       typedef decltype(data_iterator_level.begin()) disklevel_it_type;
 
-      // data_iterator_level.begin();
       t_arg.it_p = std::static_pointer_cast<void>(
           std::make_shared<disklevel_it_type>(data_iterator_level.begin()));
       t_arg.until_p = std::static_pointer_cast<void>(
@@ -1277,10 +1177,9 @@ private:
         pthread_create(
             &tab_threads[ii], NULL,
             thread_processLevel<elem_t, Hasher_t, Range, disklevel_it_type>,
-            &t_arg); //&t_arg[ii]
+            &t_arg);
 
-      // must join here before the block is closed and file_binary is destroyed
-      // (and closes the file)
+          // Join before the iterator-owning file wrapper goes out of scope.
       for (int ii = 0; ii < _num_thread; ii++) {
         pthread_join(tab_threads[ii], NULL);
       }
@@ -1289,49 +1188,35 @@ private:
 
     else {
       if (_fastmode && i >= (_fastModeLevel + 1)) {
-        /* we'd like to do t_arg.it = data_iterator.begin() but types are
-         different;
-         so, casting to (void*) because of that; and we remember the type in the
-         template */
+        /* Fast mode swaps to the in-memory iterator type used for later
+           levels. */
         typedef decltype(setLevelFastmode.begin()) fastmode_it_type;
         t_arg.it_p = std::static_pointer_cast<void>(
             std::make_shared<fastmode_it_type>(setLevelFastmode.begin()));
         t_arg.until_p = std::static_pointer_cast<void>(
             std::make_shared<fastmode_it_type>(setLevelFastmode.end()));
 
-        /* we'd like to do t_arg.it = data_iterator.begin() but types are
-         different;
-         so, casting to (void*) because of that; and we remember the type in the
-         template */
-
         for (int ii = 0; ii < _num_thread; ii++)
           pthread_create(
               &tab_threads[ii], NULL,
               thread_processLevel<elem_t, Hasher_t, Range, fastmode_it_type>,
-              &t_arg); //&t_arg[ii]
+              &t_arg);
 
       } else {
         for (int ii = 0; ii < _num_thread; ii++)
           pthread_create(&tab_threads[ii], NULL,
                          thread_processLevel<elem_t, Hasher_t, Range,
                                              decltype(input_range.begin())>,
-                         &t_arg); //&t_arg[ii]
+                         &t_arg);
       }
-      // joining
       for (int ii = 0; ii < _num_thread; ii++) {
         pthread_join(tab_threads[ii], NULL);
       }
     }
-    // printf("\ngoing to level %i  : %llu elems  %.2f %%  expected : %.2f %%
-    // \n",i,_cptLevel,100.0* _cptLevel/(float)_nelem,100.0*
-    // pow(_proba_collision,i) );
 
-    // printf("\ncpt total processed %llu \n",_cptTotalProcessed);
     if (_fastmode &&
         i == _fastModeLevel) // shrink to actual number of elements in set
     {
-      // printf("\nresize setLevelFastmode to %lli
-      // \n",_idxLevelsetLevelFastmode);
       setLevelFastmode.resize(_idxLevelsetLevelFastmode);
     }
     if (_writeEachLevel) {
@@ -1346,7 +1231,6 @@ private:
   }
 
 private:
-  // level ** _levels;
   std::vector<level> _levels;
   int _nb_levels;
   MultiHasher_t _hasher;
@@ -1367,12 +1251,10 @@ private:
   uint64_t _cptTotalProcessed;
 
   // fast build mode , requires  that _percent_elem_loaded_for_fastMode %
-  // elems are loaded in ram
+  // of the keys to fit in RAM for the later levels.
   float _percent_elem_loaded_for_fastMode;
   bool _fastmode;
   std::vector<elem_t> setLevelFastmode;
-  //  std::vector< elem_t > setLevelFastmode_next; // todo shrinker le set e
-  //  nram a chaque niveau  ?
 
   std::vector<std::vector<elem_t>> bufferperThread;
 
@@ -1401,10 +1283,8 @@ void *thread_processLevel(void *args) {
 
   pthread_mutex_t *mutex = &obw->_mutex;
 
-  pthread_mutex_lock(mutex); // from comment above: "//get starting iterator
-                             // for this thread, must be protected (must not be
-                             // currently used by other thread to copy elems in
-                             // buff)"
+  // Copy the shared iterator handles while they are protected.
+  pthread_mutex_lock(mutex);
   std::shared_ptr<it_type> startit =
       std::static_pointer_cast<it_type>(targ->it_p);
   std::shared_ptr<it_type> until_p =

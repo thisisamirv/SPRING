@@ -25,6 +25,7 @@ namespace spring {
 using string_list = std::vector<std::string>;
 using read_range = std::vector<uint64_t>;
 
+// Top-level compression and decompression entry points used by the CLI.
 void compress(const std::string &temp_dir,
                             const string_list &infile_vec, const string_list &outfile_vec,
                             const int &num_thr,

@@ -16,6 +16,7 @@ read_length_counts compute_read_length_distribution(const std::string &file_name
   long line_number = 0;
   read_length_counts counts = {};
   std::string line;
+  // FASTQ sequence payloads appear on every fourth line starting at line 2.
   while (std::getline(f, line)) {
     ++line_number;
     if (is_sequence_line(line_number))

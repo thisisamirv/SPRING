@@ -35,6 +35,7 @@ std::vector<char> load_quality_array(const transpose_config &config) {
 void write_transposed_output(const transpose_config &config,
                              const std::vector<char> &quality_array) {
   std::ofstream f_out(config.outfile);
+  // Emit one line per read position so downstream tools can scan columns.
   for (int j = 0; j < config.readlen; j++) {
     for (long i = 0; i < config.numreads; i++)
       f_out << quality_array[static_cast<std::size_t>(i) *

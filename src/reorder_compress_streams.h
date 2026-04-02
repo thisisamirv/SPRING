@@ -21,6 +21,7 @@ namespace spring {
 
 struct compression_params;
 
+// Rebuild the aligned and unaligned side streams into per-block archives.
 void reorder_compress_streams(const std::string &temp_dir,
                               const compression_params &cp);
 

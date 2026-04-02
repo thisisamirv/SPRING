@@ -25,6 +25,7 @@ int main(int, char **argv) {
   std::ofstream f_out_char(infile + ".rl.char");
   char c;
   uint16_t run_length = 0;
+  // Store F runs separately from the non-F symbols that terminate them.
   while (f_in >> c) {
     if (c == 'F') {
       ++run_length;

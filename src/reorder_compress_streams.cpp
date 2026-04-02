@@ -12,9 +12,9 @@ license (the "License");
 limitations under the License.
 */
 
-#include <cmath> // abs
+#include <cmath>
 #include <cstdint>
-#include <cstring> // memcpy
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <omp.h>
@@ -58,48 +58,16 @@ void reorder_compress_streams(const std::string &temp_dir,
                               const compression_params &cp) {
   const std::string basedir = temp_dir;
   const std::string file_flag = basedir + "/read_flag.txt";
-  // possible flags for PE (for SE):
-  // 0: both reads aligned and distance b/w pair < 32767 (SE read aligned)
-  // 1: both reads aligned and distance b/w pair >= 32767
-  // 2: both reads unaligned (SE read unaligned)
-  // 3: first read aligned, second not
-  // 4: first read unaligned, second aligned
   const std::string file_pos = basedir + "/read_pos.bin";
-  // For order preserving mode PE (SE):
-  // Flag 0: Store position of first read (Store pos of read)
-  // Flag 1: Store position of first and second read
-  // Flag 2: Nothing (Nothing)
-  // Flag 3: Store position of first read
-  // Flag 4: Store position of second read
-  // For order non-preserving mode, we encode position of first read
-  // differently. For the first read in the block, we store the absolute
-  // position using 8 bytes. For the next reads, we store the delta coded
-  // positions. If the difference is < 65535, we write with 2 bytes. Otherwise,
-  // we write 65535 in the 2 bytes followed by 8 bytes of absolute position.
   const std::string file_pos_pair = basedir + "/read_pos_pair.bin";
-  // For PE and flag 0, store the distance b/w PE reads with 2 bytes (signed)
   const std::string file_RC = basedir + "/read_rev.txt";
-  // PE (SE)
-  // Flag 0: Orientation of first read (Orientation of SE read)
-  // Flag 1: Orientation of first and second read
-  // Flag 2: Nothing (Nothing)
-  // Flag 3: Orientation of first read
-  // Flag 4: Orientation of second read
   const std::string file_RC_pair = basedir + "/read_rev_pair.txt";
-  // For PE mode and flag 0, store 0 if PE reads have opposite orientation,
-  // otherwise store 1
   const std::string file_readlength = basedir + "/read_lengths.bin";
-  // store read length with 2 bytes for all reads (for PE, store for both
-  // reads by interleaving)
   const std::string file_unaligned = basedir + "/read_unaligned.txt";
-  // store unaligned reads without any newlines
   const std::string file_noise = basedir + "/read_noise.txt";
-  // store noise separated by newlines (interleave for PE if flag is 0 or 1)
   const std::string file_noisepos = basedir + "/read_noisepos.bin";
-  // store noisepos with 2 bytes, no newlines, otherwise similar to noise
   const std::string file_order = basedir + "/read_order.bin";
 
-  // load some params
   uint32_t num_reads = cp.num_reads, num_reads_aligned = 0, num_reads_unaligned;
   const uint32_t num_reads_by_2 = num_reads / 2;
   const int num_thr = cp.num_thr;
@@ -113,7 +81,6 @@ void reorder_compress_streams(const std::string &temp_dir,
   std::vector<uint64_t> pos_arr(num_reads);
   std::vector<uint16_t> noise_len_arr(num_reads);
 
-  // read streams for aligned reads
   std::ifstream f_order;
   if (paired_end || preserve_order)
     f_order.open(file_order, std::ios::binary);
@@ -125,7 +92,6 @@ void reorder_compress_streams(const std::string &temp_dir,
   f_noisepos.seekg(0, f_noisepos.end);
   uint64_t noise_array_size = f_noisepos.tellg() / 2;
   f_noisepos.seekg(0, f_noisepos.beg);
-  // divide by 2 because we have 2 bytes per noise
   std::vector<char> noise_arr(noise_array_size);
   std::vector<uint16_t> noisepos_arr(noise_array_size);
   char rc, noise_char;
@@ -143,7 +109,7 @@ void reorder_compress_streams(const std::string &temp_dir,
     f_pos.read(byte_ptr(&pos), sizeof(uint64_t));
     RC_arr[order] = rc;
     read_length_arr[order] = read_length;
-    flag_arr[order] = true; // aligned
+    flag_arr[order] = true;
     pos_arr[order] = pos;
     pos_in_noise_arr[order] = current_pos_noise_arr;
     num_noise_in_curr_read = 0;
@@ -168,7 +134,6 @@ void reorder_compress_streams(const std::string &temp_dir,
   f_RC.close();
   f_pos.close();
 
-  // Now start with unaligned reads
   num_reads_unaligned = num_reads - num_reads_aligned;
   std::string file_unaligned_count = file_unaligned + ".count";
   std::ifstream f_unaligned_count(file_unaligned_count);
@@ -195,7 +160,7 @@ void reorder_compress_streams(const std::string &temp_dir,
     read_length_arr[order] = read_length;
     pos_arr[order] = current_pos_in_unaligned_arr;
     current_pos_in_unaligned_arr += read_length;
-    flag_arr[order] = false; // unaligned
+    flag_arr[order] = false;
     if (!(paired_end || preserve_order))
       order++;
   }
@@ -203,7 +168,6 @@ void reorder_compress_streams(const std::string &temp_dir,
     f_order.close();
   f_readlength.close();
 
-  // delete old streams
   remove(file_noise.c_str());
   remove(file_noisepos.c_str());
   remove(file_RC.c_str());
@@ -212,14 +176,9 @@ void reorder_compress_streams(const std::string &temp_dir,
   remove(file_unaligned.c_str());
   remove(file_pos.c_str());
 
-  // Now generate new streams and compress blocks in parallel
   omp_set_num_threads(num_thr);
   uint32_t num_reads_per_block = cp.num_reads_per_block;
 
-  // ***************
-  // rename some files to debug strange gcsfuse issue
-  // related to certain files being deleted and new files with same name
-  // being created.
   const std::string tmpfile_pos = basedir + "/a";
   const std::string tmpfile_noise = basedir + "/b";
   const std::string tmpfile_noisepos = basedir + "/c";
@@ -228,7 +187,7 @@ void reorder_compress_streams(const std::string &temp_dir,
   const std::string tmpfile_unaligned = basedir + "/f";
   const std::string tmpfile_readlength = basedir + "/g";
 
-// this is actually number of read pairs per block for PE
+  // In paired-end mode, the block indices count read pairs rather than reads.
 #pragma omp parallel
   {
     uint64_t tid = omp_get_thread_num();
@@ -252,7 +211,6 @@ void reorder_compress_streams(const std::string &temp_dir,
           end_read_num = num_reads_by_2;
         }
       }
-      // Open files
       std::ofstream f_flag(block_file_path(tmpfile_flag, block_num));
       std::ofstream f_noise(block_file_path(tmpfile_noise, block_num));
       std::ofstream f_noisepos(block_file_path(tmpfile_noisepos, block_num),
@@ -273,7 +231,6 @@ void reorder_compress_streams(const std::string &temp_dir,
 
       uint64_t prevpos = 0, diffpos;
       uint16_t diffpos_16;
-      // Write streams
       for (uint64_t i = start_read_num; i < end_read_num; i++) {
         if (!paired_end) {
           f_readlength.write(byte_ptr(&read_length_arr[i]), sizeof(uint16_t));
@@ -284,8 +241,7 @@ void reorder_compress_streams(const std::string &temp_dir,
               f_pos.write(byte_ptr(&pos_arr[i]), sizeof(uint64_t));
             else {
               if (i == start_read_num) {
-                // Note: In order non-preserving mode, if the first read of
-                // the block is a singleton, then the rest are too.
+                // Each non-preserving block starts with one absolute anchor.
                 f_pos.write(byte_ptr(&pos_arr[i]), sizeof(uint64_t));
                 prevpos = pos_arr[i];
               } else {
@@ -313,7 +269,7 @@ void reorder_compress_streams(const std::string &temp_dir,
                               read_length_arr[i]);
           }
         } else {
-          uint64_t i_p = num_reads_by_2 + i; // i_pair
+          uint64_t i_p = num_reads_by_2 + i;
           f_readlength.write(byte_ptr(&read_length_arr[i]), sizeof(uint16_t));
           f_readlength.write(byte_ptr(&read_length_arr[i_p]), sizeof(uint16_t));
           int64_t pos_pair = (int64_t)pos_arr[i_p] - (int64_t)pos_arr[i];
@@ -343,8 +299,6 @@ void reorder_compress_streams(const std::string &temp_dir,
               f_pos.write(byte_ptr(&pos_arr[i]), sizeof(uint64_t));
             else {
               if (i == start_read_num) {
-                // Note: In order non-preserving mode, if read 1 of
-                // first pair the block is a singleton, then the rest are too.
                 f_pos.write(byte_ptr(&pos_arr[i]), sizeof(uint64_t));
                 prevpos = pos_arr[i];
               } else {
@@ -368,13 +322,11 @@ void reorder_compress_streams(const std::string &temp_dir,
             f_noise << "\n";
             f_RC << RC_arr[i];
           } else {
-            // read 1 is unaligned
             f_unaligned.write(unaligned_arr.data() + pos_arr[i],
                               read_length_arr[i]);
           }
 
           if (flag == 0 || flag == 1 || flag == 4) {
-            // read 2 is aligned
             for (uint16_t j = 0; j < noise_len_arr[i_p]; j++) {
               f_noise << noise_arr[pos_in_noise_arr[i_p] + j];
               f_noisepos.write(byte_ptr(&noisepos_arr[pos_in_noise_arr[i_p] + j]),
@@ -382,19 +334,16 @@ void reorder_compress_streams(const std::string &temp_dir,
             }
             f_noise << "\n";
             if (flag == 1 || flag == 4) {
-              // read 2 is aligned but not paired properly
               f_pos.write(byte_ptr(&pos_arr[i_p]), sizeof(uint64_t));
               f_RC << RC_arr[i_p];
             }
           } else {
-            // read 2 is unaligned
             f_unaligned.write(unaligned_arr.data() + pos_arr[i_p],
                               read_length_arr[i_p]);
           }
         }
       }
 
-      // Close files
       f_flag.close();
       f_noise.close();
       f_noisepos.close();
@@ -407,11 +356,7 @@ void reorder_compress_streams(const std::string &temp_dir,
         f_RC_pair.close();
       }
 
-      // Compress files with.bsc and remove uncompressed files
       compress_temp_block(tmpfile_flag, file_flag, block_num);
-
-      // TODO: Test impact of packing pos file into
-      // minimum number of bits
       compress_temp_block(tmpfile_pos, file_pos, block_num);
       compress_temp_block(tmpfile_noise, file_noise, block_num);
       compress_temp_block(tmpfile_noisepos, file_noisepos, block_num);
@@ -428,9 +373,8 @@ void reorder_compress_streams(const std::string &temp_dir,
 
       block_num += num_thr;
     }
-  } // end omp parallel
+  }
 
-  // deallocate
   return;
 }
 

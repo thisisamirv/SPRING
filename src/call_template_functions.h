@@ -7,6 +7,8 @@ namespace spring {
 
 struct compression_params;
 
+// Bridge runtime read lengths to the explicitly instantiated template entry
+// points.
 void call_reorder(const std::string &temp_dir, compression_params &cp);
 
 void call_encoder(const std::string &temp_dir, compression_params &cp);

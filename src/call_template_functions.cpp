@@ -21,6 +21,8 @@ void call_encoder_main(const std::string &temp_dir, compression_params &cp) {
   encoder_main<bitset_size>(temp_dir, cp);
 }
 
+// Keep the runtime-to-template mapping explicit so supported bitset sizes stay
+// easy to audit.
 const std::array<template_main_fn, 16> reorder_dispatchers = {
     &call_reorder_main<64>,   &call_reorder_main<128>, &call_reorder_main<192>,
     &call_reorder_main<256>,  &call_reorder_main<320>, &call_reorder_main<384>,
@@ -46,6 +48,7 @@ const std::array<template_main_fn, 24> encoder_dispatchers = {
 };
 
 size_t dispatch_index(const size_t bitset_size, const size_t max_bitset_size) {
+  // Template entry points are instantiated in 64-bit increments only.
   if (bitset_size < 64 || bitset_size > max_bitset_size ||
       (bitset_size % 64) != 0) {
     throw std::runtime_error("Wrong bitset size.");
