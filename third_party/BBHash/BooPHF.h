@@ -173,6 +173,23 @@ namespace boomphf {
 
 		file_binary(const file_binary&) = delete;
 		file_binary& operator=(const file_binary&) = delete;
+
+		file_binary(file_binary&& other) : _is(other._is)
+		{
+			other._is = nullptr;
+		}
+
+		file_binary& operator=(file_binary&& other)
+		{
+			if (this != &other) {
+				if (_is) {
+					fclose(_is);
+				}
+				_is = other._is;
+				other._is = nullptr;
+			}
+			return *this;
+		}
 		
 		~file_binary()
 		{
