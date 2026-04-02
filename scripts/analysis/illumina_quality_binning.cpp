@@ -7,6 +7,11 @@ namespace {
 
 using illumina_binning_table_t = std::array<char, 128>;
 
+struct quality_binning_paths {
+  std::string input_path;
+  std::string output_path;
+};
+
 illumina_binning_table_t generate_illumina_binning_table() {
   illumina_binning_table_t illumina_binning_table = {};
   for (uint8_t i = 0; i <= 33 + 1; i++)
@@ -36,21 +41,30 @@ void illumina_binning(std::string &quality,
         illumina_binning_table[static_cast<uint8_t>(quality[quality_index])];
 }
 
+quality_binning_paths parse_paths(char **argv) {
+  return {std::string(argv[1]), std::string(argv[2])};
+}
+
+void bin_quality_stream(std::ifstream &input_stream,
+                        std::ofstream &output_stream,
+                        const illumina_binning_table_t &illumina_binning_table) {
+  std::string quality;
+  while (std::getline(input_stream, quality)) {
+    illumina_binning(quality, illumina_binning_table);
+    output_stream << quality << "\n";
+  }
+}
+
 } // namespace
 
 int main(int, char **argv) {
   // Apply the standard Illumina 8-bin remapping to each quality string.
   const illumina_binning_table_t illumina_binning_table =
       generate_illumina_binning_table();
-  const std::string input_path = std::string(argv[1]);
-  const std::string output_path = std::string(argv[2]);
-  std::ifstream input_stream(input_path);
-  std::ofstream output_stream(output_path);
-  std::string quality;
-  while (std::getline(input_stream, quality)) {
-    illumina_binning(quality, illumina_binning_table);
-    output_stream << quality << "\n";
-  }
+  const quality_binning_paths paths = parse_paths(argv);
+  std::ifstream input_stream(paths.input_path);
+  std::ofstream output_stream(paths.output_path);
+  bin_quality_stream(input_stream, output_stream, illumina_binning_table);
   input_stream.close();
   output_stream.close();
   return 0;

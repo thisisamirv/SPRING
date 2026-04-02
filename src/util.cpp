@@ -14,6 +14,7 @@ limitations under the License.
 
 #include "util.h"
 #include <algorithm>
+#include <array>
 #include <boost/filesystem.hpp>
 #include <boost/iostreams/device/back_inserter.hpp>
 #include <boost/iostreams/filter/gzip.hpp>
@@ -41,6 +42,43 @@ struct read_range {
   uint64_t end;
 };
 
+std::vector<read_range> compute_read_ranges(uint32_t num_reads, int num_thr);
+
+const std::array<uint8_t, 128> &dna_to_int_lookup() {
+  static const std::array<uint8_t, 128> lookup = []() {
+    std::array<uint8_t, 128> table = {};
+    table[(uint8_t)'A'] = 0;
+    table[(uint8_t)'C'] = 2;
+    table[(uint8_t)'G'] = 1;
+    table[(uint8_t)'T'] = 3;
+    return table;
+  }();
+  return lookup;
+}
+
+const std::array<uint8_t, 128> &dna_n_to_int_lookup() {
+  static const std::array<uint8_t, 128> lookup = []() {
+    std::array<uint8_t, 128> table = {};
+    table[(uint8_t)'A'] = 0;
+    table[(uint8_t)'C'] = 2;
+    table[(uint8_t)'G'] = 1;
+    table[(uint8_t)'T'] = 3;
+    table[(uint8_t)'N'] = 4;
+    return table;
+  }();
+  return lookup;
+}
+
+const std::array<char, 4> &int_to_dna_lookup() {
+  static const std::array<char, 4> lookup = {'A', 'G', 'C', 'T'};
+  return lookup;
+}
+
+const std::array<char, 5> &int_to_dna_n_lookup() {
+  static const std::array<char, 5> lookup = {'A', 'G', 'C', 'T', 'N'};
+  return lookup;
+}
+
 void write_fastq_record(std::ostream &out, const std::string &id,
                         const std::string &read,
                         const std::string *quality_or_null) {
@@ -49,6 +87,52 @@ void write_fastq_record(std::ostream &out, const std::string &id,
   if (quality_or_null != nullptr) {
     out << "+\n";
     out << *quality_or_null << "\n";
+  }
+}
+
+void write_fastq_records_range(std::ostream &output_stream,
+                               std::string *id_array,
+                               std::string *read_array,
+                               const std::string *quality_or_null,
+                               const uint64_t start_read_index,
+                               const uint64_t end_read_index) {
+  for (uint64_t read_index = start_read_index; read_index < end_read_index;
+       read_index++) {
+    write_fastq_record(output_stream, id_array[read_index],
+                       read_array[read_index],
+                       quality_or_null == nullptr ? nullptr
+                                                  : &quality_or_null[read_index]);
+  }
+}
+
+void write_gzip_fastq_block(std::ofstream &output_stream, std::string *id_array,
+                            std::string *read_array,
+                            const std::string *quality_or_null,
+                            const uint32_t num_reads, const int num_thr,
+                            const int gzip_level) {
+  if (num_reads == 0)
+    return;
+
+  std::vector<std::string> gzip_compressed(static_cast<size_t>(num_thr));
+  const std::vector<read_range> thread_ranges =
+      compute_read_ranges(num_reads, num_thr);
+#pragma omp parallel num_threads(num_thr)
+  {
+    const int tid = omp_get_thread_num();
+    boost::iostreams::filtering_ostream output_buffer;
+    output_buffer.push(boost::iostreams::gzip_compressor(
+        boost::iostreams::gzip_params(gzip_level)));
+    output_buffer.push(boost::iostreams::back_inserter(gzip_compressed[tid]));
+
+    const read_range &range = thread_ranges[static_cast<size_t>(tid)];
+    write_fastq_records_range(output_buffer, id_array, read_array,
+                              quality_or_null, range.start, range.end);
+    boost::iostreams::close(output_buffer);
+  }
+
+  for (int thread_index = 0; thread_index < num_thr; thread_index++) {
+    output_stream.write(gzip_compressed[thread_index].data(),
+                        gzip_compressed[thread_index].size());
   }
 }
 
@@ -108,7 +192,7 @@ bool matches_paired_id_code(const std::string &id_1, const std::string &id_2,
 
 template <size_t BufferSize>
 void write_encoded_read(const std::string &read, std::ofstream &fout,
-                        const uint8_t (&dna_to_int)[128],
+                        const uint8_t *dna_to_int,
                         const uint8_t bits_per_base,
                         const uint8_t bases_per_byte) {
   uint8_t bitarray[BufferSize];
@@ -142,9 +226,9 @@ void write_encoded_read(const std::string &read, std::ofstream &fout,
   fout.write(byte_ptr(&bitarray[0]), pos_in_bitarray);
 }
 
-template <size_t BufferSize, size_t AlphabetSize>
+template <size_t BufferSize>
 void read_encoded_read(std::string &read, std::ifstream &fin,
-                       const char (&int_to_dna)[AlphabetSize],
+                       const char *int_to_dna,
                        const uint8_t bit_mask,
                        const uint8_t bits_per_base,
                        const uint8_t bases_per_byte) {
@@ -216,40 +300,14 @@ void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
                        const uint32_t &num_reads, const bool preserve_quality,
                        const int &num_thr, const bool &gzip_flag,
                        const int &gzip_level) {
-  const std::string *quality_or_null = preserve_quality ? quality_array : nullptr;
+  const std::string *quality_or_null =
+      preserve_quality ? quality_array : nullptr;
   if (!gzip_flag) {
-    for (uint32_t read_index = 0; read_index < num_reads; read_index++)
-      write_fastq_record(output_stream, id_array[read_index],
-                         read_array[read_index],
-                         quality_or_null == nullptr ? nullptr
-                                                    : &quality_or_null[read_index]);
+    write_fastq_records_range(output_stream, id_array, read_array,
+                              quality_or_null, 0, num_reads);
   } else {
-    if (num_reads == 0)
-      return;
-
-    std::vector<std::string> gzip_compressed(static_cast<size_t>(num_thr));
-    const std::vector<read_range> thread_ranges =
-        compute_read_ranges(num_reads, num_thr);
-#pragma omp parallel num_threads(num_thr)
-    {
-      const int tid = omp_get_thread_num();
-      boost::iostreams::filtering_ostream out;
-      out.push(boost::iostreams::gzip_compressor(
-          boost::iostreams::gzip_params(gzip_level)));
-      out.push(boost::iostreams::back_inserter(gzip_compressed[tid]));
-
-      const read_range &range = thread_ranges[static_cast<size_t>(tid)];
-      for (uint64_t i = range.start; i < range.end; i++)
-        write_fastq_record(out, id_array[i], read_array[i],
-                           quality_or_null == nullptr ? nullptr
-                                                      : &quality_or_null[i]);
-      boost::iostreams::close(out);
-
-    } // end omp parallel
-    for (uint32_t thread_index = 0; thread_index < (uint32_t)num_thr;
-         thread_index++)
-      output_stream.write(&(gzip_compressed[thread_index][0]),
-                          gzip_compressed[thread_index].size());
+    write_gzip_fastq_block(output_stream, id_array, read_array,
+                           quality_or_null, num_reads, num_thr, gzip_level);
   }
 }
 
@@ -365,32 +423,23 @@ void modify_id(std::string &id, const uint8_t paired_id_code) {
 }
 
 void write_dna_in_bits(const std::string &read, std::ofstream &fout) {
-  uint8_t dna2int[128] = {};
-  dna2int[(uint8_t)'A'] = 0;
-  dna2int[(uint8_t)'C'] = 2;
-  dna2int[(uint8_t)'G'] = 1;
-  dna2int[(uint8_t)'T'] = 3;
-  write_encoded_read<128>(read, fout, dna2int, 2, 4);
+  const std::array<uint8_t, 128> &lookup = dna_to_int_lookup();
+  write_encoded_read<128>(read, fout, lookup.data(), 2, 4);
 }
 
 void read_dna_from_bits(std::string &read, std::ifstream &fin) {
-  const char int2dna[4] = {'A', 'G', 'C', 'T'};
-  read_encoded_read<128>(read, fin, int2dna, 3, 2, 4);
+  const std::array<char, 4> &lookup = int_to_dna_lookup();
+  read_encoded_read<128>(read, fin, lookup.data(), 3, 2, 4);
 }
 
 void write_dnaN_in_bits(const std::string &read, std::ofstream &fout) {
-  uint8_t dna2int[128] = {};
-  dna2int[(uint8_t)'A'] = 0;
-  dna2int[(uint8_t)'C'] = 2;
-  dna2int[(uint8_t)'G'] = 1;
-  dna2int[(uint8_t)'T'] = 3;
-  dna2int[(uint8_t)'N'] = 4;
-  write_encoded_read<256>(read, fout, dna2int, 4, 2);
+  const std::array<uint8_t, 128> &lookup = dna_n_to_int_lookup();
+  write_encoded_read<256>(read, fout, lookup.data(), 4, 2);
 }
 
 void read_dnaN_from_bits(std::string &read, std::ifstream &fin) {
-  const char int2dna[5] = {'A', 'G', 'C', 'T', 'N'};
-  read_encoded_read<256>(read, fin, int2dna, 15, 4, 2);
+  const std::array<char, 5> &lookup = int_to_dna_n_lookup();
+  read_encoded_read<256>(read, fin, lookup.data(), 15, 4, 2);
 }
 
 void reverse_complement(char *input_bases, char *output_bases,

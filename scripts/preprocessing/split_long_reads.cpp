@@ -5,6 +5,12 @@
 
 namespace {
 
+struct split_config {
+  std::string input_path;
+  std::string output_path;
+  std::size_t max_readlen;
+};
+
 struct fastq_record {
   std::string id;
   std::string read;
@@ -21,6 +27,12 @@ bool read_fastq_record(std::ifstream &input_stream, fastq_record &record) {
 
 bool has_matching_quality_length(const fastq_record &record) {
   return record.read.length() == record.quality.length();
+}
+
+split_config parse_config(char **argv) {
+  const std::string input_path = std::string(argv[1]);
+  return {input_path, input_path + ".split",
+          static_cast<std::size_t>(std::strtol(argv[2], nullptr, 10))};
 }
 
 void write_split_chunk(std::ofstream &output_stream,
@@ -47,23 +59,29 @@ void write_split_record(std::ofstream &output_stream,
                     record.read.length() - chunk_start);
 }
 
+bool split_fastq_records(std::ifstream &input_stream,
+                         std::ofstream &output_stream,
+                         const std::size_t max_readlen) {
+  fastq_record record;
+  while (read_fastq_record(input_stream, record)) {
+    if (!has_matching_quality_length(record))
+      return false;
+
+    write_split_record(output_stream, record, max_readlen);
+  }
+
+  return true;
+}
+
 } // namespace
 
 int main(int, char **argv) {
-  const std::string input_path = std::string(argv[1]);
-  const std::size_t max_readlen =
-      static_cast<std::size_t>(std::strtol(argv[2], nullptr, 10));
-  const std::string output_path = input_path + ".split";
-  std::ifstream input_stream(input_path);
-  std::ofstream output_stream(output_path);
-  fastq_record record;
-  while (read_fastq_record(input_stream, record)) {
-    if (!has_matching_quality_length(record)) {
-      std::cout << "Quality length does not match read length\n";
-      return -1;
-    }
-
-    write_split_record(output_stream, record, max_readlen);
+  const split_config config = parse_config(argv);
+  std::ifstream input_stream(config.input_path);
+  std::ofstream output_stream(config.output_path);
+  if (!split_fastq_records(input_stream, output_stream, config.max_readlen)) {
+    std::cout << "Quality length does not match read length\n";
+    return -1;
   }
   input_stream.close();
   output_stream.close();

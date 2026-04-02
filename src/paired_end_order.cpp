@@ -22,53 +22,83 @@ limitations under the License.
 
 namespace spring {
 
-void pe_encode(const std::string &temp_dir, const compression_params &cp) {
-  const uint32_t num_reads = cp.num_reads;
-  const uint32_t half_read_count = num_reads / 2;
+namespace {
 
-  const std::string base_dir = temp_dir;
-  const std::string read_order_path = base_dir + "/read_order.bin";
-  std::vector<uint32_t> reordered_positions(num_reads);
-  std::vector<uint32_t> original_index_by_order(num_reads);
+std::string read_order_file_path(const std::string &temp_dir) {
+  return temp_dir + "/read_order.bin";
+}
 
+void load_reordered_positions(const std::string &read_order_path,
+                              std::vector<uint32_t> &reordered_positions,
+                              std::vector<uint32_t> &read_index_by_order) {
   std::ifstream order_input(read_order_path, std::ios::binary);
   uint32_t current_order;
-  for (uint32_t read_index = 0; read_index < num_reads; read_index++) {
+  for (uint32_t read_index = 0; read_index < reordered_positions.size();
+       read_index++) {
     order_input.read(byte_ptr(&current_order), sizeof(uint32_t));
     reordered_positions[read_index] = current_order;
-    original_index_by_order[current_order] = read_index;
+    read_index_by_order[current_order] = read_index;
   }
-  order_input.close();
+}
 
-  // File 1 keeps its reordered traversal; file 2 follows its mate positions.
+void reorder_first_mates(std::vector<uint32_t> &reordered_positions,
+                         const uint32_t mate_count) {
   uint32_t next_first_mate_order = 0;
-  for (uint32_t read_index = 0; read_index < num_reads; read_index++) {
-    if (reordered_positions[read_index] < half_read_count)
+  for (uint32_t read_index = 0; read_index < reordered_positions.size();
+       read_index++) {
+    if (reordered_positions[read_index] < mate_count)
       reordered_positions[read_index] = next_first_mate_order++;
   }
+}
 
-  for (uint32_t read_index = 0; read_index < num_reads; read_index++) {
-    if (reordered_positions[read_index] >= half_read_count) {
-      const uint32_t original_order = reordered_positions[read_index];
-      const uint32_t mate_original_order = original_order - half_read_count;
-      const uint32_t mate_read_index =
-          original_index_by_order[mate_original_order];
-      const uint32_t mate_reordered_position =
-          reordered_positions[mate_read_index];
-      reordered_positions[read_index] =
-          mate_reordered_position + half_read_count;
-    }
+void reorder_second_mates(
+    std::vector<uint32_t> &reordered_positions,
+    const std::vector<uint32_t> &read_index_by_order,
+    const uint32_t mate_count) {
+  for (uint32_t read_index = 0; read_index < reordered_positions.size();
+       read_index++) {
+    if (reordered_positions[read_index] < mate_count)
+      continue;
+
+    const uint32_t original_order = reordered_positions[read_index];
+    const uint32_t mate_original_order = original_order - mate_count;
+    const uint32_t mate_read_index = read_index_by_order[mate_original_order];
+    const uint32_t mate_reordered_position =
+        reordered_positions[mate_read_index];
+    reordered_positions[read_index] = mate_reordered_position + mate_count;
   }
+}
 
-  std::ofstream order_output(read_order_path + ".tmp", std::ios::binary);
-  for (uint32_t read_index = 0; read_index < num_reads; read_index++) {
+void persist_reordered_positions(const std::string &read_order_path,
+                                 const std::vector<uint32_t> &reordered_positions) {
+  const std::string temporary_output_path = read_order_path + ".tmp";
+  std::ofstream order_output(temporary_output_path, std::ios::binary);
+  for (uint32_t read_index = 0; read_index < reordered_positions.size();
+       read_index++) {
     order_output.write(byte_ptr(&reordered_positions[read_index]),
                        sizeof(uint32_t));
   }
-  order_output.close();
 
   remove(read_order_path.c_str());
-  rename((read_order_path + ".tmp").c_str(), read_order_path.c_str());
+  rename(temporary_output_path.c_str(), read_order_path.c_str());
+}
+
+} // namespace
+
+void pe_encode(const std::string &temp_dir, const compression_params &cp) {
+  const uint32_t num_reads = cp.num_reads;
+  const uint32_t mate_count = num_reads / 2;
+  const std::string read_order_path = read_order_file_path(temp_dir);
+  std::vector<uint32_t> reordered_positions(num_reads);
+  std::vector<uint32_t> read_index_by_order(num_reads);
+
+  load_reordered_positions(read_order_path, reordered_positions,
+                           read_index_by_order);
+
+  // File 1 keeps its reordered traversal; file 2 follows its mate positions.
+  reorder_first_mates(reordered_positions, mate_count);
+  reorder_second_mates(reordered_positions, read_index_by_order, mate_count);
+  persist_reordered_positions(read_order_path, reordered_positions);
 }
 
 } // namespace spring

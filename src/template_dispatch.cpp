@@ -11,6 +11,10 @@ namespace {
 
 using template_main_fn = void (*)(const std::string &, compression_params &);
 
+constexpr size_t kBitsetStep = 64;
+constexpr size_t kMaxReorderBitsetSize = 1024;
+constexpr size_t kMaxEncoderBitsetSize = 1536;
+
 template <size_t bitset_size>
 void call_reorder_main(const std::string &temp_dir,
                        compression_params &params) {
@@ -49,31 +53,36 @@ const std::array<template_main_fn, 24> encoder_dispatchers = {
     &call_encoder_main<1472>, &call_encoder_main<1536>,
 };
 
+size_t rounded_bitset_size(const size_t encoded_bits_per_read) {
+  return (encoded_bits_per_read - 1) / kBitsetStep * kBitsetStep +
+         kBitsetStep;
+}
+
 size_t dispatch_index(const size_t requested_bitset_size,
                       const size_t max_supported_bitset_size) {
   // Template entry points are instantiated in 64-bit increments only.
-  if (requested_bitset_size < 64 ||
+  if (requested_bitset_size < kBitsetStep ||
       requested_bitset_size > max_supported_bitset_size ||
-      (requested_bitset_size % 64) != 0) {
+      (requested_bitset_size % kBitsetStep) != 0) {
     throw std::runtime_error("Wrong bitset size.");
   }
 
-  return requested_bitset_size / 64 - 1;
+  return requested_bitset_size / kBitsetStep - 1;
 }
 
 } // namespace
 
 void call_reorder(const std::string &temp_dir, compression_params &params) {
   const size_t reorder_bitset_size =
-      (2 * params.max_readlen - 1) / 64 * 64 + 64;
-  reorder_dispatchers[dispatch_index(reorder_bitset_size, 1024)](temp_dir,
-                                                                 params);
+      rounded_bitset_size(2 * static_cast<size_t>(params.max_readlen));
+  reorder_dispatchers[dispatch_index(reorder_bitset_size,
+                                     kMaxReorderBitsetSize)](temp_dir, params);
 }
 
 void call_encoder(const std::string &temp_dir, compression_params &params) {
   const size_t encoder_bitset_size =
-      (3 * params.max_readlen - 1) / 64 * 64 + 64;
-  encoder_dispatchers[dispatch_index(encoder_bitset_size, 1536)](temp_dir,
-                                                                 params);
+      rounded_bitset_size(3 * static_cast<size_t>(params.max_readlen));
+  encoder_dispatchers[dispatch_index(encoder_bitset_size,
+                                     kMaxEncoderBitsetSize)](temp_dir, params);
 }
 } // namespace spring

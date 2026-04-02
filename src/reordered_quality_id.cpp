@@ -34,6 +34,11 @@ enum class reorder_compress_mode : uint8_t {
   id,
 };
 
+struct batch_range {
+  uint32_t begin;
+  uint32_t end;
+};
+
 std::string block_file_path(const std::string &base_path,
                             const uint64_t block_num) {
   return base_path + "." + std::to_string(block_num);
@@ -42,6 +47,104 @@ std::string block_file_path(const std::string &base_path,
 uint32_t reads_per_file(const uint32_t num_reads,
                         const bool paired_end) {
   return paired_end ? num_reads / 2 : num_reads;
+}
+
+uint32_t compute_batch_size(const uint32_t num_reads,
+                           const uint32_t num_reads_per_block) {
+  return (1 + (num_reads / 4 - 1) / num_reads_per_block) * num_reads_per_block;
+}
+
+batch_range batch_read_range(const uint32_t batch_index,
+                             const uint32_t batch_size,
+                             const uint32_t total_reads) {
+  const uint32_t batch_begin = batch_index * batch_size;
+  const uint32_t batch_end = std::min(batch_begin + batch_size, total_reads);
+  return {batch_begin, batch_end};
+}
+
+uint32_t block_read_count(const uint64_t block_begin,
+                          const uint64_t block_end) {
+  return static_cast<uint32_t>(block_end - block_begin);
+}
+
+void load_reordered_batch(const std::string &input_path,
+                          const std::vector<uint32_t> &reordered_positions,
+                          const batch_range &batch,
+                          std::vector<std::string> &reordered_strings) {
+  std::ifstream input_stream(input_path);
+  std::string current_string;
+  for (uint32_t read_index = 0; read_index < reordered_positions.size();
+       read_index++) {
+    std::getline(input_stream, current_string);
+    if (reordered_positions[read_index] >= batch.begin &&
+        reordered_positions[read_index] < batch.end) {
+      reordered_strings[reordered_positions[read_index] - batch.begin] =
+          current_string;
+    }
+  }
+}
+
+void compress_block_batch(const std::string &input_path,
+                          const reorder_compress_mode mode,
+                          const compression_params &compression_params,
+                          std::vector<std::string> &reordered_strings,
+                          const batch_range &batch,
+                          const uint32_t num_reads_per_block,
+                          const int num_threads) {
+#pragma omp parallel
+  {
+    const uint64_t thread_id = omp_get_thread_num();
+    const uint64_t block_offset = batch.begin / num_reads_per_block;
+    uint64_t block_index = thread_id;
+    std::vector<uint32_t> read_lengths;
+    if (mode == reorder_compress_mode::quality)
+      read_lengths.resize(num_reads_per_block);
+
+    while (true) {
+      const uint64_t block_begin = block_index * num_reads_per_block;
+      if (block_begin >= batch.end - batch.begin)
+        break;
+
+      uint64_t block_end = (block_index + 1) * num_reads_per_block;
+      if (block_end > batch.end - batch.begin)
+        block_end = batch.end - batch.begin;
+
+      const uint32_t reads_in_block = block_read_count(block_begin, block_end);
+      const std::string output_path =
+          block_file_path(input_path, block_offset + block_index);
+
+      if (mode == reorder_compress_mode::id) {
+        compress_id_block(output_path.c_str(),
+                          reordered_strings.data() + block_begin,
+                          reads_in_block);
+      } else {
+        for (uint64_t read_offset = 0; read_offset < reads_in_block;
+             read_offset++) {
+          read_lengths[read_offset] =
+              reordered_strings[block_begin + read_offset].size();
+        }
+        if (compression_params.qvz_flag) {
+          quantize_quality_qvz(reordered_strings.data() + block_begin,
+                               reads_in_block, read_lengths.data(),
+                               compression_params.qvz_ratio);
+        }
+        bsc::BSC_str_array_compress(output_path.c_str(),
+                                    reordered_strings.data() + block_begin,
+                                    reads_in_block, read_lengths.data());
+      }
+
+      block_index += num_threads;
+    }
+  }
+}
+
+bool should_process_stream(const int stream_index, const bool paired_end,
+                           const bool skip_second_stream) {
+  if (!paired_end && stream_index == 1)
+    return false;
+  if (skip_second_stream && stream_index == 1)
+    return false;
+  return true;
 }
 
 void generate_order_pe(const std::string &read_order_path,
@@ -77,75 +180,16 @@ void reorder_compress(const std::string &input_path,
                       const std::vector<uint32_t> &reordered_positions,
                       const reorder_compress_mode mode,
                       const compression_params &cp) {
-  for (uint32_t batch_index = 0;
-       batch_index <= num_reads_per_file / batch_size; batch_index++) {
-    uint32_t reads_in_batch = batch_size;
-    if (batch_index == num_reads_per_file / batch_size)
-      reads_in_batch = num_reads_per_file % batch_size;
-    if (reads_in_batch == 0)
+  for (uint32_t batch_index = 0;; batch_index++) {
+    const batch_range batch =
+        batch_read_range(batch_index, batch_size, num_reads_per_file);
+    if (batch.begin >= batch.end)
       break;
 
-    const uint32_t batch_start_read = batch_index * batch_size;
-    const uint32_t batch_end_read = batch_start_read + reads_in_batch;
-
-    std::ifstream input_stream(input_path);
-    std::string current_string;
-    for (uint32_t read_index = 0; read_index < num_reads_per_file; read_index++) {
-      std::getline(input_stream, current_string);
-      if (reordered_positions[read_index] >= batch_start_read &&
-          reordered_positions[read_index] < batch_end_read) {
-        reordered_strings[reordered_positions[read_index] - batch_start_read] =
-            current_string;
-      }
-    }
-    input_stream.close();
-
-#pragma omp parallel
-    {
-      const uint64_t thread_id = omp_get_thread_num();
-      const uint64_t block_offset = batch_start_read / num_reads_per_block;
-      uint64_t block_index = thread_id;
-      std::vector<uint32_t> read_lengths;
-      if (mode == reorder_compress_mode::quality)
-        read_lengths.resize(num_reads_per_block);
-
-      bool batch_done = false;
-      while (!batch_done) {
-        const uint64_t block_start_read = block_index * num_reads_per_block;
-        uint64_t block_end_read = (block_index + 1) * num_reads_per_block;
-        if (block_start_read >= reads_in_batch)
-          break;
-        if (block_end_read >= reads_in_batch) {
-          batch_done = true;
-          block_end_read = reads_in_batch;
-        }
-
-        const uint32_t reads_in_block =
-            static_cast<uint32_t>(block_end_read - block_start_read);
-        const std::string output_path =
-            block_file_path(input_path, block_offset + block_index);
-
-        if (mode == reorder_compress_mode::id) {
-          compress_id_block(output_path.c_str(),
-                            reordered_strings.data() + block_start_read,
-                            reads_in_block);
-        } else {
-          for (uint64_t read_offset = 0; read_offset < reads_in_block;
-               read_offset++)
-            read_lengths[read_offset] =
-                reordered_strings[block_start_read + read_offset].size();
-          if (cp.qvz_flag) {
-            quantize_quality_qvz(reordered_strings.data() + block_start_read,
-                                 reads_in_block, read_lengths.data(),
-                                 cp.qvz_ratio);
-          }
-          bsc::BSC_str_array_compress(output_path.c_str(),
-                                      reordered_strings.data() + block_start_read,
-                                      reads_in_block, read_lengths.data());
-        }
-        block_index += num_thr;
-      }
-    } // omp parallel
+    load_reordered_batch(input_path, reordered_positions, batch,
+                         reordered_strings);
+    compress_block_batch(input_path, mode, cp, reordered_strings, batch,
+                         num_reads_per_block, num_thr);
   }
 }
 
@@ -183,15 +227,15 @@ void reorder_compress_quality_id(const std::string &temp_dir,
   omp_set_num_threads(num_thr);
 
   const uint32_t batch_size =
-      (1 + (num_reads / 4 - 1) / num_reads_per_block) * num_reads_per_block;
+      compute_batch_size(num_reads, num_reads_per_block);
   std::vector<std::string> reordered_strings(batch_size);
   // Bound the working set so this stage stays within the reorder memory budget.
 
   if (preserve_quality) {
     std::cout << "Compressing qualities\n";
     for (int stream_index = 0; stream_index < 2; stream_index++) {
-      if (!paired_end && stream_index == 1)
-        break;
+      if (!should_process_stream(stream_index, paired_end, false))
+        continue;
       const uint32_t file_read_count = reads_per_file(num_reads, paired_end);
       reorder_compress(quality_paths[stream_index], file_read_count, num_thr,
                        num_reads_per_block, reordered_strings, batch_size,
@@ -202,10 +246,8 @@ void reorder_compress_quality_id(const std::string &temp_dir,
   if (preserve_id) {
     std::cout << "Compressing ids\n";
     for (int stream_index = 0; stream_index < 2; stream_index++) {
-      if (!paired_end && stream_index == 1)
-        break;
-      if (stream_index == 1 && paired_id_match)
-        break;
+      if (!should_process_stream(stream_index, paired_end, paired_id_match))
+        continue;
       const uint32_t file_read_count = reads_per_file(num_reads, paired_end);
       reorder_compress(id_paths[stream_index], file_read_count, num_thr,
                        num_reads_per_block, reordered_strings, batch_size,

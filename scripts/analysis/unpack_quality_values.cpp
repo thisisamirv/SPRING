@@ -8,6 +8,12 @@ namespace {
 
 using quality_decode_table_t = std::array<char, 4>;
 
+struct unpack_quality_paths {
+  std::string packed_input_path;
+  std::string tail_input_path;
+  std::string output_path;
+};
+
 quality_decode_table_t build_quality_decode_table() {
   quality_decode_table_t index_to_quality = {};
   index_to_quality[0] = 'F';
@@ -36,13 +42,23 @@ void unpack_quality_stream(std::ifstream &packed_input,
                            index_to_quality);
 }
 
+unpack_quality_paths build_paths(char **argv) {
+  const std::string input_path = std::string(argv[1]);
+  return {input_path + ".packed", input_path + ".packed.tail",
+          input_path + ".unpacked"};
+}
+
+void append_tail(std::ifstream &tail_input, std::ofstream &output_stream) {
+  output_stream << tail_input.rdbuf();
+}
+
 } // namespace
 
 int main(int, char **argv) {
-  const std::string input_path = std::string(argv[1]);
-  std::ifstream packed_input(input_path + ".packed", std::ios::binary);
-  std::ifstream tail_input(input_path + ".packed.tail");
-  std::ofstream output_stream(input_path + ".unpacked");
+  const unpack_quality_paths paths = build_paths(argv);
+  std::ifstream packed_input(paths.packed_input_path, std::ios::binary);
+  std::ifstream tail_input(paths.tail_input_path);
+  std::ofstream output_stream(paths.output_path);
   const quality_decode_table_t index_to_quality =
       build_quality_decode_table();
 
@@ -50,7 +66,7 @@ int main(int, char **argv) {
   unpack_quality_stream(packed_input, output_stream, index_to_quality);
 
   packed_input.close();
-  output_stream << tail_input.rdbuf();
+  append_tail(tail_input, output_stream);
   output_stream.close();
   tail_input.close();
   return 0;

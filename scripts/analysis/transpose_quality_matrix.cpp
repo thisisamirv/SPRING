@@ -21,9 +21,13 @@ transpose_config parse_config(char **argv) {
   return config;
 }
 
+std::size_t quality_matrix_size(const transpose_config &config) {
+  return static_cast<std::size_t>(config.read_count) *
+         (config.read_length + 1);
+}
+
 std::vector<char> load_quality_array(const transpose_config &config) {
-  std::vector<char> quality_matrix_data(
-      static_cast<std::size_t>(config.read_count) * (config.read_length + 1));
+  std::vector<char> quality_matrix_data(quality_matrix_size(config));
   std::ifstream input_stream(config.input_path);
   for (long read_index = 0; read_index < config.read_count; read_index++)
     input_stream.getline(

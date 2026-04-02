@@ -75,6 +75,32 @@ template <size_t bitset_size> struct reorder_global {
   }
 };
 
+namespace detail {
+
+inline uint32_t lock_shard(const uint64_t item_id) {
+  return static_cast<uint32_t>(item_id & (NUM_LOCKS_REORDER - 1));
+}
+
+inline std::string thread_output_path(const std::string &base_path,
+                                      const int thread_id) {
+  return base_path + '.' + std::to_string(thread_id);
+}
+
+inline std::string thread_singleton_output_path(const std::string &base_path,
+                                                const int thread_id) {
+  return base_path + ".singleton." + std::to_string(thread_id);
+}
+
+inline void append_file_to_stream(std::ofstream &output_stream,
+                                  const std::string &input_path,
+                                  const std::ios::openmode mode = std::ios::in) {
+  std::ifstream input_stream(input_path, mode);
+  output_stream << input_stream.rdbuf();
+  output_stream.clear();
+}
+
+} // namespace detail
+
 inline void initialize_reorder_dict_ranges(
     std::array<bbhashdict, NUM_DICT_REORDER> &dict, const int max_readlen) {
   dict[0].start = max_readlen > 100 ? max_readlen / 2 - 32
@@ -332,11 +358,12 @@ bool search_match(const std::bitset<bitset_size> &ref,
     bucket_start_index = dict[dictionary_index].bphf->lookup(lookup_key);
     if (bucket_start_index >= dict[dictionary_index].numkeys)
       continue;
-    if (!omp_test_lock(&dict_locks[bucket_start_index & 0xFFFFFF]))
+    if (!omp_test_lock(
+            &dict_locks[detail::lock_shard(bucket_start_index)]))
       continue;
     dict[dictionary_index].findpos(bucket_range, bucket_start_index);
     if (dict[dictionary_index].empty_bin[bucket_start_index]) {
-      omp_unset_lock(&dict_locks[bucket_start_index & 0xFFFFFF]);
+      omp_unset_lock(&dict_locks[detail::lock_shard(bucket_start_index)]);
       continue;
     }
     uint64_t candidate_key =
@@ -363,20 +390,20 @@ bool search_match(const std::bitset<bitset_size> &ref,
                                                        read_lengths[read_id])])
                   .count();
         if (hamming <= thresh) {
-          if (!omp_test_lock(&read_locks[read_id & 0xFFFFFF]))
+          if (!omp_test_lock(&read_locks[detail::lock_shard(read_id)]))
             continue;
           if (remaining_reads[read_id]) {
             remaining_reads[read_id] = 0;
             matched_read_id = read_id;
             found_match = 1;
           }
-          omp_unset_lock(&read_locks[read_id & 0xFFFFFF]);
+          omp_unset_lock(&read_locks[detail::lock_shard(read_id)]);
           if (found_match == 1)
             break;
         }
       }
     }
-    omp_unset_lock(&dict_locks[bucket_start_index & 0xFFFFFF]);
+    omp_unset_lock(&dict_locks[detail::lock_shard(bucket_start_index)]);
     if (found_match == 1)
       break;
   }
@@ -413,27 +440,32 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
 #pragma omp parallel
   {
     int thread_id = omp_get_thread_num();
-    std::string thread_suffix = std::to_string(thread_id);
     boost::iostreams::filtering_ostream orientation_output;
     orientation_output.push(boost::iostreams::gzip_compressor());
     orientation_output.push(
-        boost::iostreams::file_sink(rg.outfileRC + '.' + thread_suffix));
+    boost::iostreams::file_sink(
+      detail::thread_output_path(rg.outfileRC, thread_id)));
     boost::iostreams::filtering_ostream flag_output;
     flag_output.push(boost::iostreams::gzip_compressor());
     flag_output.push(
-        boost::iostreams::file_sink(rg.outfileflag + '.' + thread_suffix));
+    boost::iostreams::file_sink(
+      detail::thread_output_path(rg.outfileflag, thread_id)));
     boost::iostreams::filtering_ostream position_output;
     position_output.push(boost::iostreams::gzip_compressor());
     position_output.push(boost::iostreams::file_sink(
-        rg.outfilepos + '.' + thread_suffix, std::ios::binary));
-    std::ofstream order_output(rg.outfileorder + '.' + thread_suffix,
-                               std::ios::binary);
+    detail::thread_output_path(rg.outfilepos, thread_id),
+    std::ios::binary));
+  std::ofstream order_output(detail::thread_output_path(rg.outfileorder,
+                              thread_id),
+                 std::ios::binary);
     std::ofstream singleton_order_output(
-        rg.outfileorder + ".singleton." + thread_suffix, std::ios::binary);
+    detail::thread_singleton_output_path(rg.outfileorder, thread_id),
+    std::ios::binary);
     boost::iostreams::filtering_ostream read_length_output;
     read_length_output.push(boost::iostreams::gzip_compressor());
     read_length_output.push(boost::iostreams::file_sink(
-        rg.outfilereadlength + '.' + thread_suffix, std::ios::binary));
+    detail::thread_output_path(rg.outfilereadlength, thread_id),
+    std::ios::binary));
 
     unmatched_counts[thread_id] = 0;
     std::bitset<bitset_size> reference_read, reverse_reference_read,
@@ -505,7 +537,8 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
              pending_delete_it != pending_bin_deletions[dictionary_index].end();) {
           uint32_t read_id = (*pending_delete_it).first;
           uint64_t pending_bucket_start = (*pending_delete_it).second;
-          if (!omp_test_lock(&dict_locks[pending_bucket_start & 0xFFFFFF])) {
+          if (!omp_test_lock(
+                  &dict_locks[detail::lock_shard(pending_bucket_start)])) {
             ++pending_delete_it;
             continue;
           }
@@ -514,7 +547,8 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
                                         read_id);
           pending_delete_it =
               pending_bin_deletions[dictionary_index].erase(pending_delete_it);
-          omp_unset_lock(&dict_locks[pending_bucket_start & 0xFFFFFF]);
+          omp_unset_lock(
+              &dict_locks[detail::lock_shard(pending_bucket_start)]);
         }
       }
 
@@ -527,7 +561,8 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
           lookup_key =
               (masked_read_bits >> 2 * dict[dictionary_index].start).to_ullong();
           bucket_start_index = dict[dictionary_index].bphf->lookup(lookup_key);
-          if (!omp_test_lock(&dict_locks[bucket_start_index & 0xFFFFFF])) {
+          if (!omp_test_lock(
+                  &dict_locks[detail::lock_shard(bucket_start_index)])) {
             pending_bin_deletions[dictionary_index].push_back(
                 std::make_pair(current_read_id, bucket_start_index));
             continue;
@@ -535,7 +570,7 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
           dict[dictionary_index].findpos(bucket_range, bucket_start_index);
           dict[dictionary_index].remove(bucket_range, bucket_start_index,
                                         current_read_id);
-          omp_unset_lock(&dict_locks[bucket_start_index & 0xFFFFFF]);
+          omp_unset_lock(&dict_locks[detail::lock_shard(bucket_start_index)]);
         }
       } else {
         left_search_start = false;
@@ -654,9 +689,10 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
           left_search = false;
           for (int64_t read_id = remaining_read_scan; read_id >= 0; read_id--) {
             if (remaining_reads[read_id] == 1) {
-              if (!omp_test_lock(&remaining_read_lock[read_id & 0xffffff]))
+              if (!omp_test_lock(
+                      &remaining_read_lock[detail::lock_shard(read_id)]))
                 continue;
-              omp_set_lock(&read_locks[read_id & 0xffffff]);
+              omp_set_lock(&read_locks[detail::lock_shard(read_id)]);
               if (remaining_reads[read_id]) {
                 current_read_id = read_id;
                 remaining_read_scan = read_id - 1;
@@ -664,8 +700,9 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
                 found_match = 1;
                 unmatched_counts[thread_id]++;
               }
-              omp_unset_lock(&read_locks[read_id & 0xffffff]);
-              omp_unset_lock(&remaining_read_lock[read_id & 0xffffff]);
+              omp_unset_lock(&read_locks[detail::lock_shard(read_id)]);
+              omp_unset_lock(
+                  &remaining_read_lock[detail::lock_shard(read_id)]);
               if (found_match == 1)
                 break;
             }
@@ -730,19 +767,20 @@ void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
 #pragma omp parallel
   {
     int tid = omp_get_thread_num();
-    std::string tid_str = std::to_string(tid);
-    std::ofstream fout(rg.outfile + '.' + tid_str,
+    std::ofstream fout(detail::thread_output_path(rg.outfile, tid),
                        std::ofstream::out | std::ios::binary);
-    std::ofstream fout_s(rg.outfile + ".singleton." + tid_str,
+    std::ofstream fout_s(detail::thread_singleton_output_path(rg.outfile, tid),
                          std::ofstream::out | std::ios::binary);
-    std::ifstream finRC(rg.outfileRC + '.' + tid_str, std::ifstream::in);
+    std::ifstream finRC(detail::thread_output_path(rg.outfileRC, tid),
+                        std::ifstream::in);
     boost::iostreams::filtering_streambuf<boost::iostreams::input> inbufRC;
     inbufRC.push(boost::iostreams::gzip_decompressor());
     inbufRC.push(finRC);
     std::istream inRC(&inbufRC);
-    std::ifstream finorder(rg.outfileorder + '.' + tid_str,
+    std::ifstream finorder(detail::thread_output_path(rg.outfileorder, tid),
                            std::ifstream::in | std::ios::binary);
-    std::ifstream finorder_s(rg.outfileorder + ".singleton." + tid_str,
+    std::ifstream finorder_s(
+        detail::thread_singleton_output_path(rg.outfileorder, tid),
                              std::ifstream::in | std::ios::binary);
     char s[MAX_READ_LEN + 1], s1[MAX_READ_LEN + 1];
     uint32_t current;
@@ -791,23 +829,18 @@ void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
   std::ofstream foutorder_s(rg.outfileorder + ".singleton",
                             std::ofstream::out | std::ios::binary);
   for (int tid = 0; tid < rg.num_thr; tid++) {
-    std::string tid_str = std::to_string(tid);
-    std::ifstream fin_s(rg.outfile + ".singleton." + tid_str,
-                        std::ifstream::in | std::ios::binary);
-    std::ifstream finorder_s(rg.outfileorder + ".singleton." + tid_str,
-                             std::ifstream::in | std::ios::binary);
+    const std::string singleton_read_path =
+        detail::thread_singleton_output_path(rg.outfile, tid);
+    const std::string singleton_order_path =
+        detail::thread_singleton_output_path(rg.outfileorder, tid);
 
-    fout_s << fin_s.rdbuf();
-    foutorder_s << finorder_s.rdbuf();
+    detail::append_file_to_stream(fout_s, singleton_read_path,
+                                  std::ios::binary);
+    detail::append_file_to_stream(foutorder_s, singleton_order_path,
+                                  std::ios::binary);
 
-    fout_s.clear();
-    foutorder_s.clear();
-
-    fin_s.close();
-    finorder_s.close();
-
-    remove((rg.outfile + ".singleton." + tid_str).c_str());
-    remove((rg.outfileorder + ".singleton." + tid_str).c_str());
+    remove(singleton_read_path.c_str());
+    remove(singleton_order_path.c_str());
   }
   fout_s.close();
   foutorder_s.close();

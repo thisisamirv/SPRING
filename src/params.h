@@ -19,10 +19,12 @@ limitations under the License.
 
 namespace spring {
 
+// Shared bounds and sentinel values used across the compression pipeline.
 constexpr uint16_t MAX_READ_LEN = 511;
 constexpr uint32_t MAX_READ_LEN_LONG = 4294967290U;
 constexpr uint32_t MAX_NUM_READS = 4294967290U;
 
+// Reordering parameters.
 constexpr int NUM_DICT_REORDER = 2;
 constexpr int MAX_SEARCH_REORDER = 1000;
 constexpr int THRESH_REORDER = 4;
@@ -30,10 +32,12 @@ constexpr int THRESH_REORDER = 4;
 constexpr int NUM_LOCKS_REORDER = 0x1000000;
 constexpr float STOP_CRITERIA_REORDER = 0.5F;
 
+// Encoding parameters.
 constexpr int NUM_DICT_ENCODER = 2;
 constexpr int MAX_SEARCH_ENCODER = 1000;
 constexpr int THRESH_ENCODER = 24;
 
+// Block sizing parameters for stream chunking and BSC compression.
 constexpr int NUM_READS_PER_BLOCK = 256000;
 constexpr int NUM_READS_PER_BLOCK_LONG = 10000;
 constexpr int BSC_BLOCK_SIZE = 64;

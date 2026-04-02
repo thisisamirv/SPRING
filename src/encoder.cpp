@@ -30,10 +30,101 @@ namespace spring {
 
 namespace {
 
+struct sequence_pack_paths {
+  std::string input_path;
+  std::string packed_path;
+  std::string tail_path;
+  std::string compressed_path;
+};
+
 std::string thread_file_path(const std::string &base_path,
                              const int thread_id,
                              const char *suffix = "") {
   return base_path + '.' + std::to_string(thread_id) + suffix;
+}
+
+sequence_pack_paths make_sequence_pack_paths(const std::string &base_path,
+                                             const int thread_id) {
+  sequence_pack_paths paths;
+  paths.input_path = thread_file_path(base_path, thread_id);
+  paths.packed_path = thread_file_path(base_path, thread_id, ".tmp");
+  paths.tail_path = thread_file_path(base_path, thread_id, ".tail");
+  paths.compressed_path = thread_file_path(base_path, thread_id, ".bsc");
+  return paths;
+}
+
+uint64_t count_sequence_bases(const std::string &sequence_path) {
+  std::ifstream sequence_input(sequence_path);
+  uint64_t sequence_length = 0;
+  char next_base;
+  while (sequence_input >> std::noskipws >> next_base)
+    sequence_length++;
+  return sequence_length;
+}
+
+void write_packed_sequence(const std::string &sequence_path,
+                           const std::string &packed_path,
+                           const std::string &tail_path,
+                           const uint64_t sequence_length) {
+  uint8_t base_to_int[128] = {};
+  base_to_int[(uint8_t)'A'] = 0;
+  base_to_int[(uint8_t)'C'] = 1;
+  base_to_int[(uint8_t)'G'] = 2;
+  base_to_int[(uint8_t)'T'] = 3;
+
+  std::ifstream sequence_input(sequence_path);
+  std::ofstream packed_output(packed_path, std::ios::binary);
+  std::ofstream tail_output(tail_path);
+  char base_chunk[4];
+  uint8_t packed_base_byte;
+
+  for (uint64_t chunk_index = 0; chunk_index < sequence_length / 4;
+       chunk_index++) {
+    sequence_input.read(base_chunk, 4);
+    packed_base_byte = 64 * base_to_int[(uint8_t)base_chunk[3]] +
+                       16 * base_to_int[(uint8_t)base_chunk[2]] +
+                       4 * base_to_int[(uint8_t)base_chunk[1]] +
+                       base_to_int[(uint8_t)base_chunk[0]];
+    packed_output.write(byte_ptr(&packed_base_byte), sizeof(uint8_t));
+  }
+
+  sequence_input.read(base_chunk, sequence_length % 4);
+  for (uint64_t trailing_index = 0; trailing_index < sequence_length % 4;
+       trailing_index++)
+    tail_output << base_chunk[trailing_index];
+}
+
+void pack_sequence_chunk(const encoder_global &encoder_state,
+                         const int thread_id,
+                         uint64_t *thread_sequence_lengths) {
+  const sequence_pack_paths paths =
+      make_sequence_pack_paths(encoder_state.outfile_seq, thread_id);
+  const uint64_t sequence_length = count_sequence_bases(paths.input_path);
+  thread_sequence_lengths[thread_id] = sequence_length;
+
+  write_packed_sequence(paths.input_path, paths.packed_path, paths.tail_path,
+                        sequence_length);
+  bsc::BSC_compress(paths.packed_path.c_str(), paths.compressed_path.c_str());
+  remove(paths.input_path.c_str());
+  remove(paths.packed_path.c_str());
+}
+
+void rewrite_thread_order_file(const std::string &order_path,
+                               const std::vector<uint32_t> &cumulative_n_reads) {
+  const std::string order_tmp_path = order_path + ".tmp";
+  std::ifstream order_input(order_path, std::ios::binary);
+  std::ofstream order_output(order_tmp_path, std::ios::binary);
+  uint32_t read_position;
+
+  order_input.read(byte_ptr(&read_position), sizeof(uint32_t));
+  while (!order_input.eof()) {
+    read_position += cumulative_n_reads[read_position];
+    order_output.write(byte_ptr(&read_position), sizeof(uint32_t));
+    order_input.read(byte_ptr(&read_position), sizeof(uint32_t));
+  }
+
+  remove(order_path.c_str());
+  rename(order_tmp_path.c_str(), order_path.c_str());
 }
 
 } // namespace
@@ -128,50 +219,8 @@ void writecontig(const std::string &ref,
 void pack_compress_seq(const encoder_global &eg, uint64_t *file_len_seq_thr) {
 #pragma omp parallel
   {
-  const int thread_id = omp_get_thread_num();
-  const std::string seq_path = thread_file_path(eg.outfile_seq, thread_id);
-  const std::string tmp_seq_path =
-    thread_file_path(eg.outfile_seq, thread_id, ".tmp");
-  const std::string tail_seq_path =
-    thread_file_path(eg.outfile_seq, thread_id, ".tail");
-  const std::string compressed_seq_path =
-    thread_file_path(eg.outfile_seq, thread_id, ".bsc");
-    std::ifstream in_seq(seq_path);
-    std::ofstream f_seq(tmp_seq_path, std::ios::binary);
-    std::ofstream f_seq_tail(tail_seq_path);
-    uint64_t thread_seq_length = 0;
-    char next_base;
-    while (in_seq >> std::noskipws >> next_base)
-      thread_seq_length++;
-    file_len_seq_thr[thread_id] = thread_seq_length;
-    uint8_t base_to_int[128];
-    base_to_int[(uint8_t)'A'] = 0;
-    base_to_int[(uint8_t)'C'] = 1;
-    base_to_int[(uint8_t)'G'] = 2;
-    base_to_int[(uint8_t)'T'] = 3;
-
-    in_seq.close();
-    in_seq.open(seq_path);
-    char base_chunk[8];
-    uint8_t packed_base_byte;
-    for (uint64_t i = 0; i < thread_seq_length / 4; i++) {
-      in_seq.read(base_chunk, 4);
-
-      packed_base_byte = 64 * base_to_int[(uint8_t)base_chunk[3]] +
-                         16 * base_to_int[(uint8_t)base_chunk[2]] +
-                         4 * base_to_int[(uint8_t)base_chunk[1]] +
-                         base_to_int[(uint8_t)base_chunk[0]];
-      f_seq.write(byte_ptr(&packed_base_byte), sizeof(uint8_t));
-    }
-    f_seq.close();
-    in_seq.read(base_chunk, thread_seq_length % 4);
-    for (unsigned int i = 0; i < thread_seq_length % 4; i++)
-      f_seq_tail << base_chunk[i];
-    f_seq_tail.close();
-    in_seq.close();
-    bsc::BSC_compress(tmp_seq_path.c_str(), compressed_seq_path.c_str());
-    remove(seq_path.c_str());
-    remove(tmp_seq_path.c_str());
+    const int thread_id = omp_get_thread_num();
+    pack_sequence_chunk(eg, thread_id, file_len_seq_thr);
   }
   return;
 }
@@ -219,23 +268,8 @@ void correct_order(uint32_t *order_s, const encoder_global &eg) {
     order_s[i] += cumulative_N_reads[order_s[i]];
 
   for (int thread_id = 0; thread_id < eg.num_thr; thread_id++) {
-    const std::string order_path =
-        thread_file_path(eg.infile_order, thread_id);
-    const std::string order_tmp_path =
-        thread_file_path(eg.infile_order, thread_id, ".tmp");
-    std::ifstream fin_order(order_path, std::ios::binary);
-    std::ofstream fout_order(order_tmp_path, std::ios::binary);
-    uint32_t read_position;
-    fin_order.read(byte_ptr(&read_position), sizeof(uint32_t));
-    while (!fin_order.eof()) {
-      read_position += cumulative_N_reads[read_position];
-      fout_order.write(byte_ptr(&read_position), sizeof(uint32_t));
-      fin_order.read(byte_ptr(&read_position), sizeof(uint32_t));
-    }
-    fin_order.close();
-    fout_order.close();
-    remove(order_path.c_str());
-    rename(order_tmp_path.c_str(), order_path.c_str());
+    rewrite_thread_order_file(thread_file_path(eg.infile_order, thread_id),
+                              cumulative_N_reads);
   }
   remove(eg.infile_order_N.c_str());
   return;

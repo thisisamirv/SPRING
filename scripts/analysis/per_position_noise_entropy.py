@@ -3,12 +3,21 @@
 
 import os
 import sys
+from dataclasses import dataclass
 
 import numpy as np
 from tqdm import tqdm
 
 
 LOG2 = np.log(2.0)
+
+
+@dataclass(frozen=True)
+class entropy_inputs:
+	fastq_path: str
+	genome_path: str
+	genome_uncompressed_path: str
+	output_path: str
 
 
 def quality_to_prob(qual_string):
@@ -26,6 +35,15 @@ def get_read_count_and_length(in_file):
 			read_count += 1
 			read_length = len(line) - 1
 	return read_count, read_length
+
+
+def parse_inputs(argv):
+	return entropy_inputs(
+		fastq_path=argv[1],
+		genome_path=argv[2],
+		genome_uncompressed_path=argv[3],
+		output_path=argv[4],
+	)
 
 def compute_entropy(probs):
 	entropy_by_position = -(
@@ -59,6 +77,39 @@ def accumulate_probabilities(in_file, read_count, read_length):
 	return probs_sum / read_count
 
 
+def compute_size_summary(read_count, read_length, genome_size, genome_path,
+					 output_path, total_entropy):
+	noise_bpb = total_entropy / read_length
+	noise_size = total_entropy * read_count / 8
+
+	fasta_size = os.stat(genome_path).st_size
+	fasta_bpb = fasta_size * 8.0 / genome_size
+
+	multinomial_size = (
+		(read_count + genome_size) * np.log(read_count + genome_size)
+		- read_count * np.log(read_count)
+		- genome_size * np.log(genome_size)
+	) / (8 * LOG2)
+
+	total_size = multinomial_size + fasta_size + noise_size
+	bits_per_base = total_size * 8.0 / (read_count * read_length)
+
+	output_size = os.stat(output_path).st_size
+	output_bpb = output_size * 8.0 / (read_count * read_length)
+
+	return (
+		noise_bpb,
+		noise_size,
+		fasta_size,
+		fasta_bpb,
+		multinomial_size,
+		total_size,
+		bits_per_base,
+		output_size,
+		output_bpb,
+	)
+
+
 def print_summary(probs, entropy_per_position, read_count, read_length,
 				  genome_size, fasta_size, noise_size, bits_per_base,
 				  fasta_bpb, multinomial_size, output_size, output_bpb,
@@ -82,36 +133,32 @@ def print_summary(probs, entropy_per_position, read_count, read_length,
 
 
 def main():
-	in_file = sys.argv[1]
-	genome_file = sys.argv[2]
-	genome_file_uncompressed = sys.argv[3]
-	output_file = sys.argv[4]
+	inputs = parse_inputs(sys.argv)
 
-	print("FASTQfile: ", in_file)
-	read_count, read_length = get_read_count_and_length(in_file)
-	genome_size = get_genome_size(genome_file_uncompressed)
+	print("FASTQfile: ", inputs.fastq_path)
+	read_count, read_length = get_read_count_and_length(inputs.fastq_path)
+	genome_size = get_genome_size(inputs.genome_uncompressed_path)
 
 	print("Read Length: ", read_length)
-	probs = accumulate_probabilities(in_file, read_count, read_length)
+	probs = accumulate_probabilities(inputs.fastq_path, read_count, read_length)
 	read_length = len(probs)
 	total_entropy, entropy_per_position = compute_entropy(probs)
-	noise_bpb = total_entropy / read_length
-	noise_size = total_entropy * read_count / 8
-
-	fasta_size = os.stat(genome_file).st_size
-	fasta_bpb = fasta_size * 8.0 / genome_size
-
-	multinomial_size = (
-		(read_count + genome_size) * np.log(read_count + genome_size)
-		- read_count * np.log(read_count)
-		- genome_size * np.log(genome_size)
-	) / (8 * LOG2)
-
-	total_size = multinomial_size + fasta_size + noise_size
-	bits_per_base = total_size * 8.0 / (read_count * read_length)
-
-	output_size = os.stat(output_file).st_size
-	output_bpb = output_size * 8.0 / (read_count * read_length)
+	(noise_bpb,
+	 noise_size,
+	 fasta_size,
+	 fasta_bpb,
+	 multinomial_size,
+	 total_size,
+	 bits_per_base,
+	 output_size,
+	 output_bpb) = compute_size_summary(
+		read_count,
+		read_length,
+		genome_size,
+		inputs.genome_path,
+		inputs.output_path,
+		total_entropy,
+	)
 
 	# Report the theoretical noise budget alongside the observed archive size.
 	print_summary(

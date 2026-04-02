@@ -104,6 +104,108 @@ void getDataParams(encoder_global &eg, const compression_params &cp);
 
 void correct_order(uint32_t *order_s, const encoder_global &eg);
 
+template <size_t bitset_size>
+std::string bitsettostring(std::bitset<bitset_size> encoded_bases,
+                           const uint16_t readlen,
+                           const encoder_global_b<bitset_size> &egb);
+
+namespace detail {
+
+inline std::string thread_output_tmp_path(const std::string &base_path,
+                                          const int thread_id) {
+  return base_path + '.' + std::to_string(thread_id) + ".tmp";
+}
+
+inline void append_thread_stream(std::ofstream &merged_output,
+                                 const std::string &thread_output_path,
+                                 const std::ios::openmode mode = std::ios::in) {
+  std::ifstream thread_input(thread_output_path, mode);
+  merged_output << thread_input.rdbuf();
+  merged_output.clear();
+}
+
+inline void cleanup_thread_encode_files(const encoder_global &encoder_state,
+                                        const int thread_id) {
+  remove((encoder_state.infile_order + '.' + std::to_string(thread_id))
+             .c_str());
+  remove(thread_output_tmp_path(encoder_state.infile_order, thread_id).c_str());
+  remove((encoder_state.infile_readlength + '.' + std::to_string(thread_id))
+             .c_str());
+  remove(thread_output_tmp_path(encoder_state.infile_readlength, thread_id)
+             .c_str());
+  remove((encoder_state.outfile_noisepos + '.' + std::to_string(thread_id))
+             .c_str());
+  remove((encoder_state.outfile_noise + '.' + std::to_string(thread_id))
+             .c_str());
+  remove(thread_output_tmp_path(encoder_state.infile_RC, thread_id).c_str());
+  remove((encoder_state.infile_RC + '.' + std::to_string(thread_id)).c_str());
+  remove((encoder_state.infile_flag + '.' + std::to_string(thread_id)).c_str());
+  remove((encoder_state.infile_pos + '.' + std::to_string(thread_id)).c_str());
+  remove((encoder_state.infile + '.' + std::to_string(thread_id)).c_str());
+}
+
+inline void merge_thread_encoded_outputs(const encoder_global &encoder_state) {
+  std::ofstream order_output(encoder_state.infile_order, std::ios::binary);
+  std::ofstream read_length_output(encoder_state.infile_readlength,
+                                   std::ios::binary);
+  std::ofstream noise_position_output(encoder_state.outfile_noisepos,
+                                      std::ios::binary);
+  std::ofstream noise_output(encoder_state.outfile_noise);
+  std::ofstream orientation_output(encoder_state.infile_RC);
+
+  for (int thread_id = 0; thread_id < encoder_state.num_thr; thread_id++) {
+    append_thread_stream(order_output,
+                         thread_output_tmp_path(encoder_state.infile_order,
+                                                thread_id),
+                         std::ios::binary);
+    append_thread_stream(read_length_output,
+                         thread_output_tmp_path(encoder_state.infile_readlength,
+                                                thread_id),
+                         std::ios::binary);
+    append_thread_stream(orientation_output,
+                         thread_output_tmp_path(encoder_state.infile_RC,
+                                                thread_id));
+    append_thread_stream(noise_position_output,
+                         encoder_state.outfile_noisepos + '.' +
+                             std::to_string(thread_id),
+                         std::ios::binary);
+    append_thread_stream(noise_output,
+                         encoder_state.outfile_noise + '.' +
+                             std::to_string(thread_id));
+
+    cleanup_thread_encode_files(encoder_state, thread_id);
+  }
+}
+
+template <size_t bitset_size>
+uint32_t write_unaligned_range(
+    std::ofstream &order_output, std::ofstream &read_length_output,
+    std::ofstream &unaligned_output, const std::bitset<bitset_size> *reads,
+    const uint32_t *read_orders, const uint16_t *read_lengths,
+    const bool *remaining_reads, const encoder_global_b<bitset_size> &encoder_bits,
+    const uint32_t begin_read_index, const uint32_t end_read_index,
+    uint64_t &unaligned_length) {
+  uint32_t aligned_read_count = 0;
+  for (uint32_t read_index = begin_read_index; read_index < end_read_index;
+       read_index++) {
+    if (!remaining_reads[read_index])
+      continue;
+
+    aligned_read_count++;
+    const std::string unaligned_read = bitsettostring<bitset_size>(
+        reads[read_index], read_lengths[read_index], encoder_bits);
+    write_dnaN_in_bits(unaligned_read, unaligned_output);
+    order_output.write(byte_ptr(&read_orders[read_index]), sizeof(uint32_t));
+    read_length_output.write(byte_ptr(&read_lengths[read_index]),
+                             sizeof(uint16_t));
+    unaligned_length += read_lengths[read_index];
+  }
+
+  return aligned_read_count;
+}
+
+} // namespace detail
+
 inline void initialize_encoder_dict_ranges(
     std::array<bbhashdict, NUM_DICT_ENCODER> &dict, const int max_readlen) {
   if (max_readlen > 50) {
@@ -437,75 +539,26 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
   }
 
   // Stitch the per-thread streams back into the final encoded outputs.
-  std::ofstream order_output(eg.infile_order, std::ios::binary);
-  std::ofstream read_length_output(eg.infile_readlength, std::ios::binary);
-  std::ofstream noise_position_output(eg.outfile_noisepos, std::ios::binary);
-  std::ofstream noise_output(eg.outfile_noise);
-  std::ofstream orientation_output(eg.infile_RC);
+  detail::merge_thread_encoded_outputs(eg);
 
-  for (int thread_id = 0; thread_id < eg.num_thr; thread_id++) {
-    std::ifstream order_input(eg.infile_order + '.' + std::to_string(thread_id) + ".tmp",
-                           std::ios::binary);
-    std::ifstream read_length_input(eg.infile_readlength + '.' +
-                                    std::to_string(thread_id) + ".tmp",
-                                std::ios::binary);
-    std::ifstream orientation_input(eg.infile_RC + '.' + std::to_string(thread_id) + ".tmp");
-    std::ifstream noise_position_input(eg.outfile_noisepos + '.' + std::to_string(thread_id),
-                              std::ios::binary);
-    std::ifstream noise_input(eg.outfile_noise + '.' + std::to_string(thread_id));
-    order_output << order_input.rdbuf();
-    order_output.clear(); // clear error flag in case order_input is empty
-    noise_position_output << noise_position_input.rdbuf();
-    noise_position_output.clear(); // clear error flag in case noise_position_input is empty
-    noise_output << noise_input.rdbuf();
-    noise_output.clear(); // clear error flag in case noise_input is empty
-    read_length_output << read_length_input.rdbuf();
-    read_length_output.clear(); // clear error flag in case read_length_input is empty
-    orientation_output << orientation_input.rdbuf();
-    orientation_output.clear(); // clear error flag in case orientation_input is empty
-
-    remove((eg.infile_order + '.' + std::to_string(thread_id)).c_str());
-    remove((eg.infile_order + '.' + std::to_string(thread_id) + ".tmp").c_str());
-    remove((eg.infile_readlength + '.' + std::to_string(thread_id)).c_str());
-    remove((eg.infile_readlength + '.' + std::to_string(thread_id) + ".tmp").c_str());
-    remove((eg.outfile_noisepos + '.' + std::to_string(thread_id)).c_str());
-    remove((eg.outfile_noise + '.' + std::to_string(thread_id)).c_str());
-    remove((eg.infile_RC + '.' + std::to_string(thread_id) + ".tmp").c_str());
-    remove((eg.infile_RC + '.' + std::to_string(thread_id)).c_str());
-    remove((eg.infile_flag + '.' + std::to_string(thread_id)).c_str());
-    remove((eg.infile_pos + '.' + std::to_string(thread_id)).c_str());
-    remove((eg.infile + '.' + std::to_string(thread_id)).c_str());
-  }
-  order_output.close();
-  read_length_output.close();
+  std::ofstream order_output(eg.infile_order,
+                             std::ios::binary | std::ofstream::app);
+  std::ofstream read_length_output(eg.infile_readlength,
+                                   std::ios::binary | std::ofstream::app);
   std::ofstream unaligned_output(eg.outfile_unaligned, std::ios::binary);
-  order_output.open(eg.infile_order, std::ios::binary | std::ofstream::app);
-  read_length_output.open(eg.infile_readlength,
-                    std::ios::binary | std::ofstream::app);
-  uint32_t matched_singleton_reads = eg.numreads_s;
+
   uint64_t len_unaligned = 0;
-  for (uint32_t read_index = 0; read_index < eg.numreads_s; read_index++)
-    if (remaining_reads[read_index] == 1) {
-      matched_singleton_reads--;
-      order_output.write(byte_ptr(&read_orders[read_index]), sizeof(uint32_t));
-      read_length_output.write(byte_ptr(&read_lengths[read_index]), sizeof(uint16_t));
-      std::string unaligned_read =
-          bitsettostring<bitset_size>(reads[read_index], read_lengths[read_index], egb);
-      write_dnaN_in_bits(unaligned_read, unaligned_output);
-      len_unaligned += read_lengths[read_index];
-    }
-  uint32_t matched_n_reads = eg.numreads_N;
-  for (uint32_t read_index = eg.numreads_s;
-       read_index < eg.numreads_s + eg.numreads_N; read_index++)
-    if (remaining_reads[read_index] == 1) {
-      matched_n_reads--;
-      std::string unaligned_read =
-          bitsettostring<bitset_size>(reads[read_index], read_lengths[read_index], egb);
-      write_dnaN_in_bits(unaligned_read, unaligned_output);
-      order_output.write(byte_ptr(&read_orders[read_index]), sizeof(uint32_t));
-      read_length_output.write(byte_ptr(&read_lengths[read_index]), sizeof(uint16_t));
-      len_unaligned += read_lengths[read_index];
-    }
+
+  const uint32_t remaining_singleton_reads = detail::write_unaligned_range(
+      order_output, read_length_output, unaligned_output, reads, read_orders,
+      read_lengths, remaining_reads, egb, 0, eg.numreads_s, len_unaligned);
+  const uint32_t remaining_n_reads = detail::write_unaligned_range(
+      order_output, read_length_output, unaligned_output, reads, read_orders,
+      read_lengths, remaining_reads, egb, eg.numreads_s,
+      eg.numreads_s + eg.numreads_N, len_unaligned);
+
+  uint32_t matched_singleton_reads = eg.numreads_s - remaining_singleton_reads;
+  uint32_t matched_n_reads = eg.numreads_N - remaining_n_reads;
   order_output.close();
   read_length_output.close();
   unaligned_output.close();

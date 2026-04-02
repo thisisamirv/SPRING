@@ -61,7 +61,7 @@ struct compression_params {
   int num_thr;
 };
 
-// Shared FASTQ, ID, quality, DNA packing, and temporary-stream helpers.
+// FASTQ block helpers.
 uint32_t read_fastq_block(std::istream *input_stream,
                           std::string *id_array,
                           std::string *read_array,
@@ -76,12 +76,14 @@ void write_fastq_block(std::ofstream &output_stream,
                        const int &num_thr, const bool &gzip_flag,
                        const int &gzip_level);
 
+// ID stream helpers.
 void compress_id_block(const char *output_path, std::string *id_array,
                        const uint32_t &num_ids);
 
 void decompress_id_block(const char *input_path, std::string *id_array,
                          const uint32_t &num_ids);
 
+// Quality helpers.
 void quantize_quality(std::string *quality_array, const uint32_t &num_lines,
                       char *quantization_table);
 
@@ -95,6 +97,7 @@ void generate_binary_binning_table(char *binary_binning_table,
                                    const unsigned int high,
                                    const unsigned int low);
 
+// Paired-id helpers.
 uint8_t find_id_pattern(const std::string &id_1, const std::string &id_2);
 
 bool check_id_pattern(const std::string &id_1, const std::string &id_2,
@@ -102,6 +105,7 @@ bool check_id_pattern(const std::string &id_1, const std::string &id_2,
 
 void modify_id(std::string &id, const uint8_t paired_id_code);
 
+// DNA packing helpers.
 void write_dna_in_bits(const std::string &read, std::ofstream &fout);
 
 void read_dna_from_bits(std::string &read, std::ifstream &fin);
@@ -116,10 +120,12 @@ void reverse_complement(char *input_bases, char *output_bases,
 std::string reverse_complement(const std::string &input_bases,
                                const int readlen);
 
+// Miscellaneous helpers.
 void remove_CR_from_end(std::string &str);
 
 size_t get_directory_size(const std::string &temp_dir);
 
+// Temporary integer stream helpers.
 void write_var_int64(const int64_t value, std::ofstream &output_stream);
 
 int64_t read_var_int64(std::ifstream &input_stream);

@@ -31,7 +31,8 @@ void compress(const std::string &temp_dir,
                             const string_list &output_paths,
                             const int &num_thr,
               const bool &pairing_only_flag, const bool &no_quality_flag,
-                            const bool &no_ids_flag, const string_list &quality_options,
+                            const bool &no_ids_flag,
+                            const string_list &quality_options,
               const bool &long_flag, const bool &gzip_flag,
               const bool &fasta_flag);
 

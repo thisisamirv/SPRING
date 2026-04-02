@@ -9,7 +9,15 @@ constexpr int kMaxReadLength = 512;
 
 using read_length_counts = std::array<long, kMaxReadLength>;
 
+struct read_length_distribution_config {
+  std::string input_path;
+};
+
 bool is_sequence_line(const long line_number) { return line_number % 4 == 2; }
+
+read_length_distribution_config parse_config(char **argv) {
+  return {std::string(argv[1])};
+}
 
 read_length_counts compute_read_length_distribution(
     const std::string &input_path) {
@@ -35,9 +43,9 @@ void print_read_length_distribution(const read_length_counts &counts) {
 } // namespace
 
 int main(int, char **argv) {
-  const std::string input_path = std::string(argv[1]);
+  const read_length_distribution_config config = parse_config(argv);
   const read_length_counts counts =
-      compute_read_length_distribution(input_path);
+      compute_read_length_distribution(config.input_path);
   print_read_length_distribution(counts);
   return 0;
 }

@@ -10,6 +10,11 @@ constexpr int kReadLen = 147;
 constexpr int kNumClusters = 1;
 constexpr int kQualityValueCount = 42;
 
+struct count_paths {
+  std::string input_path;
+  std::string output_path;
+};
+
 const std::vector<int> kClusterBoundaries = {};
 
 size_t count1_index(const int cluster_num, const int position,
@@ -53,6 +58,44 @@ int find_cluster(const double avg_qv) {
   }
   return cluster_num;
 }
+
+  count_paths parse_paths(char **argv) {
+    return {std::string(argv[1]), std::string(argv[2])};
+  }
+
+  void update_count_tables(const std::string &quality_line,
+               const int cluster_num,
+               std::vector<uint64_t> &count1,
+               std::vector<uint64_t> &count2,
+               std::vector<uint64_t> &count3) {
+    for (int position = 0; position < kReadLen - 2; ++position) {
+    const int quality_value_1 =
+      static_cast<unsigned int>(quality_line[position]) - 33;
+    const int quality_value_2 =
+      static_cast<unsigned int>(quality_line[position + 1]) - 33;
+    const int quality_value_3 =
+      static_cast<unsigned int>(quality_line[position + 2]) - 33;
+    ++count1[count1_index(cluster_num, position, quality_value_1)];
+    ++count2[count2_index(cluster_num, position, quality_value_1,
+                quality_value_2)];
+    ++count3[count3_index(cluster_num, position, quality_value_1,
+                quality_value_2, quality_value_3)];
+    }
+
+    int position = kReadLen - 2;
+    const int quality_value_1 =
+      static_cast<unsigned int>(quality_line[position]) - 33;
+    const int quality_value_2 =
+      static_cast<unsigned int>(quality_line[position + 1]) - 33;
+    ++count1[count1_index(cluster_num, position, quality_value_1)];
+    ++count2[count2_index(cluster_num, position, quality_value_1,
+              quality_value_2)];
+
+    position = kReadLen - 1;
+    ++count1[count1_index(cluster_num, position,
+              static_cast<unsigned int>(quality_line[position]) -
+                33)];
+  }
 
 void write_counts(std::ofstream &output_stream,
                   const std::vector<uint64_t> &count1,
@@ -130,43 +173,19 @@ void compute_counts(const std::string &input_path,
     const int cluster_num = find_cluster(avg_qv);
 
     ++num_reads[static_cast<size_t>(cluster_num)];
-    for (int position = 0; position < kReadLen - 2; ++position) {
-      const int quality_value_1 =
-        static_cast<unsigned int>(quality_line[position]) - 33;
-      const int quality_value_2 =
-        static_cast<unsigned int>(quality_line[position + 1]) - 33;
-      const int quality_value_3 =
-        static_cast<unsigned int>(quality_line[position + 2]) - 33;
-      ++count1[count1_index(cluster_num, position, quality_value_1)];
-      ++count2[count2_index(cluster_num, position, quality_value_1,
-                            quality_value_2)];
-      ++count3[count3_index(cluster_num, position, quality_value_1,
-                            quality_value_2, quality_value_3)];
-    }
-
-    int position = kReadLen - 2;
-    const int quality_value_1 =
-      static_cast<unsigned int>(quality_line[position]) - 33;
-    const int quality_value_2 =
-      static_cast<unsigned int>(quality_line[position + 1]) - 33;
-    ++count1[count1_index(cluster_num, position, quality_value_1)];
-    ++count2[count2_index(cluster_num, position, quality_value_1,
-                          quality_value_2)];
-
-    position = kReadLen - 1;
-    ++count1[count1_index(cluster_num, position,
-                static_cast<unsigned int>(quality_line[position]) -
-                  33)];
+    update_count_tables(quality_line, cluster_num, count1, count2, count3);
   }
-    input_stream.close();
 
-    std::ofstream output_stream(output_path, std::ios::binary);
-    write_counts(output_stream, count1, count2, count3, num_reads);
+  input_stream.close();
+
+  std::ofstream output_stream(output_path, std::ios::binary);
+  write_counts(output_stream, count1, count2, count3, num_reads);
 }
 
 } // namespace
 
 int main(int, char **argv) {
-  compute_counts(argv[1], argv[2]);
+  const count_paths paths = parse_paths(argv);
+  compute_counts(paths.input_path, paths.output_path);
   return 0;
 }
