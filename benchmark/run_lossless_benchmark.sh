@@ -9,7 +9,8 @@ INPUT_FASTQ=${1:-"$SCRIPT_DIR/sample.fastq"}
 THREADS=${THREADS:-8}
 BUILD_DIR="$ROOT_DIR/build"
 BUILD_LOG="$SCRIPT_DIR/build.log"
-RESOURCE_LOG="$SCRIPT_DIR/resource_usage.log"
+COMPRESS_RESOURCE_LOG="$SCRIPT_DIR/compress_resource_usage.log"
+DECOMPRESS_RESOURCE_LOG="$SCRIPT_DIR/decompress_resource_usage.log"
 
 TIME_BIN=""
 if [[ -x /usr/bin/time ]]; then
@@ -17,6 +18,20 @@ if [[ -x /usr/bin/time ]]; then
 elif [[ -n "$(type -P time)" ]]; then
   TIME_BIN=$(type -P time)
 fi
+
+compute_checksum() {
+  local file_path="$1"
+
+  if [[ -n "$(type -P sha256sum)" ]]; then
+    sha256sum "$file_path" | awk '{print $1}'
+    return
+  fi
+
+  if [[ -n "$(type -P shasum)" ]]; then
+    shasum -a 256 "$file_path" | awk '{print $1}'
+    return
+  fi
+}
 
 ensure_spring_binary() {
   if [[ -x "$SPRING_BIN" ]]; then
@@ -42,6 +57,57 @@ ensure_spring_binary() {
 
 ensure_spring_binary
 
+run_with_resource_log() {
+  local log_file="$1"
+  shift
+
+  rm -f "$log_file"
+
+  if [[ -n "$TIME_BIN" ]]; then
+    "$TIME_BIN" \
+      -f 'elapsed_seconds=%e
+user_seconds=%U
+system_seconds=%S
+cpu_percent=%P
+max_rss_kb=%M' \
+      -o "$log_file" \
+      "$@"
+    return
+  fi
+
+  TIMEFORMAT=$'elapsed_seconds=%3R\nuser_seconds=%3U\nsystem_seconds=%3S\ncpu_percent=unavailable\nmax_rss_kb=unavailable'
+  exec 3>&2
+  { time "$@" 2>&3; } 2> "$log_file"
+  exec 3>&-
+}
+
+populate_resource_vars() {
+  local prefix="$1"
+  local log_file="$2"
+  local key
+  local value
+
+  printf -v "${prefix}_elapsed_seconds" '%s' ""
+  printf -v "${prefix}_user_seconds" '%s' ""
+  printf -v "${prefix}_system_seconds" '%s' ""
+  printf -v "${prefix}_cpu_percent" '%s' ""
+  printf -v "${prefix}_max_rss_kb" '%s' ""
+
+  if [[ ! -f "$log_file" ]]; then
+    return
+  fi
+
+  while IFS='=' read -r key value; do
+    case "$key" in
+      elapsed_seconds) printf -v "${prefix}_elapsed_seconds" '%s' "$value" ;;
+      user_seconds) printf -v "${prefix}_user_seconds" '%s' "$value" ;;
+      system_seconds) printf -v "${prefix}_system_seconds" '%s' "$value" ;;
+      cpu_percent) printf -v "${prefix}_cpu_percent" '%s' "$value" ;;
+      max_rss_kb) printf -v "${prefix}_max_rss_kb" '%s' "$value" ;;
+    esac
+  done < "$log_file"
+}
+
 if [[ ! -f "$INPUT_FASTQ" ]]; then
   echo "Input FASTQ not found: $INPUT_FASTQ" >&2
   exit 1
@@ -53,6 +119,7 @@ INPUT_STEM=${INPUT_BASENAME%.*}
 OUTPUT_DIR="$SCRIPT_DIR/output"
 WORK_DIR="$SCRIPT_DIR/scratch/$INPUT_STEM"
 OUTPUT_FILE="$OUTPUT_DIR/$INPUT_STEM.spring"
+DECOMPRESSED_OUTPUT_FILE="$OUTPUT_DIR/$INPUT_STEM.roundtrip.fastq"
 MAX_SHORT_READ_LENGTH=511
 
 MAX_READ_LENGTH=$(awk 'NR % 4 == 2 { if (length($0) > max_len) max_len = length($0) } END { print max_len + 0 }' "$INPUT_ABS")
@@ -66,7 +133,9 @@ mkdir -p "$OUTPUT_DIR"
 rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR"
 rm -f "$OUTPUT_FILE"
-rm -f "$RESOURCE_LOG"
+rm -f "$DECOMPRESSED_OUTPUT_FILE"
+rm -f "$COMPRESS_RESOURCE_LOG"
+rm -f "$DECOMPRESS_RESOURCE_LOG"
 
 echo "Running Spring lossless compression"
 echo "  input:   $INPUT_ABS"
@@ -90,86 +159,146 @@ spring_args=(
   -q lossless
 )
 
-if [[ -n "$TIME_BIN" ]]; then
-  "$TIME_BIN" \
-    -f 'elapsed_seconds=%e
-user_seconds=%U
-system_seconds=%S
-cpu_percent=%P
-max_rss_kb=%M' \
-    -o "$RESOURCE_LOG" \
-    "$SPRING_BIN" \
-    "${spring_args[@]}"
-else
-  TIMEFORMAT=$'elapsed_seconds=%3R\nuser_seconds=%3U\nsystem_seconds=%3S\ncpu_percent=unavailable\nmax_rss_kb=unavailable'
-  { time "$SPRING_BIN" "${spring_args[@]}"; } 2> "$RESOURCE_LOG"
-fi
+run_with_resource_log "$COMPRESS_RESOURCE_LOG" "$SPRING_BIN" "${spring_args[@]}"
+
+echo "Running Spring decompression"
+echo "  input:   $OUTPUT_FILE"
+echo "  output:  $DECOMPRESSED_OUTPUT_FILE"
+
+decompress_args=(
+  -d
+  -i "$OUTPUT_FILE"
+  -o "$DECOMPRESSED_OUTPUT_FILE"
+)
+
+run_with_resource_log "$DECOMPRESS_RESOURCE_LOG" "$SPRING_BIN" "${decompress_args[@]}"
 
 INPUT_SIZE=$(stat -c%s "$INPUT_ABS")
 OUTPUT_SIZE=$(stat -c%s "$OUTPUT_FILE")
+DECOMPRESSED_SIZE=$(stat -c%s "$DECOMPRESSED_OUTPUT_FILE")
 
-elapsed_seconds=""
-user_seconds=""
-system_seconds=""
-cpu_percent=""
-max_rss_kb=""
+populate_resource_vars "compress" "$COMPRESS_RESOURCE_LOG"
+populate_resource_vars "decompress" "$DECOMPRESS_RESOURCE_LOG"
 
-if [[ -f "$RESOURCE_LOG" ]]; then
-  while IFS='=' read -r key value; do
-    case "$key" in
-      elapsed_seconds) elapsed_seconds="$value" ;;
-      user_seconds) user_seconds="$value" ;;
-      system_seconds) system_seconds="$value" ;;
-      cpu_percent) cpu_percent="$value" ;;
-      max_rss_kb) max_rss_kb="$value" ;;
-    esac
-  done < "$RESOURCE_LOG"
+integrity_method="byte comparison only"
+original_checksum=""
+decompressed_checksum=""
+checksum_status="unavailable"
+
+if [[ -n "$(type -P sha256sum)" || -n "$(type -P shasum)" ]]; then
+  integrity_method="SHA-256 + byte comparison"
+  original_checksum=$(compute_checksum "$INPUT_ABS")
+  decompressed_checksum=$(compute_checksum "$DECOMPRESSED_OUTPUT_FILE")
+  if [[ "$original_checksum" == "$decompressed_checksum" ]]; then
+    checksum_status="match"
+  else
+    checksum_status="mismatch"
+  fi
+fi
+
+roundtrip_status="different"
+if cmp -s "$INPUT_ABS" "$DECOMPRESSED_OUTPUT_FILE"; then
+  roundtrip_status="identical"
 fi
 
 awk \
   -v input_size="$INPUT_SIZE" \
   -v output_size="$OUTPUT_SIZE" \
-  -v elapsed_seconds="$elapsed_seconds" \
-  -v user_seconds="$user_seconds" \
-  -v system_seconds="$system_seconds" \
-  -v cpu_percent="$cpu_percent" \
-  -v max_rss_kb="$max_rss_kb" '
+  -v decompressed_size="$DECOMPRESSED_SIZE" \
+  -v compress_elapsed_seconds="$compress_elapsed_seconds" \
+  -v compress_user_seconds="$compress_user_seconds" \
+  -v compress_system_seconds="$compress_system_seconds" \
+  -v compress_cpu_percent="$compress_cpu_percent" \
+  -v compress_max_rss_kb="$compress_max_rss_kb" \
+  -v decompress_elapsed_seconds="$decompress_elapsed_seconds" \
+  -v decompress_user_seconds="$decompress_user_seconds" \
+  -v decompress_system_seconds="$decompress_system_seconds" \
+  -v decompress_cpu_percent="$decompress_cpu_percent" \
+  -v decompress_max_rss_kb="$decompress_max_rss_kb" \
+  -v integrity_method="$integrity_method" \
+  -v original_checksum="$original_checksum" \
+  -v decompressed_checksum="$decompressed_checksum" \
+  -v checksum_status="$checksum_status" \
+  -v roundtrip_status="$roundtrip_status" '
 BEGIN {
   reduction_percent = 0
   compression_ratio = 0
-  max_rss_mb = 0
-  average_core_usage = 0
+  compress_max_rss_mb = 0
+  compress_average_core_usage = 0
+  decompress_max_rss_mb = 0
+  decompress_average_core_usage = 0
   if (input_size > 0) {
     reduction_percent = (input_size - output_size) * 100 / input_size
     compression_ratio = input_size / output_size
   }
-  if (elapsed_seconds != "" && elapsed_seconds != 0 && user_seconds != "" && system_seconds != "") {
-    average_core_usage = (user_seconds + system_seconds) / elapsed_seconds
+  if (compress_elapsed_seconds != "" && compress_elapsed_seconds != 0 && compress_user_seconds != "" && compress_system_seconds != "") {
+    compress_average_core_usage = (compress_user_seconds + compress_system_seconds) / compress_elapsed_seconds
   }
-  if (max_rss_kb != "" && max_rss_kb != "unavailable") {
-    max_rss_mb = max_rss_kb / 1024
+  if (decompress_elapsed_seconds != "" && decompress_elapsed_seconds != 0 && decompress_user_seconds != "" && decompress_system_seconds != "") {
+    decompress_average_core_usage = (decompress_user_seconds + decompress_system_seconds) / decompress_elapsed_seconds
+  }
+  if (compress_max_rss_kb != "" && compress_max_rss_kb != "unavailable") {
+    compress_max_rss_mb = compress_max_rss_kb / 1024
+  }
+  if (decompress_max_rss_kb != "" && decompress_max_rss_kb != "unavailable") {
+    decompress_max_rss_mb = decompress_max_rss_kb / 1024
   }
   printf("\nBenchmark result\n")
   printf("  original bytes:   %d\n", input_size)
   printf("  compressed bytes: %d\n", output_size)
+  printf("  decompressed bytes: %d\n", decompressed_size)
   printf("  size reduction:   %.2f%%\n", reduction_percent)
   printf("  compression ratio %.3fx\n", compression_ratio)
-  if (elapsed_seconds != "") {
-    printf("  elapsed time:     %ss\n", elapsed_seconds)
+
+  printf("\nCompression resources\n")
+  if (compress_elapsed_seconds != "") {
+    printf("  elapsed time:     %ss\n", compress_elapsed_seconds)
   }
-  if (cpu_percent != "") {
-    printf("  cpu usage:        %s\n", cpu_percent)
+  if (compress_cpu_percent != "") {
+    printf("  cpu usage:        %s\n", compress_cpu_percent)
   }
-  if (user_seconds != "" || system_seconds != "") {
-    printf("  cpu time:         user %ss, system %ss\n", user_seconds, system_seconds)
+  if (compress_user_seconds != "" || compress_system_seconds != "") {
+    printf("  cpu time:         user %ss, system %ss\n", compress_user_seconds, compress_system_seconds)
   }
-  if (average_core_usage > 0) {
-    printf("  avg core usage:   %.2f cores\n", average_core_usage)
+  if (compress_average_core_usage > 0) {
+    printf("  avg core usage:   %.2f cores\n", compress_average_core_usage)
   }
-  if (max_rss_kb != "" && max_rss_kb != "unavailable") {
-    printf("  peak memory:      %d KB (%.2f MB RSS)\n", max_rss_kb, max_rss_mb)
-  } else if (elapsed_seconds != "") {
+  if (compress_max_rss_kb != "" && compress_max_rss_kb != "unavailable") {
+    printf("  peak memory:      %d KB (%.2f MB RSS)\n", compress_max_rss_kb, compress_max_rss_mb)
+  } else if (compress_elapsed_seconds != "") {
     printf("  peak memory:      unavailable (install GNU time for RSS reporting)\n")
   }
+
+  printf("\nDecompression resources\n")
+  if (decompress_elapsed_seconds != "") {
+    printf("  elapsed time:     %ss\n", decompress_elapsed_seconds)
+  }
+  if (decompress_cpu_percent != "") {
+    printf("  cpu usage:        %s\n", decompress_cpu_percent)
+  }
+  if (decompress_user_seconds != "" || decompress_system_seconds != "") {
+    printf("  cpu time:         user %ss, system %ss\n", decompress_user_seconds, decompress_system_seconds)
+  }
+  if (decompress_average_core_usage > 0) {
+    printf("  avg core usage:   %.2f cores\n", decompress_average_core_usage)
+  }
+  if (decompress_max_rss_kb != "" && decompress_max_rss_kb != "unavailable") {
+    printf("  peak memory:      %d KB (%.2f MB RSS)\n", decompress_max_rss_kb, decompress_max_rss_mb)
+  } else if (decompress_elapsed_seconds != "") {
+    printf("  peak memory:      unavailable (install GNU time for RSS reporting)\n")
+  }
+
+  printf("\nRound-trip check\n")
+  printf("  integrity method: %s\n", integrity_method)
+  if (original_checksum != "") {
+    printf("  original checksum: %s\n", original_checksum)
+  }
+  if (decompressed_checksum != "") {
+    printf("  output checksum:   %s\n", decompressed_checksum)
+  }
+  if (checksum_status != "unavailable") {
+    printf("  checksum status:  %s\n", checksum_status)
+  }
+  printf("  decompressed file matches input: %s\n", roundtrip_status)
 }
 '
