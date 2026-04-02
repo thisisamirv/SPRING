@@ -12,6 +12,9 @@ license (the "License");
 limitations under the License.
 */
 
+// Declares the preprocessing stage that converts raw input reads into the
+// temporary files consumed by Spring's reorder and encode passes.
+
 #ifndef SPRING_PREPROCESS_H_
 #define SPRING_PREPROCESS_H_
 

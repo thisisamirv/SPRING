@@ -1,3 +1,6 @@
+// Transposes a matrix of fixed-length quality strings so each output line holds
+// one position across all reads for column-wise downstream analysis.
+
 #include <cstdlib>
 #include <fstream>
 #include <string>

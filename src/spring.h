@@ -12,6 +12,9 @@ license (the "License");
 limitations under the License.
 */
 
+// Declares Spring's CLI-facing compression and decompression entry points and
+// the shared string/range aliases used to drive those workflows.
+
 #ifndef SPRING_SPRING_H_
 #define SPRING_SPRING_H_
 

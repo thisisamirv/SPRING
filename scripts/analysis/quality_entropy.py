@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+"""Loads precomputed quality-count tensors and reports empirical 0th-, 1st-,
+and 2nd-order quality entropies without clustering adjustments."""
+
 import numpy as np
 import struct
 

@@ -1,3 +1,6 @@
+// Chooses concrete template instantiations for reorder and encoder bitset sizes
+// based on the dataset's read-length requirements.
+
 #include "encoder.h"
 #include "reorder.h"
 #include "util.h"

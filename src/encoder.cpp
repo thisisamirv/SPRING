@@ -12,6 +12,9 @@ license (the "License");
 limitations under the License.
 */
 
+// Encodes reordered reads against their consensus/reference representation and
+// writes the compressed sequence, position, noise, and unaligned side streams.
+
 #include "encoder.h"
 #include "libbsc/bsc.h"
 #include <array>

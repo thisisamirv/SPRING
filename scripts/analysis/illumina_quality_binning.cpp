@@ -1,3 +1,6 @@
+// Applies Illumina's standard 8-bin remapping to one quality string per line
+// and writes the binned output stream for downstream compression experiments.
+
 #include <array>
 #include <cstdint>
 #include <fstream>

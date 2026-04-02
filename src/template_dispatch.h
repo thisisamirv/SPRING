@@ -1,3 +1,6 @@
+// Declares the runtime-to-template dispatch helpers that pick reorder and
+// encoder implementations sized for the current dataset.
+
 #ifndef SPRING_TEMPLATE_DISPATCH_H_
 #define SPRING_TEMPLATE_DISPATCH_H_
 

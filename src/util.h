@@ -12,6 +12,9 @@ license (the "License");
 limitations under the License.
 */
 
+// Declares shared utility types and helpers for FASTQ blocks, ids, quality
+// processing, DNA packing, reverse complements, and temporary stream I/O.
+
 #ifndef SPRING_UTIL_H_
 #define SPRING_UTIL_H_
 

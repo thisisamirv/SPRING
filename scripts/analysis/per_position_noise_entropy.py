@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+"""Computes per-position sequencing noise entropy from FASTQ qualities and
+compares the theoretical noise budget with reference and archive sizes."""
+
 ## computes noise_entropy by assuming per position
 
 import os

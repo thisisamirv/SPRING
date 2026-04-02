@@ -1,3 +1,6 @@
+// Packs a four-symbol quality alphabet into base-4 bytes, writing the packed
+// stream and any leftover tail characters to companion files.
+
 #include <array>
 #include <cstdint>
 #include <fstream>

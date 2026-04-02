@@ -12,6 +12,9 @@ license (the "License");
 limitations under the License.
 */
 
+// Centralizes compile-time tuning constants for read limits, dictionary search
+// thresholds, and block sizes shared across the compression pipeline.
+
 #ifndef SPRING_PARAMS_H_
 #define SPRING_PARAMS_H_
 

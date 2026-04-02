@@ -12,6 +12,9 @@ license (the "License");
 limitations under the License.
 */
 
+// Reorders and compresses quality-value and identifier streams so they align
+// with Spring's reordered read layout before archive packaging.
+
 #include <cstdint>
 #include <cstdio>
 #include <cstring>

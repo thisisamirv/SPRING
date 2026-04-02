@@ -1,3 +1,6 @@
+// Reconstructs quality strings from the packed base-4 stream produced by
+// pack_quality_values.cpp and appends any leftover tail characters.
+
 #include <array>
 #include <cstdint>
 #include <fstream>

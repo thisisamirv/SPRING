@@ -1,3 +1,6 @@
+// Accumulates 0th-, 1st-, and 2nd-order quality-value counts for fixed-length
+// reads and writes the resulting binary count tables for entropy analysis.
+
 #include <cstdint>
 #include <fstream>
 #include <iostream>

@@ -12,6 +12,9 @@ license (the "License");
 limitations under the License.
 */
 
+// Defines the encoder state and helper routines that transform reordered reads
+// into Spring's compressed sequence and side-stream representation.
+
 #ifndef SPRING_ENCODER_H_
 #define SPRING_ENCODER_H_
 

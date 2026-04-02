@@ -12,6 +12,9 @@ license (the "License");
 limitations under the License.
 */
 
+// Provides the templated read-reordering implementation and helpers that group
+// similar reads before encoding to improve compression.
+
 #ifndef SPRING_REORDER_H_
 #define SPRING_REORDER_H_
 

@@ -12,6 +12,9 @@ license (the "License");
 limitations under the License.
 */
 
+// Implements the Spring command-line entrypoint, including option parsing,
+// temporary-directory management, and dispatch to compress/decompress modes.
+
 #include "spring.h"
 #include <boost/filesystem.hpp>
 #include <boost/program_options.hpp>

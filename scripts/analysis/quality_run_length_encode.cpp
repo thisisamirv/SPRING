@@ -1,3 +1,6 @@
+// Run-length encodes stretches of 'F' quality symbols, storing run lengths in
+// a binary side stream and the terminating non-'F' symbols separately.
+
 #include <cstdint>
 #include <fstream>
 #include <iostream>

@@ -12,6 +12,9 @@ license (the "License");
 limitations under the License.
 */
 
+// Declares the quality/id reordering and compression stage that follows read
+// reordering during archive construction.
+
 #ifndef SPRING_REORDERED_QUALITY_ID_H_
 #define SPRING_REORDERED_QUALITY_ID_H_
 

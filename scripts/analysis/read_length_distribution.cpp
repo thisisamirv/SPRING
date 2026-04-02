@@ -1,3 +1,6 @@
+// Scans a FASTQ file, counts sequence lengths from every record, and prints a
+// tab-separated read-length histogram.
+
 #include <array>
 #include <fstream>
 #include <iostream>

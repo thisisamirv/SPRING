@@ -1,3 +1,6 @@
+# Top-level CMake build for the Spring executable and its bundled third-party
+# dependencies.
+
 cmake_minimum_required (VERSION 4.2)
 project (SPRING)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -6,10 +9,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(CheckIPOSupported)
 include(FetchContent)
 
+# Spring currently targets Unix-like environments only.
 if (NOT UNIX)
 	message(FATAL_ERROR "Non Unix platforms not supported currently.")
 endif()
 
+# The project is validated against GCC and Clang toolchains.
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
 	message(STATUS "Detected compiler: GNU Compiler Collection")
 elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
@@ -24,14 +29,13 @@ if(result)
   set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
 
+# Native tuning is the default; portability mode restricts code generation to
+# SSE4.1-compatible instructions.
 option(spring_optimize_for_native "Build spoa with -march=native" ON)
 option(spring_optimize_for_portability "Build spoa with -msse4.1" OFF)
 
 message(STATUS "Setting compiler flags")
 set(FLAGS "${FLAGS} -g")
-##set(FLAGS "${FLAGS} -Wextra")
-#set(FLAGS "${FLAGS} -Wpedantic")
-#set(FLAGS "${FLAGS} -Wall")
 set(FLAGS "${FLAGS} -O3")
 if (spring_optimize_for_portability)
     set(FLAGS "${FLAGS} -msse4.1")
@@ -45,6 +49,7 @@ set(FLAGS "${FLAGS} -ffast-math")
 set(CMAKE_CXX_FLAGS "${FLAGS}")
 set(CMAKE_C_FLAGS "${FLAGS}")
 
+# OpenMP is required across Spring and several bundled compression components.
 FIND_PACKAGE( OpenMP REQUIRED)
 message(STATUS "OPENMP FOUND")
 set(OpenMP_DEFINITIONS "-DLIBBSC_OPENMP_SUPPORT -DLIBSAIS_OPENMP")
@@ -54,15 +59,16 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS} ${OpenMP_DEFINITIONS}")
 execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=include
                 OUTPUT_VARIABLE COMPILER_INCLUDE_DIR
                 OUTPUT_STRIP_TRAILING_WHITESPACE)
+# Emit a matching clangd configuration so editor diagnostics see the same
+# compiler include path and OpenMP flags as the CMake build.
 file(WRITE "${CMAKE_SOURCE_DIR}/.clangd" "CompileFlags:\n  Add: [\"-I${COMPILER_INCLUDE_DIR}\", \"-fopenmp\"]\n")
 
 message(STATUS "** CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
 message(STATUS "** CMAKE_C_FLAGS: ${CMAKE_C_FLAGS}")
 
 #######################################################
-# build cloudflare zlib and set environment variable ZLIB_ROOT
-# the build runs during configuration time so boost can use the
-# correct zlib
+# Build Cloudflare zlib during configuration so the bundled Boost build can
+# discover and link against the same zlib implementation.
 
 message(STATUS "Building zlib")
 message(STATUS "CMAKE_SOURCE_DIR: ${CMAKE_SOURCE_DIR}")
@@ -83,6 +89,7 @@ set( ENV{ZLIB_ROOT} ${CMAKE_SOURCE_DIR}/third_party/cloudflare_zlib/ )
 
 #######################################################
 
+# Fetch only the Boost components Spring links directly.
 set(BUILD_TESTING OFF CACHE BOOL "Disable third-party tests" FORCE)
 set(BOOST_INCLUDE_LIBRARIES filesystem iostreams program_options system)
 
@@ -97,6 +104,8 @@ set(source_dir ${CMAKE_SOURCE_DIR}/src)
 set(third_party_dir ${CMAKE_SOURCE_DIR}/third_party)
 set(include_dir ${CMAKE_SOURCE_DIR}/src)
 
+# The Spring executable is built from the core pipeline plus bundled
+# third-party compression libraries.
 list(APPEND source_files
     # spring
     ${source_dir}/main.cpp
@@ -149,6 +158,7 @@ list(APPEND source_files
     ${third_party_dir}/qvz/src/well.cpp
 )
 
+# Convenience targets for repository development checks.
 function(add_dev_script_target target_name script_name)
     add_custom_target(${target_name}
             COMMAND ${CMAKE_SOURCE_DIR}/dev/${script_name}
@@ -159,6 +169,8 @@ endfunction()
 
 add_executable (spring ${source_files})
 
+# Spring headers live in src/, while third_party/ exposes bundled libraries such
+# as BBHash, libbsc, id_compression, qvz, and Cloudflare zlib.
 target_include_directories(spring PRIVATE ${include_dir} ${third_party_dir})
 target_link_libraries(spring PUBLIC
     Boost::filesystem

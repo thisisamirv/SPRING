@@ -12,6 +12,9 @@ license (the "License");
 limitations under the License.
 */
 
+// Builds and updates the BBHash-backed read dictionaries used by Spring's
+// reorder and encode stages for candidate lookup by packed read keys.
+
 #include "bitset_dictionary.h"
 #include "params.h"
 #include <cstdint>

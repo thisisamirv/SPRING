@@ -12,6 +12,9 @@ license (the "License");
 limitations under the License.
 */
 
+// Implements shared FASTQ I/O, DNA packing, identifier handling, quality
+// quantization, and miscellaneous helpers used across Spring stages.
+
 #include "util.h"
 #include <algorithm>
 #include <array>

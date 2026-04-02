@@ -12,6 +12,9 @@ license (the "License");
 limitations under the License.
 */
 
+// Orchestrates top-level compression and decompression, including archive
+// layout, temporary-file coordination, and user-facing workflow decisions.
+
 #include <algorithm>
 #include <boost/filesystem.hpp>
 #include <chrono>

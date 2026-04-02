@@ -12,6 +12,9 @@ license (the "License");
 limitations under the License.
 */
 
+// Normalizes input FASTQ/FASTA records into Spring's temporary block files and
+// side streams before reordering, encoding, and archive assembly.
+
 #include "preprocess.h"
 #include <array>
 #include <algorithm>

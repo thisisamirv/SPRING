@@ -12,6 +12,9 @@ license (the "License");
 limitations under the License.
 */
 
+// Reconstructs Spring archives back into FASTQ/FASTA output by decoding packed
+// sequences and replaying aligned, unaligned, quality, and id streams.
+
 #include "decompress.h"
 #include "libbsc/bsc.h"
 #include "util.h"

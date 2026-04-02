@@ -12,10 +12,13 @@ license (the "License");
 limitations under the License.
 */
 
+// Declares the BBHash-based dictionary structures and construction helpers used
+// to index packed reads during reordering and encoding.
+
 #ifndef SPRING_BITSET_DICTIONARY_H_
 #define SPRING_BITSET_DICTIONARY_H_
 
-#include "BooPHF.h"
+#include "BBHash/BooPHF.h"
 #include "util.h"
 #include <algorithm>
 #include <bitset>

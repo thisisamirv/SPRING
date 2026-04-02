@@ -12,6 +12,9 @@ license (the "License");
 limitations under the License.
 */
 
+// Declares the short-read, long-read, and packed-sequence decompression entry
+// points used by Spring's top-level archive restoration flow.
+
 #ifndef SPRING_DECOMPRESS_H_
 #define SPRING_DECOMPRESS_H_
 

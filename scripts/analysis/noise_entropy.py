@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+"""Estimates 0th-, 1st-, and 2nd-order noise entropies from clustered
+quality-count tensors and compares clustered versus unclustered models."""
+
 import numpy as np
 import struct
 

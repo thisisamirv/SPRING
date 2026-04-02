@@ -1,3 +1,6 @@
+// Splits long FASTQ reads into shorter chunks, preserving the record id and
+// matching quality substrings so downstream tools can work on bounded lengths.
+
 #include <cstdlib>
 #include <fstream>
 #include <iostream>

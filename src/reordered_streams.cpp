@@ -12,6 +12,9 @@ license (the "License");
 limitations under the License.
 */
 
+// Writes reordered alignment-related streams, unaligned payloads, and per-block
+// compressed outputs that become part of the final Spring archive.
+
 #include <cmath>
 #include <cstdint>
 #include <cstring>

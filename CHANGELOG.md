@@ -5,7 +5,10 @@
 ### Build System & Tooling
 
 * **Updated libbsc to Latest Version**: Replaced the `src/libbsc` internal library with its latest upstream version. Ensured preservation of project-specific API wrappers (`bsc.h`, `bsc.cpp`, `bsc_str_array.cpp`) to maintain compatibility with the Spring codebase.
+
 * **Updated cloudflare-zlib**: Synchronized the bundled zlib dependency with its latest configuration.
+
+* **Updated BBHash**: Updated BooPHF.h script to the latest version of BBHash.
 
 * **Upgraded Python 2 to Python 3**: Migrated all Python utilities to **Python 3**. Standardized indentation and updated `print` statements to resolve `SyntaxError` and `TabError` issues.
 
@@ -136,3 +139,5 @@
 * **Renamed Ambiguous Helper Scripts**: Renamed several `scripts/` helpers to clearer role-based names, including `compute_entropy` to `per_position_noise_entropy`, `quality_counts` to `quality_value_counts`, `quality_illumina_bin` to `illumina_quality_binning`, `quality_pack` to `pack_quality_values`, `quality_transpose` to `transpose_quality_matrix`, `quality_unpack` to `unpack_quality_values`, `readlendistr` to `read_length_distribution`, `RLE` to `quality_run_length_encode`, and `splitlongreads` to `split_long_reads`.
 
 * **Renamed Ambiguous Variable Names**: Renamed several ambigous variable names to more clear descriptive names.
+
+* **Added Documentation**: Added a brief documentation to each script.
