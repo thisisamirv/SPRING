@@ -1,5 +1,5 @@
-elapsed_seconds=0.28
-user_seconds=0.73
+elapsed_seconds=0.31
+user_seconds=0.76
 system_seconds=0.04
-cpu_percent=275%
-max_rss_kb=70780
+cpu_percent=261%
+max_rss_kb=71900

@@ -22,15 +22,14 @@ void compress(const std::string &temp_dir,
               const bool &pairing_only_flag, const bool &no_quality_flag,
                             const bool &no_ids_flag,
                             const string_list &quality_options,
-              const bool &long_flag, const bool &gzip_flag,
-              const bool &fasta_flag);
+              const bool &long_flag, const bool &fasta_flag);
 
 void decompress(const std::string &temp_dir,
                                 const string_list &input_paths,
                                 const string_list &output_paths,
                                 const int &num_thr,
                                 const read_range &decompress_range,
-                const bool &gzip_flag, const int &gzip_level);
+                const int &gzip_level);
 
 std::string random_string(size_t length);
 

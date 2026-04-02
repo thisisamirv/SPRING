@@ -37,6 +37,7 @@ boost-cmake/*.a
 *.swp
 *.patch
 *.diff
+benchmark/tmp/*
 
 # Logs
 logs/

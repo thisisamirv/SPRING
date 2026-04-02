@@ -266,7 +266,7 @@ uint32_t max_read_length_in_step(const std::vector<uint32_t> &read_lengths,
 
 void preprocess(const std::string &infile_1, const std::string &infile_2,
                 const std::string &temp_dir, compression_params &cp,
-                const bool &gzip_flag, const bool &fasta_flag) {
+                const bool &fasta_flag) {
   const preprocess_paths paths =
       build_preprocess_paths(infile_1, infile_2, temp_dir);
   std::array<std::ifstream, 2> input_files;
@@ -280,7 +280,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
 
   open_preprocess_streams(input_files, clean_outputs, n_read_outputs,
                           n_read_order_outputs, id_outputs, quality_outputs,
-                          input_streams, gzip_buffers, paths, cp, gzip_flag);
+                          input_streams, gzip_buffers, paths, cp, false);
 
   uint32_t max_readlen = 0;
   std::array<uint64_t, 2> num_reads = {0, 0};
@@ -307,7 +307,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       throw std::runtime_error("Error opening input file");
   }
   detect_paired_id_pattern(input_files, input_streams, gzip_buffers, paths, cp,
-                           gzip_flag, paired_id_code, paired_id_match);
+                           false, paired_id_code, paired_id_match);
   if (cp.num_thr <= 0)
     throw std::runtime_error("Number of threads must be positive.");
 
@@ -519,7 +519,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   delete[] quality_binning_table;
   close_preprocess_streams(input_files, clean_outputs, n_read_outputs,
                            n_read_order_outputs, id_outputs, quality_outputs,
-                           input_streams, gzip_buffers, cp, gzip_flag);
+                           input_streams, gzip_buffers, cp, false);
   if (num_reads[0] == 0)
     throw std::runtime_error("No reads found.");
 

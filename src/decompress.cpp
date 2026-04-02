@@ -4,12 +4,15 @@
 #include "decompress.h"
 #include "libbsc/bsc.h"
 #include "util.h"
+#include <boost/iostreams/device/mapped_file.hpp>
 #include <cstdint>
+#include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <omp.h>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace spring {
 
@@ -24,6 +27,89 @@ struct step_output_plan {
   uint32_t output_read_count;
   uint32_t output_shift;
   bool finished;
+};
+
+struct reference_chunk {
+  uint64_t start_offset;
+  uint64_t size;
+  std::string path;
+  boost::iostreams::mapped_file_source data;
+};
+
+class reference_sequence_store {
+public:
+  reference_sequence_store(const std::string &packed_seq_path,
+                           const int encoding_thread_count,
+                           const int decode_thread_count) {
+    decompress_unpack_seq(packed_seq_path, encoding_thread_count,
+                          decode_thread_count);
+
+    chunks_.reserve(static_cast<size_t>(encoding_thread_count));
+    uint64_t next_start_offset = 0;
+    for (int encoding_thread_id = 0; encoding_thread_id < encoding_thread_count;
+         encoding_thread_id++) {
+      reference_chunk chunk;
+      chunk.path = packed_seq_path + '.' + std::to_string(encoding_thread_id);
+
+      std::ifstream sequence_input(chunk.path, std::ios::binary);
+      sequence_input.seekg(0, sequence_input.end);
+      chunk.size = static_cast<uint64_t>(sequence_input.tellg());
+      chunk.start_offset = next_start_offset;
+      next_start_offset += chunk.size;
+
+      chunk.data.open(chunk.path);
+      if (!chunk.data.is_open()) {
+        throw std::runtime_error("Error mapping decoded reference chunk");
+      }
+
+      chunks_.push_back(std::move(chunk));
+    }
+  }
+
+  ~reference_sequence_store() {
+    for (reference_chunk &chunk : chunks_) {
+      chunk.data.close();
+      remove(chunk.path.c_str());
+    }
+  }
+
+  std::string read(uint64_t start_offset, uint32_t read_length) const {
+    std::string read;
+    read.reserve(read_length);
+
+    uint64_t remaining = read_length;
+    uint64_t current_offset = start_offset;
+    size_t chunk_index = find_chunk_index(current_offset);
+    while (remaining > 0) {
+      const reference_chunk &chunk = chunks_[chunk_index];
+      const uint64_t offset_in_chunk = current_offset - chunk.start_offset;
+      const uint64_t copy_size =
+          std::min<uint64_t>(remaining, chunk.size - offset_in_chunk);
+      read.append(chunk.data.data() + offset_in_chunk,
+                  static_cast<size_t>(copy_size));
+
+      current_offset += copy_size;
+      remaining -= copy_size;
+      chunk_index++;
+    }
+
+    return read;
+  }
+
+private:
+  size_t find_chunk_index(const uint64_t offset) const {
+    for (size_t chunk_index = 0; chunk_index < chunks_.size(); ++chunk_index) {
+      const reference_chunk &chunk = chunks_[chunk_index];
+      if (offset >= chunk.start_offset &&
+          offset < chunk.start_offset + chunk.size) {
+        return chunk_index;
+      }
+    }
+
+    throw std::runtime_error("Reference offset out of range");
+  }
+
+  std::vector<reference_chunk> chunks_;
 };
 
 thread_range split_thread_range(const uint64_t item_count,
@@ -107,36 +193,12 @@ void write_step_output(std::ofstream &output_stream, std::string *id_buffer,
                        std::string *read_buffer, std::string *quality_buffer,
                        const step_output_plan &plan,
                        const bool preserve_quality, const int num_thr,
-                       const bool gzip_flag, const int gzip_level) {
+                const bool gzip_output, const int gzip_level) {
   write_fastq_block(output_stream, id_buffer + plan.output_shift,
                     read_buffer + plan.output_shift,
                     quality_buffer + plan.output_shift,
                     plan.output_read_count - plan.output_shift,
-                    preserve_quality, num_thr, gzip_flag, gzip_level);
-}
-
-std::string rebuild_reference_sequence(const std::string &packed_seq_path,
-                                       const int encoding_thread_count,
-                                       const int decode_thread_count) {
-  std::string reference_sequence;
-  decompress_unpack_seq(packed_seq_path, encoding_thread_count,
-                        decode_thread_count);
-  for (int encoding_thread_id = 0; encoding_thread_id < encoding_thread_count;
-       encoding_thread_id++) {
-    const std::string unpacked_seq_path =
-        packed_seq_path + '.' + std::to_string(encoding_thread_id);
-    std::ifstream sequence_input(unpacked_seq_path);
-    sequence_input.seekg(0, sequence_input.end);
-    const uint64_t chunk_size = sequence_input.tellg();
-    sequence_input.seekg(0);
-
-    const uint64_t previous_length = reference_sequence.size();
-    reference_sequence.resize(previous_length + chunk_size);
-    sequence_input.read(&reference_sequence[previous_length], chunk_size);
-    remove(unpacked_seq_path.c_str());
-  }
-
-  return reference_sequence;
+              preserve_quality, num_thr, gzip_output, gzip_level);
 }
 
 void decode_packed_sequence_chunk(const std::string &packed_seq_base_path,
@@ -151,35 +213,71 @@ void decode_packed_sequence_chunk(const std::string &packed_seq_base_path,
   bsc::BSC_decompress(compressed_chunk_path.c_str(), chunk_base_path.c_str());
   remove(compressed_chunk_path.c_str());
 
-  std::ofstream unpacked_output(temporary_output_path);
+  std::ofstream unpacked_output(temporary_output_path, std::ios::binary);
   std::ifstream packed_input(chunk_base_path, std::ios::binary);
-  std::ifstream tail_input(tail_path);
-  uint8_t packed_base_byte;
-  packed_input.read((char *)&packed_base_byte, sizeof(uint8_t));
-  while (!packed_input.eof()) {
-    unpacked_output << base_lookup[packed_base_byte % 4];
-    packed_base_byte /= 4;
-    unpacked_output << base_lookup[packed_base_byte % 4];
-    packed_base_byte /= 4;
-    unpacked_output << base_lookup[packed_base_byte % 4];
-    packed_base_byte /= 4;
-    unpacked_output << base_lookup[packed_base_byte % 4];
-    packed_input.read((char *)&packed_base_byte, sizeof(uint8_t));
+  std::ifstream tail_input(tail_path, std::ios::binary);
+  std::vector<uint8_t> packed_buffer(1U << 16);
+  std::vector<char> unpacked_buffer(packed_buffer.size() * 4);
+  std::vector<char> tail_buffer(1U << 14);
+
+  while (packed_input) {
+    packed_input.read(reinterpret_cast<char *>(packed_buffer.data()),
+                      static_cast<std::streamsize>(packed_buffer.size()));
+    const std::streamsize packed_bytes_read = packed_input.gcount();
+    if (packed_bytes_read <= 0) {
+      break;
+    }
+
+    size_t unpacked_index = 0;
+    for (std::streamsize packed_index = 0; packed_index < packed_bytes_read;
+         packed_index++) {
+      uint8_t packed_base_byte = packed_buffer[packed_index];
+      unpacked_buffer[unpacked_index++] = base_lookup[packed_base_byte % 4];
+      packed_base_byte /= 4;
+      unpacked_buffer[unpacked_index++] = base_lookup[packed_base_byte % 4];
+      packed_base_byte /= 4;
+      unpacked_buffer[unpacked_index++] = base_lookup[packed_base_byte % 4];
+      packed_base_byte /= 4;
+      unpacked_buffer[unpacked_index++] = base_lookup[packed_base_byte % 4];
+    }
+
+    unpacked_output.write(unpacked_buffer.data(),
+                          static_cast<std::streamsize>(unpacked_index));
   }
 
-  unpacked_output << tail_input.rdbuf();
+  while (tail_input) {
+    tail_input.read(tail_buffer.data(),
+                    static_cast<std::streamsize>(tail_buffer.size()));
+    const std::streamsize tail_bytes_read = tail_input.gcount();
+    if (tail_bytes_read <= 0) {
+      break;
+    }
+    unpacked_output.write(tail_buffer.data(), tail_bytes_read);
+  }
+
   remove(chunk_base_path.c_str());
   remove(tail_path.c_str());
   rename(temporary_output_path.c_str(), chunk_base_path.c_str());
 }
 
+bool has_suffix(const std::string &value, const std::string &suffix) {
+  return value.size() >= suffix.size() &&
+         value.compare(value.size() - suffix.size(), suffix.size(), suffix) ==
+             0;
+}
+
+bool is_gzip_output_path(const std::string &output_path) {
+  return has_suffix(output_path, ".gz");
+}
+
 void open_output_files(std::ofstream (&output_streams)[2],
                        const std::string (&output_paths)[2],
-                       const bool paired_end, const bool gzip_flag) {
+                       const bool paired_end,
+                       const bool (&gzip_outputs)[2]) {
   for (int stream_index = 0; stream_index < 2; stream_index++) {
     if (stream_index == 1 && !paired_end)
       continue;
-    if (gzip_flag)
+    if (gzip_outputs[stream_index])
       output_streams[stream_index].open(output_paths[stream_index],
                                         std::ios::binary);
     else
@@ -228,7 +326,7 @@ void decompress_short(const std::string &temp_dir,
                       const int &num_threads,
                       const uint64_t &start_read_index,
                       const uint64_t &end_read_index,
-                      const bool &gzip_enabled, const int &gzip_level) {
+                      const int &gzip_level) {
   std::string base_dir = temp_dir;
 
   std::string file_seq = base_dir + "/read_seq.bin";
@@ -259,9 +357,11 @@ void decompress_short(const std::string &temp_dir,
     bool preserve_order = compression_params.preserve_order;
 
     std::string output_paths[2] = {output_path_1, output_path_2};
+  bool gzip_outputs[2] = {is_gzip_output_path(output_path_1),
+                          is_gzip_output_path(output_path_2)};
   std::ofstream output_streams[2];
 
-    open_output_files(output_streams, output_paths, paired_end, gzip_enabled);
+    open_output_files(output_streams, output_paths, paired_end, gzip_outputs);
   validate_output_files(output_streams, paired_end);
 
   const uint64_t num_reads_per_step =
@@ -290,8 +390,7 @@ void decompress_short(const std::string &temp_dir,
 
   // Rebuild the packed reference sequence once before block processing.
   int encoding_thread_count = compression_params.num_thr;
-  std::string seq = rebuild_reference_sequence(file_seq, encoding_thread_count,
-                                               num_threads);
+  reference_sequence_store seq(file_seq, encoding_thread_count, num_threads);
 
   bool done = false;
   uint32_t num_blocks_done = start_read_index / num_reads_per_block;
@@ -392,7 +491,7 @@ void decompress_short(const std::string &temp_dir,
                 }
                 f_RC >> read_1_orientation;
                 std::string read =
-                    seq.substr(read_1_position, read_lengths_buffer_1[i]);
+                  seq.read(read_1_position, read_lengths_buffer_1[i]);
                 std::string noise_codes;
                 uint16_t noise_position_delta;
                 uint16_t previous_noise_position = 0;
@@ -441,8 +540,8 @@ void decompress_short(const std::string &temp_dir,
                       read_2_orientation =
                           (read_1_orientation == 'd') ? 'd' : 'r';
                   }
-                  std::string read =
-                      seq.substr(read_2_position, read_lengths_buffer_2[i]);
+                    std::string read =
+                      seq.read(read_2_position, read_lengths_buffer_2[i]);
                   std::string noise_codes;
                   uint16_t noise_position_delta;
                   uint16_t previous_noise_position = 0;
@@ -540,7 +639,7 @@ void decompress_short(const std::string &temp_dir,
           num_reads_per_block, num_blocks_done);
       write_step_output(output_streams[stream_index], id_buffer, read_buffer,
                 quality_buffer, output_plan, preserve_quality,
-                num_threads, gzip_enabled, gzip_level);
+                num_threads, gzip_outputs[stream_index], gzip_level);
       done = done || output_plan.finished;
     }
     num_reads_done += num_reads_cur_step;
@@ -572,7 +671,7 @@ void decompress_long(const std::string &temp_dir,
                      const int &num_threads,
                      const uint64_t &start_read_index,
                      const uint64_t &end_read_index,
-                     const bool &gzip_enabled, const int &gzip_level) {
+                     const int &gzip_level) {
   std::string input_read_paths[2];
   std::string input_quality_paths[2];
   std::string input_id_paths[2];
@@ -596,9 +695,11 @@ void decompress_long(const std::string &temp_dir,
     bool preserve_quality = compression_params.preserve_quality;
 
     std::string output_paths[2] = {output_path_1, output_path_2};
+  bool gzip_outputs[2] = {is_gzip_output_path(output_path_1),
+                          is_gzip_output_path(output_path_2)};
   std::ofstream output_streams[2];
 
-    open_output_files(output_streams, output_paths, paired_end, gzip_enabled);
+    open_output_files(output_streams, output_paths, paired_end, gzip_outputs);
   validate_output_files(output_streams, paired_end);
 
   const uint64_t num_reads_per_step =
@@ -685,7 +786,7 @@ void decompress_long(const std::string &temp_dir,
           num_reads_per_block, num_blocks_done);
       write_step_output(output_streams[stream_index], id_buffer, read_buffer,
                 quality_buffer, output_plan, preserve_quality,
-                num_threads, gzip_enabled, gzip_level);
+                num_threads, gzip_outputs[stream_index], gzip_level);
       done = done || output_plan.finished;
     }
     num_reads_done += num_reads_cur_step;

@@ -23,7 +23,6 @@ struct command_line_options {
   bool no_quality_flag = false;
   bool no_ids_flag = false;
   bool long_flag = false;
-  bool gzip_flag = false;
   bool fasta_flag = false;
   std::vector<std::string> input_paths;
   std::vector<std::string> output_paths;
@@ -108,12 +107,9 @@ po::options_description build_options_description(command_line_options &options)
       "better compression for reads with significant number of indels. "
       "-r disabled in this mode. For Illumina short "
       "reads, compression is better without -l flag.")(
-      "gzipped-fastq,g", po::bool_switch(&options.gzip_flag),
-      "enable if compression input is gzipped fastq or to output gzipped fastq "
-      "during decompression")(
       "gzip-level", po::value<int>(&options.gzip_level)->default_value(6),
-      "gzip level (0-9) to use during decompression if "
-      "-g flag is specified (default: 6)")(
+      "gzip level (0-9) to use when decompression output path ends in .gz "
+      "(default: 6)")(
       "fasta-input", po::bool_switch(&options.fasta_flag),
       "enable if compression input is fasta file (i.e., no qualities)");
   return options_description;
@@ -170,13 +166,13 @@ void run_requested_mode(const command_line_options &options,
                      options.num_threads, options.pairing_only_flag,
                      options.no_quality_flag, options.no_ids_flag,
                      options.quality_options, options.long_flag,
-                     options.gzip_flag, options.fasta_flag);
+                     options.fasta_flag);
     return;
   }
 
   spring::decompress(temp_dir, options.input_paths, options.output_paths,
                      options.num_threads, options.decompress_range,
-                     options.gzip_flag, options.gzip_level);
+                     options.gzip_level);
 }
 
 } // namespace

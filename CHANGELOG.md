@@ -1,5 +1,33 @@
 # Changelog
 
+## [2026-04-02]
+
+### Performance & Benchmarking
+
+* **Added a Lossless Round-Trip Benchmark Harness**: Introduced `benchmark/run_lossless_benchmark.sh` to run Spring lossless compression against a FASTQ input, auto-detect long-read mode, store outputs under `benchmark/output/`, use per-input scratch space under `benchmark/scratch/`, and report compressed size reduction and compression ratio.
+
+* **Expanded Benchmark Resource Reporting**: Extended the benchmark harness to build Spring quietly when needed, capture separate compression and decompression resource usage, report elapsed time, CPU time, average core usage, and peak RSS when GNU `time` is available, and degrade cleanly when only shell timing is present.
+
+* **Added Round-Trip Integrity Verification**: Updated the benchmark harness to decompress the generated `.spring` payload, compare the output byte-for-byte against the original FASTQ, and report SHA-256 checksums when checksum tools are available.
+
+* **Reduced Compression-Side Sequence Packing Overhead**: Reworked `src/encoder.cpp` so packed-sequence chunks are generated in a single pass instead of performing a separate base-count prepass before packing, reducing redundant sequence traversal during lossless compression.
+
+* **Buffered Sequence Packing I/O**: Further updated `src/encoder.cpp` so packed-sequence generation uses buffered binary reads and buffered packed-byte writes instead of per-character formatted extraction and one-byte output writes, reducing stream overhead in the sequence-packing stage while preserving the encoded output.
+
+* **Removed Repeated Quality/ID Batch Rescans**: Reworked `src/reordered_quality_id.cpp` so quality and identifier streams are partitioned into temporary batch files in a single sequential pass and then compressed batch-by-batch, eliminating the previous full-file rescan for every reorder batch during compression.
+
+* **Reduced Quality/ID Batch Staging I/O Overhead**: Updated `src/reordered_quality_id.cpp` so temporary batch files use buffered writes during partitioning and whole-file batch reads during reload, reducing syscall churn in the reorder-and-compress staging path while preserving lossless output.
+
+* **Auto-Detected Gzipped Compression Inputs**: Updated `src/spring.cpp` so `.fastq.gz` compression inputs are detected by filename, decompressed into the per-run temporary directory, and then fed through the normal FASTQ compression path without requiring any extra CLI flag.
+
+* **Switched Gzipped Decompression Output to Filename-Based Behavior**: Updated `src/decompress.cpp` so decompression automatically emits gzipped FASTQ when the requested output path ends in `.gz`, while preserving the existing `--gzip-level` control for compression level selection.
+
+* **Removed the Obsolete `-g` CLI Flag**: Simplified `src/main.cpp` and the Spring CLI surface by removing the old `--gzipped-fastq/-g` option now that gzipped compression inputs are auto-detected and gzipped decompression output is inferred from the output filename.
+
+* **Reduced Decompression Peak Memory Usage**: Reworked `src/decompress.cpp` to avoid rebuilding the full decoded reference into one large in-memory string, using chunk-backed reference access instead so large reference data can be read on demand during decompression.
+
+* **Reduced Decompression Write Overhead**: Updated `src/decompress.cpp` to replace char-by-char packed-sequence decode output with buffered block writes, reducing per-character stream overhead while preserving lossless FASTQ reconstruction.
+
 ## [2026-04-01]
 
 ### Build System & Tooling

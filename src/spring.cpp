@@ -3,6 +3,9 @@
 
 #include <algorithm>
 #include <boost/filesystem.hpp>
+#include <boost/iostreams/copy.hpp>
+#include <boost/iostreams/filter/gzip.hpp>
+#include <boost/iostreams/filtering_streambuf.hpp>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -48,6 +51,16 @@ struct decompression_io_config {
 struct decompression_span {
   uint64_t start_read_index;
   uint64_t end_read_index;
+};
+
+using gzip_input_buffer =
+    boost::iostreams::filtering_streambuf<boost::iostreams::input>;
+
+struct prepared_compression_inputs {
+  std::string input_path_1;
+  std::string input_path_2;
+  bool input_1_was_gzipped;
+  bool input_2_was_gzipped;
 };
 
 void print_step_summary(const char *step_name,
@@ -102,6 +115,92 @@ int parse_int_or_throw(const std::string &value, const char *error_message) {
     return parsed_value;
   } catch (const std::exception &) {
     throw std::runtime_error(error_message);
+  }
+}
+
+bool has_suffix(const std::string &value, const std::string &suffix) {
+  return value.size() >= suffix.size() &&
+         value.compare(value.size() - suffix.size(), suffix.size(), suffix) ==
+             0;
+}
+
+bool is_gzip_input_path(const std::string &input_path) {
+  return has_suffix(input_path, ".gz");
+}
+
+std::string strip_gzip_suffix(const std::string &input_path) {
+  if (!is_gzip_input_path(input_path)) {
+    return input_path;
+  }
+  return input_path.substr(0, input_path.size() - 3);
+}
+
+std::string decompressed_input_path(const std::string &temp_dir,
+                                    const std::string &input_path,
+                                    const int input_index) {
+  const boost::filesystem::path stripped_input_path(strip_gzip_suffix(input_path));
+  const std::string filename = stripped_input_path.filename().string();
+  return temp_dir + "/compression_input_" + std::to_string(input_index) +
+         "." + filename;
+}
+
+void decompress_gzip_input_file(const std::string &input_path,
+                                const std::string &output_path) {
+  std::ifstream compressed_input(input_path, std::ios::binary);
+  if (!compressed_input.is_open()) {
+    throw std::runtime_error("Error opening gzipped input file");
+  }
+
+  gzip_input_buffer gzip_stream_buffer;
+  gzip_stream_buffer.push(boost::iostreams::gzip_decompressor());
+  gzip_stream_buffer.push(compressed_input);
+  std::istream gzip_input_stream(&gzip_stream_buffer);
+  std::ofstream decompressed_output(output_path, std::ios::binary);
+  if (!decompressed_output.is_open()) {
+    throw std::runtime_error("Error creating temporary decompressed input file");
+  }
+
+  boost::iostreams::copy(gzip_input_stream, decompressed_output);
+}
+
+prepared_compression_inputs prepare_compression_inputs(
+    const compression_io_config &io_config, const std::string &temp_dir) {
+  prepared_compression_inputs prepared_inputs{io_config.input_path_1,
+                                              io_config.input_path_2, false,
+                                              false};
+
+  const bool input_1_is_gzipped = is_gzip_input_path(io_config.input_path_1);
+  if (input_1_is_gzipped) {
+    prepared_inputs.input_path_1 =
+        decompressed_input_path(temp_dir, io_config.input_path_1, 1);
+    decompress_gzip_input_file(io_config.input_path_1,
+                               prepared_inputs.input_path_1);
+    prepared_inputs.input_1_was_gzipped = true;
+  }
+
+  if (!io_config.paired_end) {
+    return prepared_inputs;
+  }
+
+  const bool input_2_is_gzipped = is_gzip_input_path(io_config.input_path_2);
+  if (input_2_is_gzipped) {
+    prepared_inputs.input_path_2 =
+        decompressed_input_path(temp_dir, io_config.input_path_2, 2);
+    decompress_gzip_input_file(io_config.input_path_2,
+                               prepared_inputs.input_path_2);
+    prepared_inputs.input_2_was_gzipped = true;
+  }
+
+  return prepared_inputs;
+}
+
+void cleanup_prepared_compression_inputs(
+    const prepared_compression_inputs &prepared_inputs) {
+  if (prepared_inputs.input_1_was_gzipped) {
+    boost::filesystem::remove(prepared_inputs.input_path_1);
+  }
+  if (prepared_inputs.input_2_was_gzipped) {
+    boost::filesystem::remove(prepared_inputs.input_path_2);
   }
 }
 
@@ -294,8 +393,7 @@ void compress(const std::string &temp_dir,
               const bool &pairing_only_flag, const bool &no_quality_flag,
               const bool &no_ids_flag,
               const std::vector<std::string> &quality_options,
-              const bool &long_flag, const bool &gzip_flag,
-              const bool &fasta_flag) {
+              const bool &long_flag, const bool &fasta_flag) {
   omp_set_dynamic(0);
 
   std::cout << "Starting compression...\n";
@@ -303,6 +401,8 @@ void compress(const std::string &temp_dir,
 
   const compression_io_config io_config =
       resolve_compression_io(input_paths, output_paths);
+    const prepared_compression_inputs prepared_inputs =
+      prepare_compression_inputs(io_config, temp_dir);
   const bool preserve_order = !pairing_only_flag;
   const bool preserve_id = !no_ids_flag;
   const bool preserve_quality = !no_quality_flag && !fasta_flag;
@@ -320,11 +420,16 @@ void compress(const std::string &temp_dir,
   if (preserve_quality)
     configure_quality_options(cp, quality_options);
 
+  if (prepared_inputs.input_1_was_gzipped || prepared_inputs.input_2_was_gzipped) {
+    std::cout << "Detected gzipped input; decompressing to temporary FASTQ files before compression.\n";
+  }
+
   run_timed_step("Preprocessing ...", "Preprocessing", [&] {
-    preprocess(io_config.input_path_1, io_config.input_path_2, temp_dir, cp,
-               gzip_flag,
+    preprocess(prepared_inputs.input_path_1, prepared_inputs.input_path_2,
+               temp_dir, cp,
                fasta_flag);
   });
+  cleanup_prepared_compression_inputs(prepared_inputs);
   print_temp_dir_size(temp_dir);
 
   if (!long_flag) {
@@ -395,7 +500,7 @@ void decompress(const std::string &temp_dir,
                 const std::vector<std::string> &output_paths,
                 const int &num_thr,
                 const std::vector<uint64_t> &decompress_range,
-                const bool &gzip_flag, const int &gzip_level) {
+                const int &gzip_level) {
   omp_set_dynamic(0);
 
   std::cout << "Starting decompression...\n";
@@ -436,14 +541,12 @@ void decompress(const std::string &temp_dir,
       decompress_long(temp_dir, io_config.output_path_1,
                       io_config.output_path_2, cp, num_thr,
                       decompression_plan.start_read_index,
-                      decompression_plan.end_read_index, gzip_flag,
-                      gzip_level);
+                      decompression_plan.end_read_index, gzip_level);
     else
       decompress_short(temp_dir, io_config.output_path_1,
                        io_config.output_path_2, cp, num_thr,
                        decompression_plan.start_read_index,
-                       decompression_plan.end_read_index, gzip_flag,
-                       gzip_level);
+                       decompression_plan.end_read_index, gzip_level);
   });
 
   const auto decompression_end = clock_type::now();

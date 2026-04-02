@@ -7,8 +7,8 @@ ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
 BUILD_DIR="$ROOT_DIR/build"
 SPRING_BIN="$BUILD_DIR/spring"
 COMPILE_COMMANDS="$BUILD_DIR/compile_commands.json"
-readonly DEFAULT_CPP_ROOTS=("$ROOT_DIR/src" "$ROOT_DIR/scripts" "$ROOT_DIR/tests")
-readonly DEFAULT_PY_ROOTS=("$ROOT_DIR/scripts" "$ROOT_DIR/tests" "$ROOT_DIR/dev")
+readonly DEFAULT_CPP_ROOTS=("$ROOT_DIR/src" "$ROOT_DIR/experimental" "$ROOT_DIR/tests")
+readonly DEFAULT_PY_ROOTS=("$ROOT_DIR/experimental" "$ROOT_DIR/tests" "$ROOT_DIR/dev")
 readonly VENDOR_ROOT="$ROOT_DIR/vendor"
 
 require_command() {

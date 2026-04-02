@@ -42,45 +42,62 @@ sequence_pack_paths make_sequence_pack_paths(const std::string &base_path,
   return paths;
 }
 
-uint64_t count_sequence_bases(const std::string &sequence_path) {
-  std::ifstream sequence_input(sequence_path);
-  uint64_t sequence_length = 0;
-  char next_base;
-  while (sequence_input >> std::noskipws >> next_base)
-    sequence_length++;
-  return sequence_length;
-}
-
-void write_packed_sequence(const std::string &sequence_path,
-                           const std::string &packed_path,
-                           const std::string &tail_path,
-                           const uint64_t sequence_length) {
+uint64_t write_packed_sequence(const std::string &sequence_path,
+                               const std::string &packed_path,
+                               const std::string &tail_path) {
   uint8_t base_to_int[128] = {};
   base_to_int[(uint8_t)'A'] = 0;
   base_to_int[(uint8_t)'C'] = 1;
   base_to_int[(uint8_t)'G'] = 2;
   base_to_int[(uint8_t)'T'] = 3;
 
-  std::ifstream sequence_input(sequence_path);
+  constexpr size_t input_buffer_size = 1 << 16;
+  std::ifstream sequence_input(sequence_path, std::ios::binary);
   std::ofstream packed_output(packed_path, std::ios::binary);
   std::ofstream tail_output(tail_path);
-  char base_chunk[4];
-  uint8_t packed_base_byte;
+  std::array<char, input_buffer_size> input_buffer{};
+  std::array<char, input_buffer_size / 4 + 1> packed_buffer{};
+  std::array<char, 4> trailing_bases{};
+  uint64_t sequence_length = 0;
+  size_t trailing_count = 0;
 
-  for (uint64_t chunk_index = 0; chunk_index < sequence_length / 4;
-       chunk_index++) {
-    sequence_input.read(base_chunk, 4);
-    packed_base_byte = 64 * base_to_int[(uint8_t)base_chunk[3]] +
-                       16 * base_to_int[(uint8_t)base_chunk[2]] +
-                       4 * base_to_int[(uint8_t)base_chunk[1]] +
-                       base_to_int[(uint8_t)base_chunk[0]];
-    packed_output.write(byte_ptr(&packed_base_byte), sizeof(uint8_t));
+  while (sequence_input) {
+    sequence_input.read(input_buffer.data(), input_buffer.size());
+    const std::streamsize bytes_read = sequence_input.gcount();
+    if (bytes_read <= 0) {
+      break;
+    }
+
+    sequence_length += static_cast<uint64_t>(bytes_read);
+    size_t packed_count = 0;
+
+    for (std::streamsize input_index = 0; input_index < bytes_read;
+         input_index++) {
+      trailing_bases[trailing_count++] = input_buffer[input_index];
+      if (trailing_count < trailing_bases.size()) {
+        continue;
+      }
+
+      packed_buffer[packed_count++] = static_cast<char>(
+          64 * base_to_int[(uint8_t)trailing_bases[3]] +
+          16 * base_to_int[(uint8_t)trailing_bases[2]] +
+          4 * base_to_int[(uint8_t)trailing_bases[1]] +
+          base_to_int[(uint8_t)trailing_bases[0]]);
+      trailing_count = 0;
+    }
+
+    if (packed_count > 0) {
+      packed_output.write(packed_buffer.data(),
+                          static_cast<std::streamsize>(packed_count));
+    }
   }
 
-  sequence_input.read(base_chunk, sequence_length % 4);
-  for (uint64_t trailing_index = 0; trailing_index < sequence_length % 4;
-       trailing_index++)
-    tail_output << base_chunk[trailing_index];
+  if (trailing_count > 0) {
+    tail_output.write(trailing_bases.data(),
+                      static_cast<std::streamsize>(trailing_count));
+  }
+
+  return sequence_length;
 }
 
 void pack_sequence_chunk(const encoder_global &encoder_state,
@@ -88,11 +105,9 @@ void pack_sequence_chunk(const encoder_global &encoder_state,
                          uint64_t *thread_sequence_lengths) {
   const sequence_pack_paths paths =
       make_sequence_pack_paths(encoder_state.outfile_seq, thread_id);
-  const uint64_t sequence_length = count_sequence_bases(paths.input_path);
+  const uint64_t sequence_length =
+      write_packed_sequence(paths.input_path, paths.packed_path, paths.tail_path);
   thread_sequence_lengths[thread_id] = sequence_length;
-
-  write_packed_sequence(paths.input_path, paths.packed_path, paths.tail_path,
-                        sequence_length);
   bsc::BSC_compress(paths.packed_path.c_str(), paths.compressed_path.c_str());
   remove(paths.input_path.c_str());
   remove(paths.packed_path.c_str());
