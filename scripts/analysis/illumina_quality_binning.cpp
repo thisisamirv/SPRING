@@ -30,8 +30,10 @@ illumina_binning_table_t generate_illumina_binning_table() {
 
 void illumina_binning(std::string &quality,
                       const illumina_binning_table_t &illumina_binning_table) {
-  for (size_t i = 0; i < quality.length(); i++)
-    quality[i] = illumina_binning_table[static_cast<uint8_t>(quality[i])];
+  for (size_t quality_index = 0; quality_index < quality.length();
+       quality_index++)
+    quality[quality_index] =
+        illumina_binning_table[static_cast<uint8_t>(quality[quality_index])];
 }
 
 } // namespace
@@ -40,16 +42,16 @@ int main(int, char **argv) {
   // Apply the standard Illumina 8-bin remapping to each quality string.
   const illumina_binning_table_t illumina_binning_table =
       generate_illumina_binning_table();
-  const std::string infile = std::string(argv[1]);
-  const std::string outfile = std::string(argv[2]);
-  std::ifstream f_in(infile);
-  std::ofstream f_out(outfile);
+  const std::string input_path = std::string(argv[1]);
+  const std::string output_path = std::string(argv[2]);
+  std::ifstream input_stream(input_path);
+  std::ofstream output_stream(output_path);
   std::string quality;
-  while (std::getline(f_in, quality)) {
+  while (std::getline(input_stream, quality)) {
     illumina_binning(quality, illumina_binning_table);
-    f_out << quality << "\n";
+    output_stream << quality << "\n";
   }
-  f_in.close();
-  f_out.close();
+  input_stream.close();
+  output_stream.close();
   return 0;
 }

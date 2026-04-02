@@ -12,10 +12,10 @@ LOG2 = np.log(2.0)
 
 
 def quality_to_prob(qual_string):
-	quality_values = [ord(c) for c in qual_string]
+	quality_values = [ord(char) for char in qual_string]
 	quality_values = (33.0 - np.array(quality_values)) / 10.0
-	prob = np.power(10.0, quality_values)
-	return prob
+	probabilities = np.power(10.0, quality_values)
+	return probabilities
 
 
 def get_read_count_and_length(in_file):
@@ -28,20 +28,20 @@ def get_read_count_and_length(in_file):
 	return read_count, read_length
 
 def compute_entropy(probs):
-	entropy_per_position = -(
+	entropy_by_position = -(
 		probs * np.log(probs)
 		+ (1 - probs) * np.log(1 - probs)
 		+ probs * np.log(3.0)
 	)
-	entropy_per_position = entropy_per_position / LOG2
-	entropy = np.sum(entropy_per_position)
-	return entropy, entropy_per_position
+	entropy_by_position = entropy_by_position / LOG2
+	total_entropy = np.sum(entropy_by_position)
+	return total_entropy, entropy_by_position
 
 def get_genome_size(genome_file_uncompressed):
 	genome_size = 0
-	with open(genome_file_uncompressed,'r') as f:
-		for i,line in enumerate(f):
-			if i != 0:
+	with open(genome_file_uncompressed,'r') as file_handle:
+		for line_index, line in enumerate(file_handle):
+			if line_index != 0:
 				genome_size += len(line) - 1
 	return genome_size
 
@@ -94,9 +94,9 @@ def main():
 	print("Read Length: ", read_length)
 	probs = accumulate_probabilities(in_file, read_count, read_length)
 	read_length = len(probs)
-	entropy, entropy_per_position = compute_entropy(probs)
-	noise_bpb = entropy / read_length
-	noise_size = entropy * read_count / 8
+	total_entropy, entropy_per_position = compute_entropy(probs)
+	noise_bpb = total_entropy / read_length
+	noise_size = total_entropy * read_count / 8
 
 	fasta_size = os.stat(genome_file).st_size
 	fasta_bpb = fasta_size * 8.0 / genome_size

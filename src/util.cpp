@@ -179,49 +179,50 @@ void read_encoded_read(std::string &read, std::ifstream &fin,
   }
 }
 
-void fill_reverse_complement(const char *input, char *output,
+void fill_reverse_complement(const char *input_bases, char *output_bases,
                              const int readlen) {
   for (int index = 0; index < readlen; ++index)
-    output[index] =
-        chartorevchar[static_cast<uint8_t>(input[readlen - index - 1])];
+    output_bases[index] = chartorevchar[static_cast<uint8_t>(
+        input_bases[readlen - index - 1])];
 }
 
 } // namespace
 
-uint32_t read_fastq_block(std::istream *fin, std::string *id_array,
+uint32_t read_fastq_block(std::istream *input_stream, std::string *id_array,
                           std::string *read_array, std::string *quality_array,
                           const uint32_t &num_reads, const bool &fasta_flag) {
-  uint32_t num_done = 0;
-  std::string comment;
-  for (; num_done < num_reads; num_done++) {
-    if (!std::getline(*fin, id_array[num_done]))
+  uint32_t reads_processed = 0;
+  std::string comment_line;
+  for (; reads_processed < num_reads; reads_processed++) {
+    if (!std::getline(*input_stream, id_array[reads_processed]))
       break;
-    remove_CR_from_end(id_array[num_done]);
-    if (!std::getline(*fin, read_array[num_done]))
+    remove_CR_from_end(id_array[reads_processed]);
+    if (!std::getline(*input_stream, read_array[reads_processed]))
       throw std::runtime_error(kInvalidFastqError);
-    remove_CR_from_end(read_array[num_done]);
+    remove_CR_from_end(read_array[reads_processed]);
     if (fasta_flag)
       continue;
-    if (!std::getline(*fin, comment))
+    if (!std::getline(*input_stream, comment_line))
       throw std::runtime_error(kInvalidFastqError);
-    if (!std::getline(*fin, quality_array[num_done]))
+    if (!std::getline(*input_stream, quality_array[reads_processed]))
       throw std::runtime_error(kInvalidFastqError);
-    remove_CR_from_end(quality_array[num_done]);
+    remove_CR_from_end(quality_array[reads_processed]);
   }
-  return num_done;
+  return reads_processed;
 }
 
-void write_fastq_block(std::ofstream &fout, std::string *id_array,
+void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
                        std::string *read_array, std::string *quality_array,
                        const uint32_t &num_reads, const bool preserve_quality,
                        const int &num_thr, const bool &gzip_flag,
                        const int &gzip_level) {
   const std::string *quality_or_null = preserve_quality ? quality_array : nullptr;
   if (!gzip_flag) {
-    for (uint32_t i = 0; i < num_reads; i++)
-      write_fastq_record(fout, id_array[i], read_array[i],
+    for (uint32_t read_index = 0; read_index < num_reads; read_index++)
+      write_fastq_record(output_stream, id_array[read_index],
+                         read_array[read_index],
                          quality_or_null == nullptr ? nullptr
-                                                    : &quality_or_null[i]);
+                                                    : &quality_or_null[read_index]);
   } else {
     if (num_reads == 0)
       return;
@@ -245,35 +246,37 @@ void write_fastq_block(std::ofstream &fout, std::string *id_array,
       boost::iostreams::close(out);
 
     } // end omp parallel
-    for (uint32_t i = 0; i < (uint32_t)num_thr; i++)
-      fout.write(&(gzip_compressed[i][0]), gzip_compressed[i].size());
+    for (uint32_t thread_index = 0; thread_index < (uint32_t)num_thr;
+         thread_index++)
+      output_stream.write(&(gzip_compressed[thread_index][0]),
+                          gzip_compressed[thread_index].size());
   }
 }
 
-void compress_id_block(const char *outfile_name, std::string *id_array,
+void compress_id_block(const char *output_path, std::string *id_array,
                        const uint32_t &num_ids) {
   struct id_comp::compressor_info_t comp_info;
   comp_info.numreads = num_ids;
   comp_info.mode = COMPRESSION;
   comp_info.id_array = id_array;
-  comp_info.fcomp = fopen(outfile_name, "w");
+  comp_info.fcomp = fopen(output_path, "w");
   if (!comp_info.fcomp) {
-    perror(outfile_name);
+    perror(output_path);
     throw std::runtime_error("ID compression: File output error");
   }
   id_comp::compress((void *)&comp_info);
   fclose(comp_info.fcomp);
 }
 
-void decompress_id_block(const char *infile_name, std::string *id_array,
+void decompress_id_block(const char *input_path, std::string *id_array,
                          const uint32_t &num_ids) {
   struct id_comp::compressor_info_t comp_info;
   comp_info.numreads = num_ids;
   comp_info.mode = DECOMPRESSION;
   comp_info.id_array = id_array;
-  comp_info.fcomp = fopen(infile_name, "r");
+  comp_info.fcomp = fopen(input_path, "r");
   if (!comp_info.fcomp) {
-    perror(infile_name);
+    perror(input_path);
     throw std::runtime_error("ID compression: File input error");
   }
   id_comp::decompress((void *)&comp_info);
@@ -390,15 +393,17 @@ void read_dnaN_from_bits(std::string &read, std::ifstream &fin) {
   read_encoded_read<256>(read, fin, int2dna, 15, 4, 2);
 }
 
-void reverse_complement(char *s, char *s1, const int readlen) {
-  fill_reverse_complement(s, s1, readlen);
-  s1[readlen] = '\0';
+void reverse_complement(char *input_bases, char *output_bases,
+                        const int readlen) {
+  fill_reverse_complement(input_bases, output_bases, readlen);
+  output_bases[readlen] = '\0';
 }
 
-std::string reverse_complement(const std::string &s, const int readlen) {
-  std::string s1(readlen, '\0');
-  fill_reverse_complement(s.data(), &s1[0], readlen);
-  return s1;
+std::string reverse_complement(const std::string &input_bases,
+                               const int readlen) {
+  std::string output_bases(readlen, '\0');
+  fill_reverse_complement(input_bases.data(), &output_bases[0], readlen);
+  return output_bases;
 }
 
 void remove_CR_from_end(std::string &str) {
@@ -418,37 +423,37 @@ size_t get_directory_size(const std::string &temp_dir) {
 }
 
 // Use zigzag plus varint encoding for compact temporary integer streams.
-uint64_t zigzag_encode64(const int64_t n) {
-  const uint64_t sign_mask = (n < 0) ? UINT64_MAX : 0U;
-  return (static_cast<uint64_t>(n) << 1) ^ sign_mask;
+uint64_t zigzag_encode64(const int64_t value) {
+  const uint64_t sign_mask = (value < 0) ? UINT64_MAX : 0U;
+  return (static_cast<uint64_t>(value) << 1) ^ sign_mask;
 }
 
-int64_t zigzag_decode64(const uint64_t n) {
-  return static_cast<int64_t>(n >> 1) ^ -static_cast<int64_t>(n & 1U);
+int64_t zigzag_decode64(const uint64_t value) {
+  return static_cast<int64_t>(value >> 1) ^ -static_cast<int64_t>(value & 1U);
 }
 
-void write_var_int64(const int64_t val, std::ofstream &fout) {
-  uint64_t uval = zigzag_encode64(val);
+void write_var_int64(const int64_t value, std::ofstream &output_stream) {
+  uint64_t encoded_value = zigzag_encode64(value);
   uint8_t byte;
-  while (uval > 127) {
-    byte = (uint8_t)(uval & 0x7f) | 0x80;
-    fout.write(byte_ptr(&byte), sizeof(uint8_t));
-    uval >>= 7;
+  while (encoded_value > 127) {
+    byte = (uint8_t)(encoded_value & 0x7f) | 0x80;
+    output_stream.write(byte_ptr(&byte), sizeof(uint8_t));
+    encoded_value >>= 7;
   }
-  byte = (uint8_t)(uval & 0x7f);
-  fout.write(byte_ptr(&byte), sizeof(uint8_t));
+  byte = (uint8_t)(encoded_value & 0x7f);
+  output_stream.write(byte_ptr(&byte), sizeof(uint8_t));
 }
 
-int64_t read_var_int64(std::ifstream &fin) {
-  uint64_t uval = 0;
+int64_t read_var_int64(std::ifstream &input_stream) {
+  uint64_t encoded_value = 0;
   uint8_t byte;
   uint8_t shift = 0;
   do {
-    fin.read(byte_ptr(&byte), sizeof(uint8_t));
-    uval |= ((byte & 0x7f) << shift);
+    input_stream.read(byte_ptr(&byte), sizeof(uint8_t));
+    encoded_value |= ((byte & 0x7f) << shift);
     shift += 7;
   } while (byte & 0x80);
-  return zigzag_decode64(uval);
+  return zigzag_decode64(encoded_value);
 }
 
 } // namespace spring

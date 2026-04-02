@@ -27,16 +27,19 @@ using read_range = std::vector<uint64_t>;
 
 // Top-level compression and decompression entry points used by the CLI.
 void compress(const std::string &temp_dir,
-                            const string_list &infile_vec, const string_list &outfile_vec,
+                            const string_list &input_paths,
+                            const string_list &output_paths,
                             const int &num_thr,
               const bool &pairing_only_flag, const bool &no_quality_flag,
-                            const bool &no_ids_flag, const string_list &quality_opts,
+                            const bool &no_ids_flag, const string_list &quality_options,
               const bool &long_flag, const bool &gzip_flag,
               const bool &fasta_flag);
 
 void decompress(const std::string &temp_dir,
-                                const string_list &infile_vec, const string_list &outfile_vec,
-                                const int &num_thr, const read_range &decompress_range_vec,
+                                const string_list &input_paths,
+                                const string_list &output_paths,
+                                const int &num_thr,
+                                const read_range &decompress_range,
                 const bool &gzip_flag, const int &gzip_level);
 
 std::string random_string(size_t length);

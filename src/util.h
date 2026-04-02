@@ -62,20 +62,24 @@ struct compression_params {
 };
 
 // Shared FASTQ, ID, quality, DNA packing, and temporary-stream helpers.
-uint32_t read_fastq_block(std::istream *fin, std::string *id_array,
-                          std::string *read_array, std::string *quality_array,
+uint32_t read_fastq_block(std::istream *input_stream,
+                          std::string *id_array,
+                          std::string *read_array,
+                          std::string *quality_array,
                           const uint32_t &num_reads, const bool &fasta_flag);
 
-void write_fastq_block(std::ofstream &fout, std::string *id_array,
-                       std::string *read_array, std::string *quality_array,
+void write_fastq_block(std::ofstream &output_stream,
+                       std::string *id_array,
+                       std::string *read_array,
+                       std::string *quality_array,
                        const uint32_t &num_reads, const bool preserve_quality,
                        const int &num_thr, const bool &gzip_flag,
                        const int &gzip_level);
 
-void compress_id_block(const char *outfile_name, std::string *id_array,
+void compress_id_block(const char *output_path, std::string *id_array,
                        const uint32_t &num_ids);
 
-void decompress_id_block(const char *infile_name, std::string *id_array,
+void decompress_id_block(const char *input_path, std::string *id_array,
                          const uint32_t &num_ids);
 
 void quantize_quality(std::string *quality_array, const uint32_t &num_lines,
@@ -106,17 +110,19 @@ void write_dnaN_in_bits(const std::string &read, std::ofstream &fout);
 
 void read_dnaN_from_bits(std::string &read, std::ifstream &fin);
 
-void reverse_complement(char *s, char *s1, const int readlen);
+void reverse_complement(char *input_bases, char *output_bases,
+                        const int readlen);
 
-std::string reverse_complement(const std::string &s, const int readlen);
+std::string reverse_complement(const std::string &input_bases,
+                               const int readlen);
 
 void remove_CR_from_end(std::string &str);
 
 size_t get_directory_size(const std::string &temp_dir);
 
-void write_var_int64(const int64_t val, std::ofstream &fout);
+void write_var_int64(const int64_t value, std::ofstream &output_stream);
 
-int64_t read_var_int64(std::ifstream &fin);
+int64_t read_var_int64(std::ifstream &input_stream);
 
 } // namespace spring
 

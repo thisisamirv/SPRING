@@ -12,13 +12,15 @@ namespace {
 using template_main_fn = void (*)(const std::string &, compression_params &);
 
 template <size_t bitset_size>
-void call_reorder_main(const std::string &temp_dir, compression_params &cp) {
-  reorder_main<bitset_size>(temp_dir, cp);
+void call_reorder_main(const std::string &temp_dir,
+                       compression_params &params) {
+  reorder_main<bitset_size>(temp_dir, params);
 }
 
 template <size_t bitset_size>
-void call_encoder_main(const std::string &temp_dir, compression_params &cp) {
-  encoder_main<bitset_size>(temp_dir, cp);
+void call_encoder_main(const std::string &temp_dir,
+                       compression_params &params) {
+  encoder_main<bitset_size>(temp_dir, params);
 }
 
 // Keep the runtime-to-template mapping explicit so supported bitset sizes stay
@@ -47,25 +49,31 @@ const std::array<template_main_fn, 24> encoder_dispatchers = {
     &call_encoder_main<1472>, &call_encoder_main<1536>,
 };
 
-size_t dispatch_index(const size_t bitset_size, const size_t max_bitset_size) {
+size_t dispatch_index(const size_t requested_bitset_size,
+                      const size_t max_supported_bitset_size) {
   // Template entry points are instantiated in 64-bit increments only.
-  if (bitset_size < 64 || bitset_size > max_bitset_size ||
-      (bitset_size % 64) != 0) {
+  if (requested_bitset_size < 64 ||
+      requested_bitset_size > max_supported_bitset_size ||
+      (requested_bitset_size % 64) != 0) {
     throw std::runtime_error("Wrong bitset size.");
   }
 
-  return bitset_size / 64 - 1;
+  return requested_bitset_size / 64 - 1;
 }
 
 } // namespace
 
-void call_reorder(const std::string &temp_dir, compression_params &cp) {
-  const size_t bitset_size_reorder = (2 * cp.max_readlen - 1) / 64 * 64 + 64;
-  reorder_dispatchers[dispatch_index(bitset_size_reorder, 1024)](temp_dir, cp);
+void call_reorder(const std::string &temp_dir, compression_params &params) {
+  const size_t reorder_bitset_size =
+      (2 * params.max_readlen - 1) / 64 * 64 + 64;
+  reorder_dispatchers[dispatch_index(reorder_bitset_size, 1024)](temp_dir,
+                                                                 params);
 }
 
-void call_encoder(const std::string &temp_dir, compression_params &cp) {
-  const size_t bitset_size_encoder = (3 * cp.max_readlen - 1) / 64 * 64 + 64;
-  encoder_dispatchers[dispatch_index(bitset_size_encoder, 1536)](temp_dir, cp);
+void call_encoder(const std::string &temp_dir, compression_params &params) {
+  const size_t encoder_bitset_size =
+      (3 * params.max_readlen - 1) / 64 * 64 + 64;
+  encoder_dispatchers[dispatch_index(encoder_bitset_size, 1536)](temp_dir,
+                                                                 params);
 }
 } // namespace spring

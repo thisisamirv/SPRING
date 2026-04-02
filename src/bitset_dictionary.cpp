@@ -20,21 +20,21 @@ namespace spring {
 
 void bbhashdict::findpos(int64_t *dictidx, const uint64_t &startposidx) {
   dictidx[0] = startpos[startposidx];
-  const uint32_t endidx = startpos[startposidx + 1];
+  const uint32_t bucket_end_index = startpos[startposidx + 1];
   // Tail markers record whether deletions have compacted the logical bin end.
-  const uint32_t tail_marker = read_id[endidx - 1];
+  const uint32_t tail_marker = read_id[bucket_end_index - 1];
 
   if (tail_marker == MAX_NUM_READS) {
-    dictidx[1] = endidx - 1;
+    dictidx[1] = bucket_end_index - 1;
     return;
   }
 
   if (tail_marker == MAX_NUM_READS + 1) {
-    dictidx[1] = dictidx[0] + read_id[endidx - 2];
+    dictidx[1] = dictidx[0] + read_id[bucket_end_index - 2];
     return;
   }
 
-  dictidx[1] = endidx;
+  dictidx[1] = bucket_end_index;
 }
 
 void bbhashdict::remove(const int64_t *dictidx, const uint64_t &startposidx,
@@ -56,22 +56,22 @@ void bbhashdict::remove(const int64_t *dictidx, const uint64_t &startposidx,
     read_id[i] = read_id[i + 1];
   }
 
-  const uint32_t endidx = startpos[startposidx + 1];
-  const uint32_t tail_marker = read_id[endidx - 1];
+  const uint32_t bucket_end_index = startpos[startposidx + 1];
+  const uint32_t tail_marker = read_id[bucket_end_index - 1];
 
-  if (bin_end == endidx) {
-    read_id[endidx - 1] = MAX_NUM_READS;
+  if (bin_end == bucket_end_index) {
+    read_id[bucket_end_index - 1] = MAX_NUM_READS;
     return;
   }
 
   if (tail_marker == MAX_NUM_READS) {
-    read_id[endidx - 1] = MAX_NUM_READS + 1;
-    read_id[endidx - 2] =
+    read_id[bucket_end_index - 1] = MAX_NUM_READS + 1;
+    read_id[bucket_end_index - 2] =
         static_cast<uint32_t>(bin_size - 1);
     return;
   }
 
-  read_id[endidx - 2]--;
+  read_id[bucket_end_index - 2]--;
 }
 
 } // namespace spring

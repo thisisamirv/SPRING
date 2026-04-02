@@ -54,21 +54,23 @@ int find_cluster(const double avg_qv) {
   return cluster_num;
 }
 
-void write_counts(std::ofstream &f_out, const std::vector<uint64_t> &count1,
+void write_counts(std::ofstream &output_stream,
+                  const std::vector<uint64_t> &count1,
                   const std::vector<uint64_t> &count2,
                   const std::vector<uint64_t> &count3,
                   const std::vector<uint64_t> &num_reads) {
   for (int cluster_num = 0; cluster_num < kNumClusters; ++cluster_num) {
-    f_out.write(reinterpret_cast<const char *>(
-                    &num_reads[static_cast<size_t>(cluster_num)]),
-                sizeof(uint64_t));
+    output_stream.write(
+        reinterpret_cast<const char *>(&num_reads[static_cast<size_t>(cluster_num)]),
+        sizeof(uint64_t));
 
     for (int position = 0; position < kReadLen; ++position) {
       for (int quality_value = 0; quality_value < kQualityValueCount;
            ++quality_value) {
         const uint64_t value =
             count1[count1_index(cluster_num, position, quality_value)];
-        f_out.write(reinterpret_cast<const char *>(&value), sizeof(uint64_t));
+        output_stream.write(reinterpret_cast<const char *>(&value),
+                            sizeof(uint64_t));
       }
     }
 
@@ -79,8 +81,8 @@ void write_counts(std::ofstream &f_out, const std::vector<uint64_t> &count1,
              ++quality_value_2) {
           const uint64_t value = count2[count2_index(
               cluster_num, position, quality_value_1, quality_value_2)];
-          f_out.write(reinterpret_cast<const char *>(&value),
-                      sizeof(uint64_t));
+          output_stream.write(reinterpret_cast<const char *>(&value),
+                              sizeof(uint64_t));
         }
       }
     }
@@ -95,8 +97,8 @@ void write_counts(std::ofstream &f_out, const std::vector<uint64_t> &count1,
             const uint64_t value = count3[count3_index(
                 cluster_num, position, quality_value_1, quality_value_2,
                 quality_value_3)];
-            f_out.write(reinterpret_cast<const char *>(&value),
-                        sizeof(uint64_t));
+            output_stream.write(reinterpret_cast<const char *>(&value),
+                                sizeof(uint64_t));
           }
         }
       }
@@ -104,9 +106,10 @@ void write_counts(std::ofstream &f_out, const std::vector<uint64_t> &count1,
   }
 }
 
-void compute_counts(const std::string &infile, const std::string &outfile) {
-  std::string line;
-  std::ifstream myfile(infile, std::ifstream::in);
+void compute_counts(const std::string &input_path,
+                    const std::string &output_path) {
+  std::string quality_line;
+  std::ifstream input_stream(input_path, std::ifstream::in);
   std::vector<uint64_t> count1(static_cast<size_t>(kNumClusters) * kReadLen *
                                kQualityValueCount);
   std::vector<uint64_t> count2(static_cast<size_t>(kNumClusters) *
@@ -118,21 +121,22 @@ void compute_counts(const std::string &infile, const std::string &outfile) {
   std::vector<uint64_t> num_reads(static_cast<size_t>(kNumClusters));
 
   // Accumulate 0th-, 1st-, and 2nd-order quality statistics in one pass.
-  while (std::getline(myfile, line)) {
+  while (std::getline(input_stream, quality_line)) {
     int total_qv = 0;
     for (int position = 0; position < kReadLen; ++position) {
-      total_qv += (static_cast<unsigned int>(line[position]) - 33);
+      total_qv += (static_cast<unsigned int>(quality_line[position]) - 33);
     }
     const double avg_qv = static_cast<double>(total_qv) / kReadLen;
     const int cluster_num = find_cluster(avg_qv);
 
     ++num_reads[static_cast<size_t>(cluster_num)];
     for (int position = 0; position < kReadLen - 2; ++position) {
-      const int quality_value_1 = static_cast<unsigned int>(line[position]) - 33;
+      const int quality_value_1 =
+        static_cast<unsigned int>(quality_line[position]) - 33;
       const int quality_value_2 =
-          static_cast<unsigned int>(line[position + 1]) - 33;
+        static_cast<unsigned int>(quality_line[position + 1]) - 33;
       const int quality_value_3 =
-          static_cast<unsigned int>(line[position + 2]) - 33;
+        static_cast<unsigned int>(quality_line[position + 2]) - 33;
       ++count1[count1_index(cluster_num, position, quality_value_1)];
       ++count2[count2_index(cluster_num, position, quality_value_1,
                             quality_value_2)];
@@ -141,20 +145,23 @@ void compute_counts(const std::string &infile, const std::string &outfile) {
     }
 
     int position = kReadLen - 2;
-    const int quality_value_1 = static_cast<unsigned int>(line[position]) - 33;
-    const int quality_value_2 = static_cast<unsigned int>(line[position + 1]) - 33;
+    const int quality_value_1 =
+      static_cast<unsigned int>(quality_line[position]) - 33;
+    const int quality_value_2 =
+      static_cast<unsigned int>(quality_line[position + 1]) - 33;
     ++count1[count1_index(cluster_num, position, quality_value_1)];
     ++count2[count2_index(cluster_num, position, quality_value_1,
                           quality_value_2)];
 
     position = kReadLen - 1;
     ++count1[count1_index(cluster_num, position,
-                          static_cast<unsigned int>(line[position]) - 33)];
+                static_cast<unsigned int>(quality_line[position]) -
+                  33)];
   }
-  myfile.close();
+    input_stream.close();
 
-  std::ofstream f_out(outfile, std::ios::binary);
-  write_counts(f_out, count1, count2, count3, num_reads);
+    std::ofstream output_stream(output_path, std::ios::binary);
+    write_counts(output_stream, count1, count2, count3, num_reads);
 }
 
 } // namespace

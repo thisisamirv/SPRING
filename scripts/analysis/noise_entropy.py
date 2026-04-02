@@ -2,68 +2,67 @@
 import numpy as np
 import struct
 
-readlen = 101
-inFile = "logs/ERP001775_1.quality_counts"
+read_length = 101
+input_file = "logs/ERP001775_1.quality_counts"
 num_clusters = 4
 NOISE_ENTROPY = -(0.3*np.log(0.15)+0.7*np.log(0.7))/np.log(2.0)
 
 def quality_to_prob(qual_string):
-    _q = [ord(c) for c in qual_string]
+    quality_values = [ord(char) for char in qual_string]
+    quality_values = (33.0 - np.array(quality_values))/10.0
+    probabilities = np.power(10.0, quality_values)
+    return probabilities
 
-    _q = (33.0 - np.array(_q))/10.0
-    prob = np.power(10.0,_q)
-    return prob
-
-def get_M_readlen(inFile):
-    M = 0
-    N = 0
-    with open(inFile,'r') as f:
+def get_read_count_and_length(input_path):
+    read_count = 0
+    detected_read_length = 0
+    with open(input_path,'r') as file_handle:
       for line in f:
-          M += 1
-          N = len(line) -1
-    return (M,N)
+          read_count += 1
+          detected_read_length = len(line) - 1
+    return (read_count, detected_read_length)
 
 
 def qv_to_prob():
-    _q  = -np.arange(42)/10.0 
-    prob = np.reshape(np.power(10.0,_q),[1,42])
-    return prob
+    quality_values = -np.arange(42)/10.0 
+    probabilities = np.reshape(np.power(10.0, quality_values), [1, 42])
+    return probabilities
 
 
-def quality_value_stats(inFile):
-    qv_counts_0order = np.zeros((42,readlen))
-    qv_counts_1order = np.zeros((42,42,readlen))
-    qv_counts_2order = np.zeros((42,42,42,readlen))
+def quality_value_stats(input_path):
+    qv_counts_0order = np.zeros((42, read_length))
+    qv_counts_1order = np.zeros((42, 42, read_length))
+    qv_counts_2order = np.zeros((42, 42, 42, read_length))
     
-    qv_counts_0order_cluster = np.zeros((42,readlen,num_clusters))
-    qv_counts_1order_cluster = np.zeros((42,42,readlen,num_clusters))
-    qv_counts_2order_cluster = np.zeros((42,42,42,readlen,num_clusters))
+    qv_counts_0order_cluster = np.zeros((42, read_length, num_clusters))
+    qv_counts_1order_cluster = np.zeros((42, 42, read_length, num_clusters))
+    qv_counts_2order_cluster = np.zeros((42, 42, 42, read_length, num_clusters))
 
     
-    qv_prob_0order_cluster = np.zeros((42,readlen,num_clusters))
-    qv_prob_1order_cluster = np.zeros((42,42,readlen,num_clusters))
-    qv_prob_2order_cluster = np.zeros((42,42,42,readlen,num_clusters))
-    f = open(inFile,'r')
+    qv_prob_0order_cluster = np.zeros((42, read_length, num_clusters))
+    qv_prob_1order_cluster = np.zeros((42, 42, read_length, num_clusters))
+    qv_prob_2order_cluster = np.zeros((42, 42, 42, read_length, num_clusters))
+    input_handle = open(input_path, 'r')
 
     num_reads_cluster = np.zeros((num_clusters))
     for cluster in range(num_clusters):    
-        s = f.read(8)
-        num_reads_cluster[cluster] = struct.unpack('Q',s)[0]
-        for i in range(readlen):
-            for j in range(42):
-                s = f.read(8)
-                qv_counts_0order_cluster[j,i,cluster] = struct.unpack('Q',s)[0] 
-        for i in range(readlen-1):
-            for j in range(42):
-                for k in range(42):
-                    s = f.read(8)
-                    qv_counts_1order_cluster[j,k,i,cluster] = struct.unpack('Q',s)[0] 
-        for i in range(readlen-2):
-            for j in range(42):
-                for k in range(42):
-                    for l in range(42):
-                        s = f.read(8)
-                        qv_counts_2order_cluster[j,k,l,i,cluster] = struct.unpack('Q',s)[0] 
+        packed_count = input_handle.read(8)
+        num_reads_cluster[cluster] = struct.unpack('Q', packed_count)[0]
+        for position_index in range(read_length):
+            for quality_value in range(42):
+                packed_count = input_handle.read(8)
+                qv_counts_0order_cluster[quality_value, position_index, cluster] = struct.unpack('Q', packed_count)[0] 
+        for position_index in range(read_length - 1):
+            for quality_value_1 in range(42):
+                for quality_value_2 in range(42):
+                    packed_count = input_handle.read(8)
+                    qv_counts_1order_cluster[quality_value_1, quality_value_2, position_index, cluster] = struct.unpack('Q', packed_count)[0] 
+        for position_index in range(read_length - 2):
+            for quality_value_1 in range(42):
+                for quality_value_2 in range(42):
+                    for quality_value_3 in range(42):
+                        packed_count = input_handle.read(8)
+                        qv_counts_2order_cluster[quality_value_1, quality_value_2, quality_value_3, position_index, cluster] = struct.unpack('Q', packed_count)[0] 
 
     
     num_reads = np.sum(num_reads_cluster)    
@@ -82,29 +81,29 @@ def quality_value_stats(inFile):
             num_reads,num_reads_cluster)
 
 
-def avg_quality_value(inFile):
-    num_reads,readlen = get_M_readlen(inFile)
+def avg_quality_value(input_path):
+    num_reads, readlen = get_read_count_and_length(input_path)
     qv_avg = np.zeros(num_reads)
-    with open(inFile,'r') as f_qv:
-        for i,qv in tqdm(enumerate(f_qv),total=num_reads,desc="computing read probs ...",ascii=True):
-            qv_id = qv.rstrip('\n')
-            qv_id = [ord(c) - 33.0 for c in qv_id]
-            qv_avg[i] = np.mean(qv_id)
+    with open(input_path,'r') as quality_handle:
+        for read_index, quality_line in tqdm(enumerate(quality_handle), total=num_reads, desc="computing read probs ...", ascii=True):
+            quality_values = quality_line.rstrip('\n')
+            quality_values = [ord(char) - 33.0 for char in quality_values]
+            qv_avg[read_index] = np.mean(quality_values)
     return qv_avg
 
 
 
 def compute_Ni_old_entropy(probs):
-    _e = -( probs*np.log(probs) + (1-probs)*np.log(1-probs) ) + probs*np.log(3.0)  
-    _e = _e/np.log(2.0)
-    entropy = np.sum(_e)
-    return entropy,_e 
+    entropy_per_position = -(probs*np.log(probs) + (1-probs)*np.log(1-probs)) + probs*np.log(3.0)  
+    entropy_per_position = entropy_per_position/np.log(2.0)
+    entropy = np.sum(entropy_per_position)
+    return entropy, entropy_per_position 
 
 def compute_Ni_entropy(probs):
-    _e = -( probs*np.log(probs) + (1-probs)*np.log(1-probs)  + probs*(0.3*np.log(0.15)+0.7*np.log(0.7)))
-    _e = _e/np.log(2.0)
-    entropy = np.sum(_e)
-    return entropy,_e 
+    entropy_per_position = -(probs*np.log(probs) + (1-probs)*np.log(1-probs)  + probs*(0.3*np.log(0.15)+0.7*np.log(0.7)))
+    entropy_per_position = entropy_per_position/np.log(2.0)
+    entropy = np.sum(entropy_per_position)
+    return entropy, entropy_per_position 
 
 def compute_Si_prob(qv_prob):
     prob_substitution = np.dot(qv_to_prob(),qv_prob)
@@ -113,9 +112,9 @@ def compute_Si_prob(qv_prob):
 
 
 def xlogx(p):
-    _e = p*np.log(p)
-    _e = _e/np.log(2.0)
-    return _e
+    entropy_term = p*np.log(p)
+    entropy_term = entropy_term/np.log(2.0)
+    return entropy_term
 
 
 def compute_N1N2_old_entropy(qv_N1N2_probs):
@@ -136,13 +135,13 @@ def compute_N1N2N3_entropy(qv_N1N2N3_probs):
 
     entropy = 0
     
-    def prob_S1S2S3(s1,s2,s3):
-        temp_prob = 0;
-        for i0 in range(42):
-            for i1 in range(42):
-                for i2 in range(42):
-                    temp_prob += qv_N1N2N3_probs[i0,i1,i2]*qv_2_prob[s1,0,i0]*qv_2_prob[s2,0,i1]*qv_2_prob[s3,0,i2]
-        return temp_prob
+    def prob_S1S2S3(s1, s2, s3):
+        joint_probability = 0
+        for quality_value_1 in range(42):
+            for quality_value_2 in range(42):
+                for quality_value_3 in range(42):
+                    joint_probability += qv_N1N2N3_probs[quality_value_1, quality_value_2, quality_value_3]*qv_2_prob[s1,0,quality_value_1]*qv_2_prob[s2,0,quality_value_2]*qv_2_prob[s3,0,quality_value_3]
+        return joint_probability
     
     prob_s1s2s3 = np.zeros((2,2,2))
     for s1 in [0,1]:
@@ -175,22 +174,22 @@ def compute_N1N2_entropy(qv_N1N2_probs):
     return entropy
     
 def compute_Ni_joint_probability(qv_joint_probs,Ni_perpos_entropy):
-    readlen = Ni_perpos_entropy.shape[1]
+    read_length = Ni_perpos_entropy.shape[1]
     entropy = Ni_perpos_entropy[0,0] 
-    perpos_1order_entropy = np.zeros(readlen-1)
-    for i in range(readlen-1):
-        qv_N1N2_probs = qv_joint_probs[:,:,i]
-        perpos_1order_entropy[i] = compute_N1N2_entropy(qv_N1N2_probs)
-        entropy += perpos_1order_entropy[i] - Ni_perpos_entropy[0,i]
-    return entropy,perpos_1order_entropy
+    perpos_1order_entropy = np.zeros(read_length-1)
+    for position_index in range(read_length-1):
+        qv_N1N2_probs = qv_joint_probs[:,:,position_index]
+        perpos_1order_entropy[position_index] = compute_N1N2_entropy(qv_N1N2_probs)
+        entropy += perpos_1order_entropy[position_index] - Ni_perpos_entropy[0,position_index]
+    return entropy, perpos_1order_entropy
 
 def compute_2order_entropy(qv_prob_2order, perpos_1order_entropy):
-    readlen = perpos_1order_entropy.shape[0] + 1
+    read_length = perpos_1order_entropy.shape[0] + 1
     entropy = perpos_1order_entropy[0]
     
-    for i in range(readlen-2):
-        qv_N1N2N3_probs = qv_prob_2order[:,:,:,i]
-        entropy += compute_N1N2N3_entropy(qv_N1N2N3_probs) - perpos_1order_entropy[i]
+    for position_index in range(read_length-2):
+        qv_N1N2N3_probs = qv_prob_2order[:,:,:,position_index]
+        entropy += compute_N1N2N3_entropy(qv_N1N2N3_probs) - perpos_1order_entropy[position_index]
     return entropy
 
 
@@ -210,7 +209,7 @@ def print_cluster_counts(num_reads, num_reads_cluster):
 
 
 def compute_cluster_substitution_probs(qv_prob_0order_cluster):
-    si_prob_cluster = np.zeros((1,readlen,num_clusters))
+    si_prob_cluster = np.zeros((1, read_length, num_clusters))
     for cluster in range(num_clusters):
         si_prob_cluster[:,:,cluster] = compute_Si_prob(qv_prob_0order_cluster[:,:,cluster])
     return si_prob_cluster
@@ -224,7 +223,7 @@ def report_0order_entropy(si_prob, si_prob_cluster, num_reads, num_reads_cluster
     print(Ni_perpos_entropy.shape)
 
     total_Ni_entropy_cluster = np.zeros((num_clusters))
-    Ni_perpos_entropy_cluster = np.zeros((1,readlen,num_clusters))
+    Ni_perpos_entropy_cluster = np.zeros((1, read_length, num_clusters))
 
     for cluster in range(num_clusters):
         total_Ni_entropy_cluster[cluster],Ni_perpos_entropy_cluster[:,:,cluster] = compute_Ni_entropy(si_prob_cluster[:,:,cluster])
@@ -285,7 +284,7 @@ def report_2order_entropy(qv_prob_2order, qv_prob_2order_cluster,
 def main():
     (qv_prob_0order, qv_prob_1order, qv_prob_2order,
      qv_prob_0order_cluster, qv_prob_1order_cluster, qv_prob_2order_cluster,
-     num_reads, num_reads_cluster) = quality_value_stats(inFile)
+    num_reads, num_reads_cluster) = quality_value_stats(input_file)
 
     print_cluster_counts(num_reads, num_reads_cluster)
 

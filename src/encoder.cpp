@@ -30,17 +30,18 @@ namespace spring {
 
 namespace {
 
-std::string thread_file_path(const std::string &base_path, const int tid,
+std::string thread_file_path(const std::string &base_path,
+                             const int thread_id,
                              const char *suffix = "") {
-  return base_path + '.' + std::to_string(tid) + suffix;
+  return base_path + '.' + std::to_string(thread_id) + suffix;
 }
 
 } // namespace
 
 std::string buildcontig(std::list<contig_reads> &current_contig,
                         const uint32_t &list_size) {
-  static const char longtochar[5] = {'A', 'C', 'G', 'T', 'N'};
-  static const long chartolong[128] = {
+  static const char base_char_lookup[5] = {'A', 'C', 'G', 'T', 'N'};
+  static const long base_index_lookup[128] = {
       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -51,33 +52,38 @@ std::string buildcontig(std::list<contig_reads> &current_contig,
   if (list_size == 1)
     return (current_contig.front()).read;
   auto current_contig_it = current_contig.begin();
-  int64_t currentpos = 0, currentsize = 0, to_insert;
-  std::vector<std::array<long, 4>> count;
+  int64_t current_position = 0;
+  int64_t contig_size = 0;
+  int64_t positions_to_append;
+  std::vector<std::array<long, 4>> base_counts;
   for (; current_contig_it != current_contig.end(); ++current_contig_it) {
     if (current_contig_it == current_contig.begin())
-      to_insert = (*current_contig_it).read_length;
+      positions_to_append = (*current_contig_it).read_length;
     else {
-      currentpos = (*current_contig_it).pos;
-      if (currentpos + (*current_contig_it).read_length > currentsize)
-        to_insert = currentpos + (*current_contig_it).read_length - currentsize;
+      current_position = (*current_contig_it).pos;
+      if (current_position + (*current_contig_it).read_length > contig_size)
+        positions_to_append =
+            current_position + (*current_contig_it).read_length - contig_size;
       else
-        to_insert = 0;
+        positions_to_append = 0;
     }
-    count.insert(count.end(), to_insert, {0, 0, 0, 0});
-    currentsize = currentsize + to_insert;
+    base_counts.insert(base_counts.end(), positions_to_append, {0, 0, 0, 0});
+    contig_size = contig_size + positions_to_append;
     for (long i = 0; i < (*current_contig_it).read_length; i++)
-      count[currentpos + i]
-           [chartolong[(uint8_t)(*current_contig_it).read[i]]] += 1;
+      base_counts[current_position + i]
+                [base_index_lookup[(uint8_t)(*current_contig_it).read[i]]] +=
+          1;
   }
-  std::string ref(count.size(), 'A');
-  for (size_t i = 0; i < count.size(); i++) {
-    long max = 0, indmax = 0;
-    for (long j = 0; j < 4; j++)
-      if (count[i][j] > max) {
-        max = count[i][j];
-        indmax = j;
+  std::string ref(base_counts.size(), 'A');
+  for (size_t i = 0; i < base_counts.size(); i++) {
+    long best_base_count = 0;
+    long best_base_index = 0;
+    for (long base_index = 0; base_index < 4; base_index++)
+      if (base_counts[i][base_index] > best_base_count) {
+        best_base_count = base_counts[i][base_index];
+        best_base_index = base_index;
       }
-    ref[i] = longtochar[indmax];
+    ref[i] = base_char_lookup[best_base_index];
   }
   return ref;
 }
@@ -90,24 +96,26 @@ void writecontig(const std::string &ref,
                  const encoder_global &eg, uint64_t &abs_pos) {
   f_seq << ref;
   uint16_t pos_var;
-  long prevj = 0;
+  long previous_noise_offset = 0;
   auto current_contig_it = current_contig.begin();
-  long currentpos;
-  uint64_t abs_current_pos;
+  long current_position;
+  uint64_t absolute_current_position;
   for (; current_contig_it != current_contig.end(); ++current_contig_it) {
-    currentpos = (*current_contig_it).pos;
-    prevj = 0;
-    for (long j = 0; j < (*current_contig_it).read_length; j++)
-      if ((*current_contig_it).read[j] != ref[currentpos + j]) {
-        f_noise << eg.enc_noise[(uint8_t)ref[currentpos + j]]
-                               [(uint8_t)(*current_contig_it).read[j]];
-        pos_var = j - prevj;
+    current_position = (*current_contig_it).pos;
+    previous_noise_offset = 0;
+    for (long read_offset = 0; read_offset < (*current_contig_it).read_length;
+         read_offset++)
+      if ((*current_contig_it).read[read_offset] !=
+          ref[current_position + read_offset]) {
+        f_noise << eg.enc_noise[(uint8_t)ref[current_position + read_offset]]
+                               [(uint8_t)(*current_contig_it).read[read_offset]];
+        pos_var = read_offset - previous_noise_offset;
         f_noisepos.write(byte_ptr(&pos_var), sizeof(uint16_t));
-        prevj = j;
+        previous_noise_offset = read_offset;
       }
     f_noise << "\n";
-    abs_current_pos = abs_pos + currentpos;
-    f_pos.write(byte_ptr(&abs_current_pos), sizeof(uint64_t));
+    absolute_current_position = abs_pos + current_position;
+    f_pos.write(byte_ptr(&absolute_current_position), sizeof(uint64_t));
     f_order.write(byte_ptr(&((*current_contig_it).order)), sizeof(uint32_t));
     f_readlength.write(byte_ptr(&((*current_contig_it).read_length)),
                        sizeof(uint16_t));
@@ -120,42 +128,45 @@ void writecontig(const std::string &ref,
 void pack_compress_seq(const encoder_global &eg, uint64_t *file_len_seq_thr) {
 #pragma omp parallel
   {
-    const int tid = omp_get_thread_num();
-    const std::string seq_path = thread_file_path(eg.outfile_seq, tid);
-    const std::string tmp_seq_path = thread_file_path(eg.outfile_seq, tid, ".tmp");
-    const std::string tail_seq_path = thread_file_path(eg.outfile_seq, tid, ".tail");
-    const std::string compressed_seq_path = thread_file_path(eg.outfile_seq, tid, ".bsc");
+  const int thread_id = omp_get_thread_num();
+  const std::string seq_path = thread_file_path(eg.outfile_seq, thread_id);
+  const std::string tmp_seq_path =
+    thread_file_path(eg.outfile_seq, thread_id, ".tmp");
+  const std::string tail_seq_path =
+    thread_file_path(eg.outfile_seq, thread_id, ".tail");
+  const std::string compressed_seq_path =
+    thread_file_path(eg.outfile_seq, thread_id, ".bsc");
     std::ifstream in_seq(seq_path);
     std::ofstream f_seq(tmp_seq_path, std::ios::binary);
     std::ofstream f_seq_tail(tail_seq_path);
-    uint64_t file_len = 0;
-    char c;
-    while (in_seq >> std::noskipws >> c)
-      file_len++;
-    file_len_seq_thr[tid] = file_len;
-    uint8_t basetoint[128];
-    basetoint[(uint8_t)'A'] = 0;
-    basetoint[(uint8_t)'C'] = 1;
-    basetoint[(uint8_t)'G'] = 2;
-    basetoint[(uint8_t)'T'] = 3;
+    uint64_t thread_seq_length = 0;
+    char next_base;
+    while (in_seq >> std::noskipws >> next_base)
+      thread_seq_length++;
+    file_len_seq_thr[thread_id] = thread_seq_length;
+    uint8_t base_to_int[128];
+    base_to_int[(uint8_t)'A'] = 0;
+    base_to_int[(uint8_t)'C'] = 1;
+    base_to_int[(uint8_t)'G'] = 2;
+    base_to_int[(uint8_t)'T'] = 3;
 
     in_seq.close();
     in_seq.open(seq_path);
-    char dnabase[8];
-    uint8_t dnabin;
-    for (uint64_t i = 0; i < file_len / 4; i++) {
-      in_seq.read(dnabase, 4);
+    char base_chunk[8];
+    uint8_t packed_base_byte;
+    for (uint64_t i = 0; i < thread_seq_length / 4; i++) {
+      in_seq.read(base_chunk, 4);
 
-      dnabin = 64 * basetoint[(uint8_t)dnabase[3]] +
-               16 * basetoint[(uint8_t)dnabase[2]] +
-               4 * basetoint[(uint8_t)dnabase[1]] +
-               basetoint[(uint8_t)dnabase[0]];
-      f_seq.write(byte_ptr(&dnabin), sizeof(uint8_t));
+      packed_base_byte = 64 * base_to_int[(uint8_t)base_chunk[3]] +
+                         16 * base_to_int[(uint8_t)base_chunk[2]] +
+                         4 * base_to_int[(uint8_t)base_chunk[1]] +
+                         base_to_int[(uint8_t)base_chunk[0]];
+      f_seq.write(byte_ptr(&packed_base_byte), sizeof(uint8_t));
     }
     f_seq.close();
-    in_seq.read(dnabase, file_len % 4);
-    for (unsigned int i = 0; i < file_len % 4; i++)
-      f_seq_tail << dnabase[i];
+    in_seq.read(base_chunk, thread_seq_length % 4);
+    for (unsigned int i = 0; i < thread_seq_length % 4; i++)
+      f_seq_tail << base_chunk[i];
     f_seq_tail.close();
     in_seq.close();
     bsc::BSC_compress(tmp_seq_path.c_str(), compressed_seq_path.c_str());
@@ -166,18 +177,19 @@ void pack_compress_seq(const encoder_global &eg, uint64_t *file_len_seq_thr) {
 }
 
 void getDataParams(encoder_global &eg, const compression_params &cp) {
-  uint32_t numreads_clean, numreads_total;
-  numreads_clean = cp.num_reads_clean[0] + cp.num_reads_clean[1];
-  numreads_total = cp.num_reads;
+  uint32_t clean_read_count;
+  uint32_t total_read_count;
+  clean_read_count = cp.num_reads_clean[0] + cp.num_reads_clean[1];
+  total_read_count = cp.num_reads;
 
-  std::ifstream myfile_s_count(eg.infile + ".singleton" + ".count",
-                               std::ifstream::in);
-  myfile_s_count.read(byte_ptr(&eg.numreads_s), sizeof(uint32_t));
-  myfile_s_count.close();
-  const std::string file_s_count = eg.infile + ".singleton.count";
-  remove(file_s_count.c_str());
-  eg.numreads = numreads_clean - eg.numreads_s;
-  eg.numreads_N = numreads_total - numreads_clean;
+  std::ifstream singleton_count_input(eg.infile + ".singleton" + ".count",
+                                      std::ifstream::in);
+  singleton_count_input.read(byte_ptr(&eg.numreads_s), sizeof(uint32_t));
+  singleton_count_input.close();
+  const std::string singleton_count_path = eg.infile + ".singleton.count";
+  remove(singleton_count_path.c_str());
+  eg.numreads = clean_read_count - eg.numreads_s;
+  eg.numreads_N = total_read_count - clean_read_count;
 
   std::cout << "Maximum Read length: " << eg.max_readlen << std::endl;
   std::cout << "Number of non-singleton reads: " << eg.numreads << std::endl;
@@ -186,37 +198,39 @@ void getDataParams(encoder_global &eg, const compression_params &cp) {
 }
 
 void correct_order(uint32_t *order_s, const encoder_global &eg) {
-  uint32_t numreads_total = eg.numreads + eg.numreads_s + eg.numreads_N;
-  std::vector<uint8_t> read_flag_N(numreads_total, 0);
+  uint32_t total_read_count = eg.numreads + eg.numreads_s + eg.numreads_N;
+  std::vector<uint8_t> is_n_read(total_read_count, 0);
   for (uint32_t i = 0; i < eg.numreads_N; i++) {
-    read_flag_N[order_s[eg.numreads_s + i]] = 1;
+    is_n_read[order_s[eg.numreads_s + i]] = 1;
   }
 
   std::vector<uint32_t> cumulative_N_reads(eg.numreads + eg.numreads_s, 0);
-  uint32_t pos_in_clean = 0, num_N_reads_till_now = 0;
-  for (uint32_t i = 0; i < numreads_total; i++) {
-    if (read_flag_N[i])
-      num_N_reads_till_now++;
+  uint32_t clean_read_index = 0;
+  uint32_t n_reads_seen = 0;
+  for (uint32_t i = 0; i < total_read_count; i++) {
+    if (is_n_read[i])
+      n_reads_seen++;
     else
-      cumulative_N_reads[pos_in_clean++] = num_N_reads_till_now;
+      cumulative_N_reads[clean_read_index++] = n_reads_seen;
   }
 
   // Insert the removed N-read slots back into singleton and clean-read orderings.
   for (uint32_t i = 0; i < eg.numreads_s; i++)
     order_s[i] += cumulative_N_reads[order_s[i]];
 
-  for (int tid = 0; tid < eg.num_thr; tid++) {
-    const std::string order_path = thread_file_path(eg.infile_order, tid);
+  for (int thread_id = 0; thread_id < eg.num_thr; thread_id++) {
+    const std::string order_path =
+        thread_file_path(eg.infile_order, thread_id);
     const std::string order_tmp_path =
-        thread_file_path(eg.infile_order, tid, ".tmp");
+        thread_file_path(eg.infile_order, thread_id, ".tmp");
     std::ifstream fin_order(order_path, std::ios::binary);
     std::ofstream fout_order(order_tmp_path, std::ios::binary);
-    uint32_t pos;
-    fin_order.read(byte_ptr(&pos), sizeof(uint32_t));
+    uint32_t read_position;
+    fin_order.read(byte_ptr(&read_position), sizeof(uint32_t));
     while (!fin_order.eof()) {
-      pos += cumulative_N_reads[pos];
-      fout_order.write(byte_ptr(&pos), sizeof(uint32_t));
-      fin_order.read(byte_ptr(&pos), sizeof(uint32_t));
+      read_position += cumulative_N_reads[read_position];
+      fout_order.write(byte_ptr(&read_position), sizeof(uint32_t));
+      fin_order.read(byte_ptr(&read_position), sizeof(uint32_t));
     }
     fin_order.close();
     fout_order.close();

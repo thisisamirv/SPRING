@@ -49,33 +49,33 @@ uint32_t block_count(const uint64_t num_reads,
   return 1 + (num_reads - 1) / num_reads_per_block;
 }
 
-void open_input_stream(std::ifstream &file_stream, std::istream *&stream,
-                       gzip_input_buffer *&buffer, const std::string &path,
-                       const bool gzip_flag) {
-  if (gzip_flag) {
+void open_input_stream(std::ifstream &file_stream, std::istream *&input_stream,
+                       gzip_input_buffer *&gzip_buffer,
+                       const std::string &path, const bool gzip_enabled) {
+  if (gzip_enabled) {
     file_stream.open(path, std::ios_base::binary);
-    buffer = new gzip_input_buffer;
-    buffer->push(boost::iostreams::gzip_decompressor());
-    buffer->push(file_stream);
-    stream = new std::istream(buffer);
+    gzip_buffer = new gzip_input_buffer;
+    gzip_buffer->push(boost::iostreams::gzip_decompressor());
+    gzip_buffer->push(file_stream);
+    input_stream = new std::istream(gzip_buffer);
     return;
   }
 
   file_stream.open(path);
-  stream = &file_stream;
-  buffer = nullptr;
+  input_stream = &file_stream;
+  gzip_buffer = nullptr;
 }
 
-void reset_input_stream(std::ifstream &file_stream, std::istream *&stream,
-                        gzip_input_buffer *&buffer, const std::string &path,
-                        const bool gzip_flag) {
-  if (gzip_flag) {
+void reset_input_stream(std::ifstream &file_stream, std::istream *&input_stream,
+                        gzip_input_buffer *&gzip_buffer,
+                        const std::string &path, const bool gzip_enabled) {
+  if (gzip_enabled) {
     file_stream.close();
-    delete stream;
-    delete buffer;
-    stream = nullptr;
-    buffer = nullptr;
-    open_input_stream(file_stream, stream, buffer, path, true);
+    delete input_stream;
+    delete gzip_buffer;
+    input_stream = nullptr;
+    gzip_buffer = nullptr;
+    open_input_stream(file_stream, input_stream, gzip_buffer, path, true);
     return;
   }
 
@@ -83,13 +83,14 @@ void reset_input_stream(std::ifstream &file_stream, std::istream *&stream,
   file_stream.seekg(0);
 }
 
-void close_input_stream(std::ifstream &file_stream, std::istream *&stream,
-                        gzip_input_buffer *&buffer, const bool gzip_flag) {
-  if (gzip_flag) {
-    delete stream;
-    delete buffer;
-    stream = nullptr;
-    buffer = nullptr;
+void close_input_stream(std::ifstream &file_stream, std::istream *&input_stream,
+                        gzip_input_buffer *&gzip_buffer,
+                        const bool gzip_enabled) {
+  if (gzip_enabled) {
+    delete input_stream;
+    delete gzip_buffer;
+    input_stream = nullptr;
+    gzip_buffer = nullptr;
   }
   file_stream.close();
 }
@@ -99,52 +100,58 @@ void close_input_stream(std::ifstream &file_stream, std::istream *&stream,
 void preprocess(const std::string &infile_1, const std::string &infile_2,
                 const std::string &temp_dir, compression_params &cp,
                 const bool &gzip_flag, const bool &fasta_flag) {
-  std::string infile[2] = {infile_1, infile_2};
-  std::string outfileclean[2];
-  std::string outfileN[2];
-  std::string outfileorderN[2];
-  std::string outfileid[2];
-  std::string outfilequality[2];
-  std::string outfileread[2];
-  std::string outfilereadlength[2];
-  std::string basedir = temp_dir;
-  outfileclean[0] = basedir + "/input_clean_1.dna";
-  outfileclean[1] = basedir + "/input_clean_2.dna";
-  outfileN[0] = basedir + "/input_N.dna";
-  outfileN[1] = basedir + "/input_N.dna.2";
-  outfileorderN[0] = basedir + "/read_order_N.bin";
-  outfileorderN[1] = basedir + "/read_order_N.bin.2";
-  outfileid[0] = basedir + "/id_1";
-  outfileid[1] = basedir + "/id_2";
-  outfilequality[0] = basedir + "/quality_1";
-  outfilequality[1] = basedir + "/quality_2";
-  outfileread[0] = basedir + "/read_1";
-  outfileread[1] = basedir + "/read_2";
-  outfilereadlength[0] = basedir + "/readlength_1";
-  outfilereadlength[1] = basedir + "/readlength_2";
+  std::string input_paths[2] = {infile_1, infile_2};
+  std::string clean_read_paths[2];
+  std::string n_read_paths[2];
+  std::string n_read_order_paths[2];
+  std::string id_output_paths[2];
+  std::string quality_output_paths[2];
+  std::string read_block_paths[2];
+  std::string read_length_paths[2];
+  std::string base_dir = temp_dir;
+  clean_read_paths[0] = base_dir + "/input_clean_1.dna";
+  clean_read_paths[1] = base_dir + "/input_clean_2.dna";
+  n_read_paths[0] = base_dir + "/input_N.dna";
+  n_read_paths[1] = base_dir + "/input_N.dna.2";
+  n_read_order_paths[0] = base_dir + "/read_order_N.bin";
+  n_read_order_paths[1] = base_dir + "/read_order_N.bin.2";
+  id_output_paths[0] = base_dir + "/id_1";
+  id_output_paths[1] = base_dir + "/id_2";
+  quality_output_paths[0] = base_dir + "/quality_1";
+  quality_output_paths[1] = base_dir + "/quality_2";
+  read_block_paths[0] = base_dir + "/read_1";
+  read_block_paths[1] = base_dir + "/read_2";
+  read_length_paths[0] = base_dir + "/readlength_1";
+  read_length_paths[1] = base_dir + "/readlength_2";
 
-  std::ifstream fin_f[2];
-  std::ofstream fout_clean[2];
-  std::ofstream fout_N[2];
-  std::ofstream fout_order_N[2];
-  std::ofstream fout_id[2];
-  std::ofstream fout_quality[2];
-  std::istream *fin[2] = {nullptr, nullptr};
-  gzip_input_buffer *inbuf[2] = {nullptr, nullptr};
+  std::ifstream input_files[2];
+  std::ofstream clean_outputs[2];
+  std::ofstream n_read_outputs[2];
+  std::ofstream n_read_order_outputs[2];
+  std::ofstream id_outputs[2];
+  std::ofstream quality_outputs[2];
+  std::istream *input_streams[2] = {nullptr, nullptr};
+  gzip_input_buffer *gzip_buffers[2] = {nullptr, nullptr};
 
-  for (int j = 0; j < 2; j++) {
-    if (j == 1 && !cp.paired_end)
+  for (int stream_index = 0; stream_index < 2; stream_index++) {
+    if (stream_index == 1 && !cp.paired_end)
       continue;
-    open_input_stream(fin_f[j], fin[j], inbuf[j], infile[j], gzip_flag);
+    open_input_stream(input_files[stream_index], input_streams[stream_index],
+                      gzip_buffers[stream_index], input_paths[stream_index],
+                      gzip_flag);
     if (!cp.long_flag) {
-      fout_clean[j].open(outfileclean[j], std::ios::binary);
-      fout_N[j].open(outfileN[j], std::ios::binary);
-      fout_order_N[j].open(outfileorderN[j], std::ios::binary);
+      clean_outputs[stream_index].open(clean_read_paths[stream_index],
+                                       std::ios::binary);
+      n_read_outputs[stream_index].open(n_read_paths[stream_index],
+                                        std::ios::binary);
+      n_read_order_outputs[stream_index].open(
+          n_read_order_paths[stream_index], std::ios::binary);
       if (!cp.preserve_order) {
         if (cp.preserve_id)
-          fout_id[j].open(outfileid[j]);
+          id_outputs[stream_index].open(id_output_paths[stream_index]);
         if (cp.preserve_quality)
-          fout_quality[j].open(outfilequality[j]);
+          quality_outputs[stream_index].open(
+              quality_output_paths[stream_index]);
       }
     }
   }
@@ -167,21 +174,24 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
     generate_binary_binning_table(quality_binning_table, cp.bin_thr_thr,
                                   cp.bin_thr_high, cp.bin_thr_low);
 
-  if (!fin_f[0].is_open())
+  if (!input_files[0].is_open())
     throw std::runtime_error("Error opening input file");
   if (cp.paired_end) {
-    if (!fin_f[1].is_open())
+    if (!input_files[1].is_open())
       throw std::runtime_error("Error opening input file");
     if (cp.preserve_id) {
       // Probe the mate-id pattern once so later stages can drop redundant ids.
       std::string id_1, id_2;
-      std::getline(*fin[0], id_1);
-      std::getline(*fin[1], id_2);
+      std::getline(*input_streams[0], id_1);
+      std::getline(*input_streams[1], id_2);
       paired_id_code = find_id_pattern(id_1, id_2);
       if (paired_id_code != 0)
         paired_id_match = true;
-      for (int j = 0; j < 2; j++)
-        reset_input_stream(fin_f[j], fin[j], inbuf[j], infile[j], gzip_flag);
+      for (int stream_index = 0; stream_index < 2; stream_index++)
+        reset_input_stream(input_files[stream_index],
+                           input_streams[stream_index],
+                           gzip_buffers[stream_index],
+                           input_paths[stream_index], gzip_flag);
     }
   }
   if (cp.num_thr <= 0)
@@ -202,165 +212,189 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
 
   while (true) {
     bool done[2] = {true, true};
-    for (int j = 0; j < 2; j++) {
-      if (j == 1 && !cp.paired_end)
+    for (int stream_index = 0; stream_index < 2; stream_index++) {
+      if (stream_index == 1 && !cp.paired_end)
         continue;
-      done[j] = false;
-      std::string *id_array = (j == 0) ? id_array_1.data() : id_array_2.data();
-      uint32_t num_reads_read =
-          read_fastq_block(fin[j], id_array, read_array.data(),
+      done[stream_index] = false;
+      std::string *id_array =
+          (stream_index == 0) ? id_array_1.data() : id_array_2.data();
+      uint32_t reads_in_step =
+          read_fastq_block(input_streams[stream_index], id_array,
+                           read_array.data(),
                            quality_array.data(),
                            num_reads_per_step, fasta_flag);
-      if (num_reads_read < num_reads_per_step)
-        done[j] = true;
-      if (num_reads_read == 0)
+      if (reads_in_step < num_reads_per_step)
+        done[stream_index] = true;
+      if (reads_in_step == 0)
         continue;
-      if (num_reads[0] + num_reads[1] + num_reads_read > MAX_NUM_READS) {
+      if (num_reads[0] + num_reads[1] + reads_in_step > MAX_NUM_READS) {
         std::cerr << "Max number of reads allowed is " << MAX_NUM_READS << "\n";
         throw std::runtime_error("Too many reads.");
       }
 #pragma omp parallel
       {
-        bool done = false;
-        uint64_t tid = omp_get_thread_num();
-        if (j == 1)
-          paired_id_match_array[tid] = paired_id_match;
-        if (tid * num_reads_per_block >= num_reads_read)
-          done = true;
-        const uint32_t block_num = num_blocks_done + static_cast<uint32_t>(tid);
-        uint32_t num_reads_thr = std::min((uint64_t)num_reads_read,
-                                          (tid + 1) * num_reads_per_block) -
-                                 tid * num_reads_per_block;
-        std::ofstream fout_readlength;
-        if (!done) {
+        bool thread_done = false;
+        uint64_t thread_id = omp_get_thread_num();
+        if (stream_index == 1)
+          paired_id_match_array[thread_id] = paired_id_match;
+        if (thread_id * num_reads_per_block >= reads_in_step)
+          thread_done = true;
+        const uint32_t block_num =
+            num_blocks_done + static_cast<uint32_t>(thread_id);
+        uint32_t thread_read_count =
+            std::min((uint64_t)reads_in_step,
+                     (thread_id + 1) * num_reads_per_block) -
+            thread_id * num_reads_per_block;
+        std::ofstream read_length_output;
+        if (!thread_done) {
           if (cp.long_flag)
-            fout_readlength.open(block_file_path(outfilereadlength[j], block_num),
-                                 std::ios::binary);
-          for (uint32_t i = tid * num_reads_per_block;
-               i < tid * num_reads_per_block + num_reads_thr; i++) {
-            size_t len = read_array[i].size();
-            if (cp.long_flag && len > MAX_READ_LEN_LONG) {
+            read_length_output.open(
+                block_file_path(read_length_paths[stream_index], block_num),
+                std::ios::binary);
+          for (uint32_t read_index = thread_id * num_reads_per_block;
+               read_index < thread_id * num_reads_per_block + thread_read_count;
+               read_index++) {
+            size_t read_length = read_array[read_index].size();
+            if (cp.long_flag && read_length > MAX_READ_LEN_LONG) {
               std::cerr << "Max read length for long mode is "
                         << MAX_READ_LEN_LONG << ", but found read of length "
-                        << len << "\n";
+                        << read_length << "\n";
               throw std::runtime_error("Too long read length");
             }
-            if (!cp.long_flag && len > MAX_READ_LEN) {
+            if (!cp.long_flag && read_length > MAX_READ_LEN) {
               std::cerr << "Max read length without long mode is "
-                        << MAX_READ_LEN << ", but found read of length " << len
-                        << "\n";
+                        << MAX_READ_LEN << ", but found read of length "
+                        << read_length << "\n";
               throw std::runtime_error(
                   "Too long read length (please try --long/-l flag).");
             }
-            if (cp.preserve_quality && (quality_array[i].size() != len))
+            if (cp.preserve_quality &&
+                (quality_array[read_index].size() != read_length))
               throw std::runtime_error(
                   "Read length does not match quality length.");
-            read_lengths_array[i] = (uint32_t)len;
+            read_lengths_array[read_index] = (uint32_t)read_length;
 
             if (!cp.long_flag)
-              read_contains_N_array[i] =
-                  (read_array[i].find('N') != std::string::npos);
+              read_contains_N_array[read_index] =
+                  (read_array[read_index].find('N') != std::string::npos);
 
             if (cp.long_flag)
-              fout_readlength.write(byte_ptr(&read_lengths_array[i]),
-                                    sizeof(uint32_t));
+              read_length_output.write(
+                  byte_ptr(&read_lengths_array[read_index]),
+                  sizeof(uint32_t));
 
-            if (j == 1 && paired_id_match_array[tid])
-              paired_id_match_array[tid] = check_id_pattern(
-                  id_array_1[i], id_array_2[i], paired_id_code);
+            if (stream_index == 1 && paired_id_match_array[thread_id])
+              paired_id_match_array[thread_id] = check_id_pattern(
+                  id_array_1[read_index], id_array_2[read_index],
+                  paired_id_code);
           }
           if (cp.long_flag)
-            fout_readlength.close();
+            read_length_output.close();
           if (cp.preserve_quality && (cp.ill_bin_flag || cp.bin_thr_flag))
-            quantize_quality(quality_array.data() + tid * num_reads_per_block,
-                             num_reads_thr, quality_binning_table);
+            quantize_quality(
+                quality_array.data() + thread_id * num_reads_per_block,
+                thread_read_count, quality_binning_table);
 
           if (cp.preserve_quality && cp.qvz_flag && cp.preserve_order)
             quantize_quality_qvz(
-                quality_array.data() + tid * num_reads_per_block,
-                num_reads_thr,
-                read_lengths_array.data() + tid * num_reads_per_block,
+                quality_array.data() + thread_id * num_reads_per_block,
+                thread_read_count,
+                read_lengths_array.data() + thread_id * num_reads_per_block,
                 cp.qvz_ratio);
           if (!cp.long_flag) {
             if (cp.preserve_order) {
               if (cp.preserve_id) {
-                std::string outfile_name =
-                    outfileid[j] + "." + std::to_string(num_blocks_done + tid);
-                compress_id_block(outfile_name.c_str(),
-                                  id_array + tid * num_reads_per_block,
-                                  num_reads_thr);
+                std::string output_path = id_output_paths[stream_index] + "." +
+                                          std::to_string(num_blocks_done +
+                                                         thread_id);
+                compress_id_block(output_path.c_str(),
+                                  id_array + thread_id * num_reads_per_block,
+                                  thread_read_count);
               }
               if (cp.preserve_quality) {
-                std::string outfile_name =
-                    outfilequality[j] + "." +
-                    std::to_string(num_blocks_done + tid);
+                std::string output_path =
+                    quality_output_paths[stream_index] + "." +
+                    std::to_string(num_blocks_done + thread_id);
                 bsc::BSC_str_array_compress(
-                    outfile_name.c_str(),
-                    quality_array.data() + tid * num_reads_per_block,
-                    num_reads_thr,
-                    read_lengths_array.data() + tid * num_reads_per_block);
+                    output_path.c_str(),
+                    quality_array.data() + thread_id * num_reads_per_block,
+                    thread_read_count,
+                    read_lengths_array.data() + thread_id * num_reads_per_block);
               }
             }
           } else {
-            std::string infile_name =
-                block_file_path(outfilereadlength[j], block_num);
-            std::string outfile_name = infile_name + ".bsc";
-            bsc::BSC_compress(infile_name.c_str(), outfile_name.c_str());
-            remove(infile_name.c_str());
+            std::string read_length_input_path =
+                block_file_path(read_length_paths[stream_index], block_num);
+            std::string read_length_output_path =
+                read_length_input_path + ".bsc";
+            bsc::BSC_compress(read_length_input_path.c_str(),
+                              read_length_output_path.c_str());
+            remove(read_length_input_path.c_str());
             if (cp.preserve_id) {
-              std::string outfile_name = block_file_path(outfileid[j], block_num);
-              compress_id_block(outfile_name.c_str(),
-                                id_array + tid * num_reads_per_block,
-                                num_reads_thr);
+              std::string output_path =
+                  block_file_path(id_output_paths[stream_index], block_num);
+              compress_id_block(output_path.c_str(),
+                                id_array + thread_id * num_reads_per_block,
+                                thread_read_count);
             }
             if (cp.preserve_quality) {
-              std::string outfile_name =
-                  block_file_path(outfilequality[j], block_num);
+              std::string output_path =
+                  block_file_path(quality_output_paths[stream_index],
+                                  block_num);
               bsc::BSC_str_array_compress(
-                  outfile_name.c_str(),
-                  quality_array.data() + tid * num_reads_per_block,
-                  num_reads_thr,
-                  read_lengths_array.data() + tid * num_reads_per_block);
+                  output_path.c_str(),
+                  quality_array.data() + thread_id * num_reads_per_block,
+                  thread_read_count,
+                  read_lengths_array.data() + thread_id * num_reads_per_block);
             }
-            outfile_name = block_file_path(outfileread[j], block_num);
+            std::string output_path =
+                block_file_path(read_block_paths[stream_index], block_num);
             bsc::BSC_str_array_compress(
-                outfile_name.c_str(),
-                read_array.data() + tid * num_reads_per_block, num_reads_thr,
-                read_lengths_array.data() + tid * num_reads_per_block);
+                output_path.c_str(),
+                read_array.data() + thread_id * num_reads_per_block,
+                thread_read_count,
+                read_lengths_array.data() + thread_id * num_reads_per_block);
           }
         }
       }
-      if (cp.paired_end && (j == 1)) {
+      if (cp.paired_end && (stream_index == 1)) {
         if (paired_id_match)
-          for (int tid = 0; tid < cp.num_thr; tid++)
-            paired_id_match &= paired_id_match_array[tid];
+          for (int thread_id = 0; thread_id < cp.num_thr; thread_id++)
+            paired_id_match &= paired_id_match_array[thread_id];
         if (!paired_id_match)
           paired_id_code = 0;
       }
       if (!cp.long_flag) {
-        for (uint32_t i = 0; i < num_reads_read; i++) {
-          if (!read_contains_N_array[i]) {
-            write_dna_in_bits(read_array[i], fout_clean[j]);
-            num_reads_clean[j]++;
+        for (uint32_t read_index = 0; read_index < reads_in_step;
+             read_index++) {
+          if (!read_contains_N_array[read_index]) {
+            write_dna_in_bits(read_array[read_index],
+                              clean_outputs[stream_index]);
+            num_reads_clean[stream_index]++;
           } else {
-            uint32_t pos_N = num_reads[j] + i;
-            fout_order_N[j].write(byte_ptr(&pos_N), sizeof(uint32_t));
-            write_dnaN_in_bits(read_array[i], fout_N[j]);
+            uint32_t n_read_position = num_reads[stream_index] + read_index;
+            n_read_order_outputs[stream_index].write(
+                byte_ptr(&n_read_position), sizeof(uint32_t));
+            write_dnaN_in_bits(read_array[read_index],
+                               n_read_outputs[stream_index]);
           }
         }
         if (!cp.preserve_order) {
-          for (uint32_t i = 0; i < num_reads_read; i++)
-            fout_quality[j] << quality_array[i] << "\n";
-          for (uint32_t i = 0; i < num_reads_read; i++)
-            fout_id[j] << id_array[i] << "\n";
+          for (uint32_t read_index = 0; read_index < reads_in_step;
+               read_index++)
+            quality_outputs[stream_index] << quality_array[read_index]
+                                          << "\n";
+          for (uint32_t read_index = 0; read_index < reads_in_step;
+               read_index++)
+            id_outputs[stream_index] << id_array[read_index] << "\n";
         }
       }
-      num_reads[j] += num_reads_read;
+      num_reads[stream_index] += reads_in_step;
       max_readlen =
           std::max(max_readlen,
                *(std::max_element(read_lengths_array.begin(),
                         read_lengths_array.begin() +
-                          num_reads_read)));
+                          reads_in_step)));
     }
     if (cp.paired_end)
       if (num_reads[0] != num_reads[1])
@@ -372,19 +406,20 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   }
 
   delete[] quality_binning_table;
-  for (int j = 0; j < 2; j++) {
-    if (j == 1 && !cp.paired_end)
+  for (int stream_index = 0; stream_index < 2; stream_index++) {
+    if (stream_index == 1 && !cp.paired_end)
       continue;
-    close_input_stream(fin_f[j], fin[j], inbuf[j], gzip_flag);
+    close_input_stream(input_files[stream_index], input_streams[stream_index],
+                       gzip_buffers[stream_index], gzip_flag);
     if (!cp.long_flag) {
-      fout_clean[j].close();
-      fout_N[j].close();
-      fout_order_N[j].close();
+      clean_outputs[stream_index].close();
+      n_read_outputs[stream_index].close();
+      n_read_order_outputs[stream_index].close();
       if (!cp.preserve_order) {
         if (cp.preserve_id)
-          fout_id[j].close();
+          id_outputs[stream_index].close();
         if (cp.preserve_quality)
-          fout_quality[j].close();
+          quality_outputs[stream_index].close();
       }
     }
   }
@@ -393,34 +428,38 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
 
   if (!cp.long_flag && cp.paired_end) {
     // Shift mate-2 N-read positions by file-1 length before merging the streams.
-    std::ofstream fout_N(outfileN[0], std::ios::app | std::ios::binary);
-    std::ifstream fin_N(outfileN[1], std::ios::binary);
-    fout_N << fin_N.rdbuf();
-    fout_N.close();
-    fin_N.close();
-    remove(outfileN[1].c_str());
-    std::ofstream fout_order_N(outfileorderN[0],
-                               std::ios::app | std::ios::binary);
-    std::ifstream fin_order_N(outfileorderN[1], std::ios::binary);
-    uint32_t num_N_file_2 = num_reads[1] - num_reads_clean[1];
-    uint32_t order_N;
-    for (uint32_t i = 0; i < num_N_file_2; i++) {
-      fin_order_N.read(byte_ptr(&order_N), sizeof(uint32_t));
-      order_N += num_reads[0];
-      fout_order_N.write(byte_ptr(&order_N), sizeof(uint32_t));
+    std::ofstream merged_n_read_output(n_read_paths[0],
+                                       std::ios::app | std::ios::binary);
+    std::ifstream mate_n_read_input(n_read_paths[1], std::ios::binary);
+    merged_n_read_output << mate_n_read_input.rdbuf();
+    merged_n_read_output.close();
+    mate_n_read_input.close();
+    remove(n_read_paths[1].c_str());
+    std::ofstream merged_n_read_order_output(n_read_order_paths[0],
+                                             std::ios::app | std::ios::binary);
+    std::ifstream mate_n_read_order_input(n_read_order_paths[1],
+                                          std::ios::binary);
+    uint32_t mate_n_read_count = num_reads[1] - num_reads_clean[1];
+    uint32_t n_read_order;
+    for (uint32_t read_index = 0; read_index < mate_n_read_count;
+         read_index++) {
+      mate_n_read_order_input.read(byte_ptr(&n_read_order), sizeof(uint32_t));
+      n_read_order += num_reads[0];
+      merged_n_read_order_output.write(byte_ptr(&n_read_order),
+                                       sizeof(uint32_t));
     }
-    fin_order_N.close();
-    fout_order_N.close();
-    remove(outfileorderN[1].c_str());
+    mate_n_read_order_input.close();
+    merged_n_read_order_output.close();
+    remove(n_read_order_paths[1].c_str());
   }
 
   if (cp.paired_end && paired_id_match) {
     if (!cp.long_flag && !cp.preserve_order) {
-      remove(outfileid[1].c_str());
+      remove(id_output_paths[1].c_str());
     } else {
       const uint32_t num_blocks = block_count(num_reads[0], num_reads_per_block);
-      for (uint32_t i = 0; i < num_blocks; i++)
-        remove(block_file_path(outfileid[1], i).c_str());
+      for (uint32_t block_index = 0; block_index < num_blocks; block_index++)
+        remove(block_file_path(id_output_paths[1], block_index).c_str());
     }
   }
   cp.paired_id_code = paired_id_code;

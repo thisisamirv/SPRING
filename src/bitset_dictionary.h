@@ -29,13 +29,15 @@ namespace spring {
 using hasher_t = boomphf::SingleHashFunctor<uint64_t>;
 using boophf_t = boomphf::mphf<uint64_t, hasher_t>;
 
-inline std::string keys_bin_path(const std::string &basedir, const int tid) {
-  return basedir + "/keys.bin." + std::to_string(tid);
+inline std::string keys_bin_path(const std::string &base_dir,
+                                 const int thread_id) {
+  return base_dir + "/keys.bin." + std::to_string(thread_id);
 }
 
-inline std::string hash_bin_path(const std::string &basedir, const int tid,
+inline std::string hash_bin_path(const std::string &base_dir,
+                                 const int thread_id,
                                  const int dict_index) {
-  return basedir + "/hash.bin." + std::to_string(tid) + '.' +
+  return base_dir + "/hash.bin." + std::to_string(thread_id) + '.' +
          std::to_string(dict_index);
 }
 
@@ -78,13 +80,14 @@ void stringtobitset(const std::string &s, const uint16_t readlen,
 }
 
 template <size_t bitset_size>
-void generateindexmasks(std::bitset<bitset_size> *mask1, bbhashdict *dict,
+void generateindexmasks(std::bitset<bitset_size> *index_masks,
+                        bbhashdict *dict,
                         int numdict, int bpb) {
   for (int j = 0; j < numdict; j++)
-    mask1[j].reset();
+    index_masks[j].reset();
   for (int j = 0; j < numdict; j++)
     for (int i = bpb * dict[j].start; i < bpb * (dict[j].end + 1); i++)
-      mask1[j][i] = 1;
+      index_masks[j][i] = 1;
   return;
 }
 
@@ -93,25 +96,27 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
                          uint16_t *read_lengths, const int numdict,
                          const uint32_t &numreads, const int bpb,
                          const std::string &basedir, const int &num_thr) {
-  std::bitset<bitset_size> *mask = new std::bitset<bitset_size>[numdict];
-  generateindexmasks<bitset_size>(mask, dict, numdict, bpb);
+  std::bitset<bitset_size> *index_masks =
+      new std::bitset<bitset_size>[numdict];
+  generateindexmasks<bitset_size>(index_masks, dict, numdict, bpb);
   for (int j = 0; j < numdict; j++) {
     bbhashdict &current_dict = dict[j];
-    uint64_t *ull = new uint64_t[numreads];
+    uint64_t *dictionary_keys = new uint64_t[numreads];
 #pragma omp parallel
     {
-      std::bitset<bitset_size> b;
-      const int tid = omp_get_thread_num();
+      std::bitset<bitset_size> masked_read_bits;
+      const int thread_id = omp_get_thread_num();
       const int thread_count = omp_get_num_threads();
       uint64_t i, stop;
-      i = uint64_t(tid) * numreads / thread_count;
-      stop = uint64_t(tid + 1) * numreads / thread_count;
-      if (tid == thread_count - 1)
+      i = uint64_t(thread_id) * numreads / thread_count;
+      stop = uint64_t(thread_id + 1) * numreads / thread_count;
+      if (thread_id == thread_count - 1)
         stop = numreads;
       // Compute this dictionary's masked keys for the thread's slice.
       for (; i < stop; i++) {
-        b = read[i] & mask[j];
-        ull[i] = (b >> bpb * current_dict.start).to_ullong();
+        masked_read_bits = read[i] & index_masks[j];
+        dictionary_keys[i] =
+            (masked_read_bits >> bpb * current_dict.start).to_ullong();
       }
     }
 
@@ -119,69 +124,74 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
     current_dict.dict_numreads = 0;
     for (uint32_t i = 0; i < numreads; i++) {
       if (read_lengths[i] > current_dict.end) {
-        ull[current_dict.dict_numreads] = ull[i];
+        dictionary_keys[current_dict.dict_numreads] = dictionary_keys[i];
         current_dict.dict_numreads++;
       }
     }
 
-  // Materialize per-thread key chunks so later passes can stream them again.
+    // Materialize per-thread key chunks so later passes can stream them again.
 #pragma omp parallel
     {
-      const int tid = omp_get_thread_num();
+      const int thread_id = omp_get_thread_num();
       const int thread_count = omp_get_num_threads();
-      std::ofstream foutkey(keys_bin_path(basedir, tid), std::ios::binary);
+      std::ofstream key_output(keys_bin_path(basedir, thread_id),
+                              std::ios::binary);
       uint64_t i, stop;
-      i = uint64_t(tid) * current_dict.dict_numreads / thread_count;
-      stop = uint64_t(tid + 1) * current_dict.dict_numreads / thread_count;
-      if (tid == thread_count - 1)
+      i = uint64_t(thread_id) * current_dict.dict_numreads / thread_count;
+      stop =
+          uint64_t(thread_id + 1) * current_dict.dict_numreads / thread_count;
+      if (thread_id == thread_count - 1)
         stop = current_dict.dict_numreads;
       for (; i < stop; i++)
-        foutkey.write(byte_ptr(&ull[i]), sizeof(uint64_t));
-      foutkey.close();
+        key_output.write(byte_ptr(&dictionary_keys[i]), sizeof(uint64_t));
+      key_output.close();
     }
 
     // Deduplicate the sorted key list before building the MPHF.
-    std::sort(ull, ull + current_dict.dict_numreads);
-    uint32_t k = 0;
+    std::sort(dictionary_keys, dictionary_keys + current_dict.dict_numreads);
+    uint32_t unique_key_index = 0;
     for (uint32_t i = 1; i < current_dict.dict_numreads; i++)
-      if (ull[i] != ull[k])
-        ull[++k] = ull[i];
-    current_dict.numkeys = k + 1;
+      if (dictionary_keys[i] != dictionary_keys[unique_key_index])
+        dictionary_keys[++unique_key_index] = dictionary_keys[i];
+    current_dict.numkeys = unique_key_index + 1;
 
     // Build the MPHF over the distinct keys.
     auto data_iterator =
-        boomphf::range(static_cast<const uint64_t *>(ull),
-                       static_cast<const uint64_t *>(ull + current_dict.numkeys));
+        boomphf::range(static_cast<const uint64_t *>(dictionary_keys),
+                       static_cast<const uint64_t *>(dictionary_keys +
+                                                    current_dict.numkeys));
     const double gamma_factor = 5.0; // balance between speed and memory
     current_dict.bphf = new boomphf::mphf<uint64_t, hasher_t>(
         current_dict.numkeys, data_iterator, num_thr, gamma_factor, true,
         false);
 
-    delete[] ull;
+    delete[] dictionary_keys;
 
-  // Re-read the stored keys and materialize their hash buckets.
+    // Re-read the stored keys and materialize their hash buckets.
 #pragma omp parallel
     {
-      const int tid = omp_get_thread_num();
+      const int thread_id = omp_get_thread_num();
       const int thread_count = omp_get_num_threads();
-      const std::string key_path = keys_bin_path(basedir, tid);
-      const std::string hash_path = hash_bin_path(basedir, tid, j);
-      std::ifstream finkey(key_path, std::ios::binary);
-      std::ofstream fouthash(hash_path, std::ios::binary);
-      uint64_t currentkey, currenthash;
+      const std::string key_path = keys_bin_path(basedir, thread_id);
+      const std::string hash_path = hash_bin_path(basedir, thread_id, j);
+      std::ifstream key_input(key_path, std::ios::binary);
+      std::ofstream hash_output(hash_path, std::ios::binary);
+      uint64_t current_key;
+      uint64_t current_hash;
       uint64_t i, stop;
-      i = uint64_t(tid) * current_dict.dict_numreads / thread_count;
-      stop = uint64_t(tid + 1) * current_dict.dict_numreads / thread_count;
-      if (tid == thread_count - 1)
+      i = uint64_t(thread_id) * current_dict.dict_numreads / thread_count;
+      stop =
+          uint64_t(thread_id + 1) * current_dict.dict_numreads / thread_count;
+      if (thread_id == thread_count - 1)
         stop = current_dict.dict_numreads;
       for (; i < stop; i++) {
-        finkey.read(byte_ptr(&currentkey), sizeof(uint64_t));
-        currenthash = current_dict.bphf->lookup(currentkey);
-        fouthash.write(byte_ptr(&currenthash), sizeof(uint64_t));
+        key_input.read(byte_ptr(&current_key), sizeof(uint64_t));
+        current_hash = current_dict.bphf->lookup(current_key);
+        hash_output.write(byte_ptr(&current_hash), sizeof(uint64_t));
       }
-      finkey.close();
+      key_input.close();
       remove(key_path.c_str());
-      fouthash.close();
+      hash_output.close();
     }
   }
 
@@ -196,15 +206,16 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
       current_dict.startpos =
           new uint32_t[current_dict.numkeys +
                        1](); // 1 extra to store end pos of last key
-      uint64_t currenthash;
-      for (int tid = 0; tid < num_thr; tid++) {
-        std::ifstream finhash(hash_bin_path(basedir, tid, j), std::ios::binary);
-        finhash.read(byte_ptr(&currenthash), sizeof(uint64_t));
-        while (!finhash.eof()) {
-          current_dict.startpos[currenthash + 1]++;
-          finhash.read(byte_ptr(&currenthash), sizeof(uint64_t));
+      uint64_t current_hash;
+      for (int thread_id = 0; thread_id < num_thr; thread_id++) {
+        std::ifstream hash_input(hash_bin_path(basedir, thread_id, j),
+                                 std::ios::binary);
+        hash_input.read(byte_ptr(&current_hash), sizeof(uint64_t));
+        while (!hash_input.eof()) {
+          current_dict.startpos[current_hash + 1]++;
+          hash_input.read(byte_ptr(&current_hash), sizeof(uint64_t));
         }
-        finhash.close();
+        hash_input.close();
       }
 
       current_dict.empty_bin = new bool[current_dict.numkeys]();
@@ -215,18 +226,18 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
       // Populate the per-key read lists using the streamed hash files.
       current_dict.read_id = new uint32_t[current_dict.dict_numreads];
       uint32_t i = 0;
-      for (int tid = 0; tid < num_thr; tid++) {
-        const std::string hash_path = hash_bin_path(basedir, tid, j);
-        std::ifstream finhash(hash_path, std::ios::binary);
-        finhash.read(byte_ptr(&currenthash), sizeof(uint64_t));
-        while (!finhash.eof()) {
+      for (int thread_id = 0; thread_id < num_thr; thread_id++) {
+        const std::string hash_path = hash_bin_path(basedir, thread_id, j);
+        std::ifstream hash_input(hash_path, std::ios::binary);
+        hash_input.read(byte_ptr(&current_hash), sizeof(uint64_t));
+        while (!hash_input.eof()) {
           while (read_lengths[i] <= current_dict.end)
             i++;
-          current_dict.read_id[current_dict.startpos[currenthash]++] = i;
+          current_dict.read_id[current_dict.startpos[current_hash]++] = i;
           i++;
-          finhash.read(byte_ptr(&currenthash), sizeof(uint64_t));
+          hash_input.read(byte_ptr(&current_hash), sizeof(uint64_t));
         }
-        finhash.close();
+        hash_input.close();
         remove(hash_path.c_str());
       }
 
@@ -237,7 +248,7 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
     }
   }
   omp_set_num_threads(num_thr);
-  delete[] mask;
+  delete[] index_masks;
   return;
 }
 

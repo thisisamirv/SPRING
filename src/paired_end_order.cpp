@@ -23,49 +23,52 @@ limitations under the License.
 namespace spring {
 
 void pe_encode(const std::string &temp_dir, const compression_params &cp) {
-  const uint32_t numreads = cp.num_reads;
-  const uint32_t numreads_by_2 = numreads / 2;
+  const uint32_t num_reads = cp.num_reads;
+  const uint32_t half_read_count = num_reads / 2;
 
-  const std::string basedir = temp_dir;
-  const std::string file_order = basedir + "/read_order.bin";
-  std::vector<uint32_t> order_array(numreads);
-  std::vector<uint32_t> inverse_order_array(numreads);
+  const std::string base_dir = temp_dir;
+  const std::string read_order_path = base_dir + "/read_order.bin";
+  std::vector<uint32_t> reordered_positions(num_reads);
+  std::vector<uint32_t> original_index_by_order(num_reads);
 
-  std::ifstream fin_order(file_order, std::ios::binary);
-  uint32_t order;
-  for (uint32_t i = 0; i < numreads; i++) {
-    fin_order.read(byte_ptr(&order), sizeof(uint32_t));
-    order_array[i] = order;
-    inverse_order_array[order] = i;
+  std::ifstream order_input(read_order_path, std::ios::binary);
+  uint32_t current_order;
+  for (uint32_t read_index = 0; read_index < num_reads; read_index++) {
+    order_input.read(byte_ptr(&current_order), sizeof(uint32_t));
+    reordered_positions[read_index] = current_order;
+    original_index_by_order[current_order] = read_index;
   }
-  fin_order.close();
+  order_input.close();
 
   // File 1 keeps its reordered traversal; file 2 follows its mate positions.
-  uint32_t pos_in_file_1 = 0;
-  for (uint32_t i = 0; i < numreads; i++) {
-    if (order_array[i] < numreads_by_2)
-      order_array[i] = pos_in_file_1++;
+  uint32_t next_first_mate_order = 0;
+  for (uint32_t read_index = 0; read_index < num_reads; read_index++) {
+    if (reordered_positions[read_index] < half_read_count)
+      reordered_positions[read_index] = next_first_mate_order++;
   }
 
-  for (uint32_t i = 0; i < numreads; i++) {
-    if (order_array[i] >= numreads_by_2) {
-      const uint32_t original_pos = order_array[i];
-      const uint32_t pair_original_pos = original_pos - numreads_by_2;
-      const uint32_t pair_reordered_pos =
-          inverse_order_array[pair_original_pos];
-      const uint32_t pair_new_order = order_array[pair_reordered_pos];
-      order_array[i] = pair_new_order + numreads_by_2;
+  for (uint32_t read_index = 0; read_index < num_reads; read_index++) {
+    if (reordered_positions[read_index] >= half_read_count) {
+      const uint32_t original_order = reordered_positions[read_index];
+      const uint32_t mate_original_order = original_order - half_read_count;
+      const uint32_t mate_read_index =
+          original_index_by_order[mate_original_order];
+      const uint32_t mate_reordered_position =
+          reordered_positions[mate_read_index];
+      reordered_positions[read_index] =
+          mate_reordered_position + half_read_count;
     }
   }
 
-  std::ofstream fout_order(file_order + ".tmp", std::ios::binary);
-  for (uint32_t i = 0; i < numreads; i++) {
-    fout_order.write(byte_ptr(&order_array[i]), sizeof(uint32_t));
+  std::ofstream order_output(read_order_path + ".tmp", std::ios::binary);
+  for (uint32_t read_index = 0; read_index < num_reads; read_index++) {
+    order_output.write(byte_ptr(&reordered_positions[read_index]),
+                       sizeof(uint32_t));
   }
-  fout_order.close();
+  order_output.close();
 
-  remove(file_order.c_str());
-  rename((file_order + ".tmp").c_str(), file_order.c_str());
+  remove(read_order_path.c_str());
+  rename((read_order_path + ".tmp").c_str(), read_order_path.c_str());
 }
 
 } // namespace spring

@@ -86,19 +86,23 @@ inline void initialize_reorder_dict_ranges(
 }
 
 template <size_t bitset_size>
-void bitsettostring(std::bitset<bitset_size> b, char *s, const uint16_t readlen,
+void bitsettostring(std::bitset<bitset_size> encoded_bases,
+                    char *read_chars, const uint16_t readlen,
                     const reorder_global<bitset_size> &rg) {
-  static const char revinttochar[4] = {'A', 'G', 'C', 'T'};
-  unsigned long long ull;
-  for (int i = 0; i < 2 * readlen / 64 + 1; i++) {
-    ull = (b & rg.mask64).to_ullong();
-    b >>= 64;
-    for (int j = 32 * i; j < 32 * i + 32 && j < readlen; j++) {
-      s[j] = revinttochar[ull % 4];
-      ull /= 4;
+  static const char reverse_base_lookup[4] = {'A', 'G', 'C', 'T'};
+  unsigned long long packed_bases;
+  for (int block_index = 0; block_index < 2 * readlen / 64 + 1;
+       block_index++) {
+    packed_bases = (encoded_bases & rg.mask64).to_ullong();
+    encoded_bases >>= 64;
+    for (int read_index = 32 * block_index;
+         read_index < 32 * block_index + 32 && read_index < readlen;
+         read_index++) {
+      read_chars[read_index] = reverse_base_lookup[packed_bases % 4];
+      packed_bases /= 4;
     }
   }
-  s[readlen] = '\0';
+  read_chars[readlen] = '\0';
   return;
 }
 
@@ -120,114 +124,152 @@ void setglobalarrays(reorder_global<bitset_size> &rg) {
 }
 
 template <size_t bitset_size>
-void updaterefcount(std::bitset<bitset_size> &cur,
-                    std::bitset<bitset_size> &ref,
-                    std::bitset<bitset_size> &revref, int **count,
-                    const bool resetcount, const bool rev, const int shift,
-                    const uint16_t cur_readlen, int &ref_len,
+void updaterefcount(std::bitset<bitset_size> &current_read,
+                    std::bitset<bitset_size> &reference_read,
+                    std::bitset<bitset_size> &reverse_reference_read,
+                    int **base_counts, const bool reset_counts,
+                    const bool use_reverse_orientation,
+                    const int shift, const uint16_t current_read_length,
+                    int &reference_length,
                     const reorder_global<bitset_size> &rg)
 {
-  static const char inttochar[4] = {'A', 'C', 'T', 'G'};
-  auto chartoint = [](uint8_t a) {
-    return (a & 0x06) >> 1;
+  static const char base_lookup[4] = {'A', 'C', 'T', 'G'};
+  auto base_to_index = [](uint8_t encoded_base) {
+    return (encoded_base & 0x06) >> 1;
   }; // inverse of above
-  char s[MAX_READ_LEN + 1], s1[MAX_READ_LEN + 1], *current;
-  bitsettostring<bitset_size>(cur, s, cur_readlen, rg);
-  if (rev == false)
-    current = s;
+  char read_chars[MAX_READ_LEN + 1];
+  char reverse_chars[MAX_READ_LEN + 1];
+  char *oriented_read;
+  bitsettostring<bitset_size>(current_read, read_chars, current_read_length, rg);
+  if (!use_reverse_orientation)
+    oriented_read = read_chars;
   else {
-    reverse_complement(s, s1, cur_readlen);
-    current = s1;
+    reverse_complement(read_chars, reverse_chars, current_read_length);
+    oriented_read = reverse_chars;
   }
 
-  if (resetcount == true) {
-    std::fill(count[0], count[0] + rg.max_readlen, 0);
-    std::fill(count[1], count[1] + rg.max_readlen, 0);
-    std::fill(count[2], count[2] + rg.max_readlen, 0);
-    std::fill(count[3], count[3] + rg.max_readlen, 0);
-    for (int i = 0; i < cur_readlen; i++) {
-      count[chartoint((uint8_t)current[i])][i] = 1;
+  if (reset_counts == true) {
+    std::fill(base_counts[0], base_counts[0] + rg.max_readlen, 0);
+    std::fill(base_counts[1], base_counts[1] + rg.max_readlen, 0);
+    std::fill(base_counts[2], base_counts[2] + rg.max_readlen, 0);
+    std::fill(base_counts[3], base_counts[3] + rg.max_readlen, 0);
+    for (int read_index = 0; read_index < current_read_length; read_index++) {
+      base_counts[base_to_index((uint8_t)oriented_read[read_index])]
+                [read_index] = 1;
     }
-    ref_len = cur_readlen;
+    reference_length = current_read_length;
   } else {
-    if (!rev) {
+    if (!use_reverse_orientation) {
       // shift count
-      for (int i = 0; i < ref_len - shift; i++) {
-        for (int j = 0; j < 4; j++)
-          count[j][i] = count[j][i + shift];
-        if (i < cur_readlen)
-          count[chartoint((uint8_t)current[i])][i] += 1;
+      for (int ref_index = 0; ref_index < reference_length - shift;
+           ref_index++) {
+        for (int base_index = 0; base_index < 4; base_index++)
+          base_counts[base_index][ref_index] =
+              base_counts[base_index][ref_index + shift];
+        if (ref_index < current_read_length)
+          base_counts[base_to_index((uint8_t)oriented_read[ref_index])]
+                    [ref_index] += 1;
       }
 
       // for the new positions set count to 1
-      for (int i = ref_len - shift; i < cur_readlen; i++) {
-        for (int j = 0; j < 4; j++)
-          count[j][i] = 0;
-        count[chartoint((uint8_t)current[i])][i] = 1;
+      for (int ref_index = reference_length - shift;
+           ref_index < current_read_length; ref_index++) {
+        for (int base_index = 0; base_index < 4; base_index++)
+          base_counts[base_index][ref_index] = 0;
+        base_counts[base_to_index((uint8_t)oriented_read[ref_index])]
+                  [ref_index] = 1;
       }
-      ref_len = std::max<int>(ref_len - shift, cur_readlen);
+      reference_length =
+          std::max<int>(reference_length - shift, current_read_length);
     } else {
-      if (cur_readlen - shift >= ref_len) {
-        for (int i = cur_readlen - shift - ref_len; i < cur_readlen - shift;
-             i++) {
-          for (int j = 0; j < 4; j++)
-            count[j][i] = count[j][i - (cur_readlen - shift - ref_len)];
-          count[chartoint((uint8_t)current[i])][i] += 1;
+      if (current_read_length - shift >= reference_length) {
+        for (int ref_index = current_read_length - shift - reference_length;
+             ref_index < current_read_length - shift; ref_index++) {
+          for (int base_index = 0; base_index < 4; base_index++)
+            base_counts[base_index][ref_index] =
+                base_counts[base_index]
+                           [ref_index -
+                            (current_read_length - shift - reference_length)];
+          base_counts[base_to_index((uint8_t)oriented_read[ref_index])]
+                    [ref_index] += 1;
         }
-        for (int i = 0; i < cur_readlen - shift - ref_len; i++) {
-          for (int j = 0; j < 4; j++)
-            count[j][i] = 0;
-          count[chartoint((uint8_t)current[i])][i] = 1;
+        for (int ref_index = 0;
+             ref_index < current_read_length - shift - reference_length;
+             ref_index++) {
+          for (int base_index = 0; base_index < 4; base_index++)
+            base_counts[base_index][ref_index] = 0;
+          base_counts[base_to_index((uint8_t)oriented_read[ref_index])]
+                    [ref_index] = 1;
         }
-        for (int i = cur_readlen - shift; i < cur_readlen; i++) {
-          for (int j = 0; j < 4; j++)
-            count[j][i] = 0;
-          count[chartoint((uint8_t)current[i])][i] = 1;
+        for (int ref_index = current_read_length - shift;
+             ref_index < current_read_length; ref_index++) {
+          for (int base_index = 0; base_index < 4; base_index++)
+            base_counts[base_index][ref_index] = 0;
+          base_counts[base_to_index((uint8_t)oriented_read[ref_index])]
+                    [ref_index] = 1;
         }
-        ref_len = cur_readlen;
-      } else if (ref_len + shift <= rg.max_readlen) {
-        for (int i = ref_len - cur_readlen + shift; i < ref_len; i++)
-          count[chartoint(
-              (uint8_t)current[i - (ref_len - cur_readlen + shift)])][i] += 1;
-        for (int i = ref_len; i < ref_len + shift; i++) {
-          for (int j = 0; j < 4; j++)
-            count[j][i] = 0;
-          count[chartoint(
-              (uint8_t)current[i - (ref_len - cur_readlen + shift)])][i] = 1;
+        reference_length = current_read_length;
+      } else if (reference_length + shift <= rg.max_readlen) {
+        for (int ref_index = reference_length - current_read_length + shift;
+             ref_index < reference_length; ref_index++)
+          base_counts[base_to_index(
+              (uint8_t)oriented_read[ref_index -
+                                     (reference_length - current_read_length +
+                                      shift)])][ref_index] += 1;
+        for (int ref_index = reference_length;
+             ref_index < reference_length + shift; ref_index++) {
+          for (int base_index = 0; base_index < 4; base_index++)
+            base_counts[base_index][ref_index] = 0;
+          base_counts[base_to_index(
+              (uint8_t)oriented_read[ref_index -
+                                     (reference_length - current_read_length +
+                                      shift)])][ref_index] = 1;
         }
-        ref_len = ref_len + shift;
+        reference_length = reference_length + shift;
       } else {
-        for (int i = 0; i < rg.max_readlen - shift; i++) {
-          for (int j = 0; j < 4; j++)
-            count[j][i] = count[j][i + (ref_len + shift - rg.max_readlen)];
+        for (int ref_index = 0; ref_index < rg.max_readlen - shift;
+             ref_index++) {
+          for (int base_index = 0; base_index < 4; base_index++)
+            base_counts[base_index][ref_index] =
+                base_counts[base_index]
+                           [ref_index +
+                            (reference_length + shift - rg.max_readlen)];
         }
-        for (int i = rg.max_readlen - cur_readlen; i < rg.max_readlen - shift;
-             i++)
-          count[chartoint((uint8_t)current[i - (rg.max_readlen - cur_readlen)])]
-               [i] += 1;
-        for (int i = rg.max_readlen - shift; i < rg.max_readlen; i++) {
-          for (int j = 0; j < 4; j++)
-            count[j][i] = 0;
-          count[chartoint((uint8_t)current[i - (rg.max_readlen - cur_readlen)])]
-               [i] = 1;
+        for (int ref_index = rg.max_readlen - current_read_length;
+             ref_index < rg.max_readlen - shift; ref_index++)
+          base_counts[base_to_index(
+              (uint8_t)oriented_read[ref_index -
+                                     (rg.max_readlen - current_read_length)])]
+                    [ref_index] += 1;
+        for (int ref_index = rg.max_readlen - shift;
+             ref_index < rg.max_readlen; ref_index++) {
+          for (int base_index = 0; base_index < 4; base_index++)
+            base_counts[base_index][ref_index] = 0;
+          base_counts[base_to_index(
+              (uint8_t)oriented_read[ref_index -
+                                     (rg.max_readlen - current_read_length)])]
+                    [ref_index] = 1;
         }
-        ref_len = rg.max_readlen;
+        reference_length = rg.max_readlen;
       }
     }
-    for (int i = 0; i < ref_len; i++) {
-      int max = 0, indmax = 0;
-      for (int j = 0; j < 4; j++)
-        if (count[j][i] > max) {
-          max = count[j][i];
-          indmax = j;
+    for (int ref_index = 0; ref_index < reference_length; ref_index++) {
+      int best_base_count = 0;
+      int best_base_index = 0;
+      for (int base_index = 0; base_index < 4; base_index++)
+        if (base_counts[base_index][ref_index] > best_base_count) {
+          best_base_count = base_counts[base_index][ref_index];
+          best_base_index = base_index;
         }
-      current[i] = inttochar[indmax];
+      oriented_read[ref_index] = base_lookup[best_base_index];
     }
   }
-  chartobitset<bitset_size>(current, ref_len, ref, rg.basemask);
-  char revcurrent[MAX_READ_LEN + 1];
-  reverse_complement(current, revcurrent, ref_len);
-  chartobitset<bitset_size>(revcurrent, ref_len, revref, rg.basemask);
+  chartobitset<bitset_size>(oriented_read, reference_length, reference_read,
+                            rg.basemask);
+  char reverse_oriented_read[MAX_READ_LEN + 1];
+  reverse_complement(oriented_read, reverse_oriented_read, reference_length);
+  chartobitset<bitset_size>(reverse_oriented_read, reference_length,
+                            reverse_reference_read, rg.basemask);
 
   return;
 }
@@ -259,370 +301,424 @@ void readDnaFile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
 
 template <size_t bitset_size>
 bool search_match(const std::bitset<bitset_size> &ref,
-                  std::bitset<bitset_size> *mask1, omp_lock_t *dict_lock,
-                  omp_lock_t *read_lock, std::bitset<bitset_size> **mask,
-                  uint16_t *read_lengths, bool *remainingreads,
-                  std::bitset<bitset_size> *read, bbhashdict *dict, uint32_t &k,
-                  const bool rev, const int shift, const int &ref_len,
+                  std::bitset<bitset_size> *index_masks,
+                  omp_lock_t *dict_locks, omp_lock_t *read_locks,
+                  std::bitset<bitset_size> **length_masks,
+                  uint16_t *read_lengths, bool *remaining_reads,
+                  std::bitset<bitset_size> *reads, bbhashdict *dict,
+                  uint32_t &matched_read_id, const bool use_reverse_match,
+                  const int shift, const int &ref_len,
                   const reorder_global<bitset_size> &rg) {
   static const unsigned int thresh = THRESH_REORDER;
   const int maxsearch = MAX_SEARCH_REORDER;
-  std::bitset<bitset_size> b;
-  uint64_t ull;
-  int64_t dictidx[2];
-  uint64_t startposidx;
-  bool flag = 0;
-  for (int l = 0; l < rg.numdict; l++) {
-    if (!rev) {
-      if (dict[l].end + shift >= ref_len)
+  std::bitset<bitset_size> masked_ref_bits;
+  uint64_t lookup_key;
+  int64_t bucket_range[2];
+  uint64_t bucket_start_index;
+  bool found_match = 0;
+  for (int dictionary_index = 0; dictionary_index < rg.numdict;
+       dictionary_index++) {
+    if (!use_reverse_match) {
+      if (dict[dictionary_index].end + shift >= ref_len)
         continue;
     } else {
-      if (dict[l].end >= ref_len + shift || dict[l].start <= shift)
+      if (dict[dictionary_index].end >= ref_len + shift ||
+          dict[dictionary_index].start <= shift)
         continue;
     }
-    b = ref & mask1[l];
-    ull = (b >> 2 * dict[l].start).to_ullong();
-    startposidx = dict[l].bphf->lookup(ull);
-    if (startposidx >= dict[l].numkeys)
+    masked_ref_bits = ref & index_masks[dictionary_index];
+    lookup_key =
+        (masked_ref_bits >> 2 * dict[dictionary_index].start).to_ullong();
+    bucket_start_index = dict[dictionary_index].bphf->lookup(lookup_key);
+    if (bucket_start_index >= dict[dictionary_index].numkeys)
       continue;
-    if (!omp_test_lock(&dict_lock[startposidx & 0xFFFFFF]))
+    if (!omp_test_lock(&dict_locks[bucket_start_index & 0xFFFFFF]))
       continue;
-    dict[l].findpos(dictidx, startposidx);
-    if (dict[l].empty_bin[startposidx]) {
-      omp_unset_lock(&dict_lock[startposidx & 0xFFFFFF]);
+    dict[dictionary_index].findpos(bucket_range, bucket_start_index);
+    if (dict[dictionary_index].empty_bin[bucket_start_index]) {
+      omp_unset_lock(&dict_locks[bucket_start_index & 0xFFFFFF]);
       continue;
     }
-    uint64_t ull1 =
-        ((read[dict[l].read_id[dictidx[0]]] & mask1[l]) >> 2 * dict[l].start)
+    uint64_t candidate_key =
+        ((reads[dict[dictionary_index].read_id[bucket_range[0]]] &
+          index_masks[dictionary_index]) >>
+         2 * dict[dictionary_index].start)
             .to_ullong();
-    if (ull == ull1) {
-      for (int64_t i = dictidx[1] - 1;
-           i >= dictidx[0] && i >= dictidx[1] - maxsearch; i--) {
-        auto rid = dict[l].read_id[i];
+    if (lookup_key == candidate_key) {
+      for (int64_t bucket_index = bucket_range[1] - 1;
+           bucket_index >= bucket_range[0] &&
+           bucket_index >= bucket_range[1] - maxsearch; bucket_index--) {
+        auto read_id = dict[dictionary_index].read_id[bucket_index];
         size_t hamming;
-        if (!rev)
-          hamming = ((ref ^ read[rid]) &
-                     mask[0][rg.max_readlen -
-                             std::min<int>(ref_len - shift, read_lengths[rid])])
+        if (!use_reverse_match)
+          hamming = ((ref ^ reads[read_id]) &
+                     length_masks[0][rg.max_readlen -
+                                     std::min<int>(ref_len - shift,
+                                                   read_lengths[read_id])])
                         .count();
         else
-          hamming =
-              ((ref ^ read[rid]) &
-               mask[shift][rg.max_readlen -
-                           std::min<int>(ref_len + shift, read_lengths[rid])])
+          hamming = ((ref ^ reads[read_id]) &
+                     length_masks[shift][rg.max_readlen -
+                                         std::min<int>(ref_len + shift,
+                                                       read_lengths[read_id])])
                   .count();
         if (hamming <= thresh) {
-          if (!omp_test_lock(&read_lock[rid & 0xFFFFFF]))
+          if (!omp_test_lock(&read_locks[read_id & 0xFFFFFF]))
             continue;
-          if (remainingreads[rid]) {
-            remainingreads[rid] = 0;
-            k = rid;
-            flag = 1;
+          if (remaining_reads[read_id]) {
+            remaining_reads[read_id] = 0;
+            matched_read_id = read_id;
+            found_match = 1;
           }
-          omp_unset_lock(&read_lock[rid & 0xFFFFFF]);
-          if (flag == 1)
+          omp_unset_lock(&read_locks[read_id & 0xFFFFFF]);
+          if (found_match == 1)
             break;
         }
       }
     }
-    omp_unset_lock(&dict_lock[startposidx & 0xFFFFFF]);
-    if (flag == 1)
+    omp_unset_lock(&dict_locks[bucket_start_index & 0xFFFFFF]);
+    if (found_match == 1)
       break;
   }
-  return flag;
+  return found_match;
 }
 
 template <size_t bitset_size>
 void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
              uint16_t *read_lengths, const reorder_global<bitset_size> &rg) {
   const uint32_t num_locks = NUM_LOCKS_REORDER;
-  omp_lock_t *dict_lock = new omp_lock_t[num_locks];
-  omp_lock_t *read_lock = new omp_lock_t[num_locks];
+  omp_lock_t *dict_locks = new omp_lock_t[num_locks];
+  omp_lock_t *read_locks = new omp_lock_t[num_locks];
   omp_lock_t *remaining_read_lock = new omp_lock_t[num_locks];
-  for (unsigned int j = 0; j < num_locks; j++) {
-    omp_init_lock(&dict_lock[j]);
-    omp_init_lock(&read_lock[j]);
-    omp_init_lock(&remaining_read_lock[j]);
+  for (unsigned int lock_index = 0; lock_index < num_locks; lock_index++) {
+    omp_init_lock(&dict_locks[lock_index]);
+    omp_init_lock(&read_locks[lock_index]);
+    omp_init_lock(&remaining_read_lock[lock_index]);
   }
-  std::bitset<bitset_size> **mask =
+  std::bitset<bitset_size> **length_masks =
       new std::bitset<bitset_size> *[rg.max_readlen];
-  for (int i = 0; i < rg.max_readlen; i++)
-    mask[i] = new std::bitset<bitset_size>[rg.max_readlen];
-  generatemasks<bitset_size>(mask, rg.max_readlen, 2);
-  std::bitset<bitset_size> *mask1 = new std::bitset<bitset_size>[rg.numdict];
-  generateindexmasks<bitset_size>(mask1, dict, rg.numdict, 2);
-  bool *remainingreads = new bool[rg.numreads];
-  std::fill(remainingreads, remainingreads + rg.numreads, 1);
+  for (int read_length_index = 0; read_length_index < rg.max_readlen;
+       read_length_index++)
+    length_masks[read_length_index] =
+        new std::bitset<bitset_size>[rg.max_readlen];
+  generatemasks<bitset_size>(length_masks, rg.max_readlen, 2);
+  std::bitset<bitset_size> *index_masks =
+      new std::bitset<bitset_size>[rg.numdict];
+  generateindexmasks<bitset_size>(index_masks, dict, rg.numdict, 2);
+  bool *remaining_reads = new bool[rg.numreads];
+  std::fill(remaining_reads, remaining_reads + rg.numreads, 1);
 
-  uint32_t firstread = 0;
-  std::vector<uint32_t> unmatched(static_cast<size_t>(rg.num_thr));
+  uint32_t first_read = 0;
+  std::vector<uint32_t> unmatched_counts(static_cast<size_t>(rg.num_thr));
 #pragma omp parallel
   {
-    int tid = omp_get_thread_num();
-    std::string tid_str = std::to_string(tid);
-    boost::iostreams::filtering_ostream foutRC;
-    foutRC.push(boost::iostreams::gzip_compressor());
-    foutRC.push(boost::iostreams::file_sink(rg.outfileRC + '.' + tid_str));
-    boost::iostreams::filtering_ostream foutflag;
-    foutflag.push(boost::iostreams::gzip_compressor());
-    foutflag.push(boost::iostreams::file_sink(rg.outfileflag + '.' + tid_str));
-    boost::iostreams::filtering_ostream foutpos;
-    foutpos.push(boost::iostreams::gzip_compressor());
-    foutpos.push(boost::iostreams::file_sink(rg.outfilepos + '.' + tid_str,
-                                             std::ios::binary));
-    std::ofstream foutorder(rg.outfileorder + '.' + tid_str, std::ios::binary);
-    std::ofstream foutorder_s(rg.outfileorder + ".singleton." + tid_str,
-                              std::ios::binary);
-    boost::iostreams::filtering_ostream foutlength;
-    foutlength.push(boost::iostreams::gzip_compressor());
-    foutlength.push(boost::iostreams::file_sink(
-        rg.outfilereadlength + '.' + tid_str, std::ios::binary));
+    int thread_id = omp_get_thread_num();
+    std::string thread_suffix = std::to_string(thread_id);
+    boost::iostreams::filtering_ostream orientation_output;
+    orientation_output.push(boost::iostreams::gzip_compressor());
+    orientation_output.push(
+        boost::iostreams::file_sink(rg.outfileRC + '.' + thread_suffix));
+    boost::iostreams::filtering_ostream flag_output;
+    flag_output.push(boost::iostreams::gzip_compressor());
+    flag_output.push(
+        boost::iostreams::file_sink(rg.outfileflag + '.' + thread_suffix));
+    boost::iostreams::filtering_ostream position_output;
+    position_output.push(boost::iostreams::gzip_compressor());
+    position_output.push(boost::iostreams::file_sink(
+        rg.outfilepos + '.' + thread_suffix, std::ios::binary));
+    std::ofstream order_output(rg.outfileorder + '.' + thread_suffix,
+                               std::ios::binary);
+    std::ofstream singleton_order_output(
+        rg.outfileorder + ".singleton." + thread_suffix, std::ios::binary);
+    boost::iostreams::filtering_ostream read_length_output;
+    read_length_output.push(boost::iostreams::gzip_compressor());
+    read_length_output.push(boost::iostreams::file_sink(
+        rg.outfilereadlength + '.' + thread_suffix, std::ios::binary));
 
-    unmatched[tid] = 0;
-    std::bitset<bitset_size> ref, revref, b;
+    unmatched_counts[thread_id] = 0;
+    std::bitset<bitset_size> reference_read, reverse_reference_read,
+        masked_read_bits;
 
-    int64_t first_rid;
+    int64_t seed_read_id;
 
     std::array<std::list<std::pair<uint32_t, uint64_t>>, NUM_DICT_REORDER>
-      to_delete_from_bin;
+        pending_bin_deletions;
 
     bool stop_searching = false;
-    uint32_t num_reads_thr = 0;
-    uint32_t num_unmatched_past_1M_thr = 0;
+    uint32_t thread_read_count = 0;
+    uint32_t unmatched_reads_in_window = 0;
 
-    int **count = new int *[4];
-    for (int i = 0; i < 4; i++)
-      count[i] = new int[rg.max_readlen];
-    int64_t dictidx[2];
-    uint64_t startposidx;
-    bool flag = 0, done = 0, prev_unmatched = false, left_search_start = false,
-         left_search = false;
-    int64_t current, prev;
-    uint64_t ull;
-    int ref_len;
-    int64_t ref_pos, cur_read_pos;
+    int **base_counts = new int *[4];
+    for (int base_index = 0; base_index < 4; base_index++)
+      base_counts[base_index] = new int[rg.max_readlen];
+    int64_t bucket_range[2];
+    uint64_t bucket_start_index;
+    bool found_match = 0;
+    bool done = 0;
+    bool previous_read_unmatched = false;
+    bool left_search_start = false;
+    bool left_search = false;
+    int64_t current_read_id;
+    int64_t previous_read_id;
+    uint64_t lookup_key;
+    int reference_length;
+    int64_t reference_position;
+    int64_t current_read_position;
 
-    int64_t remainingpos = rg.numreads - 1;
+    int64_t remaining_read_scan = rg.numreads - 1;
 #pragma omp critical
     {
-      current = firstread;
+      current_read_id = first_read;
       if (rg.numreads == 0) {
         done = true;
-      } else if (remainingreads[current] == 0) {
+      } else if (remaining_reads[current_read_id] == 0) {
         done = true;
       } else {
-        remainingreads[current] = 0;
-        unmatched[tid]++;
+        remaining_reads[current_read_id] = 0;
+        unmatched_counts[thread_id]++;
       }
-      firstread += rg.numreads / omp_get_num_threads();
+      first_read += rg.numreads / omp_get_num_threads();
     }
 #pragma omp barrier
     if (!done) {
-      updaterefcount<bitset_size>(read[current], ref, revref, count, true,
-                                  false, 0, read_lengths[current], ref_len, rg);
-      cur_read_pos = 0;
-      ref_pos = 0;
-      first_rid = current;
-      prev_unmatched = true;
-      prev = current;
+      updaterefcount<bitset_size>(read[current_read_id], reference_read,
+                                  reverse_reference_read, base_counts, true,
+                                  false, 0, read_lengths[current_read_id],
+                                  reference_length, rg);
+      current_read_position = 0;
+      reference_position = 0;
+      seed_read_id = current_read_id;
+      previous_read_unmatched = true;
+      previous_read_id = current_read_id;
     }
     while (!done) {
-      if (num_reads_thr % 1000000 == 0) {
-        if (num_unmatched_past_1M_thr > STOP_CRITERIA_REORDER * 1000000) {
+      if (thread_read_count % 1000000 == 0) {
+        if (unmatched_reads_in_window > STOP_CRITERIA_REORDER * 1000000) {
           stop_searching = true;
         }
-        num_unmatched_past_1M_thr = 0;
+        unmatched_reads_in_window = 0;
       }
-      num_reads_thr++;
-      for (int l = 0; l < rg.numdict; l++) {
-        for (auto it = to_delete_from_bin[l].begin();
-             it != to_delete_from_bin[l].end();) {
-          uint32_t rid = (*it).first;
-          uint64_t startposidx = (*it).second;
-          if (!omp_test_lock(&dict_lock[startposidx & 0xFFFFFF])) {
-            ++it;
+      thread_read_count++;
+      for (int dictionary_index = 0; dictionary_index < rg.numdict;
+           dictionary_index++) {
+        for (auto pending_delete_it = pending_bin_deletions[dictionary_index].begin();
+             pending_delete_it != pending_bin_deletions[dictionary_index].end();) {
+          uint32_t read_id = (*pending_delete_it).first;
+          uint64_t pending_bucket_start = (*pending_delete_it).second;
+          if (!omp_test_lock(&dict_locks[pending_bucket_start & 0xFFFFFF])) {
+            ++pending_delete_it;
             continue;
           }
-          dict[l].findpos(dictidx, startposidx);
-          dict[l].remove(dictidx, startposidx, rid);
-          it = to_delete_from_bin[l].erase(it);
-          omp_unset_lock(&dict_lock[startposidx & 0xFFFFFF]);
+          dict[dictionary_index].findpos(bucket_range, pending_bucket_start);
+          dict[dictionary_index].remove(bucket_range, pending_bucket_start,
+                                        read_id);
+          pending_delete_it =
+              pending_bin_deletions[dictionary_index].erase(pending_delete_it);
+          omp_unset_lock(&dict_locks[pending_bucket_start & 0xFFFFFF]);
         }
       }
 
       if (!left_search_start) {
-        for (int l = 0; l < rg.numdict; l++) {
-          if (read_lengths[current] <= dict[l].end)
+        for (int dictionary_index = 0; dictionary_index < rg.numdict;
+             dictionary_index++) {
+          if (read_lengths[current_read_id] <= dict[dictionary_index].end)
             continue;
-          b = read[current] & mask1[l];
-          ull = (b >> 2 * dict[l].start).to_ullong();
-          startposidx = dict[l].bphf->lookup(ull);
-          if (!omp_test_lock(&dict_lock[startposidx & 0xFFFFFF])) {
-            to_delete_from_bin[l].push_back(
-                std::make_pair(current, startposidx));
+          masked_read_bits = read[current_read_id] & index_masks[dictionary_index];
+          lookup_key =
+              (masked_read_bits >> 2 * dict[dictionary_index].start).to_ullong();
+          bucket_start_index = dict[dictionary_index].bphf->lookup(lookup_key);
+          if (!omp_test_lock(&dict_locks[bucket_start_index & 0xFFFFFF])) {
+            pending_bin_deletions[dictionary_index].push_back(
+                std::make_pair(current_read_id, bucket_start_index));
             continue;
           }
-          dict[l].findpos(dictidx, startposidx);
-          dict[l].remove(dictidx, startposidx, current);
-          omp_unset_lock(&dict_lock[startposidx & 0xFFFFFF]);
+          dict[dictionary_index].findpos(bucket_range, bucket_start_index);
+          dict[dictionary_index].remove(bucket_range, bucket_start_index,
+                                        current_read_id);
+          omp_unset_lock(&dict_locks[bucket_start_index & 0xFFFFFF]);
         }
       } else {
         left_search_start = false;
       }
-      flag = 0;
-      uint32_t k;
+      found_match = 0;
+      uint32_t matched_read_id;
       if (!stop_searching)
         for (int shift = 0; shift < rg.maxshift; shift++) {
-          flag = search_match<bitset_size>(
-              ref, mask1, dict_lock, read_lock, mask, read_lengths,
-              remainingreads, read, dict, k, false, shift, ref_len, rg);
-          if (flag == 1) {
-            current = k;
-            int ref_len_old = ref_len;
-            updaterefcount<bitset_size>(read[current], ref, revref, count,
+          found_match = search_match<bitset_size>(
+              reference_read, index_masks, dict_locks, read_locks,
+              length_masks, read_lengths, remaining_reads, read, dict,
+              matched_read_id, false, shift, reference_length, rg);
+          if (found_match == 1) {
+            current_read_id = matched_read_id;
+            int previous_reference_length = reference_length;
+            updaterefcount<bitset_size>(read[current_read_id], reference_read,
+                                        reverse_reference_read, base_counts,
                                         false, false, shift,
-                                        read_lengths[current], ref_len, rg);
+                                        read_lengths[current_read_id],
+                                        reference_length, rg);
             if (!left_search) {
-              cur_read_pos = ref_pos + shift;
-              ref_pos = cur_read_pos;
+              current_read_position = reference_position + shift;
+              reference_position = current_read_position;
             } else {
-              cur_read_pos =
-                  ref_pos + ref_len_old - shift - read_lengths[current];
-              ref_pos = ref_pos + ref_len_old - shift - ref_len;
+              current_read_position =
+                  reference_position + previous_reference_length - shift -
+                  read_lengths[current_read_id];
+              reference_position =
+                  reference_position + previous_reference_length - shift -
+                  reference_length;
             }
-            if (prev_unmatched == true) {
-              foutRC << 'd';
-              foutorder.write(byte_ptr(&prev), sizeof(uint32_t));
-              foutflag << 0;
+            if (previous_read_unmatched == true) {
+              orientation_output << 'd';
+              order_output.write(byte_ptr(&previous_read_id), sizeof(uint32_t));
+              flag_output << 0;
               int64_t zero = 0;
-              foutpos.write(byte_ptr(&zero), sizeof(int64_t));
-              foutlength.write(byte_ptr(&read_lengths[prev]), sizeof(uint16_t));
+              position_output.write(byte_ptr(&zero), sizeof(int64_t));
+              read_length_output.write(byte_ptr(&read_lengths[previous_read_id]),
+                                       sizeof(uint16_t));
             }
-            foutRC << (left_search ? 'r' : 'd');
-            foutorder.write(byte_ptr(&current), sizeof(uint32_t));
-            foutflag << 1;
-            foutpos.write(byte_ptr(&cur_read_pos), sizeof(int64_t));
-            foutlength.write(byte_ptr(&read_lengths[current]), sizeof(uint16_t));
+            orientation_output << (left_search ? 'r' : 'd');
+            order_output.write(byte_ptr(&current_read_id), sizeof(uint32_t));
+            flag_output << 1;
+            position_output.write(byte_ptr(&current_read_position),
+                                  sizeof(int64_t));
+            read_length_output.write(byte_ptr(&read_lengths[current_read_id]),
+                                     sizeof(uint16_t));
 
-            prev_unmatched = false;
+            previous_read_unmatched = false;
             break;
           }
 
           // find reverse match
-          flag = search_match<bitset_size>(
-              revref, mask1, dict_lock, read_lock, mask, read_lengths,
-              remainingreads, read, dict, k, true, shift, ref_len, rg);
-          if (flag == 1) {
-            current = k;
-            int ref_len_old = ref_len;
-            updaterefcount<bitset_size>(read[current], ref, revref, count,
+          found_match = search_match<bitset_size>(
+              reverse_reference_read, index_masks, dict_locks, read_locks,
+              length_masks, read_lengths, remaining_reads, read, dict,
+              matched_read_id, true, shift, reference_length, rg);
+          if (found_match == 1) {
+            current_read_id = matched_read_id;
+            int previous_reference_length = reference_length;
+            updaterefcount<bitset_size>(read[current_read_id], reference_read,
+                                        reverse_reference_read, base_counts,
                                         false, true, shift,
-                                        read_lengths[current], ref_len, rg);
+                                        read_lengths[current_read_id],
+                                        reference_length, rg);
             if (!left_search) {
-              cur_read_pos =
-                  ref_pos + ref_len_old + shift - read_lengths[current];
-              ref_pos = ref_pos + ref_len_old + shift - ref_len;
+              current_read_position =
+                  reference_position + previous_reference_length + shift -
+                  read_lengths[current_read_id];
+              reference_position =
+                  reference_position + previous_reference_length + shift -
+                  reference_length;
             } else {
-              cur_read_pos = ref_pos - shift;
-              ref_pos = cur_read_pos;
+              current_read_position = reference_position - shift;
+              reference_position = current_read_position;
             }
-            if (prev_unmatched == true) // prev read not singleton, write it now
+            if (previous_read_unmatched == true) // prev read not singleton, write it now
             {
-              foutRC << 'd';
-              foutorder.write(byte_ptr(&prev), sizeof(uint32_t));
-              foutflag << 0;
+              orientation_output << 'd';
+              order_output.write(byte_ptr(&previous_read_id), sizeof(uint32_t));
+              flag_output << 0;
               int64_t zero = 0;
-              foutpos.write(byte_ptr(&zero), sizeof(int64_t));
-              foutlength.write(byte_ptr(&read_lengths[prev]), sizeof(uint16_t));
+              position_output.write(byte_ptr(&zero), sizeof(int64_t));
+              read_length_output.write(byte_ptr(&read_lengths[previous_read_id]),
+                                       sizeof(uint16_t));
             }
-            foutRC << (left_search ? 'd' : 'r');
-            foutorder.write(byte_ptr(&current), sizeof(uint32_t));
-            foutflag << 1;
-            foutpos.write(byte_ptr(&cur_read_pos), sizeof(int64_t));
-            foutlength.write(byte_ptr(&read_lengths[current]), sizeof(uint16_t));
+            orientation_output << (left_search ? 'd' : 'r');
+            order_output.write(byte_ptr(&current_read_id), sizeof(uint32_t));
+            flag_output << 1;
+            position_output.write(byte_ptr(&current_read_position),
+                                  sizeof(int64_t));
+            read_length_output.write(byte_ptr(&read_lengths[current_read_id]),
+                                     sizeof(uint16_t));
 
-            prev_unmatched = false;
+            previous_read_unmatched = false;
             break;
           }
 
-          revref <<= 2;
-          ref >>= 2;
+          reverse_reference_read <<= 2;
+          reference_read >>= 2;
         }
-      if (flag == 0) {
-        num_unmatched_past_1M_thr++;
+      if (found_match == 0) {
+        unmatched_reads_in_window++;
         if (!left_search) {
           // Retry around the contig seed in reverse-complement space once.
           left_search = true;
           left_search_start = true;
-          updaterefcount<bitset_size>(read[first_rid], ref, revref, count, true,
-                                      true, 0, read_lengths[first_rid], ref_len,
-                                      rg);
-          ref_pos = 0;
-          cur_read_pos = 0;
+          updaterefcount<bitset_size>(read[seed_read_id], reference_read,
+                                      reverse_reference_read, base_counts,
+                                      true, true, 0,
+                                      read_lengths[seed_read_id],
+                                      reference_length, rg);
+          reference_position = 0;
+          current_read_position = 0;
         } else {
           left_search = false;
-          for (int64_t j = remainingpos; j >= 0; j--) {
-            if (remainingreads[j] == 1) {
-              if (!omp_test_lock(&remaining_read_lock[j & 0xffffff]))
+          for (int64_t read_id = remaining_read_scan; read_id >= 0; read_id--) {
+            if (remaining_reads[read_id] == 1) {
+              if (!omp_test_lock(&remaining_read_lock[read_id & 0xffffff]))
                 continue;
-              omp_set_lock(&read_lock[j & 0xffffff]);
-              if (remainingreads[j]) {
-                current = j;
-                remainingpos = j - 1;
-                remainingreads[j] = 0;
-                flag = 1;
-                unmatched[tid]++;
+              omp_set_lock(&read_locks[read_id & 0xffffff]);
+              if (remaining_reads[read_id]) {
+                current_read_id = read_id;
+                remaining_read_scan = read_id - 1;
+                remaining_reads[read_id] = 0;
+                found_match = 1;
+                unmatched_counts[thread_id]++;
               }
-              omp_unset_lock(&read_lock[j & 0xffffff]);
-              omp_unset_lock(&remaining_read_lock[j & 0xffffff]);
-              if (flag == 1)
+              omp_unset_lock(&read_locks[read_id & 0xffffff]);
+              omp_unset_lock(&remaining_read_lock[read_id & 0xffffff]);
+              if (found_match == 1)
                 break;
             }
           }
-          if (flag == 0) {
-            if (prev_unmatched == true) {
-              foutorder_s.write(byte_ptr(&prev), sizeof(uint32_t));
+          if (found_match == 0) {
+            if (previous_read_unmatched == true) {
+              singleton_order_output.write(byte_ptr(&previous_read_id),
+                                           sizeof(uint32_t));
             }
             done = 1;
           } else {
-            updaterefcount<bitset_size>(read[current], ref, revref, count, true,
-                                        false, 0, read_lengths[current],
-                                        ref_len, rg);
-            ref_pos = 0;
-            cur_read_pos = 0;
-            if (prev_unmatched == true) {
-              foutorder_s.write(byte_ptr(&prev), sizeof(uint32_t));
+            updaterefcount<bitset_size>(read[current_read_id], reference_read,
+                                        reverse_reference_read, base_counts,
+                                        true, false, 0,
+                                        read_lengths[current_read_id],
+                                        reference_length, rg);
+            reference_position = 0;
+            current_read_position = 0;
+            if (previous_read_unmatched == true) {
+              singleton_order_output.write(byte_ptr(&previous_read_id),
+                                           sizeof(uint32_t));
             }
-            prev_unmatched = true;
-            first_rid = current;
-            prev = current;
+            previous_read_unmatched = true;
+            seed_read_id = current_read_id;
+            previous_read_id = current_read_id;
           }
         }
       }
     }
 
-    foutRC.pop();
-    foutorder.close();
-    foutflag.pop();
-    foutpos.pop();
-    foutorder_s.close();
-    foutlength.pop();
-    for (int i = 0; i < 4; i++)
-      delete[] count[i];
-    delete[] count;
+    orientation_output.pop();
+    order_output.close();
+    flag_output.pop();
+    position_output.pop();
+    singleton_order_output.close();
+    read_length_output.pop();
+    for (int base_index = 0; base_index < 4; base_index++)
+      delete[] base_counts[base_index];
+    delete[] base_counts;
   }
 
-  delete[] remainingreads;
-  delete[] dict_lock;
-  delete[] read_lock;
+  delete[] remaining_reads;
+  delete[] dict_locks;
+  delete[] read_locks;
   delete[] remaining_read_lock;
   std::cout << "Reordering done, "
-            << std::accumulate(unmatched.begin(), unmatched.end(), 0)
+            << std::accumulate(unmatched_counts.begin(), unmatched_counts.end(), 0)
             << " were unmatched\n";
-  for (int i = 0; i < rg.max_readlen; i++)
-    delete[] mask[i];
-  delete[] mask;
-  delete[] mask1;
+  for (int read_length_index = 0; read_length_index < rg.max_readlen;
+       read_length_index++)
+    delete[] length_masks[read_length_index];
+  delete[] length_masks;
+  delete[] index_masks;
   return;
 }
 

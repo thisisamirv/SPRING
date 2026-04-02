@@ -29,13 +29,13 @@ namespace spring {
 
 namespace boomphf {
 
-static uint64_t printPt(pthread_t pt) {
-  unsigned char *ptc = (unsigned char *)(void *)(&pt);
-  uint64_t res = 0;
-  for (size_t i = 0; i < sizeof(pt); i++) {
-    res += (unsigned)(ptc[i]);
+static uint64_t printPt(pthread_t thread_handle) {
+  unsigned char *thread_bytes = (unsigned char *)(void *)(&thread_handle);
+  uint64_t byte_sum = 0;
+  for (size_t i = 0; i < sizeof(thread_handle); i++) {
+    byte_sum += (unsigned)(thread_bytes[i]);
   }
-  return res;
+  return byte_sum;
 }
 
 // Buffered iterator over binary values streamed from disk.
@@ -48,15 +48,15 @@ public:
     _buffer = (basetype *)malloc(_buffsize * sizeof(basetype));
   }
 
-  bfile_iterator(const bfile_iterator &cr) {
-    _buffsize = cr._buffsize;
-    _pos = cr._pos;
-    _is = cr._is;
+  bfile_iterator(const bfile_iterator &other_iterator) {
+    _buffsize = other_iterator._buffsize;
+    _pos = other_iterator._pos;
+    _is = other_iterator._is;
     _buffer = (basetype *)malloc(_buffsize * sizeof(basetype));
-    memcpy(_buffer, cr._buffer, _buffsize * sizeof(basetype));
-    _inbuff = cr._inbuff;
-    _cptread = cr._cptread;
-    _elem = cr._elem;
+    memcpy(_buffer, other_iterator._buffer, _buffsize * sizeof(basetype));
+    _inbuff = other_iterator._inbuff;
+    _cptread = other_iterator._cptread;
+    _elem = other_iterator._elem;
   }
 
   bfile_iterator(FILE *is) : _is(is), _pos(0), _inbuff(0), _cptread(0) {
@@ -99,11 +99,11 @@ private:
     _pos++;
 
     if (_cptread >= _inbuff) {
-      int res = fread(_buffer, sizeof(basetype), _buffsize, _is);
-      _inbuff = res;
+      int values_read = fread(_buffer, sizeof(basetype), _buffsize, _is);
+      _inbuff = values_read;
       _cptread = 0;
 
-      if (res == 0) {
+      if (values_read == 0) {
         _is = nullptr;
         _pos = 0;
         return;
@@ -183,25 +183,26 @@ public:
 
   double steps; // Number of items between progress updates.
 
-  void init(uint64_t ntasks, const char *msg, int nthreads = 1) {
-    if (nthreads <= 0)
+  void init(uint64_t total_tasks, const char *status_message,
+            int thread_count = 1) {
+    if (thread_count <= 0)
       throw std::invalid_argument("BooPHF thread count must be positive.");
-    _nthreads = nthreads;
-    message = std::string(msg);
+    _nthreads = thread_count;
+    message = std::string(status_message);
     gettimeofday(&timestamp, NULL);
     heure_debut = timestamp.tv_sec + (timestamp.tv_usec / 1000000.0);
 
-    todo = ntasks;
+    todo = total_tasks;
     done = 0;
     partial = 0;
 
     partial_threaded.resize(_nthreads);
     done_threaded.resize(_nthreads);
 
-    for (int ii = 0; ii < _nthreads; ii++)
-      partial_threaded[ii] = 0;
-    for (int ii = 0; ii < _nthreads; ii++)
-      done_threaded[ii] = 0;
+    for (int thread_index = 0; thread_index < _nthreads; thread_index++)
+      partial_threaded[thread_index] = 0;
+    for (int thread_index = 0; thread_index < _nthreads; thread_index++)
+      done_threaded[thread_index] = 0;
     subdiv = 1000;
     steps = (double)todo / (double)subdiv;
 
@@ -226,16 +227,16 @@ public:
   // Aggregate the per-thread counters once all workers have finished.
   void finish_threaded() {
     done = 0;
-    for (int ii = 0; ii < _nthreads; ii++)
-      done += (done_threaded[ii]);
-    for (int ii = 0; ii < _nthreads; ii++)
-      partial += (partial_threaded[ii]);
+    for (int thread_index = 0; thread_index < _nthreads; thread_index++)
+      done += (done_threaded[thread_index]);
+    for (int thread_index = 0; thread_index < _nthreads; thread_index++)
+      partial += (partial_threaded[thread_index]);
 
     finish();
   }
-  void inc(uint64_t ntasks_done) {
-    done += ntasks_done;
-    partial += ntasks_done;
+  void inc(uint64_t completed_tasks) {
+    done += completed_tasks;
+    partial += completed_tasks;
 
     while (partial >= steps) {
       if (timer_mode) {
@@ -266,19 +267,20 @@ public:
   }
 
   // Thread-aware progress accounting for shared parallel work.
-  void inc(uint64_t ntasks_done, int tid) {
-    partial_threaded[tid] += ntasks_done;
-    done_threaded[tid] += ntasks_done;
-    while (partial_threaded[tid] >= steps) {
+  void inc(uint64_t completed_tasks, int thread_id) {
+    partial_threaded[thread_id] += completed_tasks;
+    done_threaded[thread_id] += completed_tasks;
+    while (partial_threaded[thread_id] >= steps) {
       if (timer_mode) {
-        struct timeval timet;
-        double now;
-        gettimeofday(&timet, NULL);
-        now = timet.tv_sec + (timet.tv_usec / 1000000.0);
+        struct timeval current_time;
+        double current_seconds;
+        gettimeofday(&current_time, NULL);
+        current_seconds =
+            current_time.tv_sec + (current_time.tv_usec / 1000000.0);
         uint64_t total_done = 0;
-        for (int ii = 0; ii < _nthreads; ii++)
-          total_done += (done_threaded[ii]);
-        double elapsed = now - heure_debut;
+        for (int worker_index = 0; worker_index < _nthreads; worker_index++)
+          total_done += (done_threaded[worker_index]);
+        double elapsed = current_seconds - heure_debut;
         double speed = total_done / elapsed;
         double rem = (todo - total_done) / speed;
         if (total_done > todo)
@@ -297,13 +299,13 @@ public:
         fprintf(stderr, "-");
         fflush(stderr);
       }
-      partial_threaded[tid] -= steps;
+      partial_threaded[thread_id] -= steps;
     }
   }
 
-  void set(uint64_t ntasks_done) {
-    if (ntasks_done > done)
-      inc(ntasks_done - done);
+  void set(uint64_t completed_tasks) {
+    if (completed_tasks > done)
+      inc(completed_tasks - done);
   }
   Progress() : timer_mode(0) {}
 };
@@ -485,9 +487,10 @@ iter_range<Iterator> range(Iterator begin, Iterator end) {
   return iter_range<Iterator>(begin, end);
 }
 
-inline std::string temp_level_filename(const int pid, const int level) {
-  return "temp_p" + std::to_string(pid) + "_level_" +
-         std::to_string(level);
+inline std::string temp_level_filename(const int process_id,
+              const int level_index) {
+  return "temp_p" + std::to_string(process_id) + "_level_" +
+    std::to_string(level_index);
 }
 
 class bitVector {
@@ -563,15 +566,18 @@ public:
   void clear() { memset(_bitArray, 0, _nchar * sizeof(uint64_t)); }
 
   // clear collisions in interval, only works with start and size multiple of 64
-  void clearCollisions(uint64_t start, size_t size, bitVector *cc) {
+  void clearCollisions(uint64_t start, size_t size,
+                       bitVector *collision_bits) {
     assert((start & 63) == 0);
     assert((size & 63) == 0);
-    uint64_t ids = (start / 64ULL);
-    for (uint64_t ii = 0; ii < (size / 64ULL); ii++) {
-      _bitArray[ids + ii] = _bitArray[ids + ii] & (~(cc->get64(ii)));
+    uint64_t start_word_index = (start / 64ULL);
+    for (uint64_t word_index = 0; word_index < (size / 64ULL); word_index++) {
+      _bitArray[start_word_index + word_index] =
+          _bitArray[start_word_index + word_index] &
+          (~(collision_bits->get64(word_index)));
     }
 
-    cc->clear();
+    collision_bits->clear();
   }
 
   // clear interval, only works with start and size multiple of 64
@@ -583,18 +589,18 @@ public:
 
   void print() const {
     printf("bit array of size %lli: \n", (long long int)_size);
-    for (uint64_t ii = 0; ii < _size; ii++) {
-      if (ii % 10 == 0)
-        printf(" (%llu) ", (long long unsigned int)ii);
-      int val = (_bitArray[ii >> 6] >> (ii & 63)) & 1;
-      printf("%i", val);
+    for (uint64_t bit_index = 0; bit_index < _size; bit_index++) {
+      if (bit_index % 10 == 0)
+        printf(" (%llu) ", (long long unsigned int)bit_index);
+      int bit_value = (_bitArray[bit_index >> 6] >> (bit_index & 63)) & 1;
+      printf("%i", bit_value);
     }
     printf("\n");
 
     printf("rank array : size %lu \n", _ranks.size());
-    for (uint64_t ii = 0; ii < _ranks.size(); ii++) {
-      printf("%llu :  %lli,  ", (long long unsigned int)ii,
-             (long long int)_ranks[ii]);
+    for (uint64_t rank_index = 0; rank_index < _ranks.size(); rank_index++) {
+      printf("%llu :  %lli,  ", (long long unsigned int)rank_index,
+             (long long int)_ranks[rank_index]);
     }
     printf("\n");
   }
@@ -606,10 +612,10 @@ public:
 
   // atomically   return old val and set to 1
   uint64_t atomic_test_and_set(uint64_t pos) {
-    uint64_t oldval = __sync_fetch_and_or(_bitArray + (pos >> 6),
-                                          (uint64_t)(1ULL << (pos & 63)));
+    uint64_t previous_word = __sync_fetch_and_or(
+        _bitArray + (pos >> 6), (uint64_t)(1ULL << (pos & 63)));
 
-    return (oldval >> (pos & 63)) & 1;
+    return (previous_word >> (pos & 63)) & 1;
   }
 
   uint64_t get(uint64_t pos) const { return (*this)[pos]; }
@@ -633,29 +639,30 @@ public:
     _ranks.reserve(2 + _size / _nb_bits_per_rank_sample);
 
     uint64_t curent_rank = offset;
-    for (size_t ii = 0; ii < _nchar; ii++) {
-      if (((ii * 64) % _nb_bits_per_rank_sample) == 0) {
+    for (size_t word_index = 0; word_index < _nchar; word_index++) {
+      if (((word_index * 64) % _nb_bits_per_rank_sample) == 0) {
         _ranks.push_back(curent_rank);
       }
-      curent_rank += popcount_64(_bitArray[ii]);
+      curent_rank += popcount_64(_bitArray[word_index]);
     }
 
     return curent_rank;
   }
 
   uint64_t rank(uint64_t pos) const {
-    uint64_t word_idx = pos / 64ULL;
-    uint64_t word_offset = pos % 64;
-    uint64_t block = pos / _nb_bits_per_rank_sample;
-    uint64_t r = _ranks[block];
-    for (uint64_t w = block * _nb_bits_per_rank_sample / 64; w < word_idx;
-         ++w) {
-      r += popcount_64(_bitArray[w]);
+    uint64_t word_index = pos / 64ULL;
+    uint64_t bit_offset = pos % 64;
+    uint64_t rank_block = pos / _nb_bits_per_rank_sample;
+    uint64_t rank_value = _ranks[rank_block];
+    for (uint64_t block_word_index =
+             rank_block * _nb_bits_per_rank_sample / 64;
+         block_word_index < word_index; ++block_word_index) {
+      rank_value += popcount_64(_bitArray[block_word_index]);
     }
-    uint64_t mask = (uint64_t(1) << word_offset) - 1;
-    r += popcount_64(_bitArray[word_idx] & mask);
+    uint64_t prefix_mask = (uint64_t(1) << bit_offset) - 1;
+    rank_value += popcount_64(_bitArray[word_index] & prefix_mask);
 
-    return r;
+    return rank_value;
   }
 
   void save(std::ostream &os) const {
@@ -694,8 +701,8 @@ protected:
   std::vector<uint64_t> _ranks;
 };
 
-static inline uint64_t fastrange64(uint64_t word, uint64_t p) {
-  return (uint64_t)(((__uint128_t)word * (__uint128_t)p) >> 64);
+static inline uint64_t fastrange64(uint64_t hash_value, uint64_t range_size) {
+  return (uint64_t)(((__uint128_t)hash_value * (__uint128_t)range_size) >> 64);
 }
 
 class level {
@@ -704,9 +711,9 @@ public:
 
   ~level() {}
 
-  uint64_t get(uint64_t hash_raw) {
-    uint64_t hashi = fastrange64(hash_raw, hash_domain);
-    return bitset.get(hashi);
+  uint64_t get(uint64_t raw_hash) {
+    uint64_t hash_index = fastrange64(raw_hash, hash_domain);
+    return bitset.get(hash_index);
   }
 
   uint64_t idx_begin;
@@ -832,11 +839,11 @@ public:
 
     uint64_t non_minimal_hp, minimal_hp;
 
-    hash_pair_t bbhash = {0, 0};
-    int level;
-    uint64_t level_hash = getLevel(bbhash, elem, &level);
+    hash_pair_t hash_state = {0, 0};
+    int matched_level;
+    uint64_t level_hash = getLevel(hash_state, elem, &matched_level);
 
-    if (level == (_nb_levels - 1)) {
+    if (matched_level == (_nb_levels - 1)) {
       auto in_final_map = _final_hash.find(elem);
       if (in_final_map == _final_hash.end()) {
         // Element was not present in the original key set.
@@ -847,9 +854,10 @@ public:
         return minimal_hp;
       }
     } else {
-      non_minimal_hp = fastrange64(level_hash, _levels[level].hash_domain);
+      non_minimal_hp =
+          fastrange64(level_hash, _levels[matched_level].hash_domain);
     }
-    minimal_hp = _levels[level].bitset.rank(non_minimal_hp);
+    minimal_hp = _levels[matched_level].bitset.rank(non_minimal_hp);
 
     return minimal_hp;
   }
@@ -879,99 +887,106 @@ public:
 
   template <typename Iterator>
   void pthread_processLevel(std::vector<elem_t> &buffer,
-                            std::shared_ptr<Iterator> shared_it,
-                            std::shared_ptr<Iterator> until_p, int i) {
+                            std::shared_ptr<Iterator> shared_iterator,
+                            std::shared_ptr<Iterator> end_iterator,
+                            int level_index) {
     uint64_t nb_done = 0;
-    int tid = __sync_fetch_and_add(&_nb_living, 1);
-    auto until = *until_p;
-    uint64_t inbuff = 0;
+    int thread_id = __sync_fetch_and_add(&_nb_living, 1);
+    auto end_position = *end_iterator;
+    uint64_t buffered_count = 0;
 
-    uint64_t writebuff = 0;
-    std::vector<elem_t> &myWriteBuff = bufferperThread[tid];
+    uint64_t pending_write_count = 0;
+    std::vector<elem_t> &thread_write_buffer = bufferperThread[thread_id];
 
-    for (bool isRunning = true; isRunning;) {
+    for (bool has_more_input = true; has_more_input;) {
       // safely copy n items into buffer
       pthread_mutex_lock(&_mutex);
-      for (; inbuff < NBBUFF && (*shared_it) != until; ++(*shared_it)) {
-        buffer[inbuff] = *(*shared_it);
-        inbuff++;
+      for (; buffered_count < NBBUFF && (*shared_iterator) != end_position;
+           ++(*shared_iterator)) {
+        buffer[buffered_count] = *(*shared_iterator);
+        buffered_count++;
       }
-      if ((*shared_it) == until)
-        isRunning = false;
+      if ((*shared_iterator) == end_position)
+        has_more_input = false;
       pthread_mutex_unlock(&_mutex);
 
       // Process the buffered elements outside the critical section.
 
-      for (uint64_t ii = 0; ii < inbuff; ii++) {
-        elem_t val = buffer[ii];
-        hash_pair_t bbhash = {0, 0};
-        int level;
+      for (uint64_t buffer_index = 0; buffer_index < buffered_count;
+           buffer_index++) {
+        elem_t value = buffer[buffer_index];
+        hash_pair_t hash_state = {0, 0};
+        int matched_level;
         uint64_t level_hash;
         if (_writeEachLevel)
-          getLevel(bbhash, val, &level, i, i - 1);
+          getLevel(hash_state, value, &matched_level, level_index,
+                   level_index - 1);
         else
-          getLevel(bbhash, val, &level, i);
+          getLevel(hash_state, value, &matched_level, level_index);
 
-        if (level == i) // insert into lvl i
+        if (matched_level == level_index) // insert into lvl i
         {
-          if (_fastmode && i == _fastModeLevel) {
-            uint64_t idxl2 =
+          if (_fastmode && level_index == _fastModeLevel) {
+            uint64_t fastmode_index =
                 __sync_fetch_and_add(&_idxLevelsetLevelFastmode, 1);
             // If the optimistic fast-mode buffer overflows, fall back to the
             // regular streaming path for the remaining levels.
-            if (idxl2 >= setLevelFastmode.size())
+            if (fastmode_index >= setLevelFastmode.size())
               _fastmode = false;
             else
-              setLevelFastmode[idxl2] = val;
+              setLevelFastmode[fastmode_index] = value;
           }
 
           // Either spill to the next level or, at the end, record the exact
           // final hash position.
-          if (i == _nb_levels - 1) {
-            uint64_t hashidx = __sync_fetch_and_add(&_hashidx, 1);
+          if (level_index == _nb_levels - 1) {
+            uint64_t final_hash_index = __sync_fetch_and_add(&_hashidx, 1);
 
             pthread_mutex_lock(&_mutex);
-            _final_hash[val] = hashidx;
+            _final_hash[value] = final_hash_index;
             pthread_mutex_unlock(&_mutex);
           } else {
-            if (_writeEachLevel && i > 0 && i < _nb_levels - 1) {
-              if (writebuff >= NBBUFF) {
+            if (_writeEachLevel && level_index > 0 &&
+                level_index < _nb_levels - 1) {
+              if (pending_write_count >= NBBUFF) {
                 flockfile(_currlevelFile);
-                fwrite(myWriteBuff.data(), sizeof(elem_t), writebuff,
+                fwrite(thread_write_buffer.data(), sizeof(elem_t),
+                       pending_write_count,
                        _currlevelFile);
                 funlockfile(_currlevelFile);
-                writebuff = 0;
+                pending_write_count = 0;
               }
 
-              myWriteBuff[writebuff++] = val;
+              thread_write_buffer[pending_write_count++] = value;
             }
 
-            if (level == 0)
-              level_hash = _hasher.h0(bbhash, val);
-            else if (level == 1)
-              level_hash = _hasher.h1(bbhash, val);
+            if (matched_level == 0)
+              level_hash = _hasher.h0(hash_state, value);
+            else if (matched_level == 1)
+              level_hash = _hasher.h1(hash_state, value);
             else {
-              level_hash = _hasher.next(bbhash);
+              level_hash = _hasher.next(hash_state);
             }
-            insertIntoLevel(level_hash, i); // should be safe
+            insertIntoLevel(level_hash, level_index); // should be safe
           }
         }
 
         nb_done++;
         if ((nb_done & 1023) == 0 && _withprogress) {
-          _progressBar.inc(nb_done, tid);
+          _progressBar.inc(nb_done, thread_id);
           nb_done = 0;
         }
       }
 
-      inbuff = 0;
+      buffered_count = 0;
     }
 
-    if (_writeEachLevel && writebuff > 0) {
+    if (_writeEachLevel && pending_write_count > 0) {
       flockfile(_currlevelFile);
-      fwrite(myWriteBuff.data(), sizeof(elem_t), writebuff, _currlevelFile);
+      fwrite(thread_write_buffer.data(), sizeof(elem_t), pending_write_count,
+             _currlevelFile);
       funlockfile(_currlevelFile);
-      writebuff = 0;
+      pending_write_count = 0;
     }
   }
 
@@ -1092,37 +1107,40 @@ private:
   }
 
   // Return the last hash examined and report the deepest reached level.
-  uint64_t getLevel(hash_pair_t &bbhash, elem_t val, int *res_level,
-                    int maxlevel = 100, int minlevel = 0)
+  uint64_t getLevel(hash_pair_t &hash_state, elem_t value, int *result_level,
+                    int max_level = 100, int min_level = 0)
   {
-    int level = 0;
-    uint64_t hash_raw = 0;
+    int level_index = 0;
+    uint64_t raw_hash = 0;
 
-    for (int ii = 0; ii < (_nb_levels - 1) && ii < maxlevel; ii++) {
-      if (ii == 0)
-        hash_raw = _hasher.h0(bbhash, val);
-      else if (ii == 1)
-        hash_raw = _hasher.h1(bbhash, val);
+    for (int candidate_level = 0;
+         candidate_level < (_nb_levels - 1) && candidate_level < max_level;
+         candidate_level++) {
+      if (candidate_level == 0)
+        raw_hash = _hasher.h0(hash_state, value);
+      else if (candidate_level == 1)
+        raw_hash = _hasher.h1(hash_state, value);
       else {
-        hash_raw = _hasher.next(bbhash);
+        raw_hash = _hasher.next(hash_state);
       }
 
-      if (ii >= minlevel && _levels[ii].get(hash_raw)) {
+      if (candidate_level >= min_level && _levels[candidate_level].get(raw_hash)) {
         break;
       }
 
-      level++;
+      level_index++;
     }
 
-    *res_level = level;
-    return hash_raw;
+    *result_level = level_index;
+    return raw_hash;
   }
 
-  void insertIntoLevel(uint64_t level_hash, int i) {
-    uint64_t hashl = fastrange64(level_hash, _levels[i].hash_domain);
+  void insertIntoLevel(uint64_t level_hash, int level_index) {
+    uint64_t level_slot =
+        fastrange64(level_hash, _levels[level_index].hash_domain);
 
-    if (_levels[i].bitset.atomic_test_and_set(hashl)) {
-      _tempBitset->atomic_test_and_set(hashl);
+    if (_levels[level_index].bitset.atomic_test_and_set(level_slot)) {
+      _tempBitset->atomic_test_and_set(level_slot);
     }
   }
 
@@ -1274,24 +1292,27 @@ void *thread_processLevel(void *args) {
   if (args == NULL)
     return NULL;
 
-  thread_args<Range, it_type> *targ = (thread_args<Range, it_type> *)args;
+  thread_args<Range, it_type> *thread_context =
+      (thread_args<Range, it_type> *)args;
 
-  mphf<elem_t, Hasher_t> *obw = (mphf<elem_t, Hasher_t> *)targ->boophf;
-  int level = targ->level;
+  mphf<elem_t, Hasher_t> *builder =
+      (mphf<elem_t, Hasher_t> *)thread_context->boophf;
+  int level_index = thread_context->level;
   std::vector<elem_t> buffer;
   buffer.resize(NBBUFF);
 
-  pthread_mutex_t *mutex = &obw->_mutex;
+  pthread_mutex_t *mutex = &builder->_mutex;
 
   // Copy the shared iterator handles while they are protected.
   pthread_mutex_lock(mutex);
-  std::shared_ptr<it_type> startit =
-      std::static_pointer_cast<it_type>(targ->it_p);
-  std::shared_ptr<it_type> until_p =
-      std::static_pointer_cast<it_type>(targ->until_p);
+    std::shared_ptr<it_type> start_iterator =
+      std::static_pointer_cast<it_type>(thread_context->it_p);
+    std::shared_ptr<it_type> end_iterator =
+      std::static_pointer_cast<it_type>(thread_context->until_p);
   pthread_mutex_unlock(mutex);
 
-  obw->pthread_processLevel(buffer, startit, until_p, level);
+    builder->pthread_processLevel(buffer, start_iterator, end_iterator,
+                  level_index);
 
   return NULL;
 }

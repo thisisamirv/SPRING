@@ -35,8 +35,9 @@ void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
                      const uint64_t &end_num, const bool &gzip_flag,
                      const int &gzip_level);
 
-void decompress_unpack_seq(const std::string &infile_seq, const int &num_thr_e,
-                           const int &num_thr);
+void decompress_unpack_seq(const std::string &packed_seq_base_path,
+                           const int &encoding_thread_count,
+                           const int &decode_thread_count);
 
 } // namespace spring
 
