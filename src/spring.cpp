@@ -116,6 +116,19 @@ bool has_suffix(const std::string &value, const std::string &suffix) {
   return value.ends_with(suffix);
 }
 
+std::string shell_quote(const std::string &value) {
+  std::string quoted = "'";
+  for (const char character : value) {
+    if (character == '\'') {
+      quoted += "'\"'\"'";
+    } else {
+      quoted += character;
+    }
+  }
+  quoted += "'";
+  return quoted;
+}
+
 bool is_gzip_input_path(const std::string &input_path) {
   return has_suffix(input_path, ".gz");
 }
@@ -136,13 +149,42 @@ std::string decompressed_input_path(const std::string &temp_dir,
          "." + filename;
 }
 
+#ifdef SPRING_RAPIDGZIP_EXECUTABLE
+constexpr const char *kRapidgzipExecutable = SPRING_RAPIDGZIP_EXECUTABLE;
+#else
+constexpr const char *kRapidgzipExecutable = "";
+#endif
+
+std::string build_rapidgzip_command(const std::string &input_path,
+                                    const std::string &output_path,
+                                    const int num_thr) {
+  const int decoder_parallelism = num_thr > 0 ? num_thr : 0;
+  return shell_quote(kRapidgzipExecutable) + " --decompress --force --output " +
+         shell_quote(output_path) + " --decoder-parallelism " +
+         std::to_string(decoder_parallelism) + " " + shell_quote(input_path);
+}
+
 void decompress_gzip_input_file(const std::string &input_path,
-                                const std::string &output_path) {
-  decompress_gzip_file(input_path, output_path);
+                                const std::string &output_path,
+                                const int num_thr) {
+  if (kRapidgzipExecutable[0] == '\0' ||
+      !std::filesystem::exists(kRapidgzipExecutable)) {
+    throw std::runtime_error(
+        "rapidgzip executable is required for gzipped compression inputs.");
+  }
+
+  const std::string rapidgzip_command =
+      build_rapidgzip_command(input_path, output_path, num_thr);
+  if (std::system(rapidgzip_command.c_str()) != 0) {
+    throw std::runtime_error("rapidgzip failed while decompressing gzipped "
+                             "compression input: " +
+                             input_path);
+  }
 }
 
 prepared_compression_inputs prepare_compression_inputs(
-    const compression_io_config &io_config, const std::string &temp_dir) {
+    const compression_io_config &io_config, const std::string &temp_dir,
+    const int num_thr) {
   prepared_compression_inputs prepared_inputs{
       .input_path_1 = io_config.input_path_1,
       .input_path_2 = io_config.input_path_2,
@@ -154,7 +196,7 @@ prepared_compression_inputs prepare_compression_inputs(
     prepared_inputs.input_path_1 =
         decompressed_input_path(temp_dir, io_config.input_path_1, 1);
     decompress_gzip_input_file(io_config.input_path_1,
-                               prepared_inputs.input_path_1);
+                               prepared_inputs.input_path_1, num_thr);
     prepared_inputs.input_1_was_gzipped = true;
   }
 
@@ -167,7 +209,7 @@ prepared_compression_inputs prepare_compression_inputs(
     prepared_inputs.input_path_2 =
         decompressed_input_path(temp_dir, io_config.input_path_2, 2);
     decompress_gzip_input_file(io_config.input_path_2,
-                               prepared_inputs.input_path_2);
+                               prepared_inputs.input_path_2, num_thr);
     prepared_inputs.input_2_was_gzipped = true;
   }
 
@@ -382,8 +424,8 @@ void compress(const std::string &temp_dir,
 
   const compression_io_config io_config =
       resolve_compression_io(input_paths, output_paths);
-    const prepared_compression_inputs prepared_inputs =
-      prepare_compression_inputs(io_config, temp_dir);
+  const prepared_compression_inputs prepared_inputs =
+      prepare_compression_inputs(io_config, temp_dir, num_thr);
   const bool preserve_order = !pairing_only_flag;
   const bool preserve_id = !no_ids_flag;
   const bool preserve_quality = !no_quality_flag && !fasta_flag;

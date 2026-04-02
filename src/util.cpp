@@ -7,13 +7,14 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <limits>
 #include <sstream>
 #include <streambuf>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <libdeflate.h>
 
 #include "id_compression/include/sam_block.h"
 #include "omp.h"
@@ -375,7 +376,14 @@ gzip_ostream::gzip_ostream(const std::string &path, const int level)
   open(path, level);
 }
 
-gzip_ostream::~gzip_ostream() { close(); }
+gzip_ostream::~gzip_ostream() {
+  if (file_ != nullptr) {
+    try {
+      close();
+    } catch (...) {
+    }
+  }
+}
 
 bool gzip_ostream::open(const std::string &path, const int level) {
   close();
@@ -413,74 +421,25 @@ std::string gzip_compress_string(const std::string &input, const int gzip_level)
     throw std::runtime_error("gzip level must be between 0 and 9.");
   }
 
-  z_stream stream = {};
-  if (deflateInit2(&stream, gzip_level, Z_DEFLATED, 15 + 16, 8,
-                   Z_DEFAULT_STRATEGY) != Z_OK) {
+  libdeflate_compressor *const compressor =
+      libdeflate_alloc_compressor(gzip_level);
+  if (compressor == nullptr) {
     throw std::runtime_error("Failed initializing gzip compressor.");
   }
 
   std::string output;
-  output.reserve(input.size() / 2 + 256);
-  std::array<char, 1 << 15> output_buffer;
-    std::vector<Bytef> input_bytes(input.begin(), input.end());
+  output.resize(libdeflate_gzip_compress_bound(compressor, input.size()));
 
-    stream.next_in = input_bytes.data();
-  stream.avail_in = static_cast<uInt>(
-      std::min<std::size_t>(input_bytes.size(), std::numeric_limits<uInt>::max()));
-  std::size_t input_offset = stream.avail_in;
+  const size_t compressed_size = libdeflate_gzip_compress(
+      compressor, input.data(), input.size(), output.data(), output.size());
+  libdeflate_free_compressor(compressor);
 
-  int flush = input_offset == input.size() ? Z_FINISH : Z_NO_FLUSH;
-  while (true) {
-    stream.next_out = reinterpret_cast<Bytef *>(output_buffer.data());
-    stream.avail_out = static_cast<uInt>(output_buffer.size());
-    const int status = deflate(&stream, flush);
-    if (status != Z_OK && status != Z_STREAM_END) {
-      deflateEnd(&stream);
-      throw std::runtime_error("Failed compressing gzip payload.");
-    }
-
-    output.append(output_buffer.data(),
-                  output_buffer.size() - stream.avail_out);
-
-    if (stream.avail_in == 0 && input_offset < input.size()) {
-      const std::size_t remaining = input_bytes.size() - input_offset;
-      stream.next_in = input_bytes.data() + input_offset;
-      stream.avail_in = static_cast<uInt>(
-          std::min<std::size_t>(remaining, std::numeric_limits<uInt>::max()));
-      input_offset += stream.avail_in;
-      flush = input_offset == input.size() ? Z_FINISH : Z_NO_FLUSH;
-      continue;
-    }
-
-    if (status == Z_STREAM_END) {
-      break;
-    }
+  if (compressed_size == 0) {
+    throw std::runtime_error("Failed compressing gzip payload.");
   }
 
-  deflateEnd(&stream);
+  output.resize(compressed_size);
   return output;
-}
-
-void decompress_gzip_file(const std::string &input_path,
-                          const std::string &output_path) {
-  gzip_istream compressed_input(input_path);
-  if (!compressed_input.is_open()) {
-    throw std::runtime_error("Error opening gzipped input file");
-  }
-
-  std::ofstream decompressed_output(output_path, std::ios::binary);
-  if (!decompressed_output.is_open()) {
-    throw std::runtime_error("Error creating temporary decompressed input file");
-  }
-
-  std::array<char, 1 << 15> buffer;
-  while (compressed_input.good()) {
-    compressed_input.read(buffer.data(), buffer.size());
-    const std::streamsize count = compressed_input.gcount();
-    if (count > 0) {
-      decompressed_output.write(buffer.data(), count);
-    }
-  }
 }
 
 uint32_t read_fastq_block(std::istream *input_stream, std::string *id_array,

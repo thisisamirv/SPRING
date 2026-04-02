@@ -112,9 +112,6 @@ private:
 
 std::string gzip_compress_string(const std::string &input, int gzip_level);
 
-void decompress_gzip_file(const std::string &input_path,
-                          const std::string &output_path);
-
 // FASTQ block helpers.
 uint32_t read_fastq_block(std::istream *input_stream,
                           std::string *id_array,

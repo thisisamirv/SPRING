@@ -7,7 +7,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(CheckIPOSupported)
-include(FetchContent)
 
 function(extract_archive_if_needed archive_path destination_dir expected_path)
     file(SHA256 "${archive_path}" archive_hash)
@@ -98,43 +97,23 @@ file(WRITE "${CMAKE_SOURCE_DIR}/.clangd" "CompileFlags:\n  Add: [\"-I${COMPILER_
 message(STATUS "** CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
 message(STATUS "** CMAKE_C_FLAGS: ${CMAKE_C_FLAGS}")
 
-#######################################################
-# Build Cloudflare zlib during configuration so Spring can link against the
-# bundled zlib implementation directly.
-
-set(CLOUDFLARE_ZLIB_DIR ${CMAKE_BINARY_DIR}/cloudflare_zlib-src)
-set(CLOUDFLARE_ZLIB_ARCHIVE ${CMAKE_SOURCE_DIR}/vendor/cloudflare_zlib.tar.xz)
-
-message(STATUS "Building zlib")
-message(STATUS "CMAKE_SOURCE_DIR: ${CMAKE_SOURCE_DIR}")
-extract_archive_if_needed(
-    "${CLOUDFLARE_ZLIB_ARCHIVE}"
-    "${CLOUDFLARE_ZLIB_DIR}"
-    "${CLOUDFLARE_ZLIB_DIR}/zlib.h"
-)
-if (NOT EXISTS "${CLOUDFLARE_ZLIB_DIR}/Makefile")
-    run_command_checked("${CLOUDFLARE_ZLIB_DIR}" "Configuring Cloudflare zlib" ./configure)
-endif ()
-if (NOT EXISTS "${CLOUDFLARE_ZLIB_DIR}/libz.a")
-    run_command_checked("${CLOUDFLARE_ZLIB_DIR}" "Building Cloudflare zlib" make libz.a)
-endif ()
-
-set( ENV{ZLIB_ROOT} ${CLOUDFLARE_ZLIB_DIR} )
-set(ZLIB_ROOT ${CLOUDFLARE_ZLIB_DIR} CACHE PATH "Path to the vendored zlib build" FORCE)
-set(ZLIB_INCLUDE_DIR ${CLOUDFLARE_ZLIB_DIR} CACHE PATH "Path to the vendored zlib headers" FORCE)
-set(ZLIB_LIBRARY ${CLOUDFLARE_ZLIB_DIR}/libz.a CACHE FILEPATH "Path to the vendored zlib library" FORCE)
-set(ZLIB_LIBRARY_RELEASE ${CLOUDFLARE_ZLIB_DIR}/libz.a CACHE FILEPATH "Path to the vendored zlib release library" FORCE)
-
-#######################################################
-
 set(source_dir ${CMAKE_SOURCE_DIR}/src)
 set(vendor_dir ${CMAKE_SOURCE_DIR}/vendor)
 set(build_vendor_dir ${CMAKE_BINARY_DIR}/vendor)
 set(BBHASH_DIR ${build_vendor_dir}/BBHash)
+set(CLOUDFLARE_ZLIB_DIR ${build_vendor_dir}/cloudflare_zlib)
 set(ID_COMPRESSION_DIR ${build_vendor_dir}/id_compression)
+set(INDEXED_BZIP2_DIR ${build_vendor_dir}/indexed_bzip2)
 set(LIBBSC_DIR ${build_vendor_dir}/libbsc)
+set(LIBDEFLATE_DIR ${build_vendor_dir}/libdeflate)
 set(QVZ_DIR ${build_vendor_dir}/qvz)
 set(include_dir ${CMAKE_SOURCE_DIR}/src)
+
+extract_archive_if_needed(
+    "${CMAKE_SOURCE_DIR}/vendor/cloudflare_zlib.tar.xz"
+    "${CLOUDFLARE_ZLIB_DIR}"
+    "${CLOUDFLARE_ZLIB_DIR}/zlib.h"
+)
 
 extract_archive_if_needed(
     "${CMAKE_SOURCE_DIR}/vendor/BBHash.tar.xz"
@@ -159,6 +138,54 @@ extract_archive_if_needed(
     "${QVZ_DIR}"
     "${QVZ_DIR}/src/qvz.cpp"
 )
+
+extract_archive_if_needed(
+    "${CMAKE_SOURCE_DIR}/vendor/libdeflate.tar.xz"
+    "${LIBDEFLATE_DIR}"
+    "${LIBDEFLATE_DIR}/libdeflate.h"
+)
+
+extract_archive_if_needed(
+    "${CMAKE_SOURCE_DIR}/vendor/indexed_bzip2.tar.xz"
+    "${INDEXED_BZIP2_DIR}"
+    "${INDEXED_BZIP2_DIR}/CMakeLists.txt"
+)
+
+set(LIBDEFLATE_BUILD_STATIC_LIB ON CACHE BOOL "" FORCE)
+set(LIBDEFLATE_BUILD_SHARED_LIB OFF CACHE BOOL "" FORCE)
+set(LIBDEFLATE_BUILD_GZIP OFF CACHE BOOL "" FORCE)
+set(LIBDEFLATE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(LIBDEFLATE_INSTALL OFF CACHE BOOL "" FORCE)
+add_subdirectory("${LIBDEFLATE_DIR}" "${CMAKE_BINARY_DIR}/libdeflate-build")
+
+add_library(spring_cloudflare_zlib STATIC
+    ${CLOUDFLARE_ZLIB_DIR}/adler32.c
+    ${CLOUDFLARE_ZLIB_DIR}/compress.c
+    ${CLOUDFLARE_ZLIB_DIR}/crc32.c
+    ${CLOUDFLARE_ZLIB_DIR}/deflate.c
+    ${CLOUDFLARE_ZLIB_DIR}/gzclose.c
+    ${CLOUDFLARE_ZLIB_DIR}/gzlib.c
+    ${CLOUDFLARE_ZLIB_DIR}/gzread.c
+    ${CLOUDFLARE_ZLIB_DIR}/gzwrite.c
+    ${CLOUDFLARE_ZLIB_DIR}/inffast.c
+    ${CLOUDFLARE_ZLIB_DIR}/inflate.c
+    ${CLOUDFLARE_ZLIB_DIR}/inftrees.c
+    ${CLOUDFLARE_ZLIB_DIR}/trees.c
+    ${CLOUDFLARE_ZLIB_DIR}/uncompr.c
+    ${CLOUDFLARE_ZLIB_DIR}/zutil.c
+)
+target_include_directories(spring_cloudflare_zlib PUBLIC ${CLOUDFLARE_ZLIB_DIR})
+add_library(ZLIB::ZLIB ALIAS spring_cloudflare_zlib)
+
+set(LIBRAPIDARCHIVE_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+set(LIBRAPIDARCHIVE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(LIBRAPIDARCHIVE_BUILD_TOOLS ON CACHE BOOL "" FORCE)
+set(LIBRAPIDARCHIVE_RUN_CLANG_TIDY OFF CACHE BOOL "" FORCE)
+set(LIBRAPIDARCHIVE_USE_SYSTEM_ZLIB ON CACHE BOOL "" FORCE)
+set(LIBRAPIDARCHIVE_USE_ZLIB_NG OFF CACHE BOOL "" FORCE)
+set(LIBRAPIDARCHIVE_WITH_RPMALLOC OFF CACHE BOOL "" FORCE)
+set(LIBRAPIDARCHIVE_WITH_ISAL ON CACHE BOOL "" FORCE)
+add_subdirectory("${INDEXED_BZIP2_DIR}" "${CMAKE_BINARY_DIR}/indexed_bzip2-build" EXCLUDE_FROM_ALL)
 
 # The Spring executable is built from the core pipeline plus bundled
 # third-party compression libraries.
@@ -226,12 +253,15 @@ endfunction()
 add_executable (spring ${source_files})
 
 # Spring headers live in src/, while vendor/ exposes bundled libraries such
-# as BBHash, libbsc, id_compression, qvz, and Cloudflare zlib.
+# as BBHash, libbsc, id_compression, qvz, and the vendored libdeflate sources.
 target_include_directories(spring PRIVATE ${include_dir} ${vendor_dir} ${build_vendor_dir})
-target_link_directories(spring PRIVATE ${CLOUDFLARE_ZLIB_DIR})
 target_link_libraries(spring PUBLIC
-    z
+    libdeflate::libdeflate_static
+    ZLIB::ZLIB
 )
+target_compile_definitions(spring PRIVATE SPRING_RAPIDGZIP_EXECUTABLE=\"$<TARGET_FILE:rapidgzip>\")
+
+add_dependencies(spring rapidgzip)
 
 add_dev_script_target(dev-lint lint.sh)
 add_dev_script_target(dev-cppcheck cppcheck.sh)

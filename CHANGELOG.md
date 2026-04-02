@@ -24,6 +24,12 @@
 
 * **Removed the Obsolete `-g` CLI Flag**: Simplified `src/main.cpp` and the Spring CLI surface by removing the old `--gzipped-fastq/-g` option now that gzipped compression inputs are auto-detected and gzipped decompression output is inferred from the output filename.
 
+* **Added libdeflate for Whole-Buffer Compression Workloads**: Integrated vendored `libdeflate` so Spring can use its fast in-memory DEFLATE, zlib, and gzip compression/decompression routines for the non-streaming compression paths, reducing reliance on heavier external compression components while keeping zlib-compatible streaming support where it is still required.
+
+* **Integrated rapidgzip for Gzipped Compression Inputs**: Wired a pruned vendored `rapidgzip` build from `indexed_bzip2` into Spring's `.fastq.gz` compression-input staging path, using Spring's existing thread count for decoder parallelism and retaining the zlib-based fallback if the external decoder fails.
+
+* **Pruned and Repackaged indexed_bzip2 as an Archive Payload**: Reduced the vendored `indexed_bzip2` tree to the Spring-specific gzip-only, non-Python `rapidgzip` subset, removed unused tests/benchmarks/examples/zlib-ng/rpmalloc/bzip2/Python tooling and extra CLI features, then repackaged the retained sources as `vendor/indexed_bzip2.tar.xz` so CMake now extracts the dependency into the build tree instead of depending on an unpacked source directory in the repository.
+
 * **Removed the Final Boost Dependency**: Replaced the remaining Boost.Iostreams gzip and mapped-file usage with local zlib-backed gzip wrappers and a POSIX `mmap`-based reference-chunk reader, then removed Boost from the top-level `CMakeLists.txt` so Spring now builds without linking any Boost components.
 
 * **Removed the Unused Vendored Boost Archive**: Deleted the stale `vendor/boost.tar.xz` payload and removed its license-manifest entry now that the Spring build no longer references any Boost components.
