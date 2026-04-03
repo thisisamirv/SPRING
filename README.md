@@ -1,86 +1,199 @@
 # SPRING
 
-[![C/C++ CI](https://github.com/shubhamchandak94/Spring/actions/workflows/c-cpp.yml/badge.svg)](https://github.com/shubhamchandak94/Spring/actions/workflows/c-cpp.yml)
-### [Bioinformatics publication](https://academic.oup.com/bioinformatics/advance-article/doi/10.1093/bioinformatics/bty1015/5232998?guestAccessKey=266a1378-4684-4f04-bb99-6febdf9d1fb9)
-#### Check out specialized tool for compressing nanopore long reads: https://github.com/qm2/NanoSpring
+> **LICENSE RESTRICTION NOTICE**
+>
+> **SPRING is not provided under a permissive open-source license. Under the Non-Exclusive Research Use Software and Patent License Agreement, the software and patent rights are licensed only for non-profit research, educational, personal, and individual use. Commercial use, sublicensing, assignment, transfer, or other unlicensed making-available to third parties is not authorized absent a separate license from the University of Illinois. Any use, copying, modification, disclosure, or redistribution must comply with the original license terms, and derivative works must be clearly marked and renamed. Treat this repository as demonstration and reference material unless your intended use is expressly permitted by that license.**
 
-SPRING is a compression tool for Fastq files (containing up to 4.29 Billion reads):
+[![CI](https://github.com/thisisamirv/Spring/actions/workflows/ci.yml/badge.svg)](https://github.com/thisisamirv/Spring/actions/workflows/ci.yml)
+
+### [Bioinformatics publication](https://academic.oup.com/bioinformatics/advance-article/doi/10.1093/bioinformatics/bty1015/5232998?guestAccessKey=266a1378-4684-4f04-bb99-6febdf9d1fb9)
+
+#### Specialized tool for nanopore long reads: https://github.com/qm2/NanoSpring
+
+SPRING is a compressor for FASTQ and FASTA sequencing data, including paired-end data and gzipped FASTQ inputs.
+
+## Features
+
 - Near-optimal compression ratios for single-end and paired-end datasets
 - Fast and memory-efficient decompression
-- Supports variable length short reads of length upto 511 bases (without -l flag)
-- Supports variable length long reads of arbitrary length (upto 4.29 Billion) (with -l flag). This mode directly applies general purpose compression (BSC) to reads and so compression gains might be lower than those without -l flag.
-- Supports lossless compression of reads, quality scores and read identifiers
-- Supports reordering of reads (while preserving read pairing information) to boost compression
-- Supports quantization of quality values using [QVZ](https://github.com/mikelhernaez/qvz/), [Illumina 8-level binning](https://www.illumina.com/documents/products/whitepapers/whitepaper_datacompression.pdf) and binary thresholding
-- Supports decompression of a subset of reads (random access)
-- Supports gzipped FASTQ files as compression input and decompression output based on filename
-- Automatically detects FASTQ versus FASTA compression input
-- Tested on Linux and macOS
+- Lossless compression of reads, quality scores, and read identifiers
+- Optional quality quantization using [QVZ](https://github.com/mikelhernaez/qvz/), [Illumina 8-level binning](https://www.illumina.com/documents/products/whitepapers/whitepaper_datacompression.pdf), or binary thresholding
+- Automatic FASTQ versus FASTA input detection
+- Gzipped FASTQ input support and gzip output on decompression based on output filename
+- Random-access decompression with `--decompress-range`
+- Short-read mode for reads up to 511 bases
+- Long-read mode with `-l` for arbitrarily long reads
 
-**Note:** If you want to use SPRING only as a ***tool for reordering reads*** (approximately according to genome position), take a look at the [reorder-only branch](https://github.com/shubhamchandak94/Spring/tree/reorder-only).
+## Platform Support
 
-### Install with conda on Linux
-To install directly from source or to install on OSX, follow the instructions in the next section.
+The current CI workflow validates SPRING on:
 
-Spring is now available on conda via the bioconda channel. See [this](https://bioconda.github.io/user/install.html) page for installation instructions for conda. Once conda is installed, do the following to install spring.
+- Linux
+- macOS
+- Windows via MSYS2 UCRT64
+
+The build system currently requires:
+
+- A C++20-capable compiler
+- CMake 4.2 or newer
+- Ninja
+- NASM
+- OpenMP
+
+## Install With Conda
+
+SPRING is available through Bioconda on Linux.
+
 ```bash
 conda config --add channels defaults
 conda config --add channels bioconda
 conda config --add channels conda-forge
 conda install spring
 ```
-Note that if spring is installed this way, it should be invoked with the command `spring` rather than `./spring`. The bioconda [help page](https://bioconda.github.io/user/install.html) shows the commands if you wish to install spring in an environment. Also note that the bioconda version is compiled using SSE4.1 instruction set to allow portability across machines. You might get slightly better performance by compiling using the instructions below that use all available instructions on the target machine. Also, for older processors that don't support SSE4.1 instructions, you might get Illegal instruction error. In such cases, please use the instructions below.
 
-### Download
+When installed this way, invoke it as `spring` instead of `./spring`.
+
+## Source Build
+
+Clone the repository:
+
 ```bash
-git clone https://github.com/shubhamchandak94/SPRING.git
-```
-
-### Install
-The instructions below will create the spring executable in the build directory inside SPRING. If you plan to build and run SPRING on separate architectures, then you might need to remove/comment the line ```set(FLAGS "${FLAGS} -march=native")``` in CMakeLists.txt (or use flags based on the target architecture). You can also use the `-Dspring_optimize_for_portability=ON` option for `cmake` that enables only the SSE4.1 instructions that should work on most processors.
-
-On Linux with cmake installed and version at least 3.9 (check using ```cmake --version```):
-```bash
+git clone https://github.com/thisisamirv/SPRING.git
 cd SPRING
-mkdir build
-cd build
-cmake ..
-make
 ```
 
-On Linux with cmake not installed or with version older than 3.12:
+CI builds use `-Dspring_optimize_for_native=OFF -Dspring_optimize_for_portability=ON` for portability. For local builds on a single machine, the default native-tuned build is fine. If you need a more portable binary, pass the same portability flags used in CI.
+
+### Linux
+
+Install the build requirements:
+
 ```bash
-cd SPRING
-mkdir build
-cd build
-wget https://cmake.org/files/v3.12/cmake-3.12.4.tar.gz
-tar -xzf cmake-3.12.4.tar.gz
-cd cmake-3.12.4
-./configure
-make
-cd ..
-./cmake-3.12.4/bin/cmake ..
-make
+sudo apt-get update
+sudo apt-get install -y build-essential libomp-dev nasm ninja-build python3 python3-pip python3-venv
+python3 -m venv .cmake-venv
+. .cmake-venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install "cmake==4.2.0"
 ```
 
-On macOS, install GCC compiler since Clang has issues with OpenMP library:
-- Install HomeBrew (https://brew.sh/)
-- Install GCC (this step will be faster if Xcode command line tools are already installed using ```xcode-select --install```):
+Configure and build:
+
+```bash
+cmake -S . -B build \
+  -G Ninja \
+  -Dspring_optimize_for_native=OFF \
+  -Dspring_optimize_for_portability=ON
+cmake --build build --parallel
+```
+
+Optional analysis tools used in CI:
+
+```bash
+sudo apt-get install -y clang-tidy cppcheck valgrind
+```
+
+### macOS
+
+Install Xcode Command Line Tools first if needed:
+
+```bash
+xcode-select --install
+```
+
+Install Homebrew packages:
+
 ```bash
 brew update
-brew install gcc@9
+brew install libomp nasm ninja python llvm cppcheck
+python3 -m venv .cmake-venv
+. .cmake-venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install "cmake==4.2.0"
 ```
-- Set environment variables:
-```bash
-export CC=gcc-9
-export CXX=g++-9
-```
-- Delete ```CMakeCache.txt``` (if present) from the build directory
-- Follow the steps above for Linux
 
-### Usage
-Run the spring executable ```/PATH/TO/spring``` (or just ```spring``` if installed with conda) with the options below:
+Configure and build with Apple Clang and Homebrew `libomp`:
+
+```bash
+MACOS_LIBOMP_PREFIX="$(brew --prefix libomp)"
+
+CC=clang CXX=clang++ \
+cmake -S . -B build \
+  -G Ninja \
+  -DOpenMP_ROOT="$MACOS_LIBOMP_PREFIX" \
+  -DOpenMP_C_FLAGS="-Xpreprocessor -fopenmp" \
+  -DOpenMP_CXX_FLAGS="-Xpreprocessor -fopenmp" \
+  -DOpenMP_C_LIB_NAMES="omp" \
+  -DOpenMP_CXX_LIB_NAMES="omp" \
+  -DOpenMP_omp_LIBRARY="$MACOS_LIBOMP_PREFIX/lib/libomp.dylib" \
+  -Dspring_optimize_for_native=OFF \
+  -Dspring_optimize_for_portability=ON
+
+cmake --build build --parallel
 ```
+
+Optional analysis configuration used in CI:
+
+```bash
+export HOMEBREW_LLVM_BIN="$(brew --prefix llvm)/bin"
+export PATH="$HOMEBREW_LLVM_BIN:$PATH"
+```
+
+### Windows
+
+CI uses MSYS2 UCRT64. Installing the same environment locally is the easiest way to match the supported build.
+
+Install MSYS2 from https://www.msys2.org/ and then open an `MSYS2 UCRT64` shell.
+
+Install the build requirements:
+
+```bash
+pacman -Syu
+pacman -S --needed \
+  mingw-w64-ucrt-x86_64-gcc \
+  mingw-w64-ucrt-x86_64-cmake \
+  mingw-w64-ucrt-x86_64-nasm \
+  mingw-w64-ucrt-x86_64-ninja
+```
+
+Configure and build:
+
+```bash
+CC=gcc CXX=g++ \
+cmake -S . -B build \
+  -G Ninja \
+  -Dspring_optimize_for_native=OFF \
+  -Dspring_optimize_for_portability=ON
+
+cmake --build build --parallel
+```
+
+Optional analysis tools used in CI:
+
+```bash
+pacman -S --needed \
+  mingw-w64-ucrt-x86_64-clang-tools-extra \
+  mingw-w64-ucrt-x86_64-cppcheck \
+  mingw-w64-ucrt-x86_64-python
+```
+
+## Running SPRING
+
+The built executable is:
+
+```bash
+build/spring
+```
+
+If installed with conda, use:
+
+```bash
+spring
+```
+
+Current command-line help:
+
+```text
 Allowed options:
   -h [ --help ]                   produce help message
   -c [ --compress ]               compress
@@ -125,89 +238,146 @@ Allowed options:
                                   for reads with significant number of indels.
                                   -r disabled in this mode. For Illumina short
                                   reads, compression is better without -l flag.
-  --gzip-level arg (=6)           gzip level (0-9) to use during decompression 
+  --gzip-level arg (=6)           gzip level (0-9) to use during decompression
                                   when the output path ends in .gz (default: 6)
 ```
-Note that the SPRING compressed files are tar archives consisting of the different compressed streams, although we recommend using the `.spring` extension as in the examples shown below.
 
-If a machine has many CPU cores but limited RAM, `--memory-cap-gb` can be used as a conservative safety knob. It does not hard-limit Spring's total allocator usage; instead, it reduces the effective worker-thread count using an approximate budget of about 1 GB per worker thread.
+SPRING archives are tar files containing the internal compressed streams, though using a `.spring` extension is recommended.
 
-### Resource usage
-For the memory and CPU performance for SPRING, please see the paper and the associated supplementary material. Note that SPRING uses some temporary disk space, and can fail if the disk space is not sufficient. Assuming that qualities and ids are not being discarded and SPRING is operating in the short read mode, the additional temporary disk usage is around 10-30% of the original uncompressed file (on the lower end when quality values are from newer Illumina machines and are more compressible) when -r flag is not specified (i.e., default lossless mode). When -r flag is specified, SPRING writes all the quality values and read ids to a temporary file leading to significantly higher temporary disk usage - closer to 70-80% of the original file size. Note that these figures are approximate and include the space needed for the final compressed file.
+`--memory-cap-gb` is a conservative safety knob for machines with many cores and limited RAM. It does not hard-limit total allocation. Instead, it reduces the effective worker-thread count using an approximate budget of about 1 GB per worker thread.
 
-### Example Usage of SPRING
-This section contains several examples for SPRING compression and decompression with various modes and options. The compressed SPRING file uses the `.spring` extension as a convention. If installed using conda, use the command `spring` instead of `./spring`.
+## Smoke Tests And Lint
 
-For compressing file_1.fastq and file_2.fastq losslessly using the default thread count (Lossless).
+Run the basic smoke tests:
+
+```bash
+tests/test_script.sh
+```
+
+Run the project lint wrapper:
+
+```bash
+./dev/lint.sh
+```
+
+On macOS analysis runs, CI prepends Homebrew LLVM to `PATH` before linting.
+
+## Resource Usage
+
+For memory and CPU performance numbers, see the paper and supplementary material. SPRING also uses temporary disk space during compression.
+
+In short-read mode, when qualities and identifiers are retained:
+
+- default lossless mode typically uses temporary disk space around 10% to 30% of the original uncompressed input
+- `-r` mode can push temporary disk usage much higher, often around 70% to 80% of the original file size
+
+These figures are approximate and include the space needed for the final compressed output.
+
+## Example Usage
+
+Compress paired-end FASTQ losslessly:
+
 ```bash
 ./spring -c -i file_1.fastq file_2.fastq -o file.spring
 ```
-For compressing file_1.fastq.gz and file_2.fastq.gz (gzipped fastq files) losslessly using the default thread count (Lossless).
+
+Compress gzipped paired-end FASTQ losslessly:
+
 ```bash
 ./spring -c -i file_1.fastq.gz file_2.fastq.gz -o file.spring
 ```
-Using 16 threads (Lossless).
+
+Compress with 16 threads:
+
 ```bash
 ./spring -c -i file_1.fastq file_2.fastq -o file.spring -t 16
 ```
-Compressing with only paired end info preserved, ids not stored, qualities compressed after Illumina binning (Recommended lossy mode for older Illumina machines. For Novaseq files, lossless quality compression is recommmended).
+
+Compress with Illumina binning and no stored identifiers:
+
 ```bash
 ./spring -c -i file_1.fastq file_2.fastq -r --no-ids -q ill_bin -o file.spring
 ```
-Compressing with only paired end info preserved, ids not stored, qualities binary thresholded (qv < 20 binned to 6 and qv >= 20 binned to 40).
+
+Compress with binary-thresholded qualities:
+
 ```bash
 ./spring -c -i file_1.fastq file_2.fastq -r --no-ids -q binary 20 40 6 -o file.spring
 ```
-Compressing with only paired end info preserved, ids not stored, qualities quantized using qvz with approximately 1 bit used per quality value.
+
+Compress with QVZ quantization:
+
 ```bash
 ./spring -c -i file_1.fastq file_2.fastq -r --no-ids -q qvz 1.0 -o file.spring
 ```
-Compressing only reads and ids.
+
+Compress reads and identifiers only:
+
 ```bash
 ./spring -c -i file_1.fastq file_2.fastq --no-quality -o file.spring
 ```
-Compressing single-end long read Fastq losslessly.
+
+Compress single-end long reads:
+
 ```bash
-./spring -c -l -i file.fastq  -o file.spring
+./spring -c -l -i file.fastq -o file.spring
 ```
-For single end file, compressing without order preserved.
+
+Compress single-end data without preserving order:
+
 ```bash
 ./spring -c -i file.fastq -r -o file.spring
 ```
-For single end file, compressing with order preserved (lossless).
-```bash
-./spring -c -i file.fastq -o file.spring
-```
-Decompressing (single end) to file.fastq.
+
+Decompress single-end data:
+
 ```bash
 ./spring -d -i file.spring -o file.fastq
 ```
-Decompressing (single end) to file.fastq, only decompress reads from 400 to 10000000.
+
+Decompress a range of reads:
+
 ```bash
 ./spring -d -i file.spring -o file.fastq --decompress-range 400 1000000
 ```
-Decompressing (paired end) to file.fastq.1 and file.fastq.2.
+
+Decompress paired-end data to suffixed outputs:
+
 ```bash
 ./spring -d -i file.spring -o file.fastq
 ```
-Decompressing (paired end) to file_1.fastq and file_2.fastq.
+
+Decompress paired-end data to explicit outputs:
+
 ```bash
 ./spring -d -i file.spring -o file_1.fastq file_2.fastq
 ```
-Decompressing (paired end) to file_1.fastq.gz and file_2.fastq.gz.
+
+Decompress paired-end data directly to gzip outputs:
+
 ```bash
 ./spring -d -i file.spring -o file_1.fastq.gz file_2.fastq.gz
 ```
-Decompressing (paired end) to file_1.fastq and file_2.fastq, only decompress pairs from 4000000 to 8000000.
+
+Decompress a paired-end read range:
+
 ```bash
 ./spring -d -i file.spring -o file_1.fastq file_2.fastq --decompress-range 4000000 8000000
 ```
-Compressing file_1.fasta and file_2.fasta (fasta files without qualities) losslessly using the default thread count (Lossless).
+
+Compress paired-end FASTA losslessly:
+
 ```bash
 ./spring -c -i file_1.fasta file_2.fasta -o file.spring
 ```
 
-Compressing (paired end) to file_1.fasta and file_2.fasta (previous example contd.).
+Decompress paired-end FASTA:
+
 ```bash
 ./spring -d -i file.spring -o file_1.fasta file_2.fasta
 ```
+
+## Related
+
+- QVZ: https://github.com/mikelhernaez/qvz/
+- NanoSpring: https://github.com/qm2/NanoSpring

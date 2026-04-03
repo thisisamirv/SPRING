@@ -129,6 +129,18 @@ std::string to_ascii_lowercase(std::string value) {
 }
 
 std::string shell_quote(const std::string &value) {
+#ifdef _WIN32
+  std::string quoted = "\"";
+  for (const char character : value) {
+    if (character == '"') {
+      quoted += "\\\"";
+    } else {
+      quoted += character;
+    }
+  }
+  quoted += '"';
+  return quoted;
+#else
   std::string quoted = "'";
   for (const char character : value) {
     if (character == '\'') {
@@ -139,6 +151,7 @@ std::string shell_quote(const std::string &value) {
   }
   quoted += "'";
   return quoted;
+#endif
 }
 
 std::string shell_path(const std::string &value) {
