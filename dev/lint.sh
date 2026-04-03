@@ -37,7 +37,7 @@ clang_tidy_common_args=(
   -header-filter='^$'
   --system-headers=false
   --extra-arg=-fopenmp
-  --extra-arg=-D__malloc__(...)=__malloc__
+  '--extra-arg=-D__malloc__(...)=__malloc__'
   --extra-arg=-I"$GCC_INCLUDE_DIR"
 )
 
