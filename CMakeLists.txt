@@ -103,6 +103,12 @@ endif ()
 if (OpenMP_CXX_INCLUDE_DIRS)
     list(APPEND SPRING_OPENMP_INCLUDE_DIRS ${OpenMP_CXX_INCLUDE_DIRS})
 endif ()
+if (NOT SPRING_OPENMP_INCLUDE_DIRS AND DEFINED OpenMP_ROOT)
+    set(SPRING_OPENMP_ROOT_INCLUDE_DIR "${OpenMP_ROOT}/include")
+    if (EXISTS "${SPRING_OPENMP_ROOT_INCLUDE_DIR}/omp.h")
+        list(APPEND SPRING_OPENMP_INCLUDE_DIRS "${SPRING_OPENMP_ROOT_INCLUDE_DIR}")
+    endif ()
+endif ()
 list(REMOVE_DUPLICATES SPRING_OPENMP_INCLUDE_DIRS)
 
 execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=include
@@ -208,6 +214,9 @@ set(LIBRAPIDARCHIVE_USE_ZLIB_NG OFF CACHE BOOL "" FORCE)
 set(LIBRAPIDARCHIVE_WITH_RPMALLOC OFF CACHE BOOL "" FORCE)
 set(LIBRAPIDARCHIVE_WITH_ISAL ON CACHE BOOL "" FORCE)
 add_subdirectory("${INDEXED_BZIP2_DIR}" "${CMAKE_BINARY_DIR}/indexed_bzip2-build" EXCLUDE_FROM_ALL)
+if (TARGET rapidgzip)
+    target_compile_options(rapidgzip PRIVATE -fno-fast-math)
+endif ()
 
 # The Spring executable is built from the core pipeline plus bundled
 # third-party compression libraries.
