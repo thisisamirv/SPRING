@@ -4,8 +4,20 @@ set -euo pipefail
 
 source "$(cd -- "$(dirname -- "$0")" && pwd)/common.sh"
 
-require_command clang-tidy
 require_command python3
+
+clang_tidy_bin=""
+for candidate in clang-tidy clang-tidy-18 clang-tidy-17 clang-tidy-16; do
+  if command -v "$candidate" >/dev/null 2>&1; then
+    clang_tidy_bin="$candidate"
+    break
+  fi
+done
+
+if [[ -z "$clang_tidy_bin" ]]; then
+  echo "Missing required command: clang-tidy" >&2
+  exit 1
+fi
 
 GCC_INCLUDE_DIR=$(g++ -print-file-name=include)
 
@@ -25,6 +37,7 @@ clang_tidy_common_args=(
   -header-filter='^$'
   --system-headers=false
   --extra-arg=-fopenmp
+  --extra-arg=-D__malloc__(...)=__malloc__
   --extra-arg=-I"$GCC_INCLUDE_DIR"
 )
 
@@ -52,7 +65,7 @@ if [[ ${#files[@]} -gt 0 ]]; then
 fi
 
 if [[ ${#compile_db_files[@]} -gt 0 ]]; then
-  clang-tidy \
+  "$clang_tidy_bin" \
     "${clang_tidy_common_args[@]}" \
     -p "$BUILD_DIR" \
     "${compile_db_files[@]}"
@@ -66,7 +79,7 @@ for file in "${standalone_files[@]}"; do
 
   printf 'Linting standalone file %s.\n' "$file"
 
-  clang-tidy \
+  "$clang_tidy_bin" \
     "${clang_tidy_common_args[@]}" \
     "$file" -- \
     -std=c++20 \

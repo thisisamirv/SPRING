@@ -49,22 +49,33 @@ else ()
 	message(FATAL_ERROR "Compiler currently not supported by CMake build: ${CMAKE_CXX_COMPILER_ID}")
 endif()
 
-check_ipo_supported(RESULT result)
-if(result)
-  message(STATUS "Support for Interprocedural Optimization detected.")
-  set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
-endif()
+if (NOT WIN32)
+        check_ipo_supported(RESULT result)
+        if(result)
+            message(STATUS "Support for Interprocedural Optimization detected.")
+            set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+        endif()
+endif ()
 
-# Native tuning is the default; portability mode restricts code generation to
-# SSE4.1-compatible instructions.
+# Native tuning is the default; portability mode restricts x86-family code
+# generation to SSE4.1-compatible instructions.
 option(spring_optimize_for_native "Build spoa with -march=native" ON)
 option(spring_optimize_for_portability "Build spoa with -msse4.1" OFF)
+
+set(SPRING_X86_FAMILY FALSE)
+if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i[3-6]86)$")
+    set(SPRING_X86_FAMILY TRUE)
+endif ()
 
 message(STATUS "Setting compiler flags")
 set(FLAGS "${FLAGS} -g")
 set(FLAGS "${FLAGS} -O3")
 if (spring_optimize_for_portability)
-    set(FLAGS "${FLAGS} -msse4.1")
+    if (SPRING_X86_FAMILY)
+        set(FLAGS "${FLAGS} -msse4.1")
+    else ()
+        message(STATUS "spring_optimize_for_portability requested on non-x86 target ${CMAKE_SYSTEM_PROCESSOR}; skipping -msse4.1")
+    endif ()
 elseif (spring_optimize_for_native)
     set(FLAGS "${FLAGS} -march=native")
 endif ()
@@ -235,6 +246,18 @@ list(APPEND source_files
     ${QVZ_DIR}/src/util.cpp
     ${QVZ_DIR}/src/well.cpp
 )
+
+if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU|Clang")
+    set(vendored_unused_result_warning_sources
+        ${ID_COMPRESSION_DIR}/src/Arithmetic_stream.cpp
+        ${ID_COMPRESSION_DIR}/src/io_functions.cpp
+        ${QVZ_DIR}/src/codebook.cpp
+    )
+    set_source_files_properties(
+        ${vendored_unused_result_warning_sources}
+        PROPERTIES COMPILE_OPTIONS "-Wno-unused-result"
+    )
+endif ()
 
 # Convenience targets for repository development checks.
 function(add_dev_script_target target_name script_name)

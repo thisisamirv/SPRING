@@ -255,7 +255,7 @@ uint32_t max_read_length_in_step(const std::vector<uint32_t> &read_lengths,
 
 void preprocess(const std::string &infile_1, const std::string &infile_2,
                 const std::string &temp_dir, compression_params &cp,
-                const bool &fasta_flag) {
+                const bool &fasta_input) {
   const preprocess_paths paths =
       build_preprocess_paths(infile_1, infile_2, temp_dir);
   std::array<std::ifstream, 2> input_files;
@@ -324,8 +324,8 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       uint32_t reads_in_step =
           read_fastq_block(input_streams[stream_index], id_array,
                            read_array.data(),
-                           quality_array.data(),
-                           num_reads_per_step, fasta_flag);
+                   quality_array.data(),
+                   num_reads_per_step, fasta_input);
       if (reads_in_step < num_reads_per_step)
         done[stream_index] = true;
       if (reads_in_step == 0)

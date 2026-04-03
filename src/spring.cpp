@@ -58,7 +58,7 @@ struct prepared_compression_inputs {
   bool input_2_was_gzipped;
 };
 
-enum class input_record_format { fastq, fasta };
+enum class input_record_format : uint8_t { fastq, fasta };
 
 void print_step_summary(const char *step_name,
                         const clock_type::time_point &step_start,
