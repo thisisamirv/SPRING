@@ -2,6 +2,8 @@
 // temporary-directory management, and dispatch to compress/decompress modes.
 
 #include "spring.h"
+#include <algorithm>
+#include <cmath>
 #include <csignal>
 #include <cstdint>
 #include <cstdlib>
@@ -11,9 +13,21 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
+
+constexpr double kApproxMemoryCapPerThreadGiB = 1.0;
+
+int default_num_threads() {
+  const unsigned int hardware_threads = std::thread::hardware_concurrency();
+  if (hardware_threads == 0)
+    return 8;
+
+  const int preferred_threads = static_cast<int>(hardware_threads) - 1;
+  return std::min(std::max(1, preferred_threads), 16);
+}
 
 struct command_line_options {
   bool help_flag = false;
@@ -23,13 +37,14 @@ struct command_line_options {
   bool no_quality_flag = false;
   bool no_ids_flag = false;
   bool long_flag = false;
-  bool fasta_flag = false;
   std::vector<std::string> input_paths;
   std::vector<std::string> output_paths;
   std::vector<std::string> quality_options;
   std::vector<uint64_t> decompress_range;
   std::string working_dir = ".";
-  int num_threads = 8;
+  int num_threads = default_num_threads();
+  bool num_threads_was_explicit = false;
+  double memory_cap_gb = 0.0;
   int gzip_level = 6;
 };
 
@@ -81,50 +96,55 @@ int print_invalid_mode_and_exit(
 }
 
 std::string build_options_description() {
-  return R"(Allowed options:
-  -h [ --help ]                   produce help message
-  -c [ --compress ]               compress
-  -d [ --decompress ]             decompress
-  --decompress-range arg          --decompress-range start end
-                                  (optional) decompress only reads (or read 
-                                  pairs for PE datasets) from start to end 
-                                  (both inclusive) (1 <= start <= end <= 
-                                  num_reads (or num_read_pairs for PE)). If -r 
-                                  was specified during compression, the range 
-                                  of reads does not correspond to the original 
-                                  order of reads in the FASTQ file.
-  -i [ --input-file ] arg         input file name (two files for paired end)
-  -o [ --output-file ] arg        output file name (for paired end 
-                                  decompression, if only one file is specified,
-                                  two output files will be created by suffixing
-                                  .1 and .2.)
-  -w [ --working-dir ] arg (=.)   directory to create temporary files (default 
-                                  current directory)
-  -t [ --num-threads ] arg (=8)   number of threads (default 8)
-  -r [ --allow-read-reordering ]  do not retain read order during compression 
-                                  (paired reads still remain paired)
-  --no-quality                    do not retain quality values during 
-                                  compression
-  --no-ids                        do not retain read identifiers during 
-                                  compression
-  -q [ --quality-opts ] arg       quality mode: possible modes are
-                                  1. -q lossless (default)
-                                  2. -q qvz qv_ratio (QVZ lossy compression, 
-                                  parameter qv_ratio roughly corresponds to 
-                                  bits used per quality value)
-                                  3. -q ill_bin (Illumina 8-level binning)
-                                  4. -q binary thr high low (binary (2-level) 
-                                  thresholding, quality binned to high if >= 
-                                  thr and to low if < thr)
-  -l [ --long ]                   Use for compression of arbitrarily long read 
-                                  lengths. Can also provide better compression 
-                                  for reads with significant number of indels. 
-                                  -r disabled in this mode. For Illumina short 
-                                  reads, compression is better without -l flag.
-  --gzip-level arg (=6)           gzip level (0-9) to use when decompression 
-                                  output path ends in .gz (default: 6)
-  --fasta-input                   enable if compression input is fasta file 
-                                  (i.e., no qualities))";
+  std::ostringstream options;
+  options << "Allowed options:\n"
+    << "  -h [ --help ]                   produce help message\n"
+    << "  -c [ --compress ]               compress\n"
+    << "  -d [ --decompress ]             decompress\n"
+    << "  --decompress-range arg          --decompress-range start end\n"
+    << "                                  (optional) decompress only reads (or read\n"
+    << "                                  pairs for PE datasets) from start to end\n"
+    << "                                  (both inclusive) (1 <= start <= end <=\n"
+    << "                                  num_reads (or num_read_pairs for PE)). If -r\n"
+    << "                                  was specified during compression, the range\n"
+    << "                                  of reads does not correspond to the original\n"
+    << "                                  order of reads in the FASTQ file.\n"
+    << "  -i [ --input-file ] arg         input file name (two files for paired end)\n"
+    << "  -o [ --output-file ] arg        output file name (for paired end\n"
+    << "                                  decompression, if only one file is specified,\n"
+    << "                                  two output files will be created by suffixing\n"
+    << "                                  .1 and .2.)\n"
+    << "  -w [ --working-dir ] arg (=.)   directory to create temporary files (default\n"
+    << "                                  current directory)\n"
+    << "  -t [ --num-threads ] arg (=" << default_num_threads()
+    << ")   number of threads\n"
+    << "                                  (default: min(max(1, hw_threads - 1), 16))\n"
+    << "  --memory-cap-gb arg (=0)       approximate memory budget in GB;\n"
+    << "                                  reduces effective thread count using\n"
+    << "                                  about 1 GB per worker thread (0 disables)\n"
+    << "  -r [ --allow-read-reordering ]  do not retain read order during compression\n"
+    << "                                  (paired reads still remain paired)\n"
+    << "  --no-quality                    do not retain quality values during\n"
+    << "                                  compression\n"
+    << "  --no-ids                        do not retain read identifiers during\n"
+    << "                                  compression\n"
+    << "  -q [ --quality-opts ] arg       quality mode: possible modes are\n"
+    << "                                  1. -q lossless (default)\n"
+    << "                                  2. -q qvz qv_ratio (QVZ lossy compression,\n"
+    << "                                  parameter qv_ratio roughly corresponds to\n"
+    << "                                  bits used per quality value)\n"
+    << "                                  3. -q ill_bin (Illumina 8-level binning)\n"
+    << "                                  4. -q binary thr high low (binary (2-level)\n"
+    << "                                  thresholding, quality binned to high if >=\n"
+    << "                                  thr and to low if < thr)\n"
+    << "  -l [ --long ]                   Use for compression of arbitrarily long read\n"
+    << "                                  lengths. Can also provide better compression\n"
+    << "                                  for reads with significant number of indels.\n"
+    << "                                  -r disabled in this mode. For Illumina short\n"
+    << "                                  reads, compression is better without -l flag.\n"
+    << "  --gzip-level arg (=6)           gzip level (0-9) to use when decompression\n"
+    << "                                  output path ends in .gz (default: 6)";
+  return options.str();
 }
 
 bool is_option_token(const std::string &token) {
@@ -135,6 +155,19 @@ int parse_int_or_throw(const std::string &value, const char *error_message) {
   try {
     size_t parsed_chars = 0;
     int parsed_value = std::stoi(value, &parsed_chars);
+    if (parsed_chars != value.size())
+      throw std::invalid_argument("trailing characters");
+    return parsed_value;
+  } catch (const std::exception &) {
+    throw std::runtime_error(error_message);
+  }
+}
+
+double parse_double_or_throw(const std::string &value,
+                             const char *error_message) {
+  try {
+    size_t parsed_chars = 0;
+    double parsed_value = std::stod(value, &parsed_chars);
     if (parsed_chars != value.size())
       throw std::invalid_argument("trailing characters");
     return parsed_value;
@@ -193,8 +226,6 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
       options.no_ids_flag = true;
     } else if (arg == "-l" || arg == "--long") {
       options.long_flag = true;
-    } else if (arg == "--fasta-input") {
-      options.fasta_flag = true;
     } else if (arg == "-w" || arg == "--working-dir") {
       require_value(args, index, "--working-dir");
       options.working_dir = args[index++];
@@ -202,6 +233,11 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
       require_value(args, index, "--num-threads");
       options.num_threads = parse_int_or_throw(args[index++],
                                                "Invalid number of threads.");
+      options.num_threads_was_explicit = true;
+    } else if (arg == "--memory-cap-gb") {
+      require_value(args, index, "--memory-cap-gb");
+      options.memory_cap_gb = parse_double_or_throw(args[index++],
+                                                    "Invalid memory cap.");
     } else if (arg == "--gzip-level") {
       require_value(args, index, "--gzip-level");
       options.gzip_level = parse_int_or_throw(args[index++],
@@ -243,6 +279,19 @@ bool has_valid_thread_count(const command_line_options &options) {
   return options.num_threads > 0;
 }
 
+bool has_valid_memory_cap(const command_line_options &options) {
+  return options.memory_cap_gb >= 0.0;
+}
+
+int max_threads_for_memory_cap_gb(const double memory_cap_gb) {
+  if (memory_cap_gb <= 0.0)
+    return 0;
+
+  const int capped_threads =
+      static_cast<int>(std::floor(memory_cap_gb / kApproxMemoryCapPerThreadGiB));
+  return std::max(1, capped_threads);
+}
+
 std::string create_and_register_temp_dir(const std::string &working_dir) {
   const bool working_dir_exists = std::filesystem::exists(working_dir);
   if (!working_dir_exists) {
@@ -270,6 +319,24 @@ void normalize_compression_options(command_line_options &options) {
   }
 }
 
+void apply_memory_cap(command_line_options &options) {
+  const int memory_capped_threads =
+      max_threads_for_memory_cap_gb(options.memory_cap_gb);
+  if (memory_capped_threads == 0 || options.num_threads <= memory_capped_threads)
+    return;
+
+  if (options.num_threads_was_explicit) {
+    std::cout << "Memory cap detected; reducing requested thread count from "
+              << options.num_threads << " to " << memory_capped_threads
+              << ".\n";
+  } else {
+    std::cout << "Memory cap detected; reducing default thread count from "
+              << options.num_threads << " to " << memory_capped_threads
+              << ".\n";
+  }
+  options.num_threads = memory_capped_threads;
+}
+
 int print_unexpected_error_and_exit(
   const std::string &options_description,
     const std::string &error_message) {
@@ -286,8 +353,7 @@ void run_requested_mode(const command_line_options &options,
     spring::compress(temp_dir, options.input_paths, options.output_paths,
                      options.num_threads, options.pairing_only_flag,
                      options.no_quality_flag, options.no_ids_flag,
-                     options.quality_options, options.long_flag,
-                     options.fasta_flag);
+                     options.quality_options, options.long_flag);
     return;
   }
 
@@ -336,9 +402,15 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  if (!has_valid_memory_cap(options)) {
+    std::cout << "Memory cap must be non-negative.\n";
+    return 1;
+  }
+
   // Isolate intermediate artifacts so cleanup is one directory removal.
-  const std::string temp_dir = create_and_register_temp_dir(options.working_dir);
   normalize_compression_options(options);
+  apply_memory_cap(options);
+  const std::string temp_dir = create_and_register_temp_dir(options.working_dir);
 
   try {
     run_requested_mode(options, temp_dir);

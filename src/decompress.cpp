@@ -10,10 +10,12 @@
 #include <cstdio>
 #include <fstream>
 #include <iostream>
+#ifndef _WIN32
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#endif
 #include <omp.h>
 #include <stdexcept>
 #include <string>
@@ -38,8 +40,11 @@ struct reference_chunk {
   uint64_t start_offset;
   uint64_t size;
   std::string path;
+#ifndef _WIN32
   int fd = -1;
   void *mapping = nullptr;
+#endif
+  std::string owned_data;
   const char *data = nullptr;
 };
 
@@ -50,6 +55,29 @@ std::runtime_error file_error(const std::string &prefix,
 }
 
 void open_reference_chunk(reference_chunk &chunk) {
+#ifdef _WIN32
+  if (chunk.size == 0) {
+    chunk.owned_data.clear();
+    chunk.data = nullptr;
+    return;
+  }
+
+  std::ifstream input(chunk.path, std::ios::binary);
+  if (!input.is_open()) {
+    throw file_error("Error opening decoded reference chunk", chunk.path);
+  }
+
+  chunk.owned_data.resize(static_cast<size_t>(chunk.size));
+  input.read(chunk.owned_data.data(),
+             static_cast<std::streamsize>(chunk.owned_data.size()));
+  if (!input || input.gcount() !=
+                    static_cast<std::streamsize>(chunk.owned_data.size())) {
+    throw std::runtime_error("Error reading decoded reference chunk: " +
+                             chunk.path);
+  }
+
+  chunk.data = chunk.owned_data.data();
+#else
   chunk.fd = open(chunk.path.c_str(), O_RDONLY | O_CLOEXEC);
   if (chunk.fd < 0) {
     throw file_error("Error opening decoded reference chunk", chunk.path);
@@ -72,9 +100,14 @@ void open_reference_chunk(reference_chunk &chunk) {
 
   chunk.mapping = mapped;
   chunk.data = static_cast<const char *>(mapped);
+#endif
 }
 
 void close_reference_chunk(reference_chunk &chunk) {
+#ifdef _WIN32
+  chunk.owned_data.clear();
+  chunk.data = nullptr;
+#else
   if (chunk.mapping != nullptr) {
     munmap(chunk.mapping, static_cast<size_t>(chunk.size));
     chunk.mapping = nullptr;
@@ -84,6 +117,7 @@ void close_reference_chunk(reference_chunk &chunk) {
     close(chunk.fd);
     chunk.fd = -1;
   }
+#endif
 };
 
 class reference_sequence_store {

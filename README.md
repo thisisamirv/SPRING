@@ -13,7 +13,8 @@ SPRING is a compression tool for Fastq files (containing up to 4.29 Billion read
 - Supports reordering of reads (while preserving read pairing information) to boost compression
 - Supports quantization of quality values using [QVZ](https://github.com/mikelhernaez/qvz/), [Illumina 8-level binning](https://www.illumina.com/documents/products/whitepapers/whitepaper_datacompression.pdf) and binary thresholding
 - Supports decompression of a subset of reads (random access)
-- Supports gzipped fastq files as input (output) during (de)compression
+- Supports gzipped FASTQ files as compression input and decompression output based on filename
+- Automatically detects FASTQ versus FASTA compression input
 - Tested on Linux and macOS
 
 **Note:** If you want to use SPRING only as a ***tool for reordering reads*** (approximately according to genome position), take a look at the [reorder-only branch](https://github.com/shubhamchandak94/Spring/tree/reorder-only).
@@ -99,7 +100,11 @@ Allowed options:
                                   .1 and .2.)
   -w [ --working-dir ] arg (=.)   directory to create temporary files (default
                                   current directory)
-  -t [ --num-threads ] arg (=8)   number of threads (default 8)
+  -t [ --num-threads ] arg        number of threads (default:
+                                  min(max(1, hw_threads - 1), 16))
+  --memory-cap-gb arg (=0)        approximate memory budget in GB; reduces
+                                  effective thread count using about 1 GB per
+                                  worker thread (0 disables)
   -r [ --allow-read-reordering ]  do not retain read order during compression
                                   (paired reads still remain paired)
   --no-quality                    do not retain quality values during
@@ -120,15 +125,12 @@ Allowed options:
                                   for reads with significant number of indels.
                                   -r disabled in this mode. For Illumina short
                                   reads, compression is better without -l flag.
-  -g [ --gzipped_fastq ]          enable if compression input is gzipped fastq
-                                  or to output gzipped fastq during
-                                  decompression
   --gzip-level arg (=6)           gzip level (0-9) to use during decompression 
-                                  if -g flag is specified (default: 6)
-  --fasta-input                   enable if compression input is fasta file
-                                  (i.e., no qualities)                                
+                                  when the output path ends in .gz (default: 6)
 ```
 Note that the SPRING compressed files are tar archives consisting of the different compressed streams, although we recommend using the `.spring` extension as in the examples shown below.
+
+If a machine has many CPU cores but limited RAM, `--memory-cap-gb` can be used as a conservative safety knob. It does not hard-limit Spring's total allocator usage; instead, it reduces the effective worker-thread count using an approximate budget of about 1 GB per worker thread.
 
 ### Resource usage
 For the memory and CPU performance for SPRING, please see the paper and the associated supplementary material. Note that SPRING uses some temporary disk space, and can fail if the disk space is not sufficient. Assuming that qualities and ids are not being discarded and SPRING is operating in the short read mode, the additional temporary disk usage is around 10-30% of the original uncompressed file (on the lower end when quality values are from newer Illumina machines and are more compressible) when -r flag is not specified (i.e., default lossless mode). When -r flag is specified, SPRING writes all the quality values and read ids to a temporary file leading to significantly higher temporary disk usage - closer to 70-80% of the original file size. Note that these figures are approximate and include the space needed for the final compressed file.
@@ -136,13 +138,13 @@ For the memory and CPU performance for SPRING, please see the paper and the asso
 ### Example Usage of SPRING
 This section contains several examples for SPRING compression and decompression with various modes and options. The compressed SPRING file uses the `.spring` extension as a convention. If installed using conda, use the command `spring` instead of `./spring`.
 
-For compressing file_1.fastq and file_2.fastq losslessly using default 8 threads (Lossless).
+For compressing file_1.fastq and file_2.fastq losslessly using the default thread count (Lossless).
 ```bash
 ./spring -c -i file_1.fastq file_2.fastq -o file.spring
 ```
-For compressing file_1.fastq.gz and file_2.fastq.gz (gzipped fastq files) losslessly using default 8 threads (Lossless).
+For compressing file_1.fastq.gz and file_2.fastq.gz (gzipped fastq files) losslessly using the default thread count (Lossless).
 ```bash
-./spring -c -i file_1.fastq.gz file_2.fastq.gz -o file.spring -g
+./spring -c -i file_1.fastq.gz file_2.fastq.gz -o file.spring
 ```
 Using 16 threads (Lossless).
 ```bash
@@ -194,15 +196,15 @@ Decompressing (paired end) to file_1.fastq and file_2.fastq.
 ```
 Decompressing (paired end) to file_1.fastq.gz and file_2.fastq.gz.
 ```bash
-./spring -d -i file.spring -o file_1.fastq.gz file_2.fastq.gz -g
+./spring -d -i file.spring -o file_1.fastq.gz file_2.fastq.gz
 ```
 Decompressing (paired end) to file_1.fastq and file_2.fastq, only decompress pairs from 4000000 to 8000000.
 ```bash
 ./spring -d -i file.spring -o file_1.fastq file_2.fastq --decompress-range 4000000 8000000
 ```
-Compressing file_1.fasta and file_2.fasta (fasta files without qualities) losslessly using default 8 threads (Lossless).
+Compressing file_1.fasta and file_2.fasta (fasta files without qualities) losslessly using the default thread count (Lossless).
 ```bash
-./spring -c -i file_1.fasta file_2.fasta -o file.spring --fasta-input
+./spring -c -i file_1.fasta file_2.fasta -o file.spring
 ```
 
 Compressing (paired end) to file_1.fasta and file_2.fasta (previous example contd.).

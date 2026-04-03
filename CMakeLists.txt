@@ -40,11 +40,6 @@ function(run_command_checked working_directory description)
     endif ()
 endfunction()
 
-# Spring currently targets Unix-like environments only.
-if (NOT UNIX)
-	message(FATAL_ERROR "Non Unix platforms not supported currently.")
-endif()
-
 # The project is validated against GCC and Clang toolchains.
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
 	message(STATUS "Detected compiler: GNU Compiler Collection")

@@ -20,6 +20,14 @@
 
 * **Auto-Detected Gzipped Compression Inputs**: Updated `src/spring.cpp` so `.fastq.gz` compression inputs are detected by filename, decompressed into the per-run temporary directory, and then fed through the normal FASTQ compression path without requiring any extra CLI flag.
 
+* **Auto-Detected FASTA Compression Inputs**: Updated `src/spring.cpp` so compression now detects FASTA versus FASTQ inputs automatically using known filename extensions and record structure, disables quality preservation for FASTA archives, and removes the obsolete `--fasta-input` CLI flag from `src/main.cpp` and the user documentation.
+
+* **Removed the Hard Unix-Only Build Gate**: Updated `CMakeLists.txt`, `src/decompress.cpp`, and the GitHub Actions workflow so Spring no longer fails immediately on non-Unix platforms, replacing the POSIX-only decompression mapping path with a portable file-backed fallback and enabling CI coverage for Windows builds with a GCC/MSYS2 toolchain.
+
+* **Capped the Default Thread Count to Hardware-Aware Auto Selection**: Updated `src/main.cpp` so the CLI now defaults `--num-threads` to `min(max(1, hw_threads - 1), 16)` instead of a fixed value of 8, preserving explicit user overrides while scaling more sensibly across small and large machines.
+
+* **Added an Approximate Memory-Cap Safety Knob**: Extended `src/main.cpp` with `--memory-cap-gb`, allowing users on memory-constrained systems to conservatively reduce the effective thread count using an approximate budget of about 1 GB per worker thread instead of relying on CPU count alone.
+
 * **Switched Gzipped Decompression Output to Filename-Based Behavior**: Updated `src/decompress.cpp` so decompression automatically emits gzipped FASTQ when the requested output path ends in `.gz`, while preserving the existing `--gzip-level` control for compression level selection.
 
 * **Removed the Obsolete `-g` CLI Flag**: Simplified `src/main.cpp` and the Spring CLI surface by removing the old `--gzipped-fastq/-g` option now that gzipped compression inputs are auto-detected and gzipped decompression output is inferred from the output filename.

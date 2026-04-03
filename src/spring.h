@@ -22,7 +22,7 @@ void compress(const std::string &temp_dir,
               const bool &pairing_only_flag, const bool &no_quality_flag,
                             const bool &no_ids_flag,
                             const string_list &quality_options,
-              const bool &long_flag, const bool &fasta_flag);
+              const bool &long_flag);
 
 void decompress(const std::string &temp_dir,
                                 const string_list &input_paths,

@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -56,6 +57,8 @@ struct prepared_compression_inputs {
   bool input_1_was_gzipped;
   bool input_2_was_gzipped;
 };
+
+enum class input_record_format { fastq, fasta };
 
 void print_step_summary(const char *step_name,
                         const clock_type::time_point &step_start,
@@ -114,6 +117,12 @@ int parse_int_or_throw(const std::string &value, const char *error_message) {
 
 bool has_suffix(const std::string &value, const std::string &suffix) {
   return value.ends_with(suffix);
+}
+
+std::string to_ascii_lowercase(std::string value) {
+  std::transform(value.begin(), value.end(), value.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return value;
 }
 
 std::string shell_quote(const std::string &value) {
@@ -224,6 +233,91 @@ void cleanup_prepared_compression_inputs(
   if (prepared_inputs.input_2_was_gzipped) {
     std::filesystem::remove(prepared_inputs.input_path_2);
   }
+}
+
+bool is_fastq_extension(const std::string &path) {
+  const std::string lowercase_path = to_ascii_lowercase(path);
+  return has_suffix(lowercase_path, ".fastq") || has_suffix(lowercase_path, ".fq");
+}
+
+bool is_fasta_extension(const std::string &path) {
+  const std::string lowercase_path = to_ascii_lowercase(path);
+  return has_suffix(lowercase_path, ".fasta") || has_suffix(lowercase_path, ".fa") ||
+         has_suffix(lowercase_path, ".fna");
+}
+
+input_record_format detect_input_format_from_extension(const std::string &input_path,
+                                                       bool &detected) {
+  if (is_fastq_extension(input_path)) {
+    detected = true;
+    return input_record_format::fastq;
+  }
+  if (is_fasta_extension(input_path)) {
+    detected = true;
+    return input_record_format::fasta;
+  }
+
+  detected = false;
+  return input_record_format::fastq;
+}
+
+input_record_format detect_input_format_from_content(const std::string &input_path,
+                                                     bool &detected) {
+  std::ifstream input_stream(input_path);
+  if (!input_stream.is_open()) {
+    throw std::runtime_error("Error opening input file: " + input_path);
+  }
+
+  std::vector<std::string> non_empty_lines;
+  std::string line;
+  while (non_empty_lines.size() < 3 && std::getline(input_stream, line)) {
+    remove_CR_from_end(line);
+    if (!line.empty())
+      non_empty_lines.push_back(line);
+  }
+
+  if (!non_empty_lines.empty()) {
+    detected = true;
+    const char first_marker = non_empty_lines[0][0];
+    if (first_marker == '>')
+      return input_record_format::fasta;
+    if (first_marker != '@') {
+      throw std::runtime_error("Unable to detect whether input is FASTA or FASTQ: " +
+                               input_path);
+    }
+
+    if (non_empty_lines.size() < 3)
+      return input_record_format::fasta;
+
+    if (!non_empty_lines[2].empty() && non_empty_lines[2][0] == '+')
+      return input_record_format::fastq;
+
+    return input_record_format::fasta;
+  }
+
+  detected = false;
+  return input_record_format::fastq;
+}
+
+const char *input_format_name(const input_record_format format) {
+  return format == input_record_format::fasta ? "FASTA" : "FASTQ";
+}
+
+input_record_format detect_input_format(const std::string &input_path) {
+  bool detected_from_extension = false;
+  const input_record_format extension_format =
+      detect_input_format_from_extension(input_path, detected_from_extension);
+  if (detected_from_extension)
+    return extension_format;
+
+  bool detected_from_content = false;
+  const input_record_format content_format =
+      detect_input_format_from_content(input_path, detected_from_content);
+  if (detected_from_content)
+    return content_format;
+
+  throw std::runtime_error("Unable to detect input format for empty file: " +
+                           input_path);
 }
 
 compression_io_config resolve_compression_io(const string_list &input_paths,
@@ -416,7 +510,7 @@ void compress(const std::string &temp_dir,
               const bool &pairing_only_flag, const bool &no_quality_flag,
               const bool &no_ids_flag,
               const std::vector<std::string> &quality_options,
-              const bool &long_flag, const bool &fasta_flag) {
+              const bool &long_flag) {
   omp_set_dynamic(0);
 
   std::cout << "Starting compression...\n";
@@ -426,9 +520,23 @@ void compress(const std::string &temp_dir,
       resolve_compression_io(input_paths, output_paths);
   const prepared_compression_inputs prepared_inputs =
       prepare_compression_inputs(io_config, temp_dir, num_thr);
+    const input_record_format input_format_1 =
+      detect_input_format(prepared_inputs.input_path_1);
+    input_record_format input_format = input_format_1;
+    if (io_config.paired_end) {
+    const input_record_format input_format_2 =
+      detect_input_format(prepared_inputs.input_path_2);
+    if (input_format_1 != input_format_2) {
+      cleanup_prepared_compression_inputs(prepared_inputs);
+      throw std::runtime_error(
+        "Paired-end inputs must both be FASTQ or both be FASTA.");
+    }
+    input_format = input_format_2;
+    }
+    const bool fasta_input = input_format == input_record_format::fasta;
   const bool preserve_order = !pairing_only_flag;
   const bool preserve_id = !no_ids_flag;
-  const bool preserve_quality = !no_quality_flag && !fasta_flag;
+    const bool preserve_quality = !no_quality_flag && !fasta_input;
 
   compression_params cp{};
   cp.paired_end = io_config.paired_end;
@@ -443,14 +551,20 @@ void compress(const std::string &temp_dir,
   if (preserve_quality)
     configure_quality_options(cp, quality_options);
 
+  std::cout << "Detected input format: " << input_format_name(input_format)
+            << "\n";
+  if (fasta_input) {
+    std::cout << "FASTA input detected; quality values will not be stored.\n";
+  }
+
   if (prepared_inputs.input_1_was_gzipped || prepared_inputs.input_2_was_gzipped) {
-    std::cout << "Detected gzipped input; decompressing to temporary FASTQ files before compression.\n";
+    std::cout << "Detected gzipped input; decompressing to temporary input files before compression.\n";
   }
 
   run_timed_step("Preprocessing ...", "Preprocessing", [&] {
     preprocess(prepared_inputs.input_path_1, prepared_inputs.input_path_2,
                temp_dir, cp,
-               fasta_flag);
+               fasta_input);
   });
   cleanup_prepared_compression_inputs(prepared_inputs);
   print_temp_dir_size(temp_dir);

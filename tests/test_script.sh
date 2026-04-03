@@ -36,7 +36,7 @@ cd "$WORK_DIR"
 "${SPRING_BIN_CMD[@]}" -d -i abcd -o tmp
 cmp tmp "$ASSET_DIR/test_1.fastq"
 
-"${SPRING_BIN_CMD[@]}" -c -i "$ASSET_DIR/test_1.fasta" -o abcd --fasta-input
+"${SPRING_BIN_CMD[@]}" -c -i "$ASSET_DIR/test_1.fasta" -o abcd
 "${SPRING_BIN_CMD[@]}" -d -i abcd -o tmp
 cmp tmp "$ASSET_DIR/test_1.fasta"
 
@@ -45,7 +45,7 @@ cmp tmp "$ASSET_DIR/test_1.fasta"
 cmp tmp.1 "$ASSET_DIR/test_1.fastq"
 cmp tmp.2 "$ASSET_DIR/test_2.fastq"
 
-"${SPRING_BIN_CMD[@]}" -c -i "$ASSET_DIR/test_1.fasta" "$ASSET_DIR/test_2.fasta" -o abcd --fasta-input
+"${SPRING_BIN_CMD[@]}" -c -i "$ASSET_DIR/test_1.fasta" "$ASSET_DIR/test_2.fasta" -o abcd
 "${SPRING_BIN_CMD[@]}" -d -i abcd -o tmp
 cmp tmp.1 "$ASSET_DIR/test_1.fasta"
 cmp tmp.2 "$ASSET_DIR/test_2.fasta"
@@ -57,7 +57,7 @@ cmp tmp "$ASSET_DIR/test_1.fastq"
 gunzip -f tmp.gz
 cmp tmp "$ASSET_DIR/test_1.fastq"
 
-"${SPRING_BIN_CMD[@]}" -c -i "$ASSET_DIR/test_1.fasta" -o abcd -l --fasta-input
+"${SPRING_BIN_CMD[@]}" -c -i "$ASSET_DIR/test_1.fasta" -o abcd -l
 "${SPRING_BIN_CMD[@]}" -d -i abcd -o tmp
 cmp tmp "$ASSET_DIR/test_1.fasta"
 
@@ -71,7 +71,7 @@ cmp tmp.2 "$ASSET_DIR/test_2.fastq"
 cmp tmp.1 "$ASSET_DIR/test_1.fastq"
 cmp tmp.2 "$ASSET_DIR/test_2.fastq"
 
-"${SPRING_BIN_CMD[@]}" -c -i "$ASSET_DIR/test_1.fasta.gz" "$ASSET_DIR/test_2.fasta.gz" -o abcd --fasta-input
+"${SPRING_BIN_CMD[@]}" -c -i "$ASSET_DIR/test_1.fasta.gz" "$ASSET_DIR/test_2.fasta.gz" -o abcd
 "${SPRING_BIN_CMD[@]}" -d -i abcd -o tmp
 cmp tmp.1 "$ASSET_DIR/test_1.fasta"
 cmp tmp.2 "$ASSET_DIR/test_2.fasta"

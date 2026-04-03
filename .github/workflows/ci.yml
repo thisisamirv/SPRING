@@ -1,0 +1,240 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-smoke:
+    name: Build and smoke / ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: Linux
+            shell: bash
+          - os: macos-latest
+            name: macOS
+            shell: bash
+          - os: windows-latest
+            name: Windows
+            shell: msys2 {0}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up CMake
+        if: runner.os != 'Windows'
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '4.2.0'
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libomp-dev ninja-build
+
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          brew update
+          brew install gcc ninja
+          GCC_BIN=$(ls "$(brew --prefix gcc)"/bin/gcc-[0-9]* | sort -V | tail -n 1)
+          GXX_BIN=$(ls "$(brew --prefix gcc)"/bin/g++-[0-9]* | sort -V | tail -n 1)
+          echo "MACOS_GCC=$GCC_BIN" >> "$GITHUB_ENV"
+          echo "MACOS_GXX=$GXX_BIN" >> "$GITHUB_ENV"
+
+      - name: Set up MSYS2
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+
+      - name: Configure on Linux
+        if: runner.os == 'Linux'
+        env:
+          CC: gcc
+          CXX: g++
+        run: |
+          cmake -S . -B build \
+            -G Ninja \
+            -Dspring_optimize_for_native=OFF \
+            -Dspring_optimize_for_portability=ON
+
+      - name: Configure on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          export CC="$MACOS_GCC"
+          export CXX="$MACOS_GXX"
+          cmake -S . -B build \
+            -G Ninja \
+            -Dspring_optimize_for_native=OFF \
+            -Dspring_optimize_for_portability=ON
+
+      - name: Configure on Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          CC: gcc
+          CXX: g++
+        run: |
+          cmake -S . -B build \
+            -G Ninja \
+            -Dspring_optimize_for_native=OFF \
+            -Dspring_optimize_for_portability=ON
+
+      - name: Build
+        shell: ${{ matrix.shell }}
+        run: cmake --build build --parallel
+
+      - name: Smoke test
+        shell: ${{ matrix.shell }}
+        run: tests/test_script.sh
+
+  static-analysis:
+    name: Analysis / ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: Linux
+            shell: bash
+          - os: macos-latest
+            name: macOS
+            shell: bash
+          - os: windows-latest
+            name: Windows
+            shell: msys2 {0}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up CMake
+        if: runner.os != 'Windows'
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '4.2.0'
+
+      - name: Install Linux analysis dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang-tidy cppcheck libomp-dev ninja-build python3 valgrind
+
+      - name: Install macOS analysis dependencies
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          brew update
+          brew install gcc ninja llvm cppcheck python
+          GCC_BIN=$(ls "$(brew --prefix gcc)"/bin/gcc-[0-9]* | sort -V | tail -n 1)
+          GXX_BIN=$(ls "$(brew --prefix gcc)"/bin/g++-[0-9]* | sort -V | tail -n 1)
+          echo "MACOS_GCC=$GCC_BIN" >> "$GITHUB_ENV"
+          echo "MACOS_GXX=$GXX_BIN" >> "$GITHUB_ENV"
+          echo "HOMEBREW_LLVM_BIN=$(brew --prefix llvm)/bin" >> "$GITHUB_ENV"
+
+      - name: Set up MSYS2 analysis environment
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-clang-tools-extra
+            mingw-w64-ucrt-x86_64-cppcheck
+            mingw-w64-ucrt-x86_64-python
+
+      - name: Configure on Linux
+        if: runner.os == 'Linux'
+        env:
+          CC: gcc
+          CXX: g++
+        run: |
+          cmake -S . -B build \
+            -G Ninja \
+            -Dspring_optimize_for_native=OFF \
+            -Dspring_optimize_for_portability=ON
+
+      - name: Configure on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          export CC="$MACOS_GCC"
+          export CXX="$MACOS_GXX"
+          cmake -S . -B build \
+            -G Ninja \
+            -Dspring_optimize_for_native=OFF \
+            -Dspring_optimize_for_portability=ON
+
+      - name: Configure on Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          CC: gcc
+          CXX: g++
+        run: |
+          cmake -S . -B build \
+            -G Ninja \
+            -Dspring_optimize_for_native=OFF \
+            -Dspring_optimize_for_portability=ON
+
+      - name: Build for analysis
+        shell: ${{ matrix.shell }}
+        run: cmake --build build --parallel
+
+      - name: Run lint on Linux
+        if: runner.os == 'Linux'
+        run: ./dev/lint.sh
+
+      - name: Run lint on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          export PATH="$HOMEBREW_LLVM_BIN:$PATH"
+          ./dev/lint.sh
+
+      - name: Run lint on Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: ./dev/lint.sh
+
+      - name: Run cppcheck
+        shell: ${{ matrix.shell }}
+        run: ./dev/cppcheck.sh
+
+      - name: Run valgrind smoke test
+        if: runner.os == 'Linux'
+        run: ./dev/valgrind-smoke.sh
+
+      - name: Skip valgrind on macOS
+        if: runner.os == 'macOS'
+        run: echo "Valgrind is not available in a practical form on GitHub-hosted macOS runners; skipping."
+
+      - name: Skip valgrind on Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: echo "Valgrind is not available on GitHub-hosted Windows/MSYS2 runners; skipping."
