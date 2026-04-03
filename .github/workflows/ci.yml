@@ -49,11 +49,8 @@ jobs:
         shell: bash
         run: |
           brew update
-          brew install gcc nasm ninja
-          GCC_BIN=$(ls "$(brew --prefix gcc)"/bin/gcc-[0-9]* | sort -V | tail -n 1)
-          GXX_BIN=$(ls "$(brew --prefix gcc)"/bin/g++-[0-9]* | sort -V | tail -n 1)
-          echo "MACOS_GCC=$GCC_BIN" >> "$GITHUB_ENV"
-          echo "MACOS_GXX=$GXX_BIN" >> "$GITHUB_ENV"
+          brew install libomp nasm ninja
+          echo "MACOS_LIBOMP_PREFIX=$(brew --prefix libomp)" >> "$GITHUB_ENV"
 
       - name: Set up MSYS2
         if: runner.os == 'Windows'
@@ -81,11 +78,18 @@ jobs:
       - name: Configure on macOS
         if: runner.os == 'macOS'
         shell: bash
+        env:
+          CC: clang
+          CXX: clang++
         run: |
-          export CC="$MACOS_GCC"
-          export CXX="$MACOS_GXX"
           cmake -S . -B build \
             -G Ninja \
+            -DOpenMP_ROOT="$MACOS_LIBOMP_PREFIX" \
+            -DOpenMP_C_FLAGS="-Xpreprocessor -fopenmp" \
+            -DOpenMP_CXX_FLAGS="-Xpreprocessor -fopenmp" \
+            -DOpenMP_C_LIB_NAMES="omp" \
+            -DOpenMP_CXX_LIB_NAMES="omp" \
+            -DOpenMP_omp_LIBRARY="$MACOS_LIBOMP_PREFIX/lib/libomp.dylib" \
             -Dspring_optimize_for_native=OFF \
             -Dspring_optimize_for_portability=ON
 
@@ -117,6 +121,8 @@ jobs:
       - name: Smoke test on Windows
         if: runner.os == 'Windows'
         shell: msys2 {0}
+        env:
+          SPRING_TEST_ARGS: -t 2 --memory-cap-gb 2
         run: tests/test_script.sh
 
   static-analysis:
@@ -156,11 +162,8 @@ jobs:
         shell: bash
         run: |
           brew update
-          brew install gcc nasm ninja llvm cppcheck python
-          GCC_BIN=$(ls "$(brew --prefix gcc)"/bin/gcc-[0-9]* | sort -V | tail -n 1)
-          GXX_BIN=$(ls "$(brew --prefix gcc)"/bin/g++-[0-9]* | sort -V | tail -n 1)
-          echo "MACOS_GCC=$GCC_BIN" >> "$GITHUB_ENV"
-          echo "MACOS_GXX=$GXX_BIN" >> "$GITHUB_ENV"
+          brew install libomp nasm ninja llvm cppcheck python
+          echo "MACOS_LIBOMP_PREFIX=$(brew --prefix libomp)" >> "$GITHUB_ENV"
           echo "HOMEBREW_LLVM_BIN=$(brew --prefix llvm)/bin" >> "$GITHUB_ENV"
 
       - name: Set up MSYS2 analysis environment
@@ -192,11 +195,18 @@ jobs:
       - name: Configure on macOS
         if: runner.os == 'macOS'
         shell: bash
+        env:
+          CC: clang
+          CXX: clang++
         run: |
-          export CC="$MACOS_GCC"
-          export CXX="$MACOS_GXX"
           cmake -S . -B build \
             -G Ninja \
+            -DOpenMP_ROOT="$MACOS_LIBOMP_PREFIX" \
+            -DOpenMP_C_FLAGS="-Xpreprocessor -fopenmp" \
+            -DOpenMP_CXX_FLAGS="-Xpreprocessor -fopenmp" \
+            -DOpenMP_C_LIB_NAMES="omp" \
+            -DOpenMP_CXX_LIB_NAMES="omp" \
+            -DOpenMP_omp_LIBRARY="$MACOS_LIBOMP_PREFIX/lib/libomp.dylib" \
             -Dspring_optimize_for_native=OFF \
             -Dspring_optimize_for_portability=ON
 

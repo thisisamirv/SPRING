@@ -8,6 +8,7 @@ ASSET_DIR="$SCRIPT_DIR/assets"
 BUILD_DIR="$ROOT_DIR/build"
 SPRING_BIN="$BUILD_DIR/spring"
 SPRING_BIN_CMD=()
+SPRING_TEST_ARGS_CMD=()
 WORK_DIR=$(mktemp -d "$BUILD_DIR/smoke-test.XXXXXX")
 
 cleanup() {
@@ -30,90 +31,96 @@ else
 	SPRING_BIN_CMD=("$SPRING_BIN")
 fi
 
+if [[ -n "${SPRING_TEST_ARGS:-}" ]]; then
+	# Split simple extra Spring CLI arguments from the environment.
+	# shellcheck disable=SC2206
+	SPRING_TEST_ARGS_CMD=(${SPRING_TEST_ARGS})
+fi
+
 cd "$WORK_DIR"
 
-"${SPRING_BIN_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" -o abcd
-"${SPRING_BIN_CMD[@]}" -d -i abcd -o tmp
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" -o abcd
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
 cmp tmp "$ASSET_DIR/test_1.fastq"
 
-"${SPRING_BIN_CMD[@]}" -c -i "$ASSET_DIR/test_1.fasta" -o abcd
-"${SPRING_BIN_CMD[@]}" -d -i abcd -o tmp
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fasta" -o abcd
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
 cmp tmp "$ASSET_DIR/test_1.fasta"
 
-"${SPRING_BIN_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd
-"${SPRING_BIN_CMD[@]}" -d -i abcd -o tmp
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
 cmp tmp.1 "$ASSET_DIR/test_1.fastq"
 cmp tmp.2 "$ASSET_DIR/test_2.fastq"
 
-"${SPRING_BIN_CMD[@]}" -c -i "$ASSET_DIR/test_1.fasta" "$ASSET_DIR/test_2.fasta" -o abcd
-"${SPRING_BIN_CMD[@]}" -d -i abcd -o tmp
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fasta" "$ASSET_DIR/test_2.fasta" -o abcd
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
 cmp tmp.1 "$ASSET_DIR/test_1.fasta"
 cmp tmp.2 "$ASSET_DIR/test_2.fasta"
 
-"${SPRING_BIN_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" -o abcd -l
-"${SPRING_BIN_CMD[@]}" -d -i abcd -o tmp
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" -o abcd -l
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
 cmp tmp "$ASSET_DIR/test_1.fastq"
-"${SPRING_BIN_CMD[@]}" -d -i abcd -o tmp.gz
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp.gz
 gunzip -f tmp.gz
 cmp tmp "$ASSET_DIR/test_1.fastq"
 
-"${SPRING_BIN_CMD[@]}" -c -i "$ASSET_DIR/test_1.fasta" -o abcd -l
-"${SPRING_BIN_CMD[@]}" -d -i abcd -o tmp
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fasta" -o abcd -l
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
 cmp tmp "$ASSET_DIR/test_1.fasta"
 
-"${SPRING_BIN_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd -l
-"${SPRING_BIN_CMD[@]}" -d -i abcd -o tmp
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd -l
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
 cmp tmp.1 "$ASSET_DIR/test_1.fastq"
 cmp tmp.2 "$ASSET_DIR/test_2.fastq"
 
-"${SPRING_BIN_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq.gz" "$ASSET_DIR/test_2.fastq.gz" -o abcd
-"${SPRING_BIN_CMD[@]}" -d -i abcd -o tmp
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq.gz" "$ASSET_DIR/test_2.fastq.gz" -o abcd
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
 cmp tmp.1 "$ASSET_DIR/test_1.fastq"
 cmp tmp.2 "$ASSET_DIR/test_2.fastq"
 
-"${SPRING_BIN_CMD[@]}" -c -i "$ASSET_DIR/test_1.fasta.gz" "$ASSET_DIR/test_2.fasta.gz" -o abcd
-"${SPRING_BIN_CMD[@]}" -d -i abcd -o tmp
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fasta.gz" "$ASSET_DIR/test_2.fasta.gz" -o abcd
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
 cmp tmp.1 "$ASSET_DIR/test_1.fasta"
 cmp tmp.2 "$ASSET_DIR/test_2.fasta"
 
-"${SPRING_BIN_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq.gz" -o abcd
-"${SPRING_BIN_CMD[@]}" -d -i abcd -o tmp
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq.gz" -o abcd
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
 cmp tmp "$ASSET_DIR/test_1.fastq"
 
-"${SPRING_BIN_CMD[@]}" -d -i abcd -o tmp.gz
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp.gz
 gunzip -f tmp.gz
 cmp tmp "$ASSET_DIR/test_1.fastq"
 
-"${SPRING_BIN_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq.gz" "$ASSET_DIR/test_2.fastq.gz" -o abcd
-"${SPRING_BIN_CMD[@]}" -d -i abcd -o tmp
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq.gz" "$ASSET_DIR/test_2.fastq.gz" -o abcd
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
 cmp tmp.1 "$ASSET_DIR/test_1.fastq"
 cmp tmp.2 "$ASSET_DIR/test_2.fastq"
 
-"${SPRING_BIN_CMD[@]}" -d -i abcd -o tmp.1.gz tmp.2.gz
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp.1.gz tmp.2.gz
 gunzip -f tmp.1.gz
 gunzip -f tmp.2.gz
 cmp tmp.1 "$ASSET_DIR/test_1.fastq"
 cmp tmp.2 "$ASSET_DIR/test_2.fastq"
 
-"${SPRING_BIN_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" -o abcd -t 8
-"${SPRING_BIN_CMD[@]}" -d -i abcd -o tmp -t 5
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" -o abcd -t 8
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp -t 5
 cmp tmp "$ASSET_DIR/test_1.fastq"
 
-"${SPRING_BIN_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd -t 8
-"${SPRING_BIN_CMD[@]}" -d -i abcd -o tmp -t 5
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd -t 8
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp -t 5
 cmp tmp.1 "$ASSET_DIR/test_1.fastq"
 cmp tmp.2 "$ASSET_DIR/test_2.fastq"
 
 
-"${SPRING_BIN_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" -o abcd -r
-"${SPRING_BIN_CMD[@]}" -d -i abcd -o tmp
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" -o abcd -r
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
 sort tmp > tmp.sorted
 sort "$ASSET_DIR/test_1.fastq" > tmp_1.sorted
 cmp tmp.sorted tmp_1.sorted
 
 
-"${SPRING_BIN_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd -t 8
-"${SPRING_BIN_CMD[@]}" -d -i abcd -o tmp -t 5
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd -t 8
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp -t 5
 sort tmp.1 > tmp.sorted
 sort "$ASSET_DIR/test_1.fastq" > tmp_1.sorted
 cmp tmp.sorted tmp_1.sorted

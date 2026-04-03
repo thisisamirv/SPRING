@@ -40,3 +40,4 @@ boost-cmake/*.a
 benchmark/tmp/*
 **/__pycache__/
 *.pyc
+.tmp/
