@@ -141,34 +141,38 @@ if [[ ${#files[@]} -gt 0 ]]; then
   fi
 fi
 
-if [[ ${#compile_db_files[@]} -gt 0 ]]; then
+if [[ -n "${compile_db_files+set}" && ${#compile_db_files[@]} -gt 0 ]]; then
   run_clang_tidy \
     "${clang_tidy_common_args[@]}" \
     -p "$BUILD_DIR" \
     "${compile_db_files[@]}"
 fi
 
-for file in "${standalone_files[@]}"; do
-  include_args=()
-  if $is_msys_windows; then
-    include_args+=("-I$WINDOWS_LINT_INCLUDE_DIR")
-  fi
-  for include_dir in "${EXTRA_INCLUDES[@]}"; do
-    include_args+=("-I$include_dir")
+if [[ -n "${standalone_files+set}" && ${#standalone_files[@]} -gt 0 ]]; then
+  for file in "${standalone_files[@]}"; do
+    include_args=()
+    if $is_msys_windows; then
+      include_args+=("-I$WINDOWS_LINT_INCLUDE_DIR")
+    fi
+    for include_dir in "${EXTRA_INCLUDES[@]}"; do
+      include_args+=("-I$include_dir")
+    done
+
+    printf 'Linting standalone file %s.\n' "$file"
+
+    run_clang_tidy \
+      "${clang_tidy_common_args[@]}" \
+      "$file" -- \
+      -std=c++20 \
+      -x c++ \
+      "${include_args[@]}" \
+      -I"$(dirname -- "$file")"
   done
+fi
 
-  printf 'Linting standalone file %s.\n' "$file"
-
-  run_clang_tidy \
-    "${clang_tidy_common_args[@]}" \
-    "$file" -- \
-    -std=c++20 \
-    -x c++ \
-    "${include_args[@]}" \
-    -I"$(dirname -- "$file")"
-done
-
-for file in "${python_files[@]}"; do
-  printf 'Linting python file %s.\n' "$file"
-  python3 -m py_compile "$file"
-done
+if [[ -n "${python_files+set}" && ${#python_files[@]} -gt 0 ]]; then
+  for file in "${python_files[@]}"; do
+    printf 'Linting python file %s.\n' "$file"
+    python3 -m py_compile "$file"
+  done
+fi

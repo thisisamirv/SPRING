@@ -12,6 +12,7 @@
 #include <iomanip> // std::setw
 #include <iostream>
 #include <omp.h>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -708,7 +709,9 @@ std::string random_string(size_t length) {
                            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                            "abcdefghijklmnopqrstuvwxyz";
     const size_t max_index = (sizeof(charset) - 1);
-    return charset[rand() % max_index];
+    static thread_local std::mt19937 generator(std::random_device{}());
+    std::uniform_int_distribution<size_t> distribution(0, max_index - 1);
+    return charset[distribution(generator)];
   };
   std::string random_value(length, 0);
   std::generate_n(random_value.begin(), length, random_char);
