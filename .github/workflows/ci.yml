@@ -42,14 +42,14 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libomp-dev ninja-build
+          sudo apt-get install -y build-essential libomp-dev nasm ninja-build
 
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         shell: bash
         run: |
           brew update
-          brew install gcc ninja
+          brew install gcc nasm ninja
           GCC_BIN=$(ls "$(brew --prefix gcc)"/bin/gcc-[0-9]* | sort -V | tail -n 1)
           GXX_BIN=$(ls "$(brew --prefix gcc)"/bin/g++-[0-9]* | sort -V | tail -n 1)
           echo "MACOS_GCC=$GCC_BIN" >> "$GITHUB_ENV"
@@ -64,6 +64,7 @@ jobs:
           install: >-
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-nasm
             mingw-w64-ucrt-x86_64-ninja
 
       - name: Configure on Linux
@@ -148,14 +149,14 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential clang-tidy cppcheck libomp-dev ninja-build python3 valgrind
+          sudo apt-get install -y build-essential clang-tidy cppcheck libomp-dev nasm ninja-build python3 valgrind
 
       - name: Install macOS analysis dependencies
         if: runner.os == 'macOS'
         shell: bash
         run: |
           brew update
-          brew install gcc ninja llvm cppcheck python
+          brew install gcc nasm ninja llvm cppcheck python
           GCC_BIN=$(ls "$(brew --prefix gcc)"/bin/gcc-[0-9]* | sort -V | tail -n 1)
           GXX_BIN=$(ls "$(brew --prefix gcc)"/bin/g++-[0-9]* | sort -V | tail -n 1)
           echo "MACOS_GCC=$GCC_BIN" >> "$GITHUB_ENV"
@@ -171,6 +172,7 @@ jobs:
           install: >-
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-nasm
             mingw-w64-ucrt-x86_64-ninja
             mingw-w64-ucrt-x86_64-clang-tools-extra
             mingw-w64-ucrt-x86_64-cppcheck
