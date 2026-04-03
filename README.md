@@ -6,11 +6,10 @@
 
 [![CI](https://github.com/thisisamirv/Spring/actions/workflows/ci.yml/badge.svg)](https://github.com/thisisamirv/Spring/actions/workflows/ci.yml)
 
-### [Bioinformatics publication](https://academic.oup.com/bioinformatics/advance-article/doi/10.1093/bioinformatics/bty1015/5232998?guestAccessKey=266a1378-4684-4f04-bb99-6febdf9d1fb9)
-
-#### Specialized tool for nanopore long reads: https://github.com/qm2/NanoSpring
-
 SPRING is a compressor for FASTQ and FASTA sequencing data, including paired-end data and gzipped FASTQ inputs.
+
+> [!TIP]
+> This revision is a substantial modernization of the original SPRING codebase. In brief, it upgrades the build baseline to C++20 and CMake 4.2, removes the remaining Boost dependency, adds cross-platform build and CI support including Windows via MSYS2 UCRT64, auto-detects FASTA and gzipped compression inputs, infers gzipped decompression output from the output filename, adds the `--memory-cap-gb` safety knob, and introduces cleaner developer tooling and benchmark scripts alongside broader portability, lint, and reliability fixes.
 
 ## Features
 
@@ -39,19 +38,6 @@ The build system currently requires:
 - Ninja
 - NASM
 - OpenMP
-
-## Install With Conda
-
-SPRING is available through Bioconda on Linux.
-
-```bash
-conda config --add channels defaults
-conda config --add channels bioconda
-conda config --add channels conda-forge
-conda install spring
-```
-
-When installed this way, invoke it as `spring` instead of `./spring`.
 
 ## Source Build
 
@@ -380,4 +366,5 @@ Decompress paired-end FASTA:
 ## Related
 
 - QVZ: https://github.com/mikelhernaez/qvz/
-- NanoSpring: https://github.com/qm2/NanoSpring
+- [Bioinformatics publication](https://academic.oup.com/bioinformatics/advance-article/doi/10.1093/bioinformatics/bty1015/5232998?guestAccessKey=266a1378-4684-4f04-bb99-6febdf9d1fb9)
+- Specialized tool for nanopore long reads: https://github.com/qm2/NanoSpring

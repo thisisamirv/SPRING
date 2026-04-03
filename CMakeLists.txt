@@ -29,6 +29,25 @@ function(extract_archive_if_needed archive_path destination_dir expected_path)
     endif ()
 endfunction()
 
+function(replace_in_file_if_needed file_path old_text new_text)
+    if (NOT EXISTS "${file_path}")
+        message(FATAL_ERROR "Cannot patch missing file: ${file_path}")
+    endif ()
+
+    file(READ "${file_path}" file_contents)
+    string(FIND "${file_contents}" "${new_text}" replacement_index)
+    if (NOT replacement_index EQUAL -1)
+        return()
+    endif ()
+
+    string(REPLACE "${old_text}" "${new_text}" updated_contents "${file_contents}")
+    if (file_contents STREQUAL updated_contents)
+        message(FATAL_ERROR "Expected text not found while patching ${file_path}")
+    endif ()
+
+    file(WRITE "${file_path}" "${updated_contents}")
+endfunction()
+
 function(run_command_checked working_directory description)
     execute_process(
         COMMAND ${ARGN}
@@ -153,6 +172,17 @@ extract_archive_if_needed(
     "${CMAKE_SOURCE_DIR}/vendor/id_compression.tar.xz"
     "${ID_COMPRESSION_DIR}"
     "${ID_COMPRESSION_DIR}/include/sam_block.h"
+)
+
+replace_in_file_if_needed(
+    "${ID_COMPRESSION_DIR}/src/io_functions.cpp"
+    "fopen(ios->filePath, \"w\")"
+    "fopen(ios->filePath, \"wb\")"
+)
+replace_in_file_if_needed(
+    "${ID_COMPRESSION_DIR}/src/io_functions.cpp"
+    "fopen(ios->filePath, \"r\")"
+    "fopen(ios->filePath, \"rb\")"
 )
 
 extract_archive_if_needed(
@@ -314,6 +344,9 @@ if (WIN32)
 endif ()
 
 target_compile_definitions(spring PRIVATE SPRING_RAPIDGZIP_EXECUTABLE=\"$<TARGET_FILE:rapidgzip>\")
+if (WIN32)
+    target_compile_definitions(spring PRIVATE IDOFILE_PATH_ROOT=\".spring-idtmp/idoFile.\")
+endif ()
 
 add_dependencies(spring rapidgzip)
 

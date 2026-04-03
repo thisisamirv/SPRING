@@ -36,6 +36,16 @@ struct read_range {
 
 std::vector<read_range> compute_read_ranges(uint32_t num_reads, int num_thr);
 
+void ensure_id_compression_temp_dir_exists() {
+#ifdef IDOFILE_PATH_ROOT
+  const std::filesystem::path temp_file_root(IDOFILE_PATH_ROOT);
+  const std::filesystem::path temp_dir = temp_file_root.parent_path();
+  if (!temp_dir.empty()) {
+    std::filesystem::create_directories(temp_dir);
+  }
+#endif
+}
+
 std::runtime_error gzip_runtime_error(gzFile file_handle,
                                       const std::string &prefix) {
   int error_code = Z_OK;
@@ -483,11 +493,12 @@ void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
 
 void compress_id_block(const char *output_path, std::string *id_array,
                        const uint32_t &num_ids) {
+  ensure_id_compression_temp_dir_exists();
   struct id_comp::compressor_info_t comp_info;
   comp_info.numreads = num_ids;
   comp_info.mode = COMPRESSION;
   comp_info.id_array = id_array;
-  comp_info.fcomp = fopen(output_path, "w");
+  comp_info.fcomp = fopen(output_path, "wb");
   if (!comp_info.fcomp) {
     perror(output_path);
     throw std::runtime_error("ID compression: File output error");
@@ -498,11 +509,12 @@ void compress_id_block(const char *output_path, std::string *id_array,
 
 void decompress_id_block(const char *input_path, std::string *id_array,
                          const uint32_t &num_ids) {
+  ensure_id_compression_temp_dir_exists();
   struct id_comp::compressor_info_t comp_info;
   comp_info.numreads = num_ids;
   comp_info.mode = DECOMPRESSION;
   comp_info.id_array = id_array;
-  comp_info.fcomp = fopen(input_path, "r");
+  comp_info.fcomp = fopen(input_path, "rb");
   if (!comp_info.fcomp) {
     perror(input_path);
     throw std::runtime_error("ID compression: File input error");
