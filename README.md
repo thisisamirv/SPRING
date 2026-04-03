@@ -1,10 +1,14 @@
 # SPRING
 
+<p align="center">
+  <a href="https://github.com/thisisamirv/Spring/actions/workflows/ci.yml">
+    <img src="https://github.com/thisisamirv/Spring/actions/workflows/ci.yml/badge.svg" alt="CI">
+  </a>
+</p>
+
 > **LICENSE RESTRICTION NOTICE**
 >
 > **SPRING is not provided under a permissive open-source license. Under the Non-Exclusive Research Use Software and Patent License Agreement, the software and patent rights are licensed only for non-profit research, educational, personal, and individual use. Commercial use, sublicensing, assignment, transfer, or other unlicensed making-available to third parties is not authorized absent a separate license from the University of Illinois. Any use, copying, modification, disclosure, or redistribution must comply with the original license terms, and derivative works must be clearly marked and renamed. Treat this repository as demonstration and reference material unless your intended use is expressly permitted by that license.**
-
-[![CI](https://github.com/thisisamirv/Spring/actions/workflows/ci.yml/badge.svg)](https://github.com/thisisamirv/Spring/actions/workflows/ci.yml)
 
 SPRING is a compressor for FASTQ and FASTA sequencing data, including paired-end data and gzipped FASTQ inputs.
 
@@ -39,7 +43,7 @@ The build system currently requires:
 - NASM
 - OpenMP
 
-## Source Build
+## Installation
 
 Clone the repository:
 
@@ -169,12 +173,6 @@ The built executable is:
 
 ```bash
 build/spring
-```
-
-If installed with conda, use:
-
-```bash
-spring
 ```
 
 Current command-line help:

@@ -193,22 +193,45 @@ std::string build_rapidgzip_command(const std::string &input_path,
          std::to_string(decoder_parallelism) + " " + shell_quote(input_path);
 }
 
+void decompress_gzip_input_file_with_zlib(const std::string &input_path,
+                                          const std::string &output_path) {
+  gzip_istream gzip_input(input_path);
+  if (!gzip_input.is_open()) {
+    throw std::runtime_error("Failed opening gzipped compression input: " +
+                             input_path);
+  }
+
+  std::ofstream output_stream(output_path, std::ios::binary);
+  if (!output_stream.is_open()) {
+    throw std::runtime_error("Failed opening staged compression input: " +
+                             output_path);
+  }
+
+  std::vector<char> buffer(1 << 15);
+  while (gzip_input.read(buffer.data(), buffer.size()) ||
+         gzip_input.gcount() > 0) {
+    output_stream.write(buffer.data(), gzip_input.gcount());
+  }
+
+  if (!output_stream) {
+    throw std::runtime_error("Failed writing staged compression input: " +
+                             output_path);
+  }
+}
+
 void decompress_gzip_input_file(const std::string &input_path,
                                 const std::string &output_path,
                                 const int num_thr) {
-  if (kRapidgzipExecutable[0] == '\0' ||
-      !std::filesystem::exists(kRapidgzipExecutable)) {
-    throw std::runtime_error(
-        "rapidgzip executable is required for gzipped compression inputs.");
+  if (kRapidgzipExecutable[0] != '\0' &&
+      std::filesystem::exists(kRapidgzipExecutable)) {
+    const std::string rapidgzip_command =
+        build_rapidgzip_command(input_path, output_path, num_thr);
+    if (std::system(rapidgzip_command.c_str()) == 0) {
+      return;
+    }
   }
 
-  const std::string rapidgzip_command =
-      build_rapidgzip_command(input_path, output_path, num_thr);
-  if (std::system(rapidgzip_command.c_str()) != 0) {
-    throw std::runtime_error("rapidgzip failed while decompressing gzipped "
-                             "compression input: " +
-                             input_path);
-  }
+  decompress_gzip_input_file_with_zlib(input_path, output_path);
 }
 
 prepared_compression_inputs prepare_compression_inputs(
