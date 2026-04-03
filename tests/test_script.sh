@@ -102,20 +102,20 @@ fi
 
 if [[ "$SPRING_SMOKE_MODE" == "windows-quick" ]]; then
 	announce_case "single fastq long-mode round-trip"
-	run_spring -c -i "$ASSET_DIR/test_1.fastq" -o abcd -l
-	run_spring -d -i abcd -o tmp
-	compare_files tmp "$ASSET_DIR/test_1.fastq"
+	run_spring -c -i "$ASSET_DIR/test_1.fastq" -o win-single -l
+	run_spring -d -i win-single -o win-single-out
+	compare_files win-single-out "$ASSET_DIR/test_1.fastq"
 
 	announce_case "paired fastq long-mode round-trip"
-	run_spring -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd -l
-	run_spring -d -i abcd -o tmp
-	compare_files tmp.1 "$ASSET_DIR/test_1.fastq"
-	compare_files tmp.2 "$ASSET_DIR/test_2.fastq"
+	run_spring -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o win-paired -l
+	run_spring -d -i win-paired -o win-paired-out
+	compare_files win-paired-out.1 "$ASSET_DIR/test_1.fastq"
+	compare_files win-paired-out.2 "$ASSET_DIR/test_2.fastq"
 
 	announce_case "gzipped fastq long-mode round-trip"
-	run_spring -c -i "$ASSET_DIR/test_1.fastq.gz" -o abcd -l
-	run_spring -d -i abcd -o tmp
-	compare_files tmp "$ASSET_DIR/test_1.fastq"
+	run_spring -c -i "$ASSET_DIR/test_1.fastq.gz" -o win-gzip -l
+	run_spring -d -i win-gzip -o win-gzip-out
+	compare_files win-gzip-out "$ASSET_DIR/test_1.fastq"
 
 	echo "Tests successful!"
 	exit 0
