@@ -32,25 +32,28 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up CMake
-        if: runner.os != 'Windows'
-        uses: jwlawson/actions-setup-cmake@v2
-        with:
-          cmake-version: '4.2.0'
-
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libomp-dev nasm ninja-build
+          sudo apt-get install -y build-essential libomp-dev nasm ninja-build python3 python3-pip
 
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         shell: bash
         run: |
           brew update
-          brew install libomp nasm ninja
+          brew install libomp nasm ninja python
           echo "MACOS_LIBOMP_PREFIX=$(brew --prefix libomp)" >> "$GITHUB_ENV"
+
+      - name: Install CMake on Linux and macOS
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          python3 -m pip install --user "cmake==4.2.0"
+          PYTHON_USER_BASE=$(python3 -c 'import site; print(site.USER_BASE)')
+          echo "$PYTHON_USER_BASE/bin" >> "$GITHUB_PATH"
+          "$PYTHON_USER_BASE/bin/cmake" --version
 
       - name: Set up MSYS2
         if: runner.os == 'Windows'
@@ -145,12 +148,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up CMake
-        if: runner.os != 'Windows'
-        uses: jwlawson/actions-setup-cmake@v2
-        with:
-          cmake-version: '4.2.0'
-
       - name: Install Linux analysis dependencies
         if: runner.os == 'Linux'
         run: |
@@ -165,6 +162,15 @@ jobs:
           brew install libomp nasm ninja llvm cppcheck python
           echo "MACOS_LIBOMP_PREFIX=$(brew --prefix libomp)" >> "$GITHUB_ENV"
           echo "HOMEBREW_LLVM_BIN=$(brew --prefix llvm)/bin" >> "$GITHUB_ENV"
+
+      - name: Install CMake on Linux and macOS
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          python3 -m pip install --user "cmake==4.2.0"
+          PYTHON_USER_BASE=$(python3 -c 'import site; print(site.USER_BASE)')
+          echo "$PYTHON_USER_BASE/bin" >> "$GITHUB_PATH"
+          "$PYTHON_USER_BASE/bin/cmake" --version
 
       - name: Set up MSYS2 analysis environment
         if: runner.os == 'Windows'

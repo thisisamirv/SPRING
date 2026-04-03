@@ -148,5 +148,16 @@ collect_python_sources() {
 
 compile_commands_contains() {
   local path="$1"
-  grep -F -- "\"file\": \"$path\"" "$COMPILE_COMMANDS" >/dev/null 2>&1
+  if grep -F -- "\"file\": \"$path\"" "$COMPILE_COMMANDS" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if command -v cygpath >/dev/null 2>&1; then
+    local windows_path
+    windows_path=$(cygpath -m -- "$path")
+    grep -F -- "\"file\": \"$windows_path\"" "$COMPILE_COMMANDS" >/dev/null 2>&1
+    return $?
+  fi
+
+  return 1
 }

@@ -27,6 +27,7 @@ readonly QVZ_INCLUDE_DIR="$BUILD_DIR/vendor/qvz/include"
 readonly EXTRA_INCLUDES=(
   "$ROOT_DIR/src"
   "$ROOT_DIR/vendor"
+  "$BUILD_DIR/vendor"
   "$ID_COMPRESSION_INCLUDE_DIR"
   "$QVZ_INCLUDE_DIR"
 )
@@ -37,6 +38,7 @@ clang_tidy_common_args=(
   -header-filter='^$'
   --system-headers=false
   --extra-arg=-fopenmp
+  --extra-arg=-w
   '--extra-arg=-D__malloc__(...)=__malloc__'
   --extra-arg=-I"$GCC_INCLUDE_DIR"
 )

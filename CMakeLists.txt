@@ -43,7 +43,7 @@ endfunction()
 # The project is validated against GCC and Clang toolchains.
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
 	message(STATUS "Detected compiler: GNU Compiler Collection")
-elseif ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+elseif ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
 	message(STATUS "Detected compiler: LLVM Clang or Apple Clang")
 else ()
 	message(FATAL_ERROR "Compiler currently not supported by CMake build: ${CMAKE_CXX_COMPILER_ID}")
