@@ -129,7 +129,7 @@ jobs:
         env:
           SPRING_TEST_ARGS: -t 1 --memory-cap-gb 1
           SPRING_COMMAND_TIMEOUT_SECONDS: 300
-          SPRING_SMOKE_MODE: quick
+          SPRING_SMOKE_MODE: windows-quick
         run: tests/test_script.sh
 
   static-analysis:

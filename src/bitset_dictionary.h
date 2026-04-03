@@ -12,6 +12,7 @@
 #include <fstream>
 #include <omp.h>
 #include <string>
+#include <vector>
 
 namespace spring {
 
@@ -259,35 +260,34 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
 
   for (int dict_index = 0; dict_index < numdict; dict_index++) {
     bbhashdict &current_dict = dict[dict_index];
-    uint64_t *dictionary_keys = new uint64_t[numreads]{};
+    std::vector<uint64_t> dictionary_keys(numreads, 0);
+    uint64_t *dictionary_keys_data = dictionary_keys.data();
 
     detail::compute_dictionary_keys<bitset_size>(
         read, index_masks[dict_index], current_dict, numreads, bpb,
-        dictionary_keys);
+      dictionary_keys_data);
 
     // Keep only reads that are long enough for this dictionary.
     current_dict.dict_numreads = detail::compact_dictionary_keys(
-        dictionary_keys, read_lengths, numreads, current_dict.end);
+      dictionary_keys_data, read_lengths, numreads, current_dict.end);
 
     // Persist keys because later passes stream them again while building
     // the bucket layout.
-    detail::write_key_chunks(dictionary_keys, current_dict.dict_numreads,
+    detail::write_key_chunks(dictionary_keys_data, current_dict.dict_numreads,
                              basedir);
 
     current_dict.numkeys = detail::sort_and_deduplicate_keys(
-        dictionary_keys, current_dict.dict_numreads);
+      dictionary_keys_data, current_dict.dict_numreads);
 
     // Build the MPHF over the distinct keys.
     auto data_iterator =
-        boomphf::range(static_cast<const uint64_t *>(dictionary_keys),
-                       static_cast<const uint64_t *>(dictionary_keys +
+      boomphf::range(static_cast<const uint64_t *>(dictionary_keys_data),
+               static_cast<const uint64_t *>(dictionary_keys_data +
                                                     current_dict.numkeys));
     const double gamma_factor = 5.0; // balance between speed and memory
     current_dict.bphf = new boomphf::mphf<uint64_t, hasher_t>(
         current_dict.numkeys, data_iterator, num_thr, gamma_factor, true,
         false);
-
-    delete[] dictionary_keys;
 
     // Re-read the stored keys and materialize their hash buckets.
     detail::write_hash_chunks(current_dict, basedir, dict_index);
