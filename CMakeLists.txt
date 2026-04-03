@@ -68,7 +68,6 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i[3-6]86)$")
 endif ()
 
 message(STATUS "Setting compiler flags")
-set(FLAGS "${FLAGS} -g")
 set(FLAGS "${FLAGS} -O3")
 if (spring_optimize_for_portability)
     if (SPRING_X86_FAMILY)
@@ -82,6 +81,10 @@ endif ()
 set(FLAGS "${FLAGS} -fomit-frame-pointer")
 set(FLAGS "${FLAGS} -fstrict-aliasing")
 set(FLAGS "${FLAGS} -ffast-math")
+
+if (CMAKE_BUILD_TYPE MATCHES "^(Debug|RelWithDebInfo)$")
+    set(FLAGS "${FLAGS} -g")
+endif ()
 
 set(CMAKE_CXX_FLAGS "${FLAGS}")
 set(CMAKE_C_FLAGS "${FLAGS}")
