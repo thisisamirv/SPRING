@@ -120,8 +120,10 @@ bool has_suffix(const std::string &value, const std::string &suffix) {
 }
 
 std::string to_ascii_lowercase(std::string value) {
-  std::transform(value.begin(), value.end(), value.begin(),
-                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  for (char &character : value) {
+    character =
+        static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+  }
   return value;
 }
 

@@ -10,7 +10,10 @@ ID_COMPRESSION_INCLUDE_DIR="$BUILD_DIR/vendor/id_compression/include"
 QVZ_INCLUDE_DIR="$BUILD_DIR/vendor/qvz/include"
 
 if [[ $# -gt 0 ]]; then
-  mapfile -t targets < <(collect_first_party_paths "$@")
+  targets=()
+  while IFS= read -r target; do
+    targets+=("$target")
+  done < <(collect_first_party_paths "$@")
 else
   targets=("${DEFAULT_CPP_ROOTS[@]}")
 fi

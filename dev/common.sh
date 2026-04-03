@@ -100,7 +100,11 @@ collect_cpp_sources() {
   fi
 
   if [[ $# -gt 0 ]]; then
-    mapfile -t paths < <(collect_first_party_paths "${paths[@]}")
+    local -a filtered_paths=()
+    while IFS= read -r path; do
+      filtered_paths+=("$path")
+    done < <(collect_first_party_paths "${paths[@]}")
+    paths=("${filtered_paths[@]}")
   fi
 
   for path in "${paths[@]}"; do
@@ -129,7 +133,11 @@ collect_python_sources() {
   fi
 
   if [[ $# -gt 0 ]]; then
-    mapfile -t paths < <(collect_first_party_paths "${paths[@]}")
+    local -a filtered_paths=()
+    while IFS= read -r path; do
+      filtered_paths+=("$path")
+    done < <(collect_first_party_paths "${paths[@]}")
+    paths=("${filtered_paths[@]}")
   fi
 
   for path in "${paths[@]}"; do

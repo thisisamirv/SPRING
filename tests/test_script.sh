@@ -10,6 +10,7 @@ SPRING_BIN="$BUILD_DIR/spring"
 SPRING_BIN_CMD=()
 SPRING_TEST_ARGS_CMD=()
 SPRING_SMOKE_MODE="${SPRING_SMOKE_MODE:-full}"
+SPRING_COMMAND_TIMEOUT_SECONDS="${SPRING_COMMAND_TIMEOUT_SECONDS:-0}"
 WORK_DIR=$(mktemp -d "$BUILD_DIR/smoke-test.XXXXXX")
 
 cleanup() {
@@ -39,7 +40,15 @@ if [[ -n "${SPRING_TEST_ARGS:-}" ]]; then
 fi
 
 run_spring() {
-	"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" "$@"
+	local cmd=("${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" "$@")
+	printf 'Running Spring command:'
+	printf ' %q' "${cmd[@]}"
+	printf '\n'
+	if [[ "$SPRING_COMMAND_TIMEOUT_SECONDS" -gt 0 ]] && command -v timeout >/dev/null 2>&1; then
+		timeout "$SPRING_COMMAND_TIMEOUT_SECONDS" "${cmd[@]}"
+	else
+		"${cmd[@]}"
+	fi
 }
 
 announce_case() {

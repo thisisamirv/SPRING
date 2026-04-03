@@ -259,7 +259,7 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
 
   for (int dict_index = 0; dict_index < numdict; dict_index++) {
     bbhashdict &current_dict = dict[dict_index];
-    uint64_t *dictionary_keys = new uint64_t[numreads];
+    uint64_t *dictionary_keys = new uint64_t[numreads]{};
 
     detail::compute_dictionary_keys<bitset_size>(
         read, index_masks[dict_index], current_dict, numreads, bpb,
