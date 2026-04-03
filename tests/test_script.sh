@@ -9,6 +9,7 @@ BUILD_DIR="$ROOT_DIR/build"
 SPRING_BIN="$BUILD_DIR/spring"
 SPRING_BIN_CMD=()
 SPRING_TEST_ARGS_CMD=()
+SPRING_SMOKE_MODE="${SPRING_SMOKE_MODE:-full}"
 WORK_DIR=$(mktemp -d "$BUILD_DIR/smoke-test.XXXXXX")
 
 cleanup() {
@@ -37,7 +38,41 @@ if [[ -n "${SPRING_TEST_ARGS:-}" ]]; then
 	SPRING_TEST_ARGS_CMD=(${SPRING_TEST_ARGS})
 fi
 
+run_spring() {
+	"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" "$@"
+}
+
+announce_case() {
+	echo "Smoke case: $1"
+}
+
 cd "$WORK_DIR"
+
+if [[ "$SPRING_SMOKE_MODE" == "quick" ]]; then
+	announce_case "single fastq round-trip"
+	run_spring -c -i "$ASSET_DIR/test_1.fastq" -o abcd
+	run_spring -d -i abcd -o tmp
+	cmp tmp "$ASSET_DIR/test_1.fastq"
+
+	announce_case "single fasta round-trip"
+	run_spring -c -i "$ASSET_DIR/test_1.fasta" -o abcd
+	run_spring -d -i abcd -o tmp
+	cmp tmp "$ASSET_DIR/test_1.fasta"
+
+	announce_case "paired fastq round-trip"
+	run_spring -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd
+	run_spring -d -i abcd -o tmp
+	cmp tmp.1 "$ASSET_DIR/test_1.fastq"
+	cmp tmp.2 "$ASSET_DIR/test_2.fastq"
+
+	announce_case "gzipped fastq input round-trip"
+	run_spring -c -i "$ASSET_DIR/test_1.fastq.gz" -o abcd
+	run_spring -d -i abcd -o tmp
+	cmp tmp "$ASSET_DIR/test_1.fastq"
+
+	echo "Tests successful!"
+	exit 0
+fi
 
 "${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" -o abcd
 "${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp

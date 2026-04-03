@@ -96,12 +96,25 @@ set(OpenMP_DEFINITIONS "-DLIBBSC_OPENMP_SUPPORT -DLIBSAIS_OPENMP")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS} ${OpenMP_DEFINITIONS}")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS} ${OpenMP_DEFINITIONS}")
 
+set(SPRING_OPENMP_INCLUDE_DIRS)
+if (OpenMP_C_INCLUDE_DIRS)
+    list(APPEND SPRING_OPENMP_INCLUDE_DIRS ${OpenMP_C_INCLUDE_DIRS})
+endif ()
+if (OpenMP_CXX_INCLUDE_DIRS)
+    list(APPEND SPRING_OPENMP_INCLUDE_DIRS ${OpenMP_CXX_INCLUDE_DIRS})
+endif ()
+list(REMOVE_DUPLICATES SPRING_OPENMP_INCLUDE_DIRS)
+
 execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=include
                 OUTPUT_VARIABLE COMPILER_INCLUDE_DIR
                 OUTPUT_STRIP_TRAILING_WHITESPACE)
 # Emit a matching clangd configuration so editor diagnostics see the same
 # compiler include path and OpenMP flags as the CMake build.
-file(WRITE "${CMAKE_SOURCE_DIR}/.clangd" "CompileFlags:\n  Add: [\"-I${COMPILER_INCLUDE_DIR}\", \"-fopenmp\"]\n")
+set(SPRING_CLANGD_FLAGS "\"-I${COMPILER_INCLUDE_DIR}\", \"-fopenmp\"")
+foreach(openmp_include_dir IN LISTS SPRING_OPENMP_INCLUDE_DIRS)
+    string(APPEND SPRING_CLANGD_FLAGS ", \"-I${openmp_include_dir}\"")
+endforeach ()
+file(WRITE "${CMAKE_SOURCE_DIR}/.clangd" "CompileFlags:\n  Add: [${SPRING_CLANGD_FLAGS}]\n")
 
 message(STATUS "** CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
 message(STATUS "** CMAKE_C_FLAGS: ${CMAKE_C_FLAGS}")
@@ -276,10 +289,16 @@ add_executable (spring ${source_files})
 # Spring headers live in src/, while vendor/ exposes bundled libraries such
 # as BBHash, libbsc, id_compression, qvz, and the vendored libdeflate sources.
 target_include_directories(spring PRIVATE ${include_dir} ${vendor_dir} ${build_vendor_dir})
+if (SPRING_OPENMP_INCLUDE_DIRS)
+    target_include_directories(spring SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
+endif ()
 target_link_libraries(spring PUBLIC
     libdeflate::libdeflate_static
     ZLIB::ZLIB
 )
+if (TARGET OpenMP::OpenMP_CXX)
+    target_link_libraries(spring PUBLIC OpenMP::OpenMP_CXX)
+endif ()
 
 if (WIN32)
     target_link_libraries(spring PRIVATE ws2_32)
