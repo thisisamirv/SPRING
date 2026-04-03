@@ -82,7 +82,7 @@ std::string create_temp_dir(const std::string &working_dir) {
     const std::filesystem::path temp_dir_path = working_dir_path / random_str;
     if (!std::filesystem::exists(temp_dir_path) &&
         std::filesystem::create_directory(temp_dir_path)) {
-      return temp_dir_path.string() + '/';
+      return temp_dir_path.generic_string() + '/';
     }
   }
 }

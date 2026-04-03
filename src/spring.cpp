@@ -140,6 +140,10 @@ std::string shell_quote(const std::string &value) {
   return quoted;
 }
 
+std::string shell_path(const std::string &value) {
+  return std::filesystem::path(value).generic_string();
+}
+
 bool is_gzip_input_path(const std::string &input_path) {
   return has_suffix(input_path, ".gz");
 }
@@ -612,7 +616,8 @@ void compress(const std::string &temp_dir,
 
   run_timed_step("Creating tar archive ...", "Tar archive", [&] {
     const std::string tar_command =
-        "tar -cf " + io_config.archive_path + " -C " + temp_dir + " . ";
+      "tar -cf " + shell_quote(shell_path(io_config.archive_path)) +
+      " -C " + shell_quote(shell_path(temp_dir)) + " .";
     run_system_command_or_throw(tar_command,
                                 "Error occurred during tar archive generation.");
   });
@@ -651,7 +656,8 @@ void decompress(const std::string &temp_dir,
 
   run_timed_step("Untarring tar archive ...", "Untarring archive", [&] {
     const std::string untar_command =
-        "tar -xf " + input_paths[0] + " -C " + temp_dir;
+        "tar -xf " + shell_quote(shell_path(input_paths[0])) + " -C " +
+        shell_quote(shell_path(temp_dir));
     run_system_command_or_throw(untar_command,
                                 "Error occurred during untarring.");
   });
