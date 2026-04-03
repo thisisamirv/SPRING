@@ -102,12 +102,22 @@ jobs:
             -Dspring_optimize_for_native=OFF \
             -Dspring_optimize_for_portability=ON
 
-      - name: Build
-        shell: ${{ matrix.shell }}
+      - name: Build on Linux and macOS
+        if: runner.os != 'Windows'
         run: cmake --build build --parallel
 
-      - name: Smoke test
-        shell: ${{ matrix.shell }}
+      - name: Build on Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: cmake --build build --parallel
+
+      - name: Smoke test on Linux and macOS
+        if: runner.os != 'Windows'
+        run: tests/test_script.sh
+
+      - name: Smoke test on Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
         run: tests/test_script.sh
 
   static-analysis:
@@ -202,8 +212,13 @@ jobs:
             -Dspring_optimize_for_native=OFF \
             -Dspring_optimize_for_portability=ON
 
-      - name: Build for analysis
-        shell: ${{ matrix.shell }}
+      - name: Build for analysis on Linux and macOS
+        if: runner.os != 'Windows'
+        run: cmake --build build --parallel
+
+      - name: Build for analysis on Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
         run: cmake --build build --parallel
 
       - name: Run lint on Linux
@@ -222,8 +237,13 @@ jobs:
         shell: msys2 {0}
         run: ./dev/lint.sh
 
-      - name: Run cppcheck
-        shell: ${{ matrix.shell }}
+      - name: Run cppcheck on Linux and macOS
+        if: runner.os != 'Windows'
+        run: ./dev/cppcheck.sh
+
+      - name: Run cppcheck on Windows
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
         run: ./dev/cppcheck.sh
 
       - name: Run valgrind smoke test
