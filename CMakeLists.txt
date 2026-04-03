@@ -280,6 +280,11 @@ target_link_libraries(spring PUBLIC
     libdeflate::libdeflate_static
     ZLIB::ZLIB
 )
+
+if (WIN32)
+    target_link_libraries(spring PRIVATE ws2_32)
+endif ()
+
 target_compile_definitions(spring PRIVATE SPRING_RAPIDGZIP_EXECUTABLE=\"$<TARGET_FILE:rapidgzip>\")
 
 add_dependencies(spring rapidgzip)
