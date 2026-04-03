@@ -6,6 +6,15 @@ source "$(cd -- "$(dirname -- "$0")" && pwd)/common.sh"
 
 require_command python3
 
+is_msys_windows=false
+if [[ -n "${MSYSTEM:-}" ]]; then
+  is_msys_windows=true
+else
+  case "$(uname -s)" in
+    MSYS_*|MINGW*|CYGWIN*) is_msys_windows=true ;;
+  esac
+fi
+
 clang_tidy_bin=""
 for candidate in clang-tidy clang-tidy-18 clang-tidy-17 clang-tidy-16; do
   if command -v "$candidate" >/dev/null 2>&1; then
@@ -37,11 +46,27 @@ clang_tidy_common_args=(
   -checks="$TIDY_CHECKS"
   -header-filter='^$'
   --system-headers=false
-  --extra-arg=-fopenmp
-  --extra-arg=-w
-  '--extra-arg=-D__malloc__(...)=__malloc__'
-  --extra-arg=-I"$GCC_INCLUDE_DIR"
 )
+
+if $is_msys_windows; then
+  clang_tidy_common_args+=(
+    --extra-arg-before=--target=x86_64-w64-windows-gnu
+    --extra-arg-before=--driver-mode=g++
+    --extra-arg=-w
+  )
+else
+  clang_tidy_common_args+=(
+    --extra-arg=-fopenmp
+    --extra-arg=-w
+    '--extra-arg=-D__malloc__(...)=__malloc__'
+    --extra-arg=-I"$GCC_INCLUDE_DIR"
+  )
+fi
+
+run_clang_tidy() {
+  "$clang_tidy_bin" "$@" \
+    2> >(grep -Ev '^[0-9]+ warnings? generated\.$|^[0-9]+ warnings? and [0-9]+ errors? generated\.$' >&2)
+}
 
 mapfile -t files < <(collect_cpp_sources "$@")
 mapfile -t python_files < <(collect_python_sources "$@")
@@ -55,19 +80,23 @@ compile_db_files=()
 standalone_files=()
 
 if [[ ${#files[@]} -gt 0 ]]; then
-  require_compile_commands
+  if $is_msys_windows; then
+    standalone_files=("${files[@]}")
+  else
+    require_compile_commands
 
-  for file in "${files[@]}"; do
-    if compile_commands_contains "$file"; then
-      compile_db_files+=("$file")
-    else
-      standalone_files+=("$file")
-    fi
-  done
+    for file in "${files[@]}"; do
+      if compile_commands_contains "$file"; then
+        compile_db_files+=("$file")
+      else
+        standalone_files+=("$file")
+      fi
+    done
+  fi
 fi
 
 if [[ ${#compile_db_files[@]} -gt 0 ]]; then
-  "$clang_tidy_bin" \
+  run_clang_tidy \
     "${clang_tidy_common_args[@]}" \
     -p "$BUILD_DIR" \
     "${compile_db_files[@]}"
@@ -81,15 +110,13 @@ for file in "${standalone_files[@]}"; do
 
   printf 'Linting standalone file %s.\n' "$file"
 
-  "$clang_tidy_bin" \
+  run_clang_tidy \
     "${clang_tidy_common_args[@]}" \
     "$file" -- \
     -std=c++20 \
     -x c++ \
-    -fopenmp \
     "${include_args[@]}" \
-    -I"$(dirname -- "$file")" \
-    -I"$GCC_INCLUDE_DIR"
+    -I"$(dirname -- "$file")"
 done
 
 for file in "${python_files[@]}"; do

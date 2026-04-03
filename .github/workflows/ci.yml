@@ -30,13 +30,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libomp-dev nasm ninja-build python3 python3-pip
+          sudo apt-get install -y build-essential libomp-dev nasm ninja-build python3 python3-pip python3-venv
 
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
@@ -50,10 +50,12 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          python3 -m pip install --user "cmake==4.2.0"
-          PYTHON_USER_BASE=$(python3 -c 'import site; print(site.USER_BASE)')
-          echo "$PYTHON_USER_BASE/bin" >> "$GITHUB_PATH"
-          "$PYTHON_USER_BASE/bin/cmake" --version
+          CMAKE_VENV="$RUNNER_TEMP/cmake-venv"
+          python3 -m venv "$CMAKE_VENV"
+          "$CMAKE_VENV/bin/python" -m pip install --upgrade pip
+          "$CMAKE_VENV/bin/python" -m pip install "cmake==4.2.0"
+          echo "$CMAKE_VENV/bin" >> "$GITHUB_PATH"
+          "$CMAKE_VENV/bin/cmake" --version
 
       - name: Set up MSYS2
         if: runner.os == 'Windows'
@@ -146,13 +148,13 @@ jobs:
             shell: msys2 {0}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Linux analysis dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential clang-tidy cppcheck libomp-dev nasm ninja-build python3 valgrind
+          sudo apt-get install -y build-essential clang-tidy cppcheck libomp-dev nasm ninja-build python3 python3-venv valgrind
 
       - name: Install macOS analysis dependencies
         if: runner.os == 'macOS'
@@ -167,10 +169,12 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          python3 -m pip install --user "cmake==4.2.0"
-          PYTHON_USER_BASE=$(python3 -c 'import site; print(site.USER_BASE)')
-          echo "$PYTHON_USER_BASE/bin" >> "$GITHUB_PATH"
-          "$PYTHON_USER_BASE/bin/cmake" --version
+          CMAKE_VENV="$RUNNER_TEMP/cmake-venv"
+          python3 -m venv "$CMAKE_VENV"
+          "$CMAKE_VENV/bin/python" -m pip install --upgrade pip
+          "$CMAKE_VENV/bin/python" -m pip install "cmake==4.2.0"
+          echo "$CMAKE_VENV/bin" >> "$GITHUB_PATH"
+          "$CMAKE_VENV/bin/cmake" --version
 
       - name: Set up MSYS2 analysis environment
         if: runner.os == 'Windows'
