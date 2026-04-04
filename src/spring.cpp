@@ -551,9 +551,8 @@ void compress(const std::string &temp_dir,
               const std::vector<std::string> &output_paths,
               const int &num_thr,
               const bool &pairing_only_flag, const bool &no_quality_flag,
-              const bool &no_ids_flag,
-              const std::vector<std::string> &quality_options,
-              const bool &long_flag) {
+              const bool &no_ids_flag, const std::vector<std::string> &quality_options,
+              const bool &long_flag, const int &compression_level) {
   omp_set_dynamic(0);
 
   std::cout << "Starting compression...\n";
@@ -590,6 +589,7 @@ void compress(const std::string &temp_dir,
   cp.num_reads_per_block = NUM_READS_PER_BLOCK;
   cp.num_reads_per_block_long = NUM_READS_PER_BLOCK_LONG;
   cp.num_thr = num_thr;
+  cp.compression_level = compression_level;
 
   if (preserve_quality)
     configure_quality_options(cp, quality_options);
@@ -681,7 +681,7 @@ void decompress(const std::string &temp_dir,
                 const std::vector<std::string> &output_paths,
                 const int &num_thr,
                 const std::vector<uint64_t> &decompress_range,
-                const int &gzip_level) {
+                const int &compression_level) {
   omp_set_dynamic(0);
 
   std::cout << "Starting decompression...\n";
@@ -723,12 +723,12 @@ void decompress(const std::string &temp_dir,
       decompress_long(temp_dir, io_config.output_path_1,
                       io_config.output_path_2, cp, num_thr,
                       decompression_plan.start_read_index,
-                      decompression_plan.end_read_index, gzip_level);
+                      decompression_plan.end_read_index, compression_level);
     else
       decompress_short(temp_dir, io_config.output_path_1,
                        io_config.output_path_2, cp, num_thr,
                        decompression_plan.start_read_index,
-                       decompression_plan.end_read_index, gzip_level);
+                       decompression_plan.end_read_index, compression_level);
   });
 
   const auto decompression_end = clock_type::now();

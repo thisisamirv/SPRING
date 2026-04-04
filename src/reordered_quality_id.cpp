@@ -203,7 +203,7 @@ void compress_block_batch(const std::string &input_path,
       if (mode == reorder_compress_mode::id) {
         compress_id_block(output_path.c_str(),
                           reordered_strings.data() + block_begin,
-                          reads_in_block);
+                          reads_in_block, compression_params.compression_level);
       } else {
         for (uint64_t read_offset = 0; read_offset < reads_in_block;
              read_offset++) {

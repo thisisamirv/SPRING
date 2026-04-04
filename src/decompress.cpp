@@ -281,12 +281,12 @@ void write_step_output(std::ofstream &output_stream, std::string *id_buffer,
                        std::string *read_buffer, std::string *quality_buffer,
                        const step_output_plan &plan,
                        const bool preserve_quality, const int num_thr,
-                const bool gzip_output, const int gzip_level) {
+                       const bool gzip_output, const int compression_level) {
   write_fastq_block(output_stream, id_buffer + plan.output_shift,
                     read_buffer + plan.output_shift,
                     quality_buffer + plan.output_shift,
                     plan.output_read_count - plan.output_shift,
-              preserve_quality, num_thr, gzip_output, gzip_level);
+              preserve_quality, num_thr, gzip_output, compression_level);
 }
 
 void decode_packed_sequence_chunk(const std::string &packed_seq_base_path,
@@ -412,7 +412,7 @@ void decompress_short(const std::string &temp_dir,
                       const int &num_threads,
                       const uint64_t &start_read_index,
                       const uint64_t &end_read_index,
-                      const int &gzip_level) {
+                      const int &compression_level) {
   std::string base_dir = temp_dir;
 
   std::string file_seq = base_dir + "/read_seq.bin";
@@ -725,7 +725,7 @@ void decompress_short(const std::string &temp_dir,
           num_reads_per_block, num_blocks_done);
       write_step_output(output_streams[stream_index], id_buffer, read_buffer,
                 quality_buffer, output_plan, preserve_quality,
-                num_threads, gzip_outputs[stream_index], gzip_level);
+                num_threads, gzip_outputs[stream_index], compression_level);
       done = done || output_plan.finished;
     }
     num_reads_done += num_reads_cur_step;
@@ -757,7 +757,7 @@ void decompress_long(const std::string &temp_dir,
                      const int &num_threads,
                      const uint64_t &start_read_index,
                      const uint64_t &end_read_index,
-                     const int &gzip_level) {
+                     const int &compression_level) {
   std::string input_read_paths[2];
   std::string input_quality_paths[2];
   std::string input_id_paths[2];
@@ -872,7 +872,7 @@ void decompress_long(const std::string &temp_dir,
           num_reads_per_block, num_blocks_done);
       write_step_output(output_streams[stream_index], id_buffer, read_buffer,
                 quality_buffer, output_plan, preserve_quality,
-                num_threads, gzip_outputs[stream_index], gzip_level);
+                num_threads, gzip_outputs[stream_index], compression_level);
       done = done || output_plan.finished;
     }
     num_reads_done += num_reads_cur_step;

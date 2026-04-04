@@ -2,6 +2,7 @@
 // temporary-directory management, and dispatch to compress/decompress modes.
 
 #include "spring.h"
+#include "params.h"
 #include <algorithm>
 #include <cmath>
 #include <csignal>
@@ -45,7 +46,7 @@ struct command_line_options {
   int num_threads = default_num_threads();
   bool num_threads_was_explicit = false;
   double memory_cap_gb = 0.0;
-  int gzip_level = 6;
+  int compression_level = spring::DEFAULT_COMPRESSION_LEVEL;
 };
 
 std::string temp_dir_global;
@@ -142,8 +143,9 @@ std::string build_options_description() {
     << "                                  for reads with significant number of indels.\n"
     << "                                  -r disabled in this mode. For Illumina short\n"
     << "                                  reads, compression is better without -l flag.\n"
-    << "  --gzip-level arg (=6)           gzip level (0-9) to use when decompression\n"
-    << "                                  output path ends in .gz (default: 6)";
+    << "  --level arg (=6)               Compression level (1-9) for identifiers\n"
+      << "                                  and output (.gz) formatting. Passed to gzip\n"
+      << "                                  unchanged and scaled to Zstd (1-22).";
   return options.str();
 }
 
@@ -238,10 +240,12 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
       require_value(args, index, "--memory-cap-gb");
       options.memory_cap_gb = parse_double_or_throw(args[index++],
                                                     "Invalid memory cap.");
-    } else if (arg == "--gzip-level") {
-      require_value(args, index, "--gzip-level");
-      options.gzip_level = parse_int_or_throw(args[index++],
-                                              "Invalid gzip level.");
+    } else if (arg == "--level") {
+      require_value(args, index, "--level");
+      options.compression_level = parse_int_or_throw(args[index++],
+                                                "Invalid compression level.");
+        if (options.compression_level < 1 || options.compression_level > 9)
+          throw std::runtime_error("Compression level must be between 1 and 9.");
     } else if (arg == "--decompress-range") {
       require_value(args, index, "--decompress-range");
       const std::vector<std::string> values = collect_option_values(args, index);
@@ -353,13 +357,13 @@ void run_requested_mode(const command_line_options &options,
     spring::compress(temp_dir, options.input_paths, options.output_paths,
                      options.num_threads, options.pairing_only_flag,
                      options.no_quality_flag, options.no_ids_flag,
-                     options.quality_options, options.long_flag);
+                     options.quality_options, options.long_flag, options.compression_level);
     return;
   }
 
   spring::decompress(temp_dir, options.input_paths, options.output_paths,
                      options.num_threads, options.decompress_range,
-                     options.gzip_level);
+                     options.compression_level);
 }
 
 } // namespace

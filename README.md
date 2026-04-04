@@ -1,3 +1,4 @@
+<!-- markdownlint-disable MD033 -->
 # SPRING
 
 <p align="center">
@@ -133,7 +134,7 @@ export PATH="$HOMEBREW_LLVM_BIN:$PATH"
 
 CI uses MSYS2 UCRT64. Installing the same environment locally is the easiest way to match the supported build.
 
-Install MSYS2 from https://www.msys2.org/ and then open an `MSYS2 UCRT64` shell.
+Install MSYS2 from <https://www.msys2.org/> and then open an `MSYS2 UCRT64` shell.
 
 Install the build requirements:
 
@@ -222,8 +223,9 @@ Allowed options:
                                   for reads with significant number of indels.
                                   -r disabled in this mode. For Illumina short
                                   reads, compression is better without -l flag.
-  --gzip-level arg (=6)           gzip level (0-9) to use during decompression
-                                  when the output path ends in .gz (default: 6)
+  --level arg (=6)               compression level (1-9) to use for output
+                                  (.gz) formatting (passed to gzip unchanged
+                                  and scaled to Zstd 1-22 internally)
 ```
 
 SPRING archives are tar files containing the internal compressed streams, though using a `.spring` extension is recommended.
@@ -363,6 +365,6 @@ Decompress paired-end FASTA:
 
 ## Related
 
-- QVZ: https://github.com/mikelhernaez/qvz/
+- QVZ: <https://github.com/mikelhernaez/qvz/>
 - [Bioinformatics publication](https://academic.oup.com/bioinformatics/advance-article/doi/10.1093/bioinformatics/bty1015/5232998?guestAccessKey=266a1378-4684-4f04-bb99-6febdf9d1fb9)
-- Specialized tool for nanopore long reads: https://github.com/qm2/NanoSpring
+- Specialized tool for nanopore long reads: <https://github.com/qm2/NanoSpring>

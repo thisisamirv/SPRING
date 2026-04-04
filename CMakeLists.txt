@@ -25,6 +25,26 @@ function(extract_archive_if_needed archive_path destination_dir expected_path)
         file(REMOVE_RECURSE "${destination_dir}")
         file(MAKE_DIRECTORY "${destination_dir}")
         file(ARCHIVE_EXTRACT INPUT "${archive_path}" DESTINATION "${destination_dir}")
+        # Some archives contain a single top-level directory (e.g. "zstd/")
+        # Normalize that case by moving the inner contents up one level
+        if (NOT EXISTS "${expected_path}")
+            file(RELATIVE_PATH rel_expected "${expected_path}" "${destination_dir}")
+            file(GLOB children RELATIVE "${destination_dir}" "${destination_dir}/*")
+            list(LENGTH children children_count)
+            if (children_count EQUAL 1)
+                list(GET children 0 only_child)
+                if (IS_DIRECTORY "${destination_dir}/${only_child}")
+                    if (EXISTS "${destination_dir}/${only_child}/${rel_expected}")
+                        file(GLOB inner_items RELATIVE "${destination_dir}/${only_child}" "${destination_dir}/${only_child}/*")
+                        foreach(inner_item IN LISTS inner_items)
+                            file(RENAME "${destination_dir}/${only_child}/${inner_item}" "${destination_dir}/${inner_item}")
+                        endforeach()
+                        file(REMOVE_RECURSE "${destination_dir}/${only_child}")
+                    endif()
+                endif()
+            endif()
+        endif()
+
         file(WRITE "${stamp_path}" "${archive_hash}\n")
     endif ()
 endfunction()
@@ -140,7 +160,7 @@ set(include_dir ${CMAKE_SOURCE_DIR}/src)
 
 # Emit a matching clangd configuration so editor diagnostics see the same
 # compiler include path and OpenMP flags as the CMake build.
-set(SPRING_CLANGD_FLAGS "\"-fopenmp\", \"-I${include_dir}\", \"-I${vendor_dir}\", \"-I${build_vendor_dir}\"")
+set(SPRING_CLANGD_FLAGS "\"-fopenmp\", \"-I${include_dir}\", \"-I${vendor_dir}\", \"-I${build_vendor_dir}\", \"-I${vendor_dir}/zstd/lib\"")
 foreach(openmp_include_dir IN LISTS SPRING_OPENMP_INCLUDE_DIRS)
     string(APPEND SPRING_CLANGD_FLAGS ", \"-I${openmp_include_dir}\"")
 endforeach ()
@@ -152,7 +172,7 @@ message(STATUS "** CMAKE_C_FLAGS: ${CMAKE_C_FLAGS}")
 
 set(BBHASH_DIR ${build_vendor_dir}/BBHash)
 set(CLOUDFLARE_ZLIB_DIR ${build_vendor_dir}/cloudflare_zlib)
-set(ID_COMPRESSION_DIR ${build_vendor_dir}/id_compression)
+set(ZSTD_DIR ${build_vendor_dir}/zstd)
 set(INDEXED_BZIP2_DIR ${build_vendor_dir}/indexed_bzip2)
 set(LIBBSC_DIR ${build_vendor_dir}/libbsc)
 set(LIBDEFLATE_DIR ${build_vendor_dir}/libdeflate)
@@ -172,21 +192,22 @@ extract_archive_if_needed(
 )
 
 extract_archive_if_needed(
-    "${CMAKE_SOURCE_DIR}/vendor/id_compression.tar.xz"
-    "${ID_COMPRESSION_DIR}"
-    "${ID_COMPRESSION_DIR}/include/sam_block.h"
+    "${CMAKE_SOURCE_DIR}/vendor/zstd.tar.xz"
+    "${ZSTD_DIR}"
+    "${ZSTD_DIR}/lib/zstd.h"
 )
 
-replace_in_file_if_needed(
-    "${ID_COMPRESSION_DIR}/src/io_functions.cpp"
-    "fopen(ios->filePath, \"w\")"
-    "fopen(ios->filePath, \"wb\")"
-)
-replace_in_file_if_needed(
-    "${ID_COMPRESSION_DIR}/src/io_functions.cpp"
-    "fopen(ios->filePath, \"r\")"
-    "fopen(ios->filePath, \"rb\")"
-)
+# Zstd build configuration
+set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(ZSTD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(ZSTD_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
+set(ZSTD_BUILD_DICTBUILDER OFF CACHE BOOL "" FORCE)
+set(ZSTD_MULTITHREAD_SUPPORT OFF CACHE BOOL "" FORCE)
+set(ZSTD_BUILD_STATIC ON CACHE BOOL "" FORCE)
+set(ZSTD_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+set(ZSTD_LEGACY_SUPPORT OFF CACHE BOOL "" FORCE)
+add_compile_definitions(ZSTD_NO_TRACE)
+add_subdirectory("${ZSTD_DIR}/cmake" "${CMAKE_BINARY_DIR}/zstd-build")
 
 extract_archive_if_needed(
     "${CMAKE_SOURCE_DIR}/vendor/libbsc.tar.xz"
@@ -267,15 +288,6 @@ list(APPEND source_files
     ${source_dir}/decompress.cpp
     ${source_dir}/template_dispatch.cpp
 
-    # id compression
-    ${ID_COMPRESSION_DIR}/src/Arithmetic_stream.cpp
-    ${ID_COMPRESSION_DIR}/src/compression.cpp
-    ${ID_COMPRESSION_DIR}/src/id_compression.cpp
-    ${ID_COMPRESSION_DIR}/src/io_functions.cpp
-    ${ID_COMPRESSION_DIR}/src/sam_file_allocation.cpp
-    ${ID_COMPRESSION_DIR}/src/sam_models.cpp
-    ${ID_COMPRESSION_DIR}/src/stream_model.cpp
-
     # bsc
     ${LIBBSC_DIR}/bsc.cpp
     ${LIBBSC_DIR}/bsc_str_array.cpp
@@ -307,8 +319,6 @@ list(APPEND source_files
 
 if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU|Clang")
     set(vendored_unused_result_warning_sources
-        ${ID_COMPRESSION_DIR}/src/Arithmetic_stream.cpp
-        ${ID_COMPRESSION_DIR}/src/io_functions.cpp
         ${QVZ_DIR}/src/codebook.cpp
     )
     set_source_files_properties(
@@ -330,12 +340,13 @@ add_executable (spring ${source_files})
 
 # Spring headers live in src/, while vendor/ exposes bundled libraries such
 # as BBHash, libbsc, id_compression, qvz, and the vendored libdeflate sources.
-target_include_directories(spring PRIVATE ${include_dir} ${vendor_dir} ${build_vendor_dir})
+target_include_directories(spring PRIVATE ${include_dir} ${vendor_dir} ${build_vendor_dir} ${ZSTD_DIR}/lib)
 if (SPRING_OPENMP_INCLUDE_DIRS)
     target_include_directories(spring SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
 endif ()
 target_link_libraries(spring PUBLIC
     libdeflate::libdeflate_static
+    libzstd_static
     ZLIB::ZLIB
 )
 if (TARGET OpenMP::OpenMP_CXX)

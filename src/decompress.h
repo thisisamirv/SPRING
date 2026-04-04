@@ -19,7 +19,7 @@ void decompress_short(const std::string &temp_dir,
                       const int &num_threads,
                       const uint64_t &start_read_index,
                       const uint64_t &end_read_index,
-                      const int &gzip_level);
+                      const int &compression_level);
 
 // Long-read archives store read streams directly, without reference-based
 // reconstruction.
@@ -30,7 +30,7 @@ void decompress_long(const std::string &temp_dir,
                      const int &num_threads,
                      const uint64_t &start_read_index,
                      const uint64_t &end_read_index,
-                     const int &gzip_level);
+                     const int &compression_level);
 
 // Packed reference chunks are decoded once, then concatenated by callers.
 void decompress_unpack_seq(const std::string &packed_seq_base_path,

@@ -30,6 +30,10 @@ constexpr int THRESH_ENCODER = 24;
 constexpr int NUM_READS_PER_BLOCK = 256000;
 constexpr int NUM_READS_PER_BLOCK_LONG = 10000;
 constexpr int BSC_BLOCK_SIZE = 64;
+
+  // Default compression level (1-9) used by the CLI. This value is passed
+  // directly to gzip (1-9) and scaled to Zstd (1-22) where Zstd is used.
+  static constexpr int DEFAULT_COMPRESSION_LEVEL = 6;
 } // namespace spring
 
 #endif // SPRING_PARAMS_H_

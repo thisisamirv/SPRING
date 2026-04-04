@@ -411,7 +411,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                                                          thread_id);
                 compress_id_block(output_path.c_str(),
                                   id_array + thread_id * num_reads_per_block,
-                                  thread_read_count);
+                                  thread_read_count, cp.compression_level);
               }
               if (cp.preserve_quality) {
                 std::string output_path =
@@ -437,7 +437,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                   block_file_path(paths.id_output_paths[stream_index], block_num);
               compress_id_block(output_path.c_str(),
                                 id_array + thread_id * num_reads_per_block,
-                                thread_read_count);
+                                thread_read_count, cp.compression_level);
             }
             if (cp.preserve_quality) {
               std::string output_path =

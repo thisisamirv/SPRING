@@ -52,6 +52,7 @@ struct compression_params {
   int num_reads_per_block;
   int num_reads_per_block_long;
   int num_thr;
+  int compression_level;
 };
 
 class gzip_istreambuf : public std::streambuf {
@@ -110,7 +111,7 @@ private:
   gzFile file_;
 };
 
-std::string gzip_compress_string(const std::string &input, int gzip_level);
+std::string gzip_compress_string(std::string input, int level);
 
 // FASTQ block helpers.
 uint32_t read_fastq_block(std::istream *input_stream, std::string *id_array,
@@ -121,11 +122,11 @@ void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
                        std::string *read_array, std::string *quality_array,
                        const uint32_t &num_reads, const bool preserve_quality,
                        const int &num_thr, const bool &gzip_flag,
-                       const int &gzip_level);
+                       const int &compression_level);
 
 // ID stream helpers.
 void compress_id_block(const char *output_path, std::string *id_array,
-                       const uint32_t &num_ids);
+                       const uint32_t &num_ids, const int &compression_level);
 
 void decompress_id_block(const char *input_path, std::string *id_array,
                          const uint32_t &num_ids);
