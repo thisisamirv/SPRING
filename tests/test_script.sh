@@ -235,21 +235,19 @@ compare_files tmp "$ASSET_DIR/test_1.fastq"
 cmp tmp.1 "$ASSET_DIR/test_1.fastq"
 cmp tmp.2 "$ASSET_DIR/test_2.fastq"
 
-
 "${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" -o abcd -r
 "${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
-sort tmp > tmp.sorted
-sort "$ASSET_DIR/test_1.fastq" > tmp_1.sorted
+sort tmp >tmp.sorted
+sort "$ASSET_DIR/test_1.fastq" >tmp_1.sorted
 compare_files tmp.sorted tmp_1.sorted
-
 
 "${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd -t 8
 "${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp -t 5
-sort tmp.1 > tmp.sorted
-sort "$ASSET_DIR/test_1.fastq" > tmp_1.sorted
+sort tmp.1 >tmp.sorted
+sort "$ASSET_DIR/test_1.fastq" >tmp_1.sorted
 compare_files tmp.sorted tmp_1.sorted
-sort tmp.2 > tmp.sorted
-sort "$ASSET_DIR/test_2.fastq" > tmp_1.sorted
+sort tmp.2 >tmp.sorted
+sort "$ASSET_DIR/test_2.fastq" >tmp_1.sorted
 compare_files tmp.sorted tmp_1.sorted
 
 echo "Tests successful!"

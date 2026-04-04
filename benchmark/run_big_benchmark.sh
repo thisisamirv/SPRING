@@ -20,77 +20,77 @@ COMPRESS_RESOURCE_LOG="$TMP_LOG_DIR/compress_resource_usage.log"
 DECOMPRESS_RESOURCE_LOG="$TMP_LOG_DIR/decompress_resource_usage.log"
 
 remove_empty_dir_if_present() {
-  local dir_path="$1"
+	local dir_path="$1"
 
-  if [[ -d "$dir_path" ]] && [[ -z "$(find "$dir_path" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
-    rmdir "$dir_path"
-  fi
+	if [[ -d "$dir_path" ]] && [[ -z "$(find "$dir_path" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
+		rmdir "$dir_path"
+	fi
 }
 
 trap 'remove_empty_dir_if_present "$TMP_WORK_DIR"' EXIT
 
 TIME_BIN=""
 if [[ -x /usr/bin/time ]]; then
-  TIME_BIN=/usr/bin/time
+	TIME_BIN=/usr/bin/time
 elif [[ -n "$(type -P time)" ]]; then
-  TIME_BIN=$(type -P time)
+	TIME_BIN=$(type -P time)
 fi
 
 compute_checksum() {
-  local file_path="$1"
+	local file_path="$1"
 
-  if [[ -n "$(type -P sha256sum)" ]]; then
-    sha256sum "$file_path" | awk '{print $1}'
-    return
-  fi
+	if [[ -n "$(type -P sha256sum)" ]]; then
+		sha256sum "$file_path" | awk '{print $1}'
+		return
+	fi
 
-  if [[ -n "$(type -P shasum)" ]]; then
-    shasum -a 256 "$file_path" | awk '{print $1}'
-    return
-  fi
+	if [[ -n "$(type -P shasum)" ]]; then
+		shasum -a 256 "$file_path" | awk '{print $1}'
+		return
+	fi
 }
 
 stream_input_bytes() {
-  local file_path="$1"
+	local file_path="$1"
 
-  if [[ "$file_path" == *.gz ]]; then
-    gzip -dc -- "$file_path"
-    return
-  fi
+	if [[ "$file_path" == *.gz ]]; then
+		gzip -dc -- "$file_path"
+		return
+	fi
 
-  cat -- "$file_path"
+	cat -- "$file_path"
 }
 
 compute_normalized_input_checksum() {
-  local file_path="$1"
+	local file_path="$1"
 
-  if [[ -n "$(type -P sha256sum)" ]]; then
-    stream_input_bytes "$file_path" | sha256sum | awk '{print $1}'
-    return
-  fi
+	if [[ -n "$(type -P sha256sum)" ]]; then
+		stream_input_bytes "$file_path" | sha256sum | awk '{print $1}'
+		return
+	fi
 
-  if [[ -n "$(type -P shasum)" ]]; then
-    stream_input_bytes "$file_path" | shasum -a 256 | awk '{print $1}'
-    return
-  fi
+	if [[ -n "$(type -P shasum)" ]]; then
+		stream_input_bytes "$file_path" | shasum -a 256 | awk '{print $1}'
+		return
+	fi
 }
 
 ensure_benchmark_input() {
-  mkdir -p "$TMP_INPUT_DIR" "$TMP_LOG_DIR" "$TMP_OUTPUT_DIR" "$TMP_WORK_DIR"
+	mkdir -p "$TMP_INPUT_DIR" "$TMP_LOG_DIR" "$TMP_OUTPUT_DIR" "$TMP_WORK_DIR"
 
-  if [[ "$INPUT_FASTQ" != "$DEFAULT_INPUT_FASTQ" ]]; then
-    if [[ ! -f "$INPUT_FASTQ" ]]; then
-      echo "Requested INPUT_FASTQ does not exist: $INPUT_FASTQ" >&2
-      exit 1
-    fi
-    return
-  fi
+	if [[ "$INPUT_FASTQ" != "$DEFAULT_INPUT_FASTQ" ]]; then
+		if [[ ! -f "$INPUT_FASTQ" ]]; then
+			echo "Requested INPUT_FASTQ does not exist: $INPUT_FASTQ" >&2
+			exit 1
+		fi
+		return
+	fi
 
-  if [[ -f "$DEFAULT_INPUT_FASTQ" ]]; then
-    return
-  fi
+	if [[ -f "$DEFAULT_INPUT_FASTQ" ]]; then
+		return
+	fi
 
-  cat >&2 <<EOF
+	cat >&2 <<EOF
 Benchmark input not found:
   $DEFAULT_INPUT_FASTQ
 
@@ -103,81 +103,81 @@ Save it as:
 Or run the script with a local override:
   INPUT_FASTQ=/path/to/04-CC002-659-M_S4_L001_R2_001.fastq.gz ./benchmark/run_big_benchmark.sh
 EOF
-  exit 1
+	exit 1
 }
 
 ensure_spring_binary() {
-  if [[ -x "$SPRING_BIN" ]]; then
-    return
-  fi
+	if [[ -x "$SPRING_BIN" ]]; then
+		return
+	fi
 
-  mkdir -p "$TMP_LOG_DIR"
-  echo "Spring binary not found; configuring and building quietly..."
+	mkdir -p "$TMP_LOG_DIR"
+	echo "Spring binary not found; configuring and building quietly..."
 
-  if ! cmake -S "$ROOT_DIR" -B "$BUILD_DIR" >"$BUILD_LOG" 2>&1; then
-    echo "Spring configure failed. Full log: $BUILD_LOG" >&2
-    tail -n 40 "$BUILD_LOG" >&2 || true
-    exit 1
-  fi
+	if ! cmake -S "$ROOT_DIR" -B "$BUILD_DIR" >"$BUILD_LOG" 2>&1; then
+		echo "Spring configure failed. Full log: $BUILD_LOG" >&2
+		tail -n 40 "$BUILD_LOG" >&2 || true
+		exit 1
+	fi
 
-  if ! cmake --build "$BUILD_DIR" --target spring -j >>"$BUILD_LOG" 2>&1; then
-    echo "Spring build failed. Full log: $BUILD_LOG" >&2
-    tail -n 40 "$BUILD_LOG" >&2 || true
-    exit 1
-  fi
+	if ! cmake --build "$BUILD_DIR" --target spring -j >>"$BUILD_LOG" 2>&1; then
+		echo "Spring build failed. Full log: $BUILD_LOG" >&2
+		tail -n 40 "$BUILD_LOG" >&2 || true
+		exit 1
+	fi
 
-  echo "Spring build completed. Full log: $BUILD_LOG"
+	echo "Spring build completed. Full log: $BUILD_LOG"
 }
 
 run_with_resource_log() {
-  local log_file="$1"
-  shift
+	local log_file="$1"
+	shift
 
-  rm -f "$log_file"
+	rm -f "$log_file"
 
-  if [[ -n "$TIME_BIN" ]]; then
-    "$TIME_BIN" \
-      -f 'elapsed_seconds=%e
+	if [[ -n "$TIME_BIN" ]]; then
+		"$TIME_BIN" \
+			-f 'elapsed_seconds=%e
 user_seconds=%U
 system_seconds=%S
 cpu_percent=%P
 max_rss_kb=%M' \
-      -o "$log_file" \
-      "$@"
-    return
-  fi
+			-o "$log_file" \
+			"$@"
+		return
+	fi
 
-  TIMEFORMAT=$'elapsed_seconds=%3R\nuser_seconds=%3U\nsystem_seconds=%3S\ncpu_percent=unavailable\nmax_rss_kb=unavailable'
-  exec 3>&2
-  { time "$@" 2>&3; } 2> "$log_file"
-  exec 3>&-
+	TIMEFORMAT=$'elapsed_seconds=%3R\nuser_seconds=%3U\nsystem_seconds=%3S\ncpu_percent=unavailable\nmax_rss_kb=unavailable'
+	exec 3>&2
+	{ time "$@" 2>&3; } 2>"$log_file"
+	exec 3>&-
 }
 
 populate_resource_vars() {
-  local prefix="$1"
-  local log_file="$2"
-  local key
-  local value
+	local prefix="$1"
+	local log_file="$2"
+	local key
+	local value
 
-  printf -v "${prefix}_elapsed_seconds" '%s' ""
-  printf -v "${prefix}_user_seconds" '%s' ""
-  printf -v "${prefix}_system_seconds" '%s' ""
-  printf -v "${prefix}_cpu_percent" '%s' ""
-  printf -v "${prefix}_max_rss_kb" '%s' ""
+	printf -v "${prefix}_elapsed_seconds" '%s' ""
+	printf -v "${prefix}_user_seconds" '%s' ""
+	printf -v "${prefix}_system_seconds" '%s' ""
+	printf -v "${prefix}_cpu_percent" '%s' ""
+	printf -v "${prefix}_max_rss_kb" '%s' ""
 
-  if [[ ! -f "$log_file" ]]; then
-    return
-  fi
+	if [[ ! -f "$log_file" ]]; then
+		return
+	fi
 
-  while IFS='=' read -r key value; do
-    case "$key" in
-      elapsed_seconds) printf -v "${prefix}_elapsed_seconds" '%s' "$value" ;;
-      user_seconds) printf -v "${prefix}_user_seconds" '%s' "$value" ;;
-      system_seconds) printf -v "${prefix}_system_seconds" '%s' "$value" ;;
-      cpu_percent) printf -v "${prefix}_cpu_percent" '%s' "$value" ;;
-      max_rss_kb) printf -v "${prefix}_max_rss_kb" '%s' "$value" ;;
-    esac
-  done < "$log_file"
+	while IFS='=' read -r key value; do
+		case "$key" in
+		elapsed_seconds) printf -v "${prefix}_elapsed_seconds" '%s' "$value" ;;
+		user_seconds) printf -v "${prefix}_user_seconds" '%s' "$value" ;;
+		system_seconds) printf -v "${prefix}_system_seconds" '%s' "$value" ;;
+		cpu_percent) printf -v "${prefix}_cpu_percent" '%s' "$value" ;;
+		max_rss_kb) printf -v "${prefix}_max_rss_kb" '%s' "$value" ;;
+		esac
+	done <"$log_file"
 }
 
 ensure_benchmark_input
@@ -195,8 +195,8 @@ MAX_SHORT_READ_LENGTH=511
 MAX_READ_LENGTH=$(stream_input_bytes "$INPUT_ABS" | awk 'NR % 4 == 2 { if (length($0) > max_len) max_len = length($0) } END { print max_len + 0 }')
 
 LONG_MODE_ARGS=()
-if (( MAX_READ_LENGTH > MAX_SHORT_READ_LENGTH )); then
-  LONG_MODE_ARGS=(-l)
+if ((MAX_READ_LENGTH > MAX_SHORT_READ_LENGTH)); then
+	LONG_MODE_ARGS=(-l)
 fi
 
 mkdir -p "$TMP_INPUT_DIR" "$TMP_LOG_DIR" "$OUTPUT_DIR" "$TMP_WORK_DIR"
@@ -213,20 +213,20 @@ echo "  output:  $OUTPUT_FILE"
 echo "  workdir: $WORK_DIR"
 echo "  threads: $THREADS"
 echo "  max read length: $MAX_READ_LENGTH"
-if (( ${#LONG_MODE_ARGS[@]} > 0 )); then
-  echo "  mode:    lossless long-read mode (-l)"
+if ((${#LONG_MODE_ARGS[@]} > 0)); then
+	echo "  mode:    lossless long-read mode (-l)"
 else
-  echo "  mode:    lossless short-read mode"
+	echo "  mode:    lossless short-read mode"
 fi
 
 spring_args=(
-  -c
-  -i "$INPUT_ABS"
-  -o "$OUTPUT_FILE"
-  -w "$WORK_DIR"
-  -t "$THREADS"
-  "${LONG_MODE_ARGS[@]}"
-  -q lossless
+	-c
+	-i "$INPUT_ABS"
+	-o "$OUTPUT_FILE"
+	-w "$WORK_DIR"
+	-t "$THREADS"
+	"${LONG_MODE_ARGS[@]}"
+	-q lossless
 )
 
 run_with_resource_log "$COMPRESS_RESOURCE_LOG" "$SPRING_BIN" "${spring_args[@]}"
@@ -236,9 +236,9 @@ echo "  input:   $OUTPUT_FILE"
 echo "  output:  $DECOMPRESSED_OUTPUT_FILE"
 
 decompress_args=(
-  -d
-  -i "$OUTPUT_FILE"
-  -o "$DECOMPRESSED_OUTPUT_FILE"
+	-d
+	-i "$OUTPUT_FILE"
+	-o "$DECOMPRESSED_OUTPUT_FILE"
 )
 
 run_with_resource_log "$DECOMPRESS_RESOURCE_LOG" "$SPRING_BIN" "${decompress_args[@]}"
@@ -258,40 +258,40 @@ decompressed_checksum=""
 checksum_status="unavailable"
 
 if [[ -n "$(type -P sha256sum)" || -n "$(type -P shasum)" ]]; then
-  integrity_method="SHA-256 + byte comparison"
-  original_checksum=$(compute_normalized_input_checksum "$INPUT_ABS")
-  decompressed_checksum=$(compute_checksum "$DECOMPRESSED_OUTPUT_FILE")
-  if [[ "$original_checksum" == "$decompressed_checksum" ]]; then
-    checksum_status="match"
-  else
-    checksum_status="mismatch"
-  fi
+	integrity_method="SHA-256 + byte comparison"
+	original_checksum=$(compute_normalized_input_checksum "$INPUT_ABS")
+	decompressed_checksum=$(compute_checksum "$DECOMPRESSED_OUTPUT_FILE")
+	if [[ "$original_checksum" == "$decompressed_checksum" ]]; then
+		checksum_status="match"
+	else
+		checksum_status="mismatch"
+	fi
 fi
 
 roundtrip_status="different"
 if cmp -s <(stream_input_bytes "$INPUT_ABS") "$DECOMPRESSED_OUTPUT_FILE"; then
-  roundtrip_status="identical"
+	roundtrip_status="identical"
 fi
 
 awk \
-  -v input_size="$INPUT_SIZE" \
-  -v output_size="$OUTPUT_SIZE" \
-  -v decompressed_size="$DECOMPRESSED_SIZE" \
-  -v compress_elapsed_seconds="$compress_elapsed_seconds" \
-  -v compress_user_seconds="$compress_user_seconds" \
-  -v compress_system_seconds="$compress_system_seconds" \
-  -v compress_cpu_percent="$compress_cpu_percent" \
-  -v compress_max_rss_kb="$compress_max_rss_kb" \
-  -v decompress_elapsed_seconds="$decompress_elapsed_seconds" \
-  -v decompress_user_seconds="$decompress_user_seconds" \
-  -v decompress_system_seconds="$decompress_system_seconds" \
-  -v decompress_cpu_percent="$decompress_cpu_percent" \
-  -v decompress_max_rss_kb="$decompress_max_rss_kb" \
-  -v integrity_method="$integrity_method" \
-  -v original_checksum="$original_checksum" \
-  -v decompressed_checksum="$decompressed_checksum" \
-  -v checksum_status="$checksum_status" \
-  -v roundtrip_status="$roundtrip_status" '
+	-v input_size="$INPUT_SIZE" \
+	-v output_size="$OUTPUT_SIZE" \
+	-v decompressed_size="$DECOMPRESSED_SIZE" \
+	-v compress_elapsed_seconds="$compress_elapsed_seconds" \
+	-v compress_user_seconds="$compress_user_seconds" \
+	-v compress_system_seconds="$compress_system_seconds" \
+	-v compress_cpu_percent="$compress_cpu_percent" \
+	-v compress_max_rss_kb="$compress_max_rss_kb" \
+	-v decompress_elapsed_seconds="$decompress_elapsed_seconds" \
+	-v decompress_user_seconds="$decompress_user_seconds" \
+	-v decompress_system_seconds="$decompress_system_seconds" \
+	-v decompress_cpu_percent="$decompress_cpu_percent" \
+	-v decompress_max_rss_kb="$decompress_max_rss_kb" \
+	-v integrity_method="$integrity_method" \
+	-v original_checksum="$original_checksum" \
+	-v decompressed_checksum="$decompressed_checksum" \
+	-v checksum_status="$checksum_status" \
+	-v roundtrip_status="$roundtrip_status" '
 BEGIN {
   reduction_percent = 0
   compression_ratio = 0
