@@ -133,20 +133,23 @@ list(REMOVE_DUPLICATES SPRING_OPENMP_INCLUDE_DIRS)
 execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=include
                 OUTPUT_VARIABLE COMPILER_INCLUDE_DIR
                 OUTPUT_STRIP_TRAILING_WHITESPACE)
+set(source_dir ${CMAKE_SOURCE_DIR}/src)
+set(vendor_dir ${CMAKE_SOURCE_DIR}/vendor)
+set(build_vendor_dir ${CMAKE_BINARY_DIR}/vendor)
+set(include_dir ${CMAKE_SOURCE_DIR}/src)
+
 # Emit a matching clangd configuration so editor diagnostics see the same
 # compiler include path and OpenMP flags as the CMake build.
-set(SPRING_CLANGD_FLAGS "\"-I${COMPILER_INCLUDE_DIR}\", \"-fopenmp\"")
+set(SPRING_CLANGD_FLAGS "\"-fopenmp\", \"-I${include_dir}\", \"-I${vendor_dir}\", \"-I${build_vendor_dir}\"")
 foreach(openmp_include_dir IN LISTS SPRING_OPENMP_INCLUDE_DIRS)
     string(APPEND SPRING_CLANGD_FLAGS ", \"-I${openmp_include_dir}\"")
 endforeach ()
 file(WRITE "${CMAKE_SOURCE_DIR}/.clangd" "CompileFlags:\n  Add: [${SPRING_CLANGD_FLAGS}]\n")
+file(CREATE_LINK "${CMAKE_BINARY_DIR}/compile_commands.json" "${CMAKE_SOURCE_DIR}/compile_commands.json" SYMBOLIC)
 
 message(STATUS "** CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
 message(STATUS "** CMAKE_C_FLAGS: ${CMAKE_C_FLAGS}")
 
-set(source_dir ${CMAKE_SOURCE_DIR}/src)
-set(vendor_dir ${CMAKE_SOURCE_DIR}/vendor)
-set(build_vendor_dir ${CMAKE_BINARY_DIR}/vendor)
 set(BBHASH_DIR ${build_vendor_dir}/BBHash)
 set(CLOUDFLARE_ZLIB_DIR ${build_vendor_dir}/cloudflare_zlib)
 set(ID_COMPRESSION_DIR ${build_vendor_dir}/id_compression)

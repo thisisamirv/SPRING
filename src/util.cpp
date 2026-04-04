@@ -8,10 +8,9 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
-#include <streambuf>
 #include <stdexcept>
+#include <streambuf>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <libdeflate.h>
@@ -72,8 +71,8 @@ void write_gzip_data(gzFile file_handle, const char *data,
   while (written_total < size) {
     const std::streamsize chunk_size =
         std::min<std::streamsize>(size - written_total, kGzipChunkSize);
-    const int written =
-        gzwrite(file_handle, data + written_total, static_cast<unsigned int>(chunk_size));
+    const int written = gzwrite(file_handle, data + written_total,
+                                static_cast<unsigned int>(chunk_size));
     if (written == 0) {
       throw gzip_runtime_error(file_handle, "Failed writing gzip stream");
     }
@@ -128,17 +127,15 @@ void write_fastq_record(std::ostream &out, const std::string &id,
 }
 
 void write_fastq_records_range(std::ostream &output_stream,
-                               std::string *id_array,
-                               std::string *read_array,
+                               std::string *id_array, std::string *read_array,
                                const std::string *quality_or_null,
                                const uint64_t start_read_index,
                                const uint64_t end_read_index) {
   for (uint64_t read_index = start_read_index; read_index < end_read_index;
        read_index++) {
-    write_fastq_record(output_stream, id_array[read_index],
-                       read_array[read_index],
-                       quality_or_null == nullptr ? nullptr
-                                                  : &quality_or_null[read_index]);
+    write_fastq_record(
+        output_stream, id_array[read_index], read_array[read_index],
+        quality_or_null == nullptr ? nullptr : &quality_or_null[read_index]);
   }
 }
 
@@ -180,8 +177,8 @@ std::vector<read_range> compute_read_ranges(const uint32_t num_reads,
   for (int thread_index = 0; thread_index < num_thr; ++thread_index) {
     read_range &range = ranges[static_cast<size_t>(thread_index)];
     range.start = std::min<uint64_t>(next_start, num_reads);
-    range.end = std::min<uint64_t>(range.start + num_reads_per_thread,
-                                   num_reads);
+    range.end =
+        std::min<uint64_t>(range.start + num_reads_per_thread, num_reads);
     next_start = range.end;
   }
   return ranges;
@@ -225,8 +222,7 @@ bool matches_paired_id_code(const std::string &id_1, const std::string &id_2,
 
 template <size_t BufferSize>
 void write_encoded_read(const std::string &read, std::ofstream &fout,
-                        const uint8_t *dna_to_int,
-                        const uint8_t bits_per_base,
+                        const uint8_t *dna_to_int, const uint8_t bits_per_base,
                         const uint8_t bases_per_byte) {
   uint8_t bitarray[BufferSize];
   uint8_t pos_in_bitarray = 0;
@@ -238,10 +234,10 @@ void write_encoded_read(const std::string &read, std::ofstream &fout,
   for (int group_index = 0; group_index < full_groups; ++group_index) {
     bitarray[pos_in_bitarray] = 0;
     for (int base_index = 0; base_index < bases_per_byte_count; ++base_index)
-      bitarray[pos_in_bitarray] |= dna_to_int[static_cast<uint8_t>(
-                                       read[bases_per_byte * group_index +
-                                            base_index])]
-                                   << (bits_per_base * base_index);
+      bitarray[pos_in_bitarray] |=
+          dna_to_int[static_cast<uint8_t>(
+              read[bases_per_byte * group_index + base_index])]
+          << (bits_per_base * base_index);
     ++pos_in_bitarray;
   }
 
@@ -250,10 +246,10 @@ void write_encoded_read(const std::string &read, std::ofstream &fout,
     const int group_index = full_groups;
     bitarray[pos_in_bitarray] = 0;
     for (int base_index = 0; base_index < trailing_bases; ++base_index)
-      bitarray[pos_in_bitarray] |= dna_to_int[static_cast<uint8_t>(
-                                       read[bases_per_byte * group_index +
-                                            base_index])]
-                                   << (bits_per_base * base_index);
+      bitarray[pos_in_bitarray] |=
+          dna_to_int[static_cast<uint8_t>(
+              read[bases_per_byte * group_index + base_index])]
+          << (bits_per_base * base_index);
     ++pos_in_bitarray;
   }
 
@@ -262,8 +258,7 @@ void write_encoded_read(const std::string &read, std::ofstream &fout,
 
 template <size_t BufferSize>
 void read_encoded_read(std::string &read, std::ifstream &fin,
-                       const char *int_to_dna,
-                       const uint8_t bit_mask,
+                       const char *int_to_dna, const uint8_t bit_mask,
                        const uint8_t bits_per_base,
                        const uint8_t bases_per_byte) {
   uint16_t readlen;
@@ -279,8 +274,7 @@ void read_encoded_read(std::string &read, std::ifstream &fin,
   const int bases_per_byte_count = bases_per_byte;
   const int full_groups = readlen / bases_per_byte;
   for (int group_index = 0; group_index < full_groups; ++group_index) {
-    for (int base_index = 0; base_index < bases_per_byte_count;
-         ++base_index) {
+    for (int base_index = 0; base_index < bases_per_byte_count; ++base_index) {
       read[bases_per_byte * group_index + base_index] =
           int_to_dna[bitarray[pos_in_bitarray] & bit_mask];
       bitarray[pos_in_bitarray] >>= bits_per_base;
@@ -302,8 +296,8 @@ void read_encoded_read(std::string &read, std::ifstream &fin,
 void fill_reverse_complement(const char *input_bases, char *output_bases,
                              const int readlen) {
   for (int index = 0; index < readlen; ++index)
-    output_bases[index] = chartorevchar[static_cast<uint8_t>(
-        input_bases[readlen - index - 1])];
+    output_bases[index] =
+        chartorevchar[static_cast<uint8_t>(input_bases[readlen - index - 1])];
 }
 
 } // namespace
@@ -320,7 +314,8 @@ gzip_istreambuf::~gzip_istreambuf() { close(); }
 
 bool gzip_istreambuf::open(const std::string &path) {
   close();
-  file_ = gzopen(path.c_str(), gzip_mode_string('r', Z_DEFAULT_COMPRESSION).c_str());
+  file_ = gzopen(path.c_str(),
+                 gzip_mode_string('r', Z_DEFAULT_COMPRESSION).c_str());
   if (file_ == nullptr) {
     return false;
   }
@@ -426,7 +421,8 @@ void gzip_ostream::close() {
 
 bool gzip_ostream::is_open() const { return file_ != nullptr; }
 
-std::string gzip_compress_string(const std::string &input, const int gzip_level) {
+std::string gzip_compress_string(const std::string &input,
+                                 const int gzip_level) {
   if (gzip_level < 0 || gzip_level > 9) {
     throw std::runtime_error("gzip level must be between 0 and 9.");
   }
@@ -486,8 +482,8 @@ void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
     write_fastq_records_range(output_stream, id_array, read_array,
                               quality_or_null, 0, num_reads);
   } else {
-    write_gzip_fastq_block(output_stream, id_array, read_array,
-                           quality_or_null, num_reads, num_thr, gzip_level);
+    write_gzip_fastq_block(output_stream, id_array, read_array, quality_or_null,
+                           num_reads, num_thr, gzip_level);
   }
 }
 

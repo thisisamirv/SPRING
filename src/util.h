@@ -8,7 +8,6 @@
 #include <cstdint>
 #include <fstream>
 #include <istream>
-#include <ostream>
 #include <streambuf>
 #include <string>
 
@@ -95,7 +94,8 @@ private:
 class gzip_ostream {
 public:
   gzip_ostream();
-  explicit gzip_ostream(const std::string &path, int level = Z_DEFAULT_COMPRESSION);
+  explicit gzip_ostream(const std::string &path,
+                        int level = Z_DEFAULT_COMPRESSION);
   gzip_ostream(const gzip_ostream &) = delete;
   gzip_ostream &operator=(const gzip_ostream &) = delete;
   ~gzip_ostream();
@@ -113,16 +113,12 @@ private:
 std::string gzip_compress_string(const std::string &input, int gzip_level);
 
 // FASTQ block helpers.
-uint32_t read_fastq_block(std::istream *input_stream,
-                          std::string *id_array,
-                          std::string *read_array,
-                          std::string *quality_array,
+uint32_t read_fastq_block(std::istream *input_stream, std::string *id_array,
+                          std::string *read_array, std::string *quality_array,
                           const uint32_t &num_reads, const bool &fasta_flag);
 
-void write_fastq_block(std::ofstream &output_stream,
-                       std::string *id_array,
-                       std::string *read_array,
-                       std::string *quality_array,
+void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
+                       std::string *read_array, std::string *quality_array,
                        const uint32_t &num_reads, const bool preserve_quality,
                        const int &num_thr, const bool &gzip_flag,
                        const int &gzip_level);
