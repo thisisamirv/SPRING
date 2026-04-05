@@ -70,27 +70,29 @@ void compress_temp_block(const std::string &temp_base_path,
                       compressed_block_file_path(output_base_path, block_num));
 }
 
-reordered_stream_paths build_reordered_stream_paths(const std::string &temp_dir) {
+reordered_stream_paths
+build_reordered_stream_paths(const std::string &temp_dir) {
   return {.flag_path = temp_dir + "/read_flag.txt",
-    .position_path = temp_dir + "/read_pos.bin",
-    .mate_position_path = temp_dir + "/read_pos_pair.bin",
-    .orientation_path = temp_dir + "/read_rev.txt",
-    .mate_orientation_path = temp_dir + "/read_rev_pair.txt",
-    .read_length_path = temp_dir + "/read_lengths.bin",
-    .unaligned_path = temp_dir + "/read_unaligned.txt",
-    .noise_path = temp_dir + "/read_noise.txt",
-    .noise_position_path = temp_dir + "/read_noisepos.bin",
-    .order_path = temp_dir + "/read_order.bin"};
+          .position_path = temp_dir + "/read_pos.bin",
+          .mate_position_path = temp_dir + "/read_pos_pair.bin",
+          .orientation_path = temp_dir + "/read_rev.txt",
+          .mate_orientation_path = temp_dir + "/read_rev_pair.txt",
+          .read_length_path = temp_dir + "/read_lengths.bin",
+          .unaligned_path = temp_dir + "/read_unaligned.txt",
+          .noise_path = temp_dir + "/read_noise.txt",
+          .noise_position_path = temp_dir + "/read_noisepos.bin",
+          .order_path = temp_dir + "/read_order.bin"};
 }
 
-temporary_stream_paths build_temporary_stream_paths(const std::string &temp_dir) {
+temporary_stream_paths
+build_temporary_stream_paths(const std::string &temp_dir) {
   return {.position_path = temp_dir + "/a",
-    .noise_path = temp_dir + "/b",
-    .noise_position_path = temp_dir + "/c",
-    .orientation_path = temp_dir + "/d",
-    .flag_path = temp_dir + "/e",
-    .unaligned_path = temp_dir + "/f",
-    .read_length_path = temp_dir + "/g"};
+          .noise_path = temp_dir + "/b",
+          .noise_position_path = temp_dir + "/c",
+          .orientation_path = temp_dir + "/d",
+          .flag_path = temp_dir + "/e",
+          .unaligned_path = temp_dir + "/f",
+          .read_length_path = temp_dir + "/g"};
 }
 
 block_range block_read_range(const uint64_t block_num,
@@ -116,7 +118,8 @@ void write_noise_for_read(std::ofstream &noise_output,
        noise_index++) {
     noise_output << noise_codes[noise_offset_by_read[read_index] + noise_index];
     noise_position_output.write(
-        byte_ptr(&noise_positions[noise_offset_by_read[read_index] + noise_index]),
+        byte_ptr(
+            &noise_positions[noise_offset_by_read[read_index] + noise_index]),
         sizeof(uint16_t));
   }
   noise_output << "\n";
@@ -167,13 +170,12 @@ void remove_input_stream_files(const reordered_stream_paths &paths) {
 
 void compress_output_block(const temporary_stream_paths &temp_paths,
                            const reordered_stream_paths &paths,
-                           const uint64_t block_num,
-                           const bool paired_end) {
+                           const uint64_t block_num, const bool paired_end) {
   compress_temp_block(temp_paths.flag_path, paths.flag_path, block_num);
   compress_temp_block(temp_paths.position_path, paths.position_path, block_num);
   compress_temp_block(temp_paths.noise_path, paths.noise_path, block_num);
-  compress_temp_block(temp_paths.noise_position_path,
-                      paths.noise_position_path, block_num);
+  compress_temp_block(temp_paths.noise_position_path, paths.noise_position_path,
+                      block_num);
   compress_temp_block(temp_paths.unaligned_path, paths.unaligned_path,
                       block_num);
   compress_temp_block(temp_paths.read_length_path, paths.read_length_path,
@@ -184,12 +186,12 @@ void compress_output_block(const temporary_stream_paths &temp_paths,
   if (!paired_end)
     return;
 
-  compress_block_file(block_file_path(paths.mate_position_path, block_num),
-                      compressed_block_file_path(paths.mate_position_path,
-                                                 block_num));
-  compress_block_file(block_file_path(paths.mate_orientation_path, block_num),
-                      compressed_block_file_path(paths.mate_orientation_path,
-                                                 block_num));
+  compress_block_file(
+      block_file_path(paths.mate_position_path, block_num),
+      compressed_block_file_path(paths.mate_position_path, block_num));
+  compress_block_file(
+      block_file_path(paths.mate_orientation_path, block_num),
+      compressed_block_file_path(paths.mate_orientation_path, block_num));
 }
 
 } // namespace
@@ -249,10 +251,15 @@ void reorder_compress_streams(const std::string &temp_dir,
     noise_offset_by_read[read_order] = next_noise_offset;
     noise_count_for_read = 0;
     noise_input.get(noise_code);
-    while (noise_code != '\n') {
+    while (noise_input.good() && noise_code != '\n') {
+      if (next_noise_offset >= noise_entry_count) {
+        throw std::runtime_error("Corruption in noise stream: excess codes "
+                                 "found beyond header limit.");
+      }
       noise_codes[next_noise_offset++] = noise_code;
       noise_count_for_read++;
-      noise_input.get(noise_code);
+      if (!noise_input.get(noise_code))
+        break;
     }
     for (uint16_t noise_index = 0; noise_index < noise_count_for_read;
          noise_index++) {
@@ -285,8 +292,7 @@ void reorder_compress_streams(const std::string &temp_dir,
        read_index++) {
     read_dnaN_from_bits(unaligned_read, unaligned_input);
     std::memcpy(unaligned_chars.data() + next_unaligned_offset,
-                &unaligned_read[0],
-                unaligned_read.size());
+                &unaligned_read[0], unaligned_read.size());
     next_unaligned_offset += unaligned_read.size();
   }
   unaligned_input.close();
@@ -326,13 +332,16 @@ void reorder_compress_streams(const std::string &temp_dir,
       if (!current_block.valid)
         break;
 
-      std::ofstream flag_output(block_file_path(temp_paths.flag_path, block_num));
-      std::ofstream noise_output(block_file_path(temp_paths.noise_path, block_num));
+      std::ofstream flag_output(
+          block_file_path(temp_paths.flag_path, block_num));
+      std::ofstream noise_output(
+          block_file_path(temp_paths.noise_path, block_num));
       std::ofstream noise_position_output(
           block_file_path(temp_paths.noise_position_path, block_num),
           std::ios::binary);
-      std::ofstream position_output(block_file_path(temp_paths.position_path, block_num),
-                                    std::ios::binary);
+      std::ofstream position_output(
+          block_file_path(temp_paths.position_path, block_num),
+          std::ios::binary);
       std::ofstream orientation_output(
           block_file_path(temp_paths.orientation_path, block_num));
       std::ofstream unaligned_output(
@@ -389,7 +398,8 @@ void reorder_compress_streams(const std::string &temp_dir,
             read_flag = 0;
           else if (aligned_flags[read_index] && aligned_flags[mate_read_index])
             read_flag = 1;
-          else if (!aligned_flags[read_index] && !aligned_flags[mate_read_index])
+          else if (!aligned_flags[read_index] &&
+                   !aligned_flags[mate_read_index])
             read_flag = 2;
           else if (aligned_flags[read_index] && !aligned_flags[mate_read_index])
             read_flag = 3;
@@ -429,8 +439,9 @@ void reorder_compress_streams(const std::string &temp_dir,
                                  noise_offset_by_read, noise_count_by_read,
                                  mate_read_index);
             if (read_flag == 1 || read_flag == 4) {
-              position_output.write(byte_ptr(&position_by_read[mate_read_index]),
-                                    sizeof(uint64_t));
+              position_output.write(
+                  byte_ptr(&position_by_read[mate_read_index]),
+                  sizeof(uint64_t));
               orientation_output << orientation_by_read[mate_read_index];
             }
           } else {

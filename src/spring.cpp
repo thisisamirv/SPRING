@@ -30,6 +30,67 @@
 
 namespace spring {
 
+void write_bool(std::ostream &out, bool value) {
+  uint8_t byte = value ? 1 : 0;
+  out.write(byte_ptr(&byte), sizeof(uint8_t));
+}
+
+bool read_bool(std::istream &in) {
+  uint8_t byte = 0;
+  in.read(byte_ptr(&byte), sizeof(uint8_t));
+  return byte != 0;
+}
+
+void write_compression_params(std::ostream &out, const compression_params &cp) {
+  write_bool(out, cp.paired_end);
+  write_bool(out, cp.preserve_order);
+  write_bool(out, cp.preserve_quality);
+  write_bool(out, cp.preserve_id);
+  write_bool(out, cp.long_flag);
+  write_bool(out, cp.qvz_flag);
+  write_bool(out, cp.ill_bin_flag);
+  write_bool(out, cp.bin_thr_flag);
+  out.write(byte_ptr(&cp.qvz_ratio), sizeof(double));
+  out.write(byte_ptr(&cp.bin_thr_thr), sizeof(unsigned int));
+  out.write(byte_ptr(&cp.bin_thr_high), sizeof(unsigned int));
+  out.write(byte_ptr(&cp.bin_thr_low), sizeof(unsigned int));
+  out.write(byte_ptr(&cp.num_reads), sizeof(uint32_t));
+  out.write(byte_ptr(&cp.num_reads_clean[0]), sizeof(uint32_t));
+  out.write(byte_ptr(&cp.num_reads_clean[1]), sizeof(uint32_t));
+  out.write(byte_ptr(&cp.max_readlen), sizeof(uint32_t));
+  out.write(byte_ptr(&cp.paired_id_code), sizeof(uint8_t));
+  write_bool(out, cp.paired_id_match);
+  out.write(byte_ptr(&cp.num_reads_per_block), sizeof(int));
+  out.write(byte_ptr(&cp.num_reads_per_block_long), sizeof(int));
+  out.write(byte_ptr(&cp.num_thr), sizeof(int));
+  out.write(byte_ptr(&cp.compression_level), sizeof(int));
+}
+
+void read_compression_params(std::istream &in, compression_params &cp) {
+  cp.paired_end = read_bool(in);
+  cp.preserve_order = read_bool(in);
+  cp.preserve_quality = read_bool(in);
+  cp.preserve_id = read_bool(in);
+  cp.long_flag = read_bool(in);
+  cp.qvz_flag = read_bool(in);
+  cp.ill_bin_flag = read_bool(in);
+  cp.bin_thr_flag = read_bool(in);
+  in.read(byte_ptr(&cp.qvz_ratio), sizeof(double));
+  in.read(byte_ptr(&cp.bin_thr_thr), sizeof(unsigned int));
+  in.read(byte_ptr(&cp.bin_thr_high), sizeof(unsigned int));
+  in.read(byte_ptr(&cp.bin_thr_low), sizeof(unsigned int));
+  in.read(byte_ptr(&cp.num_reads), sizeof(uint32_t));
+  in.read(byte_ptr(&cp.num_reads_clean[0]), sizeof(uint32_t));
+  in.read(byte_ptr(&cp.num_reads_clean[1]), sizeof(uint32_t));
+  in.read(byte_ptr(&cp.max_readlen), sizeof(uint32_t));
+  in.read(byte_ptr(&cp.paired_id_code), sizeof(uint8_t));
+  cp.paired_id_match = read_bool(in);
+  in.read(byte_ptr(&cp.num_reads_per_block), sizeof(int));
+  in.read(byte_ptr(&cp.num_reads_per_block_long), sizeof(int));
+  in.read(byte_ptr(&cp.num_thr), sizeof(int));
+  in.read(byte_ptr(&cp.compression_level), sizeof(int));
+}
+
 namespace {
 
 using clock_type = std::chrono::steady_clock;
@@ -646,7 +707,7 @@ void compress(const std::string &temp_dir,
   std::string compression_params_path = temp_dir + "/cp.bin";
   std::ofstream compression_params_output(compression_params_path,
                                           std::ios::binary);
-  compression_params_output.write(byte_ptr(&cp), sizeof(compression_params));
+  write_compression_params(compression_params_output, cp);
   compression_params_output.close();
 
   print_compressed_stream_sizes(temp_dir);
@@ -704,7 +765,7 @@ void decompress(const std::string &temp_dir,
                                          std::ios::binary);
   if (!compression_params_input.is_open())
     throw std::runtime_error("Can't open parameter file.");
-  compression_params_input.read(byte_ptr(&cp), sizeof(compression_params));
+  read_compression_params(compression_params_input, cp);
   if (!compression_params_input.good())
     throw std::runtime_error("Can't read compression parameters.");
   compression_params_input.close();
@@ -713,6 +774,7 @@ void decompress(const std::string &temp_dir,
   bool long_flag = cp.long_flag;
   const decompression_io_config io_config =
       resolve_decompression_io(input_paths, output_paths, paired_end);
+
   const uint64_t num_read_pairs = paired_end ? cp.num_reads / 2 : cp.num_reads;
   const decompression_span decompression_plan =
       resolve_decompression_span(decompress_range, num_read_pairs);

@@ -7,8 +7,8 @@
 #include "bitset_dictionary.h"
 #include "params.h"
 #include "util.h"
-#include <array>
 #include <algorithm>
+#include <array>
 #include <bitset>
 #include <cstdint>
 #include <cstdio>
@@ -17,7 +17,9 @@
 #include <fstream>
 #include <iostream>
 #include <list>
+#include <memory>
 #include <omp.h>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -87,6 +89,9 @@ void writecontig(const std::string &ref,
 
 void pack_compress_seq(const encoder_global &eg, uint64_t *file_len_seq_thr);
 
+void calculate_sequence_lengths(const encoder_global &eg,
+                                uint64_t *file_len_seq_thr);
+
 void getDataParams(encoder_global &eg, const compression_params &cp);
 
 void correct_order(uint32_t *order_s, const encoder_global &eg);
@@ -106,15 +111,27 @@ inline std::string thread_output_tmp_path(const std::string &base_path,
 inline void append_thread_stream(std::ofstream &merged_output,
                                  const std::string &thread_output_path,
                                  const std::ios::openmode mode = std::ios::in) {
-  std::ifstream thread_input(thread_output_path, mode);
-  merged_output << thread_input.rdbuf();
+  std::ifstream thread_input(thread_output_path, mode | std::ios::in);
+  if (!thread_input.is_open()) {
+    std::cerr << "Warning: Failed to open thread output stream for merging at "
+              << thread_output_path << "\n";
+    return;
+  }
+  const size_t buffer_size = 1024 * 1024; // 1MB buffer
+  std::unique_ptr<char[]> buffer(new char[buffer_size]);
+  while (thread_input.read(buffer.get(), buffer_size)) {
+    merged_output.write(buffer.get(), thread_input.gcount());
+  }
+  if (thread_input.gcount() > 0) {
+    merged_output.write(buffer.get(), thread_input.gcount());
+  }
   merged_output.clear();
 }
 
 inline void cleanup_thread_encode_files(const encoder_global &encoder_state,
                                         const int thread_id) {
-  remove((encoder_state.infile_order + '.' + std::to_string(thread_id))
-             .c_str());
+  remove(
+      (encoder_state.infile_order + '.' + std::to_string(thread_id)).c_str());
   remove(thread_output_tmp_path(encoder_state.infile_order, thread_id).c_str());
   remove((encoder_state.infile_readlength + '.' + std::to_string(thread_id))
              .c_str());
@@ -122,8 +139,8 @@ inline void cleanup_thread_encode_files(const encoder_global &encoder_state,
              .c_str());
   remove((encoder_state.outfile_noisepos + '.' + std::to_string(thread_id))
              .c_str());
-  remove((encoder_state.outfile_noise + '.' + std::to_string(thread_id))
-             .c_str());
+  remove(
+      (encoder_state.outfile_noise + '.' + std::to_string(thread_id)).c_str());
   remove(thread_output_tmp_path(encoder_state.infile_RC, thread_id).c_str());
   remove((encoder_state.infile_RC + '.' + std::to_string(thread_id)).c_str());
   remove((encoder_state.infile_flag + '.' + std::to_string(thread_id)).c_str());
@@ -132,33 +149,33 @@ inline void cleanup_thread_encode_files(const encoder_global &encoder_state,
 }
 
 inline void merge_thread_encoded_outputs(const encoder_global &encoder_state) {
-  std::ofstream order_output(encoder_state.infile_order, std::ios::binary);
+  std::ofstream order_output(encoder_state.infile_order,
+                             std::ios::binary | std::ios::app);
   std::ofstream read_length_output(encoder_state.infile_readlength,
-                                   std::ios::binary);
+                                   std::ios::binary | std::ios::app);
   std::ofstream noise_position_output(encoder_state.outfile_noisepos,
-                                      std::ios::binary);
-  std::ofstream noise_output(encoder_state.outfile_noise);
-  std::ofstream orientation_output(encoder_state.infile_RC);
+                                      std::ios::binary | std::ios::app);
+  std::ofstream noise_output(encoder_state.outfile_noise, std::ios::app);
+  std::ofstream orientation_output(encoder_state.infile_RC, std::ios::app);
 
   for (int thread_id = 0; thread_id < encoder_state.num_thr; thread_id++) {
-    append_thread_stream(order_output,
-                         thread_output_tmp_path(encoder_state.infile_order,
-                                                thread_id),
-                         std::ios::binary);
-    append_thread_stream(read_length_output,
-                         thread_output_tmp_path(encoder_state.infile_readlength,
-                                                thread_id),
-                         std::ios::binary);
-    append_thread_stream(orientation_output,
-                         thread_output_tmp_path(encoder_state.infile_RC,
-                                                thread_id));
+    append_thread_stream(
+        order_output,
+        thread_output_tmp_path(encoder_state.infile_order, thread_id),
+        std::ios::binary);
+    append_thread_stream(
+        read_length_output,
+        thread_output_tmp_path(encoder_state.infile_readlength, thread_id),
+        std::ios::binary);
+    append_thread_stream(
+        orientation_output,
+        thread_output_tmp_path(encoder_state.infile_RC, thread_id));
     append_thread_stream(noise_position_output,
                          encoder_state.outfile_noisepos + '.' +
                              std::to_string(thread_id),
                          std::ios::binary);
-    append_thread_stream(noise_output,
-                         encoder_state.outfile_noise + '.' +
-                             std::to_string(thread_id));
+    append_thread_stream(noise_output, encoder_state.outfile_noise + '.' +
+                                           std::to_string(thread_id));
 
     cleanup_thread_encode_files(encoder_state, thread_id);
   }
@@ -169,7 +186,8 @@ uint32_t write_unaligned_range(
     std::ofstream &order_output, std::ofstream &read_length_output,
     std::ofstream &unaligned_output, const std::bitset<bitset_size> *reads,
     const uint32_t *read_orders, const uint16_t *read_lengths,
-    const bool *remaining_reads, const encoder_global_b<bitset_size> &encoder_bits,
+    const bool *remaining_reads,
+    const encoder_global_b<bitset_size> &encoder_bits,
     const uint32_t begin_read_index, const uint32_t end_read_index,
     uint64_t &unaligned_length) {
   uint32_t aligned_read_count = 0;
@@ -193,8 +211,9 @@ uint32_t write_unaligned_range(
 
 } // namespace detail
 
-inline void initialize_encoder_dict_ranges(
-    std::array<bbhashdict, NUM_DICT_ENCODER> &dict, const int max_readlen) {
+inline void
+initialize_encoder_dict_ranges(std::array<bbhashdict, NUM_DICT_ENCODER> &dict,
+                               const int max_readlen) {
   if (max_readlen > 50) {
     dict[0].start = 0;
     dict[0].end = 20;
@@ -213,13 +232,11 @@ template <size_t bitset_size>
 std::string bitsettostring(std::bitset<bitset_size> encoded_bases,
                            const uint16_t readlen,
                            const encoder_global_b<bitset_size> &egb) {
-  static const char reverse_base_lookup[8] = {'A', 'N', 'G', 0, 'C', 0, 'T',
-                                              0};
+  static const char reverse_base_lookup[8] = {'A', 'N', 'G', 0, 'C', 0, 'T', 0};
   std::string read_string;
   read_string.resize(readlen);
   unsigned long long packed_bases;
-  for (int block_index = 0; block_index < 3 * readlen / 63 + 1;
-       block_index++) {
+  for (int block_index = 0; block_index < 3 * readlen / 63 + 1; block_index++) {
     packed_bases = (encoded_bases & egb.mask63).to_ullong();
     encoded_bases >>= 63;
     for (int read_index = 21 * block_index;
@@ -235,60 +252,62 @@ std::string bitsettostring(std::bitset<bitset_size> encoded_bases,
 template <size_t bitset_size>
 void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
             uint32_t *read_orders, uint16_t *read_lengths,
-            const encoder_global &eg,
+            const std::vector<uint16_t> &all_read_lengths,
+            bool *remaining_reads, omp_lock_t *read_locks,
+            omp_lock_t *dictionary_locks, const encoder_global &eg,
             const encoder_global_b<bitset_size> &egb) {
   static const int thresh_s = THRESH_ENCODER;
   static const int maxsearch = MAX_SEARCH_ENCODER;
-  omp_lock_t *read_locks = new omp_lock_t[eg.numreads_s + eg.numreads_N];
-  omp_lock_t *dictionary_locks =
-      new omp_lock_t[eg.numreads_s + eg.numreads_N];
-  for (uint64_t read_index = 0; read_index < eg.numreads_s + eg.numreads_N;
-       read_index++) {
-    omp_init_lock(&read_locks[read_index]);
-    omp_init_lock(&dictionary_locks[read_index]);
-  }
-  bool *remaining_reads = new bool[eg.numreads_s + eg.numreads_N];
-  std::fill(remaining_reads, remaining_reads + eg.numreads_s + eg.numreads_N,
-            1);
+  // Use a fixed large size for locks to avoid any BBHash-related out-of-bounds
+  // indexing.
+  const uint32_t num_locks = 0x1000000;
 
   std::bitset<bitset_size> *index_masks =
       new std::bitset<bitset_size>[eg.numdict_s];
   generateindexmasks<bitset_size>(index_masks, dictionaries, eg.numdict_s, 3);
   std::bitset<bitset_size> **length_masks =
-      new std::bitset<bitset_size> *[eg.max_readlen];
-  for (int read_length_index = 0; read_length_index < eg.max_readlen;
-       read_length_index++)
-    length_masks[read_length_index] =
-        new std::bitset<bitset_size>[eg.max_readlen];
+      new std::bitset<bitset_size> *[eg.max_readlen + 1];
+  for (int i = 0; i <= eg.max_readlen; i++)
+    length_masks[i] = new std::bitset<bitset_size>[eg.max_readlen + 1];
   generatemasks<bitset_size>(length_masks, eg.max_readlen, 3);
-  std::cout << "Encoding reads\n";
+  generatemasks<bitset_size>(length_masks, eg.max_readlen, 3);
+
+  std::cout << "Encoding reads" << std::endl;
 #pragma omp parallel
   {
     int thread_id = omp_get_thread_num();
     std::ifstream read_input(eg.infile + '.' + std::to_string(thread_id),
                              std::ios::binary);
 
-    gzip_istream flag_stream(eg.infile_flag + '.' + std::to_string(thread_id));
-    gzip_istream position_stream(eg.infile_pos + '.' + std::to_string(thread_id));
+    std::ifstream flag_stream(eg.infile_flag + '.' + std::to_string(thread_id),
+                              std::ios::binary);
+    std::ifstream position_stream(
+        eg.infile_pos + '.' + std::to_string(thread_id), std::ios::binary);
     std::ifstream order_input(eg.infile_order + '.' + std::to_string(thread_id),
-                           std::ios::binary);
-    gzip_istream orientation_stream(eg.infile_RC + '.' + std::to_string(thread_id));
-    gzip_istream read_length_stream(
-      eg.infile_readlength + '.' + std::to_string(thread_id));
-    std::ofstream sequence_output(eg.outfile_seq + '.' + std::to_string(thread_id));
-    std::ofstream position_output(eg.outfile_pos + '.' + std::to_string(thread_id),
-                                  std::ios::binary);
-    std::ofstream noise_output(eg.outfile_noise + '.' + std::to_string(thread_id));
-    std::ofstream noise_position_output(
-        eg.outfile_noisepos + '.' + std::to_string(thread_id), std::ios::binary);
-    std::ofstream order_output(
-        eg.infile_order + '.' + std::to_string(thread_id) + ".tmp",
-        std::ios::binary);
-    std::ofstream orientation_output(
-        eg.infile_RC + '.' + std::to_string(thread_id) + ".tmp");
-    std::ofstream read_length_output(
-        eg.infile_readlength + '.' + std::to_string(thread_id) + ".tmp",
-        std::ios::binary);
+                              std::ios::binary);
+    std::ifstream orientation_stream(
+        eg.infile_RC + '.' + std::to_string(thread_id), std::ios::binary);
+    std::ifstream read_length_stream(eg.infile_readlength + '.' +
+                                         std::to_string(thread_id),
+                                     std::ios::binary);
+    std::ofstream sequence_output(eg.outfile_seq + '.' +
+                                  std::to_string(thread_id));
+    std::ofstream position_output(
+        eg.outfile_pos + '.' + std::to_string(thread_id), std::ios::binary);
+    std::ofstream noise_output(eg.outfile_noise + '.' +
+                               std::to_string(thread_id));
+    std::ofstream noise_position_output(eg.outfile_noisepos + '.' +
+                                            std::to_string(thread_id),
+                                        std::ios::binary);
+    std::ofstream order_output(eg.infile_order + '.' +
+                                   std::to_string(thread_id) + ".tmp",
+                               std::ios::binary);
+    std::ofstream orientation_output(eg.infile_RC + '.' +
+                                     std::to_string(thread_id) + ".tmp");
+    std::ofstream read_length_output(eg.infile_readlength + '.' +
+                                         std::to_string(thread_id) + ".tmp",
+                                     std::ios::binary);
+    // Check if any streams failed to open.
 
     int64_t bucket_range[2];
     uint64_t bucket_start_index;
@@ -309,31 +328,44 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
         done = true;
       }
       if (!done) {
-        // Initialize to detect failed reads
-        relative_position = -1;
-        read_order = 0xFFFFFFFF;
-        read_length = 0;
-
+        contig_read_count++;
         read_dna_from_bits(current_read, read_input);
         if (!orientation_stream.get(orientation)) {
-          throw std::runtime_error("Failed to read orientation from stream at read count " + 
-                                   std::to_string(contig_read_count));
+          throw std::runtime_error(
+              "Failed to read orientation from stream at read count " +
+              std::to_string(contig_read_count));
         }
-        if (!position_stream.read(byte_ptr(&relative_position), sizeof(int64_t))) {
-          throw std::runtime_error("Failed to read position from stream at read count " + 
-                                   std::to_string(contig_read_count));
+        if (!position_stream.read(byte_ptr(&relative_position),
+                                  sizeof(int64_t))) {
+          throw std::runtime_error(
+              "Failed to read position from stream at read count " +
+              std::to_string(contig_read_count));
         }
         if (!order_input.read(byte_ptr(&read_order), sizeof(uint32_t))) {
-          throw std::runtime_error("Failed to read order from stream at read count " + 
-                                   std::to_string(contig_read_count));
+          throw std::runtime_error(
+              "Failed to read order from stream at read count " +
+              std::to_string(contig_read_count));
         }
-        if (!read_length_stream.read(byte_ptr(&read_length), sizeof(uint16_t))) {
-          throw std::runtime_error("Failed to read length from stream at read count " + 
-                                   std::to_string(contig_read_count));
+        if (!read_length_stream.read(byte_ptr(&read_length),
+                                     sizeof(uint16_t))) {
+          throw std::runtime_error(
+              "Failed to read length from stream at read count " +
+              std::to_string(contig_read_count));
         }
       }
-      if (read_flag == '0' || done || contig_read_count > 10000000) {
-        if (contig_read_count != 0) {
+      // Safety check: force a contig break if the relative position is
+      // excessively large, which could lead to massive memory allocation for
+      // the consensus.
+      bool excessive_growth = (relative_position > MAX_CONTIG_GROWTH);
+
+      if (read_flag == '0' || done || contig_read_count > 10000000 ||
+          excessive_growth) {
+        if (excessive_growth && !done && read_flag != '0') {
+          std::cerr << "Warning: Forcing contig break due to excessive growth ("
+                    << relative_position << " > " << MAX_CONTIG_GROWTH
+                    << ") at read count " << contig_read_count << "\n";
+        }
+        if (!current_contig.empty()) {
           current_contig.sort([](const contig_reads &a, const contig_reads &b) {
             return a.pos < b.pos;
           });
@@ -342,47 +374,58 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
           for (; contig_it != current_contig.end(); ++contig_it)
             (*contig_it).pos -= first_pos;
 
+          if (contig_read_count == 1) {}
           reference_contig = buildcontig(current_contig, contig_read_count);
+          if (contig_read_count == 1) {}
           if ((int64_t)reference_contig.size() >= eg.max_readlen &&
               (eg.numreads_s + eg.numreads_N > 0)) {
-            // Scan each contig window for singleton reads that can be folded in.
+            // Scan each contig window for singleton reads that can be folded
+            // in.
+            if (contig_read_count == 1) {}
             forward_bitset.reset();
             reverse_bitset.reset();
             stringtobitset(reference_contig.substr(0, eg.max_readlen),
-                           eg.max_readlen,
-                           forward_bitset, egb.basemask);
-            stringtobitset(reverse_complement(
-                               reference_contig.substr(0, eg.max_readlen),
-                               eg.max_readlen),
-                           eg.max_readlen, reverse_bitset, egb.basemask);
+                           eg.max_readlen, forward_bitset, egb.basemask);
+            stringtobitset(
+                reverse_complement(reference_contig.substr(0, eg.max_readlen),
+                                   eg.max_readlen),
+                eg.max_readlen, reverse_bitset, egb.basemask);
             for (long window_start = 0;
-                 window_start < (int64_t)reference_contig.size() - eg.max_readlen + 1;
+                 window_start <
+                 (int64_t)reference_contig.size() - eg.max_readlen + 1;
                  window_start++) {
               for (int orientation_index = 0; orientation_index < 2;
                    orientation_index++) {
                 for (int dictionary_index = 0; dictionary_index < eg.numdict_s;
                      dictionary_index++) {
                   if (!orientation_index)
-                    masked_window_bits = forward_bitset & index_masks[dictionary_index];
+                    masked_window_bits =
+                        forward_bitset & index_masks[dictionary_index];
                   else
-                    masked_window_bits = reverse_bitset & index_masks[dictionary_index];
-                  lookup_key =
-                      (masked_window_bits >> 3 * dictionaries[dictionary_index].start)
-                          .to_ullong();
+                    masked_window_bits =
+                        reverse_bitset & index_masks[dictionary_index];
+                  lookup_key = (masked_window_bits >>
+                                3 * dictionaries[dictionary_index].start)
+                                   .to_ullong();
                   bucket_start_index =
                       dictionaries[dictionary_index].bphf->lookup(lookup_key);
-                  if (bucket_start_index >= dictionaries[dictionary_index].numkeys)
+                  if (bucket_start_index >=
+                      dictionaries[dictionary_index].numkeys)
                     continue;
-                  if (!omp_test_lock(&dictionary_locks[bucket_start_index]))
+                  if (!omp_test_lock(
+                          &dictionary_locks[bucket_start_index % num_locks]))
                     continue;
                   dictionaries[dictionary_index].findpos(bucket_range,
                                                          bucket_start_index);
-                  if (dictionaries[dictionary_index].empty_bin[bucket_start_index]) {
-                    omp_unset_lock(&dictionary_locks[bucket_start_index]);
+                  if (dictionaries[dictionary_index]
+                          .empty_bin[bucket_start_index]) {
+                    omp_unset_lock(
+                        &dictionary_locks[bucket_start_index % num_locks]);
                     continue;
                   }
                   uint64_t candidate_key =
-                      ((reads[dictionaries[dictionary_index].read_id[bucket_range[0]]] &
+                      ((reads[dictionaries[dictionary_index]
+                                  .read_id[bucket_range[0]]] &
                         index_masks[dictionary_index]) >>
                        3 * dictionaries[dictionary_index].start)
                           .to_ullong();
@@ -395,15 +438,15 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                           dictionaries[dictionary_index].read_id[bucket_index];
                       int hamming;
                       if (!orientation_index)
-                        hamming =
-                            ((forward_bitset ^ reads[read_id]) &
-                             length_masks[0][eg.max_readlen - read_lengths[read_id]])
-                                .count();
+                        hamming = ((forward_bitset ^ reads[read_id]) &
+                                   length_masks[0][eg.max_readlen -
+                                                   read_lengths[read_id]])
+                                      .count();
                       else
-                        hamming =
-                            ((reverse_bitset ^ reads[read_id]) &
-                             length_masks[0][eg.max_readlen - read_lengths[read_id]])
-                                .count();
+                        hamming = ((reverse_bitset ^ reads[read_id]) &
+                                   length_masks[0][eg.max_readlen -
+                                                   read_lengths[read_id]])
+                                      .count();
                       if (hamming <= thresh_s) {
                         if (!omp_test_lock(&read_locks[read_id]))
                           continue;
@@ -419,21 +462,22 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                         char matched_orientation =
                             orientation_index ? 'r' : 'd';
                         long matched_position =
-                            orientation_index
-                                ? (window_start + eg.max_readlen - read_lengths[read_id])
-                                : window_start;
+                            orientation_index ? (window_start + eg.max_readlen -
+                                                 read_lengths[read_id])
+                                              : window_start;
                         std::string read_string =
-                            orientation_index ? reverse_complement(
+                            orientation_index
+                                ? reverse_complement(
                                       bitsettostring<bitset_size>(
-                                          reads[read_id], read_lengths[read_id], egb),
+                                          reads[read_id], read_lengths[read_id],
+                                          egb),
                                       read_lengths[read_id])
                                 : bitsettostring<bitset_size>(
-                                      reads[read_id], read_lengths[read_id], egb);
-                        current_contig.push_back({read_string,
-                                                  matched_position,
-                                                  matched_orientation,
-                                                  read_orders[read_id],
-                                                  read_lengths[read_id]});
+                                      reads[read_id], read_lengths[read_id],
+                                      egb);
+                        current_contig.push_back(
+                            {read_string, matched_position, matched_orientation,
+                             read_orders[read_id], read_lengths[read_id]});
                         for (int delete_dict_index = 0;
                              delete_dict_index < eg.numdict_s;
                              delete_dict_index++) {
@@ -444,46 +488,49 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                       }
                     }
                   }
-                  omp_unset_lock(&dictionary_locks[bucket_start_index]);
+                  omp_unset_lock(
+                      &dictionary_locks[bucket_start_index % num_locks]);
                   for (int delete_dict_index = 0;
                        delete_dict_index < eg.numdict_s; delete_dict_index++)
-                    for (auto deleted_it = deleted_rids[delete_dict_index].begin();
+                    for (auto deleted_it =
+                             deleted_rids[delete_dict_index].begin();
                          deleted_it != deleted_rids[delete_dict_index].end();) {
-                      masked_window_bits = reads[*deleted_it] &
-                                           index_masks[delete_dict_index];
-                      lookup_key =
-                          (masked_window_bits >>
-                           3 * dictionaries[delete_dict_index].start)
-                              .to_ullong();
+                      masked_window_bits =
+                          reads[*deleted_it] & index_masks[delete_dict_index];
+                      lookup_key = (masked_window_bits >>
+                                    3 * dictionaries[delete_dict_index].start)
+                                       .to_ullong();
                       bucket_start_index =
-                          dictionaries[delete_dict_index].bphf->lookup(lookup_key);
-                      if (!omp_test_lock(&dictionary_locks[bucket_start_index])) {
+                          dictionaries[delete_dict_index].bphf->lookup(
+                              lookup_key);
+                      if (!omp_test_lock(&dictionary_locks[bucket_start_index %
+                                                           num_locks])) {
                         ++deleted_it;
                         continue;
                       }
-                      dictionaries[delete_dict_index].findpos(bucket_range,
-                                                              bucket_start_index);
+                      dictionaries[delete_dict_index].findpos(
+                          bucket_range, bucket_start_index);
                       // Remove matched singletons once they have been absorbed.
-                      dictionaries[delete_dict_index].remove(bucket_range,
-                                                             bucket_start_index,
-                                                             *deleted_it);
-                      deleted_it = deleted_rids[delete_dict_index].erase(deleted_it);
-                      omp_unset_lock(&dictionary_locks[bucket_start_index]);
+                      dictionaries[delete_dict_index].remove(
+                          bucket_range, bucket_start_index, *deleted_it);
+                      deleted_it =
+                          deleted_rids[delete_dict_index].erase(deleted_it);
+                      omp_unset_lock(
+                          &dictionary_locks[bucket_start_index % num_locks]);
                     }
                 }
               }
-              if (window_start != (int64_t)reference_contig.size() - eg.max_readlen) {
+              if (window_start !=
+                  (int64_t)reference_contig.size() - eg.max_readlen) {
                 forward_bitset >>= 3;
                 forward_bitset = forward_bitset & length_masks[0][0];
-                forward_bitset |=
-                    egb.basemask[eg.max_readlen - 1]
-                                [(uint8_t)reference_contig[window_start + eg.max_readlen]];
+                forward_bitset |= egb.basemask[eg.max_readlen - 1][(
+                    uint8_t)reference_contig[window_start + eg.max_readlen]];
                 reverse_bitset <<= 3;
                 reverse_bitset = reverse_bitset & length_masks[0][0];
-                reverse_bitset |= egb.basemask[0][(
-                    uint8_t)chartorevchar[(uint8_t)reference_contig[window_start + eg.max_readlen]]];
+                reverse_bitset |= egb.basemask[0][(uint8_t)chartorevchar[(
+                    uint8_t)reference_contig[window_start + eg.max_readlen]]];
               }
-
             }
           }
           current_contig.sort([](const contig_reads &a, const contig_reads &b) {
@@ -495,14 +542,21 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                       abs_pos);
         }
         if (!done) {
-          current_contig = {
-              {current_read, relative_position, orientation, read_order, read_length}};
+          current_contig = {{current_read, relative_position, orientation,
+                             read_order, read_length}};
           contig_read_count = 1;
         }
       } else if (read_flag == '1') // read found during rightward search
       {
-        current_contig.push_back(
-            {current_read, relative_position, orientation, read_order, read_length});
+        if (relative_position > MAX_CONTIG_GROWTH) {
+          std::cerr << "Internal error (Thread " << thread_id
+                    << "): Attempted to add read with excessive growth to "
+                       "current_contig. pos="
+                    << relative_position << "\n";
+          // This should have been caught by the excessive_growth check above.
+        }
+        current_contig.push_back({current_read, relative_position, orientation,
+                                  read_order, read_length});
         contig_read_count++;
       }
     }
@@ -521,68 +575,11 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
     orientation_output.close();
   }
 
-  // Stitch the per-thread streams back into the final encoded outputs.
-  detail::merge_thread_encoded_outputs(eg);
-
-  std::ofstream order_output(eg.infile_order,
-                             std::ios::binary | std::ofstream::app);
-  std::ofstream read_length_output(eg.infile_readlength,
-                                   std::ios::binary | std::ofstream::app);
-  std::ofstream unaligned_output(eg.outfile_unaligned, std::ios::binary);
-
-  uint64_t len_unaligned = 0;
-
-  const uint32_t remaining_singleton_reads = detail::write_unaligned_range(
-      order_output, read_length_output, unaligned_output, reads, read_orders,
-      read_lengths, remaining_reads, egb, 0, eg.numreads_s, len_unaligned);
-  const uint32_t remaining_n_reads = detail::write_unaligned_range(
-      order_output, read_length_output, unaligned_output, reads, read_orders,
-      read_lengths, remaining_reads, egb, eg.numreads_s,
-      eg.numreads_s + eg.numreads_N, len_unaligned);
-
-  uint32_t matched_singleton_reads = eg.numreads_s - remaining_singleton_reads;
-  uint32_t matched_n_reads = eg.numreads_N - remaining_n_reads;
-  order_output.close();
-  read_length_output.close();
-  unaligned_output.close();
-  delete[] remaining_reads;
-  delete[] dictionary_locks;
-  delete[] read_locks;
   for (int read_length_index = 0; read_length_index < eg.max_readlen;
        read_length_index++)
     delete[] length_masks[read_length_index];
   delete[] length_masks;
   delete[] index_masks;
-
-  std::ofstream f_unaligned_count(eg.outfile_unaligned + ".count",
-                                  std::ios::binary);
-  f_unaligned_count.write(byte_ptr(&len_unaligned), sizeof(uint64_t));
-  f_unaligned_count.close();
-
-  // Pack contig sequence payloads before rewriting positions as absolute offsets.
-  std::vector<uint64_t> file_len_seq_thr(static_cast<size_t>(eg.num_thr));
-  uint64_t abs_pos = 0;
-  uint64_t abs_pos_thr;
-  pack_compress_seq(eg, file_len_seq_thr.data());
-  std::ofstream fout_pos(eg.outfile_pos, std::ios::binary);
-  for (int tid = 0; tid < eg.num_thr; tid++) {
-    std::ifstream fin_pos(eg.outfile_pos + '.' + std::to_string(tid),
-                          std::ios::binary);
-    fin_pos.read(byte_ptr(&abs_pos_thr), sizeof(uint64_t));
-    while (!fin_pos.eof()) {
-      abs_pos_thr += abs_pos;
-      fout_pos.write(byte_ptr(&abs_pos_thr), sizeof(uint64_t));
-      fin_pos.read(byte_ptr(&abs_pos_thr), sizeof(uint64_t));
-    }
-    fin_pos.close();
-    remove((eg.outfile_pos + '.' + std::to_string(tid)).c_str());
-    abs_pos += file_len_seq_thr[tid];
-  }
-  fout_pos.close();
-
-  std::cout << "Encoding done:\n";
-  std::cout << matched_n_reads << " reads with N were aligned\n";
-  return;
 }
 
 template <size_t bitset_size>
@@ -669,13 +666,13 @@ void encoder_main(const std::string &temp_dir, const compression_params &cp) {
 
   eg.basedir = temp_dir;
   eg.infile = eg.basedir + "/temp.dna";
-  eg.infile_pos = eg.basedir + "/temppos.txt";
   eg.infile_flag = eg.basedir + "/tempflag.txt";
-  eg.infile_order = eg.basedir + "/read_order.bin";
-  eg.infile_order_N = eg.basedir + "/read_order_N.bin";
+  eg.infile_pos = eg.basedir + "/temppos.txt";
   eg.infile_RC = eg.basedir + "/read_rev.txt";
   eg.infile_readlength = eg.basedir + "/read_lengths.bin";
+  eg.infile_order = eg.basedir + "/read_order.bin";
   eg.infile_N = eg.basedir + "/input_N.dna";
+  eg.infile_order_N = eg.basedir + "/read_order_N.bin";
   eg.outfile_seq = eg.basedir + "/read_seq.bin";
   eg.outfile_pos = eg.basedir + "/read_pos.bin";
   eg.outfile_noise = eg.basedir + "/read_noise.txt";
@@ -703,7 +700,103 @@ void encoder_main(const std::string &temp_dir, const compression_params &cp) {
     constructdictionary<bitset_size>(read, dict.data(), read_lengths_s,
                                      eg.numdict_s, singleton_pool_size, 3,
                                      eg.basedir, eg.num_thr);
-  encode<bitset_size>(read, dict.data(), order_s, read_lengths_s, eg, egb);
+
+  std::vector<uint16_t> all_read_lengths;
+  {
+    std::ifstream f_len(eg.infile_readlength, std::ios::binary);
+    if (f_len.is_open()) {
+      all_read_lengths.resize(cp.num_reads);
+      f_len.read(reinterpret_cast<char *>(all_read_lengths.data()),
+                 cp.num_reads * sizeof(uint16_t));
+    }
+  }
+
+  const uint32_t num_locks = 0x1000000;
+  omp_lock_t *read_locks = new omp_lock_t[eg.numreads_s + eg.numreads_N + 1];
+  omp_lock_t *dictionary_locks = new omp_lock_t[num_locks];
+  bool *remaining_reads = new bool[eg.numreads_s + eg.numreads_N];
+
+  for (uint64_t i = 0; i < eg.numreads_s + eg.numreads_N + 1; i++) {
+    omp_init_lock(&read_locks[i]);
+  }
+  for (uint32_t i = 0; i < num_locks; i++) {
+    omp_init_lock(&dictionary_locks[i]);
+  }
+  std::fill(remaining_reads, remaining_reads + eg.numreads_s + eg.numreads_N,
+            1);
+
+  encode<bitset_size>(read, dict.data(), order_s, read_lengths_s,
+                      all_read_lengths, remaining_reads, read_locks,
+                      dictionary_locks, eg, egb);
+
+  // Stitch the per-thread streams back into the final encoded outputs.
+  detail::merge_thread_encoded_outputs(eg);
+
+  std::ofstream order_output(eg.infile_order,
+                             std::ios::binary | std::ofstream::app);
+  std::ofstream read_length_output(eg.infile_readlength,
+                                   std::ios::binary | std::ofstream::app);
+  std::ofstream unaligned_output(eg.outfile_unaligned, std::ios::binary);
+
+  uint64_t len_unaligned = 0;
+
+  const uint32_t remaining_singleton_reads = detail::write_unaligned_range(
+      order_output, read_length_output, unaligned_output, read, order_s,
+      read_lengths_s, remaining_reads, egb, 0, eg.numreads_s, len_unaligned);
+  const uint32_t remaining_n_reads = detail::write_unaligned_range(
+      order_output, read_length_output, unaligned_output, read, order_s,
+      read_lengths_s, remaining_reads, egb, eg.numreads_s,
+      eg.numreads_s + eg.numreads_N, len_unaligned);
+
+  order_output.close();
+  read_length_output.close();
+  unaligned_output.close();
+
+  // Cleanup state arrays and locks
+  delete[] remaining_reads;
+  for (uint32_t i = 0; i < num_locks; i++) {
+    omp_destroy_lock(&dictionary_locks[i]);
+  }
+  delete[] dictionary_locks;
+  for (uint64_t i = 0; i < singleton_pool_size + 1; i++) {
+    omp_destroy_lock(&read_locks[i]);
+  }
+  delete[] read_locks;
+
+  std::ofstream f_unaligned_count(eg.outfile_unaligned + ".count",
+                                  std::ios::binary);
+  f_unaligned_count.write(byte_ptr(&len_unaligned), sizeof(uint64_t));
+  f_unaligned_count.close();
+
+  // Final sequence block synchronization.
+  // We calculate absolute offsets for global positioning, then pack each 
+  // thread's sequence data into a separate .bsc block for the decompressor.
+  std::vector<uint64_t> file_len_seq_thr(static_cast<size_t>(eg.num_thr));
+  uint64_t abs_pos = 0;
+  uint64_t abs_pos_thr;
+  
+  calculate_sequence_lengths(eg, file_len_seq_thr.data());
+
+  std::ofstream fout_pos(eg.outfile_pos, std::ios::binary);
+  for (int tid = 0; tid < eg.num_thr; tid++) {
+    std::ifstream fin_pos(eg.outfile_pos + '.' + std::to_string(tid),
+                          std::ios::binary);
+    if (fin_pos.read(byte_ptr(&abs_pos_thr), sizeof(uint64_t))) {
+      while (!fin_pos.eof()) {
+        abs_pos_thr += abs_pos;
+        fout_pos.write(byte_ptr(&abs_pos_thr), sizeof(uint64_t));
+        if (!fin_pos.read(byte_ptr(&abs_pos_thr), sizeof(uint64_t)))
+          break;
+      }
+    }
+    fin_pos.close();
+    remove((eg.outfile_pos + '.' + std::to_string(tid)).c_str());
+    abs_pos += file_len_seq_thr[tid];
+  }
+  fout_pos.close();
+
+  // Generate per-thread .bsc sequence blocks as expected by the decompressor.
+  pack_compress_seq(eg, file_len_seq_thr.data());
 
   delete[] read;
   delete[] order_s;

@@ -256,14 +256,18 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
           parse_uint64_or_throw(values[1], "Invalid decompression range value.")};
     } else if (arg == "-i" || arg == "--input-file") {
       require_value(args, index, "--input-file");
-      options.input_paths = collect_option_values(args, index);
-      if (options.input_paths.empty())
+      const std::vector<std::string> values = collect_option_values(args, index);
+      if (values.empty())
         throw std::runtime_error("--input-file requires at least 1 value.");
+      options.input_paths.insert(options.input_paths.end(), values.begin(),
+                                values.end());
     } else if (arg == "-o" || arg == "--output-file") {
       require_value(args, index, "--output-file");
-      options.output_paths = collect_option_values(args, index);
-      if (options.output_paths.empty())
+      const std::vector<std::string> values = collect_option_values(args, index);
+      if (values.empty())
         throw std::runtime_error("--output-file requires at least 1 value.");
+      options.output_paths.insert(options.output_paths.end(), values.begin(),
+                                 values.end());
     } else if (arg == "-q" || arg == "--quality-opts") {
       require_value(args, index, "--quality-opts");
       options.quality_options = collect_option_values(args, index);

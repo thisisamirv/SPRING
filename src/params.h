@@ -31,9 +31,13 @@ constexpr int NUM_READS_PER_BLOCK = 256000;
 constexpr int NUM_READS_PER_BLOCK_LONG = 10000;
 constexpr int BSC_BLOCK_SIZE = 64;
 
-  // Default compression level (1-9) used by the CLI. This value is passed
-  // directly to gzip (1-9) and scaled to Zstd (1-22) where Zstd is used.
-  static constexpr int DEFAULT_COMPRESSION_LEVEL = 6;
+// Default compression level (1-9) used by the CLI. This value is passed
+// directly to gzip (1-9) and scaled to Zstd (1-22) where Zstd is used.
+static constexpr int DEFAULT_COMPRESSION_LEVEL = 6;
+
+// Maximum allowed growth (in bases) for a single consensus contig before
+// forcing a break to prevent memory exhaustion or pathological reordering.
+constexpr int64_t MAX_CONTIG_GROWTH = 64 * 1024 * 1024; // 64 MB
 } // namespace spring
 
 #endif // SPRING_PARAMS_H_

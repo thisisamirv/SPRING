@@ -19,8 +19,6 @@
 
 namespace spring {
 
-namespace {
-
 struct sequence_pack_paths {
   std::string input_path;
   std::string packed_path;
@@ -28,8 +26,7 @@ struct sequence_pack_paths {
   std::string compressed_path;
 };
 
-std::string thread_file_path(const std::string &base_path,
-                             const int thread_id,
+std::string thread_file_path(const std::string &base_path, const int thread_id,
                              const char *suffix = "") {
   return base_path + '.' + std::to_string(thread_id) + suffix;
 }
@@ -80,11 +77,11 @@ uint64_t write_packed_sequence(const std::string &sequence_path,
         continue;
       }
 
-      packed_buffer[packed_count++] = static_cast<char>(
-          64 * base_to_int[(uint8_t)trailing_bases[3]] +
-          16 * base_to_int[(uint8_t)trailing_bases[2]] +
-          4 * base_to_int[(uint8_t)trailing_bases[1]] +
-          base_to_int[(uint8_t)trailing_bases[0]]);
+      packed_buffer[packed_count++] =
+          static_cast<char>(64 * base_to_int[(uint8_t)trailing_bases[3]] +
+                            16 * base_to_int[(uint8_t)trailing_bases[2]] +
+                            4 * base_to_int[(uint8_t)trailing_bases[1]] +
+                            base_to_int[(uint8_t)trailing_bases[0]]);
       trailing_count = 0;
     }
 
@@ -102,21 +99,52 @@ uint64_t write_packed_sequence(const std::string &sequence_path,
   return sequence_length;
 }
 
-void pack_sequence_chunk(const encoder_global &encoder_state,
-                         const int thread_id,
+void pack_sequence_chunk(const encoder_global &encoder_state, const int thread_id,
                          uint64_t *thread_sequence_lengths) {
   const sequence_pack_paths paths =
       make_sequence_pack_paths(encoder_state.outfile_seq, thread_id);
-  const uint64_t sequence_length =
-      write_packed_sequence(paths.input_path, paths.packed_path, paths.tail_path);
+  
+  const uint64_t sequence_length = write_packed_sequence(
+      paths.input_path, paths.packed_path, paths.tail_path);
   thread_sequence_lengths[thread_id] = sequence_length;
+
   bsc::BSC_compress(paths.packed_path.c_str(), paths.compressed_path.c_str());
+
   remove(paths.input_path.c_str());
   remove(paths.packed_path.c_str());
 }
 
-void rewrite_thread_order_file(const std::string &order_path,
-                               const std::vector<uint32_t> &cumulative_n_reads) {
+void calculate_sequence_lengths(const encoder_global &encoder_state,
+                                uint64_t *thread_sequence_lengths) {
+  for (int tid = 0; tid < encoder_state.num_thr; tid++) {
+    std::string thread_seq_path =
+        encoder_state.outfile_seq + '.' + std::to_string(tid);
+    std::ifstream seq_in(thread_seq_path, std::ios::binary | std::ios::ate);
+    if (!seq_in.is_open()) {
+      thread_sequence_lengths[tid] = 0;
+      continue;
+    }
+    thread_sequence_lengths[tid] = static_cast<uint64_t>(seq_in.tellg());
+    seq_in.close();
+  }
+}
+
+void pack_compress_seq(const encoder_global &encoder_state,
+                       uint64_t *thread_sequence_lengths) {
+  if (encoder_state.num_thr <= 0)
+    return;
+#pragma omp parallel num_threads(encoder_state.num_thr)
+  {
+    int tid = omp_get_thread_num();
+    if (tid < encoder_state.num_thr) {
+      pack_sequence_chunk(encoder_state, tid, thread_sequence_lengths);
+    }
+  }
+}
+
+void rewrite_thread_order_file(
+    const std::string &order_path,
+    const std::vector<uint32_t> &cumulative_n_reads) {
   const std::string order_tmp_path = order_path + ".tmp";
   std::ifstream order_input(order_path, std::ios::binary);
   std::ofstream order_output(order_tmp_path, std::ios::binary);
@@ -132,8 +160,6 @@ void rewrite_thread_order_file(const std::string &order_path,
   remove(order_path.c_str());
   rename(order_tmp_path.c_str(), order_path.c_str());
 }
-
-} // namespace
 
 std::string buildcontig(std::list<contig_reads> &current_contig,
                         const uint32_t &list_size) {
@@ -152,7 +178,6 @@ std::string buildcontig(std::list<contig_reads> &current_contig,
   int64_t current_position = 0;
   int64_t contig_size = 0;
   int64_t positions_to_append;
-  constexpr int64_t max_contig_growth = 64 * 1024 * 1024;
   std::vector<std::array<uint32_t, 4>> base_counts;
   for (; current_contig_it != current_contig.end(); ++current_contig_it) {
     if (current_contig_it == current_contig.begin())
@@ -165,19 +190,24 @@ std::string buildcontig(std::list<contig_reads> &current_contig,
       else
         positions_to_append = 0;
     }
-    if (contig_size + positions_to_append > max_contig_growth) {
+    if (contig_size + positions_to_append > MAX_CONTIG_GROWTH) {
       std::stringstream ss;
-      ss << "Excessive contig growth detected during encoding: " << (contig_size + positions_to_append)
-         << " bases (pos=" << current_position 
-         << ", len=" << (*current_contig_it).read_length 
-         << ", size=" << contig_size << ") exceeds limit of " << max_contig_growth;
+      ss << "Excessive contig growth detected during encoding: "
+         << (contig_size + positions_to_append)
+         << " bases (pos=" << current_position
+         << ", len=" << (*current_contig_it).read_length
+         << ", size=" << contig_size << ") exceeds limit of "
+         << MAX_CONTIG_GROWTH
+         << ". This indicates either pathological input data or memory "
+            "corruption.";
       throw std::runtime_error(ss.str());
     }
-    base_counts.insert(base_counts.end(), (size_t)positions_to_append, {0, 0, 0, 0});
+    base_counts.insert(base_counts.end(), (size_t)positions_to_append,
+                       {0, 0, 0, 0});
     contig_size = contig_size + positions_to_append;
     for (long i = 0; std::cmp_less(i, (*current_contig_it).read_length); i++)
       base_counts[current_position + i]
-                [base_index_lookup[(uint8_t)(*current_contig_it).read[i]]] +=
+                 [base_index_lookup[(uint8_t)(*current_contig_it).read[i]]] +=
           1;
   }
   std::string ref(base_counts.size(), 'A');
@@ -214,8 +244,9 @@ void writecontig(const std::string &ref,
          read_offset++)
       if ((*current_contig_it).read[read_offset] !=
           ref[current_position + read_offset]) {
-        f_noise << eg.enc_noise[(uint8_t)ref[current_position + read_offset]]
-                               [(uint8_t)(*current_contig_it).read[read_offset]];
+        f_noise
+            << eg.enc_noise[(uint8_t)ref[current_position + read_offset]]
+                           [(uint8_t)(*current_contig_it).read[read_offset]];
         pos_var = read_offset - previous_noise_offset;
         f_noisepos.write(byte_ptr(&pos_var), sizeof(uint16_t));
         previous_noise_offset = read_offset;
@@ -232,14 +263,6 @@ void writecontig(const std::string &ref,
   return;
 }
 
-void pack_compress_seq(const encoder_global &eg, uint64_t *file_len_seq_thr) {
-#pragma omp parallel
-  {
-    const int thread_id = omp_get_thread_num();
-    pack_sequence_chunk(eg, thread_id, file_len_seq_thr);
-  }
-  return;
-}
 
 void getDataParams(encoder_global &eg, const compression_params &cp) {
   uint32_t clean_read_count;
@@ -279,7 +302,8 @@ void correct_order(uint32_t *order_s, const encoder_global &eg) {
       cumulative_N_reads[clean_read_index++] = n_reads_seen;
   }
 
-  // Insert the removed N-read slots back into singleton and clean-read orderings.
+  // Insert the removed N-read slots back into singleton and clean-read
+  // orderings.
   for (uint32_t i = 0; i < eg.numreads_s; i++)
     order_s[i] += cumulative_N_reads[order_s[i]];
 

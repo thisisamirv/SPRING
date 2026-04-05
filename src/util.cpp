@@ -13,9 +13,9 @@
 #include <string>
 #include <vector>
 
+#include <cstring>
 #include <libdeflate.h>
 #include <zstd.h>
-#include <cstring>
 
 #include "omp.h"
 #include "qvz/include/qvz.h"
@@ -207,7 +207,7 @@ bool matches_paired_id_code(const std::string &id_1, const std::string &id_2,
     return index == len;
   }
   default:
-    throw std::runtime_error("Invalid paired id code.");
+    return false;
   }
 }
 
@@ -245,6 +245,9 @@ void write_encoded_read(const std::string &read, std::ofstream &fout,
   }
 
   fout.write(byte_ptr(&bitarray[0]), pos_in_bitarray);
+  if (!fout.good()) {
+    throw std::runtime_error("Failed writing encoded read to binary stream.");
+  }
 }
 
 template <size_t BufferSize>
@@ -254,12 +257,24 @@ void read_encoded_read(std::string &read, std::ifstream &fin,
                        const uint8_t bases_per_byte) {
   uint16_t readlen;
   uint8_t bitarray[BufferSize];
-  fin.read(byte_ptr(&readlen), sizeof(uint16_t));
+  if (!fin.read(byte_ptr(&readlen), sizeof(uint16_t))) {
+    if (fin.eof())
+      return; // Graceful EOF
+    throw std::runtime_error("Failed reading readlen from binary stream.");
+  }
   read.resize(readlen);
 
   const uint16_t num_bytes_to_read =
       ((uint32_t)readlen + bases_per_byte - 1) / bases_per_byte;
-  fin.read(byte_ptr(&bitarray[0]), num_bytes_to_read);
+  if (num_bytes_to_read > BufferSize) {
+    throw std::runtime_error(
+        "Corrupted binary read: record length (" + std::to_string(readlen) +
+        ") exceeds buffer capacity (" +
+        std::to_string(BufferSize * bases_per_byte) + ").");
+  }
+  if (!fin.read(byte_ptr(&bitarray[0]), num_bytes_to_read)) {
+    throw std::runtime_error("Failed reading encoded data from binary stream.");
+  }
 
   uint8_t pos_in_bitarray = 0;
   const int bases_per_byte_count = bases_per_byte;
@@ -412,8 +427,7 @@ void gzip_ostream::close() {
 
 bool gzip_ostream::is_open() const { return file_ != nullptr; }
 
-std::string gzip_compress_string(std::string input,
-                                 const int gzip_level) {
+std::string gzip_compress_string(std::string input, const int gzip_level) {
   if (gzip_level < 0 || gzip_level > 9) {
     throw std::runtime_error("gzip level must be between 0 and 9.");
   }
@@ -509,7 +523,7 @@ void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
       preserve_quality ? quality_array : nullptr;
   if (!gzip_flag) {
     write_fastq_records_range(output_stream, id_array, read_array,
-                               quality_or_null, 0, num_reads);
+                              quality_or_null, 0, num_reads);
   } else {
     // Compression level is 1-9 for CLI; pass to gzip unchanged (clamped).
     const int mapped_gzip_level = std::max(1, std::min(9, compression_level));
@@ -520,7 +534,8 @@ void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
 
 void compress_id_block(const char *output_path, std::string *id_array,
                        const uint32_t &num_ids, const int &compression_level) {
-  if (num_ids == 0) return;
+  if (num_ids == 0)
+    return;
 
   std::vector<std::string> alpha_cols;
   std::vector<std::string> non_alpha_cols;
@@ -528,33 +543,37 @@ void compress_id_block(const char *output_path, std::string *id_array,
   col_counts.reserve(num_ids);
 
   for (uint32_t i = 0; i < num_ids; i++) {
-    const std::string& id = id_array[i];
+    const std::string &id = id_array[i];
     uint8_t num_pairs = 0;
     size_t pos = 0;
 
     while (pos < id.size()) {
-       if (num_pairs >= non_alpha_cols.size()) non_alpha_cols.resize(num_pairs + 1);
-       if (num_pairs >= alpha_cols.size()) alpha_cols.resize(num_pairs + 1);
+      if (num_pairs >= non_alpha_cols.size())
+        non_alpha_cols.resize(num_pairs + 1);
+      if (num_pairs >= alpha_cols.size())
+        alpha_cols.resize(num_pairs + 1);
 
-       // 1. Non-Alpha
-       size_t end = pos;
-       auto is_alnum = [](unsigned char c) { return std::isalnum(c); };
-       while (end < id.size() && !is_alnum(static_cast<unsigned char>(id[end]))) end++;
-       non_alpha_cols[num_pairs].append(id.data() + pos, end - pos);
-       non_alpha_cols[num_pairs].push_back('\0');
-       pos = end;
+      // 1. Non-Alpha
+      size_t end = pos;
+      auto is_alnum = [](unsigned char c) { return std::isalnum(c); };
+      while (end < id.size() && !is_alnum(static_cast<unsigned char>(id[end])))
+        end++;
+      non_alpha_cols[num_pairs].append(id.data() + pos, end - pos);
+      non_alpha_cols[num_pairs].push_back('\0');
+      pos = end;
 
-       // 2. Alpha
-       if (pos < id.size()) {
-           end = pos;
-           while (end < id.size() && is_alnum(static_cast<unsigned char>(id[end]))) end++;
-           alpha_cols[num_pairs].append(id.data() + pos, end - pos);
-           alpha_cols[num_pairs].push_back('\0');
-           pos = end;
-       } else {
-           alpha_cols[num_pairs].push_back('\0'); // Empty alpha
-       }
-       num_pairs++;
+      // 2. Alpha
+      if (pos < id.size()) {
+        end = pos;
+        while (end < id.size() && is_alnum(static_cast<unsigned char>(id[end])))
+          end++;
+        alpha_cols[num_pairs].append(id.data() + pos, end - pos);
+        alpha_cols[num_pairs].push_back('\0');
+        pos = end;
+      } else {
+        alpha_cols[num_pairs].push_back('\0'); // Empty alpha
+      }
+      num_pairs++;
     }
     col_counts.push_back(num_pairs);
   }
@@ -569,76 +588,89 @@ void compress_id_block(const char *output_path, std::string *id_array,
   alpha_fmts.reserve(alpha_cols.size());
 
   for (size_t c = 0; c < alpha_cols.size(); ++c) {
-     const char* ptr = alpha_cols[c].data();
-     const char* end_ptr = ptr + alpha_cols[c].size();
-     bool is_numeric = true;
-     
-     const char* scan = ptr;
-     while (scan < end_ptr) {
-         size_t len = std::strlen(scan);
-         if (len > 0) {
-             if (len > 1 && scan[0] == '0') { is_numeric = false; break; }
-             if (len > 9) { is_numeric = false; break; } // prevent uint32 overflow
-             for(size_t i=0; i<len; ++i) {
-                 if(!std::isdigit(static_cast<unsigned char>(scan[i]))) { is_numeric = false; break; }
-             }
-             if (!is_numeric) break;
-         }
-         scan += len + 1;
-     }
+    const char *ptr = alpha_cols[c].data();
+    const char *end_ptr = ptr + alpha_cols[c].size();
+    bool is_numeric = true;
 
-     if (is_numeric) {
-         std::vector<int32_t> deltas;
-         uint32_t last_val = 0;
-         scan = ptr;
-         while (scan < end_ptr) {
-             size_t len = std::strlen(scan);
-             int32_t delta = INT32_MIN;
-             if (len > 0) {
-                 uint32_t val = 0;
-                 for (size_t i = 0; i < len; ++i) val = val * 10 + (scan[i] - '0');
-                 delta = static_cast<int32_t>(val - last_val);
-                 last_val = val;
-             }
-             deltas.push_back(delta);
-             scan += len + 1;
-         }
-         
-         std::string deltas_str;
-         deltas_str.resize(deltas.size() * sizeof(int32_t));
-         size_t n = deltas.size();
-         for (size_t i = 0; i < n; ++i) {
-             uint32_t udelta;
-             std::memcpy(&udelta, &deltas[i], sizeof(int32_t));
-             deltas_str[i]         = static_cast<char>(udelta & 0xFF);
-             deltas_str[n + i]     = static_cast<char>((udelta >> 8) & 0xFF);
-             deltas_str[2 * n + i] = static_cast<char>((udelta >> 16) & 0xFF);
-             deltas_str[3 * n + i] = static_cast<char>((udelta >> 24) & 0xFF);
-         }
-         
-         alpha_fmts.push_back(1);
-         new_alpha_cols.push_back(std::move(deltas_str));
-     } else {
-         alpha_fmts.push_back(0);
-         new_alpha_cols.push_back(std::move(alpha_cols[c]));
-     }
+    const char *scan = ptr;
+    while (scan < end_ptr) {
+      size_t len = std::strlen(scan);
+      if (len > 0) {
+        if (len > 1 && scan[0] == '0') {
+          is_numeric = false;
+          break;
+        }
+        if (len > 9) {
+          is_numeric = false;
+          break;
+        } // prevent uint32 overflow
+        for (size_t i = 0; i < len; ++i) {
+          if (!std::isdigit(static_cast<unsigned char>(scan[i]))) {
+            is_numeric = false;
+            break;
+          }
+        }
+        if (!is_numeric)
+          break;
+      }
+      scan += len + 1;
+    }
+
+    if (is_numeric) {
+      std::vector<int32_t> deltas;
+      uint32_t last_val = 0;
+      scan = ptr;
+      while (scan < end_ptr) {
+        size_t len = std::strlen(scan);
+        int32_t delta = INT32_MIN;
+        if (len > 0) {
+          uint32_t val = 0;
+          for (size_t i = 0; i < len; ++i)
+            val = val * 10 + (scan[i] - '0');
+          delta = static_cast<int32_t>(val - last_val);
+          last_val = val;
+        }
+        deltas.push_back(delta);
+        scan += len + 1;
+      }
+
+      std::string deltas_str;
+      deltas_str.resize(deltas.size() * sizeof(int32_t));
+      size_t n = deltas.size();
+      for (size_t i = 0; i < n; ++i) {
+        uint32_t udelta;
+        std::memcpy(&udelta, &deltas[i], sizeof(int32_t));
+        deltas_str[i] = static_cast<char>(udelta & 0xFF);
+        deltas_str[n + i] = static_cast<char>((udelta >> 8) & 0xFF);
+        deltas_str[2 * n + i] = static_cast<char>((udelta >> 16) & 0xFF);
+        deltas_str[3 * n + i] = static_cast<char>((udelta >> 24) & 0xFF);
+      }
+
+      alpha_fmts.push_back(1);
+      new_alpha_cols.push_back(std::move(deltas_str));
+    } else {
+      alpha_fmts.push_back(0);
+      new_alpha_cols.push_back(std::move(alpha_cols[c]));
+    }
   }
 
   size_t est_size = 3 * sizeof(uint32_t) + count_sz;
-  for (const auto& c : non_alpha_cols) est_size += sizeof(uint32_t) + c.size();
-  for (const auto& c : new_alpha_cols) est_size += 1 + sizeof(uint32_t) + c.size();
+  for (const auto &c : non_alpha_cols)
+    est_size += sizeof(uint32_t) + c.size();
+  for (const auto &c : new_alpha_cols)
+    est_size += 1 + sizeof(uint32_t) + c.size();
 
   std::vector<uint8_t> buffer;
   buffer.reserve(est_size);
 
   auto write_u32 = [&buffer](uint32_t v) {
-      const uint8_t* ptr = reinterpret_cast<const uint8_t*>(&v);
-      buffer.insert(buffer.end(), ptr, ptr + sizeof(uint32_t));
+    const uint8_t *ptr = reinterpret_cast<const uint8_t *>(&v);
+    buffer.insert(buffer.end(), ptr, ptr + sizeof(uint32_t));
   };
-  auto write_str = [&buffer, &write_u32](const std::string& s) {
-      write_u32(static_cast<uint32_t>(s.size()));
-      const uint8_t* ptr = reinterpret_cast<const uint8_t*>(s.data());
-      buffer.insert(buffer.end(), ptr, ptr + s.size());
+  auto write_str = [&buffer, &write_u32](const std::string &s) {
+    write_u32(static_cast<uint32_t>(s.size()));
+    const uint8_t *ptr = reinterpret_cast<const uint8_t *>(s.data());
+    buffer.insert(buffer.end(), ptr, ptr + s.size());
   };
 
   write_u32(num_nalpha);
@@ -646,10 +678,11 @@ void compress_id_block(const char *output_path, std::string *id_array,
   write_u32(count_sz);
   buffer.insert(buffer.end(), col_counts.begin(), col_counts.end());
 
-  for (const auto& col : non_alpha_cols) write_str(col);
+  for (const auto &col : non_alpha_cols)
+    write_str(col);
   for (size_t i = 0; i < alpha_fmts.size(); ++i) {
-      buffer.push_back(alpha_fmts[i]);
-      write_str(new_alpha_cols[i]);
+    buffer.push_back(alpha_fmts[i]);
+    write_str(new_alpha_cols[i]);
   }
 
   size_t bound = ZSTD_compressBound(buffer.size());
@@ -657,15 +690,19 @@ void compress_id_block(const char *output_path, std::string *id_array,
   // Map CLI compression level (1-9) to Zstd level (1-22), using nearest
   // integer scaling so high CLI levels approach Zstd max compression.
   int id_zstd_level = 1 + (((compression_level - 1) * 21 + 4) / 8);
-  if (id_zstd_level < 1) id_zstd_level = 1;
-  if (id_zstd_level > 22) id_zstd_level = 22;
+  if (id_zstd_level < 1)
+    id_zstd_level = 1;
+  if (id_zstd_level > 22)
+    id_zstd_level = 22;
   size_t c_size = ZSTD_compress(compressed.data(), compressed.size(),
                                 buffer.data(), buffer.size(), id_zstd_level);
   if (ZSTD_isError(c_size))
-    throw std::runtime_error("Zstd execution failed during C-SiT ID compression.");
+    throw std::runtime_error(
+        "Zstd execution failed during C-SiT ID compression.");
 
   FILE *f = fopen(output_path, "wb");
-  if (!f) throw std::runtime_error("Failed to open ID output file for writing.");
+  if (!f)
+    throw std::runtime_error("Failed to open ID output file for writing.");
   if (fwrite(compressed.data(), 1, c_size, f) != c_size) {
     fclose(f);
     throw std::runtime_error("Failed to write compressed ID block.");
@@ -675,10 +712,12 @@ void compress_id_block(const char *output_path, std::string *id_array,
 
 void decompress_id_block(const char *input_path, std::string *id_array,
                          const uint32_t &num_ids) {
-  if (num_ids == 0) return;
+  if (num_ids == 0)
+    return;
 
   FILE *f = fopen(input_path, "rb");
-  if (!f) throw std::runtime_error("Failed to open ID input file for reading.");
+  if (!f)
+    throw std::runtime_error("Failed to open ID input file for reading.");
   fseek(f, 0, SEEK_END);
   size_t f_size = ftell(f);
   fseek(f, 0, SEEK_SET);
@@ -695,8 +734,8 @@ void decompress_id_block(const char *input_path, std::string *id_array,
     throw std::runtime_error("Corrupted Zstd ID block content.");
 
   std::vector<uint8_t> buffer(r_size);
-  size_t d_size = ZSTD_decompress(buffer.data(), buffer.size(), compressed.data(),
-                                  compressed.size());
+  size_t d_size = ZSTD_decompress(buffer.data(), buffer.size(),
+                                  compressed.data(), compressed.size());
   if (ZSTD_isError(d_size))
     throw std::runtime_error("Zstd ID block decompression failed.");
 
@@ -704,87 +743,93 @@ void decompress_id_block(const char *input_path, std::string *id_array,
   const char *end = curr + d_size;
 
   auto read_u32 = [&]() {
-     if (curr + sizeof(uint32_t) > end) throw std::runtime_error("Truncated C-SiT ID stream");
-     uint32_t val;
-     std::memcpy(&val, curr, sizeof(uint32_t));
-     curr += sizeof(uint32_t);
-     return val;
+    if (curr + sizeof(uint32_t) > end)
+      throw std::runtime_error("Truncated C-SiT ID stream");
+    uint32_t val;
+    std::memcpy(&val, curr, sizeof(uint32_t));
+    curr += sizeof(uint32_t);
+    return val;
   };
 
   uint32_t num_nalpha = read_u32();
   uint32_t num_alpha = read_u32();
   uint32_t count_sz = read_u32();
-  if (count_sz != num_ids) throw std::runtime_error("ID block mismatch in C-SiT count");
+  if (count_sz != num_ids)
+    throw std::runtime_error("ID block mismatch in C-SiT count");
 
-  if (curr + count_sz > end) throw std::runtime_error("Truncated C-SiT counts");
-  const uint8_t* counts_ptr = reinterpret_cast<const uint8_t*>(curr);
+  if (curr + count_sz > end)
+    throw std::runtime_error("Truncated C-SiT counts");
+  const uint8_t *counts_ptr = reinterpret_cast<const uint8_t *>(curr);
   curr += count_sz;
 
-  std::vector<const char*> nalpha_ptrs(num_nalpha);
-  for (uint32_t i=0; i<num_nalpha; ++i) {
-      uint32_t len = read_u32();
-      if (curr + len > end) throw std::runtime_error("Truncated C-SiT non-alpha column");
-      nalpha_ptrs[i] = curr;
-      curr += len;
+  std::vector<const char *> nalpha_ptrs(num_nalpha);
+  for (uint32_t i = 0; i < num_nalpha; ++i) {
+    uint32_t len = read_u32();
+    if (curr + len > end)
+      throw std::runtime_error("Truncated C-SiT non-alpha column");
+    nalpha_ptrs[i] = curr;
+    curr += len;
   }
-  
-  std::vector<const char*> alpha_ptrs(num_alpha);
+
+  std::vector<const char *> alpha_ptrs(num_alpha);
   std::vector<uint32_t> alpha_lens(num_alpha);
   std::vector<uint8_t> alpha_fmts(num_alpha);
   std::vector<uint32_t> alpha_last_vals(num_alpha, 0);
   std::vector<uint32_t> alpha_col_idx(num_alpha, 0);
 
-  for (uint32_t i=0; i<num_alpha; ++i) {
-      if (curr + 1 > end) throw std::runtime_error("Truncated C-SiT alpha column fmt");
-      alpha_fmts[i] = *curr++;
-      uint32_t len = read_u32();
-      if (curr + len > end) throw std::runtime_error("Truncated C-SiT alpha column");
-      alpha_lens[i] = len;
-      alpha_ptrs[i] = curr;
-      curr += len;
+  for (uint32_t i = 0; i < num_alpha; ++i) {
+    if (curr + 1 > end)
+      throw std::runtime_error("Truncated C-SiT alpha column fmt");
+    alpha_fmts[i] = *curr++;
+    uint32_t len = read_u32();
+    if (curr + len > end)
+      throw std::runtime_error("Truncated C-SiT alpha column");
+    alpha_lens[i] = len;
+    alpha_ptrs[i] = curr;
+    curr += len;
   }
 
   for (uint32_t i = 0; i < num_ids; i++) {
-     id_array[i].clear();
-     uint8_t count = counts_ptr[i];
-     for (uint8_t c = 0; c < count; ++c) {
-         // read non-alpha
-         const char* str = nalpha_ptrs[c];
-         while (*str) {
-             id_array[i].push_back(*str++);
-         }
-         nalpha_ptrs[c] = str + 1;
+    id_array[i].clear();
+    uint8_t count = counts_ptr[i];
+    for (uint8_t c = 0; c < count; ++c) {
+      // read non-alpha
+      const char *str = nalpha_ptrs[c];
+      while (*str) {
+        id_array[i].push_back(*str++);
+      }
+      nalpha_ptrs[c] = str + 1;
 
-         // read alpha
-         uint8_t fmt = alpha_fmts[c];
-         if (fmt == 0) {
-             str = alpha_ptrs[c];
-             while (*str) {
-                 id_array[i].push_back(*str++);
-             }
-             alpha_ptrs[c] = str + 1;
-         } else {
-             uint32_t idx = alpha_col_idx[c]++;
-             const uint8_t* raw = reinterpret_cast<const uint8_t*>(alpha_ptrs[c]);
-             uint32_t n = alpha_lens[c] / 4;
-             uint8_t b0 = raw[idx];
-             uint8_t b1 = raw[n + idx];
-             uint8_t b2 = raw[2 * n + idx];
-             uint8_t b3 = raw[3 * n + idx];
-             uint32_t udelta = static_cast<uint32_t>(b0) | 
-                               (static_cast<uint32_t>(b1) << 8) | 
-                               (static_cast<uint32_t>(b2) << 16) | 
-                               (static_cast<uint32_t>(b3) << 24);
-             int32_t delta;
-             std::memcpy(&delta, &udelta, sizeof(int32_t));
-             
-             if (delta != INT32_MIN) {
-                 uint32_t val = alpha_last_vals[c] + static_cast<uint32_t>(delta);
-                 alpha_last_vals[c] = val;
-                 id_array[i].append(std::to_string(val));
-             }
-         }
-     }
+      // read alpha
+      uint8_t fmt = alpha_fmts[c];
+      if (fmt == 0) {
+        str = alpha_ptrs[c];
+        while (*str) {
+          id_array[i].push_back(*str++);
+        }
+        alpha_ptrs[c] = str + 1;
+      } else {
+        uint32_t idx = alpha_col_idx[c]++;
+        const uint8_t *raw = reinterpret_cast<const uint8_t *>(alpha_ptrs[c]);
+        uint32_t n = alpha_lens[c] / 4;
+        uint8_t b0 = raw[idx];
+        uint8_t b1 = raw[n + idx];
+        uint8_t b2 = raw[2 * n + idx];
+        uint8_t b3 = raw[3 * n + idx];
+        uint32_t udelta = static_cast<uint32_t>(b0) |
+                          (static_cast<uint32_t>(b1) << 8) |
+                          (static_cast<uint32_t>(b2) << 16) |
+                          (static_cast<uint32_t>(b3) << 24);
+        int32_t delta;
+        std::memcpy(&delta, &udelta, sizeof(int32_t));
+
+        if (delta != INT32_MIN) {
+          uint32_t val = alpha_last_vals[c] + static_cast<uint32_t>(delta);
+          alpha_last_vals[c] = val;
+          id_array[i].append(std::to_string(val));
+        }
+      }
+    }
   }
 }
 
