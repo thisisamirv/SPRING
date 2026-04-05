@@ -12,6 +12,7 @@
 #include <iostream>
 #include <list>
 #include <omp.h>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -151,7 +152,8 @@ std::string buildcontig(std::list<contig_reads> &current_contig,
   int64_t current_position = 0;
   int64_t contig_size = 0;
   int64_t positions_to_append;
-  std::vector<std::array<long, 4>> base_counts;
+  constexpr int64_t max_contig_growth = 64 * 1024 * 1024;
+  std::vector<std::array<uint32_t, 4>> base_counts;
   for (; current_contig_it != current_contig.end(); ++current_contig_it) {
     if (current_contig_it == current_contig.begin())
       positions_to_append = (*current_contig_it).read_length;
@@ -163,7 +165,15 @@ std::string buildcontig(std::list<contig_reads> &current_contig,
       else
         positions_to_append = 0;
     }
-    base_counts.insert(base_counts.end(), positions_to_append, {0, 0, 0, 0});
+    if (contig_size + positions_to_append > max_contig_growth) {
+      std::stringstream ss;
+      ss << "Excessive contig growth detected during encoding: " << (contig_size + positions_to_append)
+         << " bases (pos=" << current_position 
+         << ", len=" << (*current_contig_it).read_length 
+         << ", size=" << contig_size << ") exceeds limit of " << max_contig_growth;
+      throw std::runtime_error(ss.str());
+    }
+    base_counts.insert(base_counts.end(), (size_t)positions_to_append, {0, 0, 0, 0});
     contig_size = contig_size + positions_to_append;
     for (long i = 0; std::cmp_less(i, (*current_contig_it).read_length); i++)
       base_counts[current_position + i]
@@ -172,9 +182,9 @@ std::string buildcontig(std::list<contig_reads> &current_contig,
   }
   std::string ref(base_counts.size(), 'A');
   for (size_t i = 0; i < base_counts.size(); i++) {
-    long best_base_count = 0;
-    long best_base_index = 0;
-    for (long base_index = 0; base_index < 4; base_index++)
+    uint32_t best_base_count = 0;
+    uint32_t best_base_index = 0;
+    for (uint32_t base_index = 0; base_index < 4; base_index++)
       if (base_counts[i][base_index] > best_base_count) {
         best_base_count = base_counts[i][base_index];
         best_base_index = base_index;

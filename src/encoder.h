@@ -305,14 +305,32 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
     std::array<std::list<uint32_t>, NUM_DICT_ENCODER> deleted_rids;
     bool done = false;
     while (!done) {
-      if (!flag_stream.get(read_flag))
+      if (!flag_stream.get(read_flag)) {
         done = true;
+      }
       if (!done) {
+        // Initialize to detect failed reads
+        relative_position = -1;
+        read_order = 0xFFFFFFFF;
+        read_length = 0;
+
         read_dna_from_bits(current_read, read_input);
-        orientation_stream.get(orientation);
-        position_stream.read(byte_ptr(&relative_position), sizeof(int64_t));
-        order_input.read(byte_ptr(&read_order), sizeof(uint32_t));
-        read_length_stream.read(byte_ptr(&read_length), sizeof(uint16_t));
+        if (!orientation_stream.get(orientation)) {
+          throw std::runtime_error("Failed to read orientation from stream at read count " + 
+                                   std::to_string(contig_read_count));
+        }
+        if (!position_stream.read(byte_ptr(&relative_position), sizeof(int64_t))) {
+          throw std::runtime_error("Failed to read position from stream at read count " + 
+                                   std::to_string(contig_read_count));
+        }
+        if (!order_input.read(byte_ptr(&read_order), sizeof(uint32_t))) {
+          throw std::runtime_error("Failed to read order from stream at read count " + 
+                                   std::to_string(contig_read_count));
+        }
+        if (!read_length_stream.read(byte_ptr(&read_length), sizeof(uint16_t))) {
+          throw std::runtime_error("Failed to read length from stream at read count " + 
+                                   std::to_string(contig_read_count));
+        }
       }
       if (read_flag == '0' || done || contig_read_count > 10000000) {
         if (contig_read_count != 0) {
