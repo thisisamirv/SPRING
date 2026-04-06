@@ -22,14 +22,10 @@ jobs:
             name: linux
             arch: arm64
             artifact_name: spring2-linux-arm64
-          - os: macos-13
-            name: macos
-            arch: x86_64
-            artifact_name: spring2-macos-x86_64
           - os: macos-latest
             name: macos
-            arch: arm64
-            artifact_name: spring2-macos-arm64
+            arch: universal
+            artifact_name: spring2-macos-universal
           - os: windows-latest
             name: windows
             arch: x86_64
@@ -38,7 +34,7 @@ jobs:
           - os: windows-latest
             name: windows
             arch: arm64
-            msystem: CLANGARM64
+            msystem: UCRT64
             artifact_name: spring2-windows-arm64.exe
     name: Build / ${{ matrix.name }} (${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
@@ -66,7 +62,7 @@ jobs:
       - name: Build Linux ARM64 (Docker)
         if: matrix.name == 'linux' && matrix.arch == 'arm64'
         run: |
-          docker run --rm -v "$PWD":/work -w /work arm64v8/ubuntu:22.04 /bin/bash -c "
+          docker run --rm --platform linux/arm64 -v "$PWD":/work -w /work arm64v8/ubuntu:22.04 /bin/bash -c "
             apt-get update && \
             apt-get install -y build-essential libomp-dev ninja-build nasm python3 python3-pip python3-venv && \
             python3 -m venv .cmake-venv && \
@@ -76,10 +72,16 @@ jobs:
             cmake --build build --parallel && \
             strip build/spring2 && \
             apt-get install -y wget && \
-            wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-aarch64.AppImage -O linuxdeploy && \
-            chmod +x linuxdeploy && \
+            echo "Name=SPRING2" > spring2.desktop && \
+            echo "[Desktop Entry]" >> spring2.desktop && \
+            echo "Type=Application" >> spring2.desktop && \
+            echo "Exec=spring2" >> spring2.desktop && \
+            echo "Icon=spring2" >> spring2.desktop && \
+            echo "Categories=Science;Biology;" >> spring2.desktop && \
+            echo "Terminal=true" >> spring2.desktop && \
+            echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" | base64 -d > spring2.png && \
             export EXTRA_QT_PLUGINS= && \
-            ./linuxdeploy --appimage-extract-and-run --appdir AppDir --executable build/spring2 --output appimage && \
+            ./linuxdeploy --appimage-extract-and-run --appdir AppDir --executable build/spring2 --desktop-file spring2.desktop --icon-file spring2.png --output appimage && \
             mv SPRING2-*.AppImage spring2-linux-arm64.AppImage
           "
 
@@ -103,10 +105,11 @@ jobs:
           msystem: ${{ matrix.msystem }}
           update: true
           install: >-
-            ${{ matrix.msystem == 'UCRT64' && 'mingw-w64-ucrt-x86_64-gcc' || 'mingw-w64-clang-aarch64-gcc' }}
-            ${{ matrix.msystem == 'UCRT64' && 'mingw-w64-ucrt-x86_64-cmake' || 'mingw-w64-clang-aarch64-cmake' }}
-            ${{ matrix.msystem == 'UCRT64' && 'mingw-w64-ucrt-x86_64-nasm' || '' }}
-            ${{ matrix.msystem == 'UCRT64' && 'mingw-w64-ucrt-x86_64-ninja' || 'mingw-w64-clang-aarch64-ninja' }}
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-clang
 
       # Build jobs (Non-Windows)
       - name: Configure (Non-Windows)
@@ -119,6 +122,7 @@ jobs:
           if [ "${{ matrix.name }}" == "macos" ]; then
             cmake -S . -B build \
               -G Ninja \
+              -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
               -DOpenMP_ROOT="$MACOS_LIBOMP_PREFIX" \
               -DOpenMP_C_FLAGS="-Xpreprocessor -fopenmp" \
               -DOpenMP_CXX_FLAGS="-Xpreprocessor -fopenmp" \
@@ -162,7 +166,7 @@ jobs:
             echo "Icon=spring2" >> spring2.desktop
             echo "Categories=Science;Biology;" >> spring2.desktop
             echo "Terminal=true" >> spring2.desktop
-            touch spring2.png # Placeholder
+            echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" | base64 -d > spring2.png
             export EXTRA_QT_PLUGINS=
             ./linuxdeploy --appimage-extract-and-run --appdir AppDir --executable build/spring2 --desktop-file spring2.desktop --icon-file spring2.png --output appimage
             mv SPRING2-*.AppImage release/spring2-linux-x86_64.AppImage
@@ -175,14 +179,30 @@ jobs:
         if: matrix.name == 'windows'
         shell: msys2 {0}
         env:
-          CC: ${{ matrix.msystem == 'UCRT64' && 'gcc' || 'clang' }}
-          CXX: ${{ matrix.msystem == 'UCRT64' && 'g++' || 'clang++' }}
+          CC: ${{ matrix.arch == 'arm64' && 'clang' || 'gcc' }}
+          CXX: ${{ matrix.arch == 'arm64' && 'clang++' || 'g++' }}
         run: |
-          cmake -S . -B build \
-            -G Ninja \
-            -Dspring_optimize_for_native=OFF \
-            -Dspring_optimize_for_portability=ON \
-            -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
+          if [ "${{ matrix.arch }}" == "arm64" ]; then
+            cmake -S . -B build \
+              -G Ninja \
+              -DCMAKE_SYSTEM_NAME=Windows \
+              -DCMAKE_SYSTEM_PROCESSOR=ARM64 \
+              -DCMAKE_C_FLAGS="-target aarch64-w64-mingw32" \
+              -DCMAKE_CXX_FLAGS="-target aarch64-w64-mingw32" \
+              -Dspring_optimize_for_native=OFF \
+              -Dspring_optimize_for_portability=ON \
+              -DOpenMP_C_FLAGS=" " \
+              -DOpenMP_CXX_FLAGS=" " \
+              -DOpenMP_C_LIB_NAMES=" " \
+              -DOpenMP_CXX_LIB_NAMES=" " \
+              -DOpenMP_omp_LIBRARY=" "
+          else
+            cmake -S . -B build \
+              -G Ninja \
+              -Dspring_optimize_for_native=OFF \
+              -Dspring_optimize_for_portability=ON \
+              -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
+          fi
 
       - name: Build (Windows)
         if: matrix.name == 'windows'
