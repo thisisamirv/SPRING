@@ -32,11 +32,7 @@ struct thread_range {
   uint64_t end;
 };
 
-struct step_output_plan {
-  uint32_t output_read_count;
-  uint32_t output_shift;
-  bool finished;
-};
+
 
 struct reference_chunk {
   uint64_t start_offset;
@@ -258,39 +254,16 @@ uint32_t compute_thread_read_count(const uint32_t step_read_count,
          thread_id * num_reads_per_block;
 }
 
-step_output_plan plan_step_output(const uint32_t num_reads_done,
-                                  const uint32_t step_read_count,
-                                  const uint64_t start_num,
-                                  const uint64_t end_num,
-                                  const uint32_t num_reads_per_block,
-                                  const uint32_t num_blocks_done) {
-  step_output_plan plan;
-  plan.output_read_count = step_read_count;
-  plan.output_shift = 0;
-  plan.finished = false;
 
-  if (num_reads_done + plan.output_read_count >= end_num) {
-    plan.output_read_count = end_num - num_reads_done;
-    plan.finished = true;
-  }
-
-  if (num_blocks_done == start_num / num_reads_per_block) {
-    plan.output_shift = start_num % num_reads_per_block;
-  }
-
-  return plan;
-}
 
 void write_step_output(std::ofstream &output_stream, std::string *id_buffer,
-                       std::string *read_buffer, std::string *quality_buffer,
-                       const step_output_plan &plan,
-                       const bool preserve_quality, const int num_thr,
-                       const bool gzip_output, const int compression_level) {
-  write_fastq_block(output_stream, id_buffer + plan.output_shift,
-                    read_buffer + plan.output_shift,
-                    quality_buffer + plan.output_shift,
-                    plan.output_read_count - plan.output_shift,
-                    preserve_quality, num_thr, gzip_output, compression_level);
+                        std::string *read_buffer, std::string *quality_buffer,
+                        const uint32_t output_read_count,
+                        const bool preserve_quality, const int num_thr,
+                        const bool gzip_output, const int compression_level) {
+  write_fastq_block(output_stream, id_buffer, read_buffer, quality_buffer,
+                    output_read_count, preserve_quality, num_thr, gzip_output,
+                    compression_level);
 }
 
 void decode_packed_sequence_chunk(const std::string &packed_seq_base_path,
@@ -455,7 +428,6 @@ void decompress_short(const std::string &temp_dir,
                       const std::string &output_path_1,
                       const std::string &output_path_2,
                       const compression_params &cp, int num_threads,
-                      uint64_t start_read_index, uint64_t end_read_index,
                       int compression_level) {
   std::string base_dir = temp_dir;
 
@@ -537,10 +509,8 @@ void decompress_short(const std::string &temp_dir,
                                cp);
 
   bool done = false;
-  uint32_t num_blocks_done = start_read_index / num_reads_per_block;
-  uint32_t num_reads_done =
-      num_blocks_done *
-      num_reads_per_block; // denotes number of pairs done for PE
+  uint32_t num_blocks_done = 0;
+  uint32_t num_reads_done = 0;
   while (!done) {
     uint32_t num_reads_cur_step = compute_num_reads_cur_step(
         num_reads, num_reads_done, num_reads_per_step, paired_end);
@@ -776,14 +746,10 @@ void decompress_short(const std::string &temp_dir,
         read_buffer = read_buffer_1;
       else
         read_buffer = read_buffer_2;
-      const step_output_plan output_plan = plan_step_output(
-          num_reads_done, num_reads_cur_step, start_read_index, end_read_index,
-          num_reads_per_block, num_blocks_done);
       write_step_output(output_streams[stream_index], id_buffer, read_buffer,
-                        quality_buffer, output_plan, preserve_quality,
+                        quality_buffer, num_reads_cur_step, preserve_quality,
                         num_threads, gzip_outputs[stream_index],
                         compression_level);
-      done = done || output_plan.finished;
     }
     num_reads_done += num_reads_cur_step;
     num_blocks_done += num_threads;
@@ -811,7 +777,6 @@ void decompress_long(const std::string &temp_dir,
                      const std::string &output_path_1,
                      const std::string &output_path_2,
                      const compression_params &cp, int num_threads,
-                     uint64_t start_read_index, uint64_t end_read_index,
                      int compression_level) {
   std::string input_read_paths[2];
   std::string input_quality_paths[2];
@@ -857,10 +822,8 @@ void decompress_long(const std::string &temp_dir,
 
   bool done = false;
 
-  uint32_t num_blocks_done = start_read_index / num_reads_per_block;
-  uint32_t num_reads_done =
-      num_blocks_done *
-      num_reads_per_block; // denotes number of pairs done for PE
+  uint32_t num_blocks_done = 0;
+  uint32_t num_reads_done = 0;
   while (!done) {
     uint32_t num_reads_cur_step = compute_num_reads_cur_step(
         num_reads, num_reads_done, num_reads_per_step, paired_end);
@@ -919,23 +882,14 @@ void decompress_long(const std::string &temp_dir,
         }
       }
 
-      const step_output_plan output_plan = plan_step_output(
-          num_reads_done, num_reads_cur_step, start_read_index, end_read_index,
-          num_reads_per_block, num_blocks_done);
       write_step_output(output_streams[stream_index], id_buffer, read_buffer,
-                        quality_buffer, output_plan, preserve_quality,
+                        quality_buffer, num_reads_cur_step, preserve_quality,
                         num_threads, gzip_outputs[stream_index],
                         compression_level);
-      done = done || output_plan.finished;
     }
     num_reads_done += num_reads_cur_step;
     num_blocks_done += num_threads;
   }
-
-  output_streams[0].close();
-  if (paired_end)
-    output_streams[1].close();
-
   delete[] read_buffer;
   delete[] id_buffer;
   if (preserve_quality)

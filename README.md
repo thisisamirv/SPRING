@@ -24,9 +24,8 @@ SPRING is a compressor for FASTQ and FASTA sequencing data, including paired-end
 - Optional quality quantization using [QVZ](https://github.com/mikelhernaez/qvz/), [Illumina 8-level binning](https://www.illumina.com/documents/products/whitepapers/whitepaper_datacompression.pdf), or binary thresholding
 - Automatic FASTQ versus FASTA input detection
 - Gzipped FASTQ input support and gzip output on decompression based on output filename
-- Random-access decompression with `--decompress-range`
-- Short-read mode for reads up to 511 bases
-- Long-read mode with `-l` for arbitrarily long reads
+- Free for non-profit research and educational use
+- Automatic detection of short-read (up to 511 bases) and long-read modes
 
 ## Platform Support
 
@@ -183,33 +182,21 @@ Allowed options:
   -h [ --help ]                   produce help message
   -c [ --compress ]               compress
   -d [ --decompress ]             decompress
-  --decompress-range arg          --decompress-range start end
-                                  (optional) decompress only reads (or read
-                                  pairs for PE datasets) from start to end
-                                  (both inclusive) (1 <= start <= end <=
-                                  num_reads (or num_read_pairs for PE)). If -r
-                                  was specified during compression, the range
-                                  of reads does not correspond to the original
-                                  order of reads in the FASTQ file.
-  -i [ --input-file ] arg         input file name (two files for paired end)
-  -o [ --output-file ] arg        output file name (for paired end
+  -i [ --input ] arg              input file name (two files for paired end)
+  -o [ --output ] arg             output file name (for paired end
                                   decompression, if only one file is specified,
                                   two output files will be created by suffixing
                                   .1 and .2.)
-  -w [ --working-dir ] arg (=.)   directory to create temporary files (default
+  -w [ --tmp-dir ] arg (=.)       directory to create temporary files (default
                                   current directory)
-  -t [ --num-threads ] arg        number of threads (default:
+  -t [ --threads ] arg            number of threads (default:
                                   min(max(1, hw_threads - 1), 16))
-  --memory-cap-gb arg (=0)        approximate memory budget in GB; reduces
+  -m [ --memory ] arg (=0)        approximate memory budget in GB; reduces
                                   effective thread count using about 1 GB per
                                   worker thread (0 disables)
-  -r [ --allow-read-reordering ]  do not retain read order during compression
-                                  (paired reads still remain paired)
-  --no-quality                    do not retain quality values during
-                                  compression
-  --no-ids                        do not retain read identifiers during
-                                  compression
-  -q [ --quality-opts ] arg       quality mode: possible modes are
+  -s [ --strip ] arg              discard data: i (ids), o (order), q (quality)
+                                  Example: --strip io to drop ids and order.
+  -q [ --qmod ] arg               quality mode: possible modes are
                                   1. -q lossless (default)
                                   2. -q qvz qv_ratio (QVZ lossy compression,
                                   parameter qv_ratio roughly corresponds to
@@ -218,19 +205,14 @@ Allowed options:
                                   4. -q binary thr high low (binary (2-level)
                                   thresholding, quality binned to high if >=
                                   thr and to low if < thr)
-  -l [ --long ]                   Use for compression of arbitrarily long read
-                                  lengths. Can also provide better compression
-                                  for reads with significant number of indels.
-                                  -r disabled in this mode. For Illumina short
-                                  reads, compression is better without -l flag.
-  --level arg (=6)               compression level (1-9) to use for output
+  -l [ --level ] arg (=6)         compression level (1-9) to use for output
                                   (.gz) formatting (passed to gzip unchanged
                                   and scaled to Zstd 1-22 internally)
 ```
 
-SPRING archives are tar files containing the internal compressed streams, though using a `.spring` extension is recommended.
+SPRING archives are tar files containing the internal compressed streams, though using a `.sp` extension is recommended.
 
-`--memory-cap-gb` is a conservative safety knob for machines with many cores and limited RAM. It does not hard-limit total allocation. Instead, it reduces the effective worker-thread count using an approximate budget of about 1 GB per worker thread.
+`--memory` is a conservative safety knob for machines with many cores and limited RAM. It does not hard-limit total allocation. Instead, it reduces the effective worker-thread count using an approximate budget of about 1 GB per worker thread.
 
 ## Smoke Tests And Lint
 
@@ -255,7 +237,7 @@ For memory and CPU performance numbers, see the paper and supplementary material
 In short-read mode, when qualities and identifiers are retained:
 
 - default lossless mode typically uses temporary disk space around 10% to 30% of the original uncompressed input
-- `-r` mode can push temporary disk usage much higher, often around 70% to 80% of the original file size
+- `-s o` mode can push temporary disk usage much higher, often around 70% to 80% of the original file size
 
 These figures are approximate and include the space needed for the final compressed output.
 
@@ -264,103 +246,85 @@ These figures are approximate and include the space needed for the final compres
 Compress paired-end FASTQ losslessly:
 
 ```bash
-./spring -c -i file_1.fastq file_2.fastq -o file.spring
+./spring -c -i file_1.fastq file_2.fastq -o file.sp
 ```
 
 Compress gzipped paired-end FASTQ losslessly:
 
 ```bash
-./spring -c -i file_1.fastq.gz file_2.fastq.gz -o file.spring
+./spring -c -i file_1.fastq.gz file_2.fastq.gz -o file.sp
 ```
 
 Compress with 16 threads:
 
 ```bash
-./spring -c -i file_1.fastq file_2.fastq -o file.spring -t 16
+./spring -c -i file_1.fastq file_2.fastq -o file.sp -t 16
 ```
 
 Compress with Illumina binning and no stored identifiers:
 
 ```bash
-./spring -c -i file_1.fastq file_2.fastq -r --no-ids -q ill_bin -o file.spring
+./spring -c -i file_1.fastq file_2.fastq -s oi -q ill_bin -o file.sp
 ```
 
 Compress with binary-thresholded qualities:
 
 ```bash
-./spring -c -i file_1.fastq file_2.fastq -r --no-ids -q binary 20 40 6 -o file.spring
+./spring -c -i file_1.fastq file_2.fastq -s oi -q binary 20 40 6 -o file.sp
 ```
 
 Compress with QVZ quantization:
 
 ```bash
-./spring -c -i file_1.fastq file_2.fastq -r --no-ids -q qvz 1.0 -o file.spring
+./spring -c -i file_1.fastq file_2.fastq -s oi -q qvz 1.0 -o file.sp
 ```
 
 Compress reads and identifiers only:
 
 ```bash
-./spring -c -i file_1.fastq file_2.fastq --no-quality -o file.spring
-```
-
-Compress single-end long reads:
-
-```bash
-./spring -c -l -i file.fastq -o file.spring
+./spring -c -i file_1.fastq file_2.fastq -s q -o file.sp
 ```
 
 Compress single-end data without preserving order:
 
 ```bash
-./spring -c -i file.fastq -r -o file.spring
+./spring -c -i file.fastq -s o -o file.sp
 ```
 
 Decompress single-end data:
 
 ```bash
-./spring -d -i file.spring -o file.fastq
-```
-
-Decompress a range of reads:
-
-```bash
-./spring -d -i file.spring -o file.fastq --decompress-range 400 1000000
+./spring -d -i file.sp -o file.fastq
 ```
 
 Decompress paired-end data to suffixed outputs:
 
 ```bash
-./spring -d -i file.spring -o file.fastq
+./spring -d -i file.sp -o file.fastq
 ```
 
 Decompress paired-end data to explicit outputs:
 
 ```bash
-./spring -d -i file.spring -o file_1.fastq file_2.fastq
+./spring -d -i file.sp -o file_1.fastq file_2.fastq
 ```
 
 Decompress paired-end data directly to gzip outputs:
 
 ```bash
-./spring -d -i file.spring -o file_1.fastq.gz file_2.fastq.gz
-```
-
-Decompress a paired-end read range:
-
-```bash
-./spring -d -i file.spring -o file_1.fastq file_2.fastq --decompress-range 4000000 8000000
+./spring -d -i file.sp -o file_1.fastq.gz file_2.fastq.gz
 ```
 
 Compress paired-end FASTA losslessly:
 
 ```bash
-./spring -c -i file_1.fasta file_2.fasta -o file.spring
+./spring -c -i file_1.fasta file_2.fasta -o file.sp
 ```
 
 Decompress paired-end FASTA:
 
 ```bash
-./spring -d -i file.spring -o file_1.fasta file_2.fasta
+./spring -d -i file.sp -o file_1.fasta file_2.fasta
 ```
 
 ## Related

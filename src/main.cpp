@@ -1,19 +1,19 @@
 // Implements the Spring command-line entrypoint, including option parsing,
 // temporary-directory management, and dispatch to compress/decompress modes.
 
-#include "spring.h"
 #include "params.h"
+#include "spring.h"
 #include <algorithm>
 #include <cmath>
 #include <csignal>
 #include <cstdint>
 #include <cstdlib>
-#include <system_error>
 #include <filesystem>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <thread>
 #include <vector>
 
@@ -37,11 +37,9 @@ struct command_line_options {
   bool pairing_only_flag = false;
   bool no_quality_flag = false;
   bool no_ids_flag = false;
-  bool long_flag = false;
   std::vector<std::string> input_paths;
   std::vector<std::string> output_paths;
   std::vector<std::string> quality_options;
-  std::vector<uint64_t> decompress_range;
   std::string working_dir = ".";
   int num_threads = default_num_threads();
   bool num_threads_was_explicit = false;
@@ -88,64 +86,63 @@ std::string create_temp_dir(const std::string &working_dir) {
   }
 }
 
-int print_invalid_mode_and_exit(
-    const std::string &options_description) {
-  std::cout
-      << "Exactly one of compress or decompress needs to be specified \n";
+int print_invalid_mode_and_exit(const std::string &options_description) {
+  std::cout << "Exactly one of compress or decompress needs to be specified \n";
   std::cout << options_description << "\n";
   return 1;
 }
 
 std::string build_options_description() {
   std::ostringstream options;
-  options << "Allowed options:\n"
-    << "  -h [ --help ]                   produce help message\n"
-    << "  -c [ --compress ]               compress\n"
-    << "  -d [ --decompress ]             decompress\n"
-    << "  --decompress-range arg          --decompress-range start end\n"
-    << "                                  (optional) decompress only reads (or read\n"
-    << "                                  pairs for PE datasets) from start to end\n"
-    << "                                  (both inclusive) (1 <= start <= end <=\n"
-    << "                                  num_reads (or num_read_pairs for PE)). If -r\n"
-    << "                                  was specified during compression, the range\n"
-    << "                                  of reads does not correspond to the original\n"
-    << "                                  order of reads in the FASTQ file.\n"
-    << "  -i [ --input-file ] arg         input file name (two files for paired end)\n"
-    << "  -o [ --output-file ] arg        output file name (for paired end\n"
-    << "                                  decompression, if only one file is specified,\n"
-    << "                                  two output files will be created by suffixing\n"
-    << "                                  .1 and .2.)\n"
-    << "  -w [ --working-dir ] arg (=.)   directory to create temporary files (default\n"
-    << "                                  current directory)\n"
-    << "  -t [ --num-threads ] arg (=" << default_num_threads()
-    << ")   number of threads\n"
-    << "                                  (default: min(max(1, hw_threads - 1), 16))\n"
-    << "  --memory-cap-gb arg (=0)       approximate memory budget in GB;\n"
-    << "                                  reduces effective thread count using\n"
-    << "                                  about 1 GB per worker thread (0 disables)\n"
-    << "  -r [ --allow-read-reordering ]  do not retain read order during compression\n"
-    << "                                  (paired reads still remain paired)\n"
-    << "  --no-quality                    do not retain quality values during\n"
-    << "                                  compression\n"
-    << "  --no-ids                        do not retain read identifiers during\n"
-    << "                                  compression\n"
-    << "  -q [ --quality-opts ] arg       quality mode: possible modes are\n"
-    << "                                  1. -q lossless (default)\n"
-    << "                                  2. -q qvz qv_ratio (QVZ lossy compression,\n"
-    << "                                  parameter qv_ratio roughly corresponds to\n"
-    << "                                  bits used per quality value)\n"
-    << "                                  3. -q ill_bin (Illumina 8-level binning)\n"
-    << "                                  4. -q binary thr high low (binary (2-level)\n"
-    << "                                  thresholding, quality binned to high if >=\n"
-    << "                                  thr and to low if < thr)\n"
-    << "  -l [ --long ]                   Use for compression of arbitrarily long read\n"
-    << "                                  lengths. Can also provide better compression\n"
-    << "                                  for reads with significant number of indels.\n"
-    << "                                  -r disabled in this mode. For Illumina short\n"
-    << "                                  reads, compression is better without -l flag.\n"
-    << "  --level arg (=6)               Compression level (1-9) for identifiers\n"
-      << "                                  and output (.gz) formatting. Passed to gzip\n"
-      << "                                  unchanged and scaled to Zstd (1-22).";
+  options
+      << "Allowed options:\n"
+      << "  -h [ --help ]                   produce help message\n"
+      << "  -c [ --compress ]               compress\n"
+      << "  -d [ --decompress ]             decompress\n"
+      << "  -i [ --input ] arg              input file name (two files for "
+         "paired end)\n"
+      << "  -o [ --output ] arg             output file name (for paired end\n"
+      << "                                  decompression, if only one file is "
+         "specified,\n"
+      << "                                  two output files will be created "
+         "by suffixing\n"
+      << "                                  .1 and .2.)\n"
+      << "  -w [ --tmp-dir ] arg (=.)       directory to create temporary "
+         "files (default\n"
+      << "                                  current directory)\n"
+      << "  -t [ --threads ] arg (=" << default_num_threads()
+      << ")   number of threads\n"
+      << "                                  (default: min(max(1, hw_threads - "
+         "1), 16))\n"
+      << "  -m [ --memory ] arg (=0)        approximate memory budget in GB;\n"
+      << "                                  reduces effective thread count "
+         "using\n"
+      << "                                  about 1 GB per worker thread (0 "
+         "disables)\n"
+      << "  -s [ --strip ] arg              discard data: i (ids), o (order), "
+         "q (quality)\n"
+      << "                                  Example: --strip io to drop ids "
+         "and order.\n"
+      << "  -q [ --qmod ] arg               quality mode: possible modes are\n"
+      << "                                  1. -q lossless (default)\n"
+      << "                                  2. -q qvz qv_ratio (QVZ lossy "
+         "compression,\n"
+      << "                                  parameter qv_ratio roughly "
+         "corresponds to\n"
+      << "                                  bits used per quality value)\n"
+      << "                                  3. -q ill_bin (Illumina 8-level "
+         "binning)\n"
+      << "                                  4. -q binary thr high low (binary "
+         "(2-level)\n"
+      << "                                  thresholding, quality binned to "
+         "high if >=\n"
+      << "                                  thr and to low if < thr)\n"
+      << "  -l [ --level ] arg (=6)         Compression level (1-9) for "
+         "identifiers\n"
+      << "                                  and output (.gz) formatting. "
+         "Passed to gzip\n"
+      << "                                  unchanged and scaled to Zstd "
+         "(1-22).";
   return options.str();
 }
 
@@ -197,8 +194,8 @@ void require_value(const std::vector<std::string> &args, size_t index,
     throw std::runtime_error(std::string("Missing value for ") + option_name);
 }
 
-std::vector<std::string> collect_option_values(const std::vector<std::string> &args,
-                                               size_t &index) {
+std::vector<std::string>
+collect_option_values(const std::vector<std::string> &args, size_t &index) {
   std::vector<std::string> values;
   while (index < args.size() && !is_option_token(args[index])) {
     values.push_back(args[index]);
@@ -220,59 +217,64 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
       options.compress_flag = true;
     } else if (arg == "-d" || arg == "--decompress") {
       options.decompress_flag = true;
-    } else if (arg == "-r" || arg == "--allow-read-reordering") {
-      options.pairing_only_flag = true;
-    } else if (arg == "--no-quality") {
-      options.no_quality_flag = true;
-    } else if (arg == "--no-ids") {
-      options.no_ids_flag = true;
-    } else if (arg == "-l" || arg == "--long") {
-      options.long_flag = true;
-    } else if (arg == "-w" || arg == "--working-dir") {
-      require_value(args, index, "--working-dir");
+    } else if (arg == "-s" || arg == "--strip") {
+      require_value(args, index, "--strip");
+      const std::string strip_options = args[index++];
+      for (const char c : strip_options) {
+        switch (c) {
+        case 'i':
+          options.no_ids_flag = true;
+          break;
+        case 'o':
+          options.pairing_only_flag = true;
+          break;
+        case 'q':
+          options.no_quality_flag = true;
+          break;
+        default:
+          throw std::runtime_error("Invalid character '" + std::string(1, c) +
+                                   "' in --strip. Valid are: i, o, q.");
+        }
+      }
+    } else if (arg == "-w" || arg == "--tmp-dir") {
+      require_value(args, index, "--tmp-dir");
       options.working_dir = args[index++];
-    } else if (arg == "-t" || arg == "--num-threads") {
-      require_value(args, index, "--num-threads");
-      options.num_threads = parse_int_or_throw(args[index++],
-                                               "Invalid number of threads.");
+    } else if (arg == "-t" || arg == "--threads") {
+      require_value(args, index, "--threads");
+      options.num_threads =
+          parse_int_or_throw(args[index++], "Invalid number of threads.");
       options.num_threads_was_explicit = true;
-    } else if (arg == "--memory-cap-gb") {
-      require_value(args, index, "--memory-cap-gb");
-      options.memory_cap_gb = parse_double_or_throw(args[index++],
-                                                    "Invalid memory cap.");
-    } else if (arg == "--level") {
+    } else if (arg == "-m" || arg == "--memory") {
+      require_value(args, index, "--memory");
+      options.memory_cap_gb =
+          parse_double_or_throw(args[index++], "Invalid memory cap.");
+    } else if (arg == "-l" || arg == "--level") {
       require_value(args, index, "--level");
-      options.compression_level = parse_int_or_throw(args[index++],
-                                                "Invalid compression level.");
-        if (options.compression_level < 1 || options.compression_level > 9)
-          throw std::runtime_error("Compression level must be between 1 and 9.");
-    } else if (arg == "--decompress-range") {
-      require_value(args, index, "--decompress-range");
-      const std::vector<std::string> values = collect_option_values(args, index);
-      if (values.size() != 2)
-        throw std::runtime_error("--decompress-range requires exactly 2 values.");
-      options.decompress_range = {
-          parse_uint64_or_throw(values[0], "Invalid decompression range value."),
-          parse_uint64_or_throw(values[1], "Invalid decompression range value.")};
-    } else if (arg == "-i" || arg == "--input-file") {
-      require_value(args, index, "--input-file");
-      const std::vector<std::string> values = collect_option_values(args, index);
+      options.compression_level =
+          parse_int_or_throw(args[index++], "Invalid compression level.");
+      if (options.compression_level < 1 || options.compression_level > 9)
+        throw std::runtime_error("Compression level must be between 1 and 9.");
+    } else if (arg == "-i" || arg == "--input") {
+      require_value(args, index, "--input");
+      const std::vector<std::string> values =
+          collect_option_values(args, index);
       if (values.empty())
-        throw std::runtime_error("--input-file requires at least 1 value.");
+        throw std::runtime_error("--input requires at least 1 value.");
       options.input_paths.insert(options.input_paths.end(), values.begin(),
-                                values.end());
-    } else if (arg == "-o" || arg == "--output-file") {
-      require_value(args, index, "--output-file");
-      const std::vector<std::string> values = collect_option_values(args, index);
-      if (values.empty())
-        throw std::runtime_error("--output-file requires at least 1 value.");
-      options.output_paths.insert(options.output_paths.end(), values.begin(),
                                  values.end());
-    } else if (arg == "-q" || arg == "--quality-opts") {
-      require_value(args, index, "--quality-opts");
+    } else if (arg == "-o" || arg == "--output") {
+      require_value(args, index, "--output");
+      const std::vector<std::string> values =
+          collect_option_values(args, index);
+      if (values.empty())
+        throw std::runtime_error("--output requires at least 1 value.");
+      options.output_paths.insert(options.output_paths.end(), values.begin(),
+                                  values.end());
+    } else if (arg == "-q" || arg == "--qmod") {
+      require_value(args, index, "--qmod");
       options.quality_options = collect_option_values(args, index);
       if (options.quality_options.empty())
-        throw std::runtime_error("--quality-opts requires at least 1 value.");
+        throw std::runtime_error("--qmod requires at least 1 value.");
     } else {
       throw std::runtime_error(std::string("Unknown option: ") + arg);
     }
@@ -295,8 +297,8 @@ int max_threads_for_memory_cap_gb(const double memory_cap_gb) {
   if (memory_cap_gb <= 0.0)
     return 0;
 
-  const int capped_threads =
-      static_cast<int>(std::floor(memory_cap_gb / kApproxMemoryCapPerThreadGiB));
+  const int capped_threads = static_cast<int>(
+      std::floor(memory_cap_gb / kApproxMemoryCapPerThreadGiB));
   return std::max(1, capped_threads);
 }
 
@@ -316,21 +318,11 @@ std::string create_and_register_temp_dir(const std::string &working_dir) {
   return temp_dir;
 }
 
-void normalize_compression_options(command_line_options &options) {
-  if (!options.compress_flag || !options.long_flag)
-    return;
-
-  std::cout << "Long flag detected.\n";
-  if (options.pairing_only_flag) {
-    std::cout << "For long mode: allow_read_reordering flag is disabled.\n";
-    options.pairing_only_flag = false;
-  }
-}
-
 void apply_memory_cap(command_line_options &options) {
   const int memory_capped_threads =
       max_threads_for_memory_cap_gb(options.memory_cap_gb);
-  if (memory_capped_threads == 0 || options.num_threads <= memory_capped_threads)
+  if (memory_capped_threads == 0 ||
+      options.num_threads <= memory_capped_threads)
     return;
 
   if (options.num_threads_was_explicit) {
@@ -345,9 +337,8 @@ void apply_memory_cap(command_line_options &options) {
   options.num_threads = memory_capped_threads;
 }
 
-int print_unexpected_error_and_exit(
-  const std::string &options_description,
-    const std::string &error_message) {
+int print_unexpected_error_and_exit(const std::string &options_description,
+                                    const std::string &error_message) {
   std::cout << error_message << "\n";
   delete_temp_dir_if_present();
   delete_working_dir_if_present();
@@ -361,13 +352,12 @@ void run_requested_mode(const command_line_options &options,
     spring::compress(temp_dir, options.input_paths, options.output_paths,
                      options.num_threads, options.pairing_only_flag,
                      options.no_quality_flag, options.no_ids_flag,
-                     options.quality_options, options.long_flag, options.compression_level);
+                     options.quality_options, options.compression_level);
     return;
   }
 
   spring::decompress(temp_dir, options.input_paths, options.output_paths,
-                     options.num_threads, options.decompress_range,
-                     options.compression_level);
+                     options.num_threads, options.compression_level);
 }
 
 } // namespace
@@ -416,17 +406,16 @@ int main(int argc, char **argv) {
   }
 
   // Isolate intermediate artifacts so cleanup is one directory removal.
-  normalize_compression_options(options);
   apply_memory_cap(options);
-  const std::string temp_dir = create_and_register_temp_dir(options.working_dir);
+  const std::string temp_dir =
+      create_and_register_temp_dir(options.working_dir);
 
   try {
     run_requested_mode(options, temp_dir);
   } catch (const std::runtime_error &e) {
     return print_unexpected_error_and_exit(
         options_description,
-        std::string("Program terminated unexpectedly with error: ") +
-            e.what());
+        std::string("Program terminated unexpectedly with error: ") + e.what());
   } catch (...) {
     return print_unexpected_error_and_exit(options_description,
                                            "Program terminated unexpectedly");

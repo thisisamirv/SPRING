@@ -116,10 +116,7 @@ struct decompression_io_config {
   std::string output_path_2;
 };
 
-struct decompression_span {
-  uint64_t start_read_index;
-  uint64_t end_read_index;
-};
+
 
 struct prepared_compression_inputs {
   std::string input_path_1;
@@ -600,26 +597,7 @@ resolve_decompression_io(const string_list &input_paths,
   return io_config;
 }
 
-decompression_span
-resolve_decompression_span(const read_range &decompress_range,
-                           const uint64_t total_read_pairs) {
-  decompression_span span{.start_read_index = 0,
-                          .end_read_index = total_read_pairs};
-  if (decompress_range.empty())
-    return span;
 
-  if (decompress_range.size() != 2)
-    throw std::runtime_error("Invalid decompression range parameters.");
-  if (decompress_range[0] == 0 || decompress_range[0] > decompress_range[1] ||
-      decompress_range[0] > total_read_pairs ||
-      decompress_range[1] > total_read_pairs) {
-    throw std::runtime_error("Invalid decompression range parameters.");
-  }
-
-  span.start_read_index = decompress_range[0] - 1;
-  span.end_read_index = decompress_range[1];
-  return span;
-}
 
 } // namespace
 
@@ -629,7 +607,7 @@ void compress(const std::string &temp_dir,
               const bool &pairing_only_flag, const bool &no_quality_flag,
               const bool &no_ids_flag,
               const std::vector<std::string> &quality_options,
-              const bool &long_flag, const int &compression_level) {
+              const int &compression_level) {
   omp_set_dynamic(0);
 
   std::cout << "Starting compression...\n";
@@ -656,6 +634,19 @@ void compress(const std::string &temp_dir,
   const bool preserve_order = !pairing_only_flag;
   const bool preserve_id = !no_ids_flag;
   const bool preserve_quality = !no_quality_flag && !fasta_input;
+
+  const uint32_t max_read_length =
+      detect_max_read_length(prepared_inputs.input_path_1,
+                             prepared_inputs.input_path_2, io_config.paired_end,
+                             fasta_input);
+  const bool long_flag = max_read_length > MAX_READ_LEN;
+
+  if (long_flag) {
+    std::cout << "Auto-detected long-read mode (max read length: "
+              << max_read_length << ").\n";
+  } else {
+    std::cout << "Auto-detected short-read mode.\n";
+  }
 
   compression_params cp{};
   cp.paired_end = io_config.paired_end;
@@ -756,7 +747,6 @@ void decompress(const std::string &temp_dir,
                 const std::vector<std::string> &input_paths,
                 const std::vector<std::string> &output_paths,
                 const int &num_thr,
-                const std::vector<uint64_t> &decompress_range,
                 const int &compression_level) {
   omp_set_dynamic(0);
 
@@ -790,22 +780,18 @@ void decompress(const std::string &temp_dir,
   const decompression_io_config io_config =
       resolve_decompression_io(input_paths, output_paths, paired_end);
 
-  const uint64_t num_read_pairs = paired_end ? cp.num_reads / 2 : cp.num_reads;
-  const decompression_span decompression_plan =
-      resolve_decompression_span(decompress_range, num_read_pairs);
+
 
   // Long-read and short-read archives diverge only at the reconstruction step.
   run_timed_step("Decompressing ...", "Decompressing", [&] {
     if (long_flag)
       decompress_long(temp_dir, io_config.output_path_1,
                       io_config.output_path_2, cp, num_thr,
-                      decompression_plan.start_read_index,
-                      decompression_plan.end_read_index, compression_level);
+                      compression_level);
     else
       decompress_short(temp_dir, io_config.output_path_1,
                        io_config.output_path_2, cp, num_thr,
-                       decompression_plan.start_read_index,
-                       decompression_plan.end_read_index, compression_level);
+                       compression_level);
   });
 
   const auto decompression_end = clock_type::now();

@@ -381,7 +381,7 @@ run_benchmark() {
 	local runner="$3"
 
 	local output_prefix="$TMP_OUTPUT_DIR/$INPUT_STEM.$label"
-	local output_file="$output_prefix.spring"
+	local output_file="$output_prefix.sp"
 	local decompressed_output_file="$output_prefix.roundtrip.fastq"
 	local work_dir="$TMP_WORK_DIR/$INPUT_STEM.$label.work"
 	local compress_resource_log="$TMP_LOG_DIR/${label}_compress_resource_usage.log"
@@ -408,10 +408,10 @@ run_benchmark() {
 	echo "  workdir: $work_dir"
 	echo "  threads: $THREADS"
 	echo "  max read length: $MAX_READ_LENGTH"
-	if ((${#LONG_MODE_ARGS[@]} > 0)); then
+	if ((${MAX_READ_LENGTH} > ${MAX_SHORT_READ_LENGTH})) && [[ "$label" == "spring_v1" ]]; then
 		echo "  mode:    lossless long-read mode (-l)"
 	else
-		echo "  mode:    lossless short-read mode"
+		echo "  mode:    lossless"
 	fi
 
 	local spring_args=(
@@ -420,9 +420,11 @@ run_benchmark() {
 		-o "$output_file"
 		-w "$work_dir"
 		-t "$THREADS"
-		"${LONG_MODE_ARGS[@]}"
 		-q lossless
 	)
+	if ((${MAX_READ_LENGTH} > ${MAX_SHORT_READ_LENGTH})) && [[ "$label" == "spring_v1" ]]; then
+		spring_args+=(-l)
+	fi
 	if [[ "$INPUT_ABS" == *.gz ]] && spring_supports_gzip_flag "$runner"; then
 		spring_args=(-g "${spring_args[@]}")
 	fi
@@ -612,10 +614,6 @@ INPUT_STEM=${INPUT_BASENAME%.*}
 MAX_SHORT_READ_LENGTH=511
 MAX_READ_LENGTH=$(stream_input_bytes "$INPUT_ABS" | awk 'NR % 4 == 2 { if (length($0) > max_len) max_len = length($0) } END { print max_len + 0 }')
 
-LONG_MODE_ARGS=()
-if ((MAX_READ_LENGTH > MAX_SHORT_READ_LENGTH)); then
-	LONG_MODE_ARGS=(-l)
-fi
 
 run_benchmark "current" "Current Spring" "$SPRING_BIN"
 run_benchmark "spring_v1" "Spring v1" "$SPRING_V1_RUNNER"

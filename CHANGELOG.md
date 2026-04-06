@@ -7,8 +7,9 @@
 * Added benchmark scripts under `benchmark/` for lossless round-trip runs, comparison runs, and larger manual benchmarking workflows.
 * Added round-trip integrity verification to the lossless benchmark flow, including checksum reporting when hashing tools are available.
 * Added automatic support for gzipped compression inputs by staging `.gz` inputs into the temporary working directory before normal compression.
-* Added automatic FASTA-versus-FASTQ input detection during compression.
-* Added the `--memory-cap-gb` CLI option to conservatively reduce effective worker count on memory-constrained systems.
+* Added automatic short-read versus long-read mode detection by pre-scanning input sequence lengths before compression.
+* Added the `--memory` (`-m`) CLI option to conservatively reduce effective worker count on memory-constrained systems.
+* Added a unified `-s, --strip [ioq]` CLI flag to discard identifiers (`i`), order (`o`), and quality scores (`q`), replacing independent flags.
 * Added vendored `libdeflate` for fast whole-buffer DEFLATE, zlib, and gzip workloads used by the current build.
 * Added vendored `rapidgzip` support for gzipped compression inputs through the pruned `indexed_bzip2` payload.
 * Added a dedicated `dev/` tooling directory for repository maintenance, including linting, cppcheck, cbindgen validation, Valgrind smoke checks, shared helpers, and suppressions.
@@ -18,10 +19,12 @@
 
 * Replaced the unmaintained legacy `id_comp` module with a natively integrated **Columnar Specialized Identifier Coder (C-SiT)** backed by Zstd (Level 22 max-compression). C-SiT dynamically parses FASTQ machine headers into dedicated columnar streams. For tile coordinates, it leverages an advanced auto-detecting Byte-Shuffled Delta Encoder that shrinks numeric identifiers into overlapping low-entropy sequences.
 * Improved benchmark reporting so compression and decompression runs report elapsed time, CPU time, average core usage, and peak RSS when supported by the host environment.
-* Changed the default thread selection logic to `min(max(1, hw_threads - 1), 16)` instead of a fixed default.
+* Changed the default thread selection logic to `min(max(1, hw_threads - 1), 16)`.
 * Changed decompression output handling so output paths ending in `.gz` automatically produce gzipped FASTQ output.
-* Replaced the `--gzip-level` option with a unified `--level` CLI flag. The `--level` flag accepts values 1–9 (default: 6). Values are passed unchanged to gzip (1–9) for gzipped output and are scaled internally to the Zstd range (1–22) for Zstd-backed components (for example, identifier compression).
-* Removed the obsolete `--gzipped-fastq` and `--fasta-input` flags because the corresponding behaviors are now inferred automatically.
+* Replaced the `--gzip-level` option with a unified `-l, --level` flag (range 1–9, default 6). Values are passed to gzip for compressed output and scaled to Zstd (1–22) for internal streams.
+* Renamed several core CLI flags for clarity and standard usage: `--num-threads` to `--threads` (`-t`), `--input-file` to `--input` (`-i`), `--output-file` to `--output` (`-o`), `--working-dir` to `--tmp-dir` (`-w`), and `--quality-opts` to `--qmod` (`-q`).
+* Transitioned the recommended archive file extension from `.spring` to `.sp`.
+* Removed the obsolete `--gzipped-fastq`, `--fasta-input`, and manual `-l` (long-read) flags.
 * Repackaged `indexed_bzip2` into a smaller Spring-specific archive payload that retains only the pieces needed for the current gzip workflow.
 * Removed the final Boost dependency from the build and runtime path by replacing the remaining Boost-based gzip and mapped-file usage with local implementations.
 * Upgraded the project toolchain baseline to C++20 and CMake 4.2.

@@ -41,3 +41,4 @@ benchmark/tmp/*
 **/__pycache__/
 *.pyc
 .tmp/
+benchmark/output/

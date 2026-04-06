@@ -188,16 +188,12 @@ INPUT_BASENAME=$(basename -- "$INPUT_ABS")
 INPUT_STEM=${INPUT_BASENAME%.*}
 OUTPUT_DIR="$TMP_OUTPUT_DIR"
 WORK_DIR="$TMP_WORK_DIR/$INPUT_STEM.work"
-OUTPUT_FILE="$OUTPUT_DIR/$INPUT_STEM.spring"
+OUTPUT_FILE="$OUTPUT_DIR/$INPUT_STEM.sp"
 DECOMPRESSED_OUTPUT_FILE="$OUTPUT_DIR/$INPUT_STEM.roundtrip.fastq"
 MAX_SHORT_READ_LENGTH=511
 
 MAX_READ_LENGTH=$(stream_input_bytes "$INPUT_ABS" | awk 'NR % 4 == 2 { if (length($0) > max_len) max_len = length($0) } END { print max_len + 0 }')
 
-LONG_MODE_ARGS=()
-if ((MAX_READ_LENGTH > MAX_SHORT_READ_LENGTH)); then
-	LONG_MODE_ARGS=(-l)
-fi
 
 mkdir -p "$TMP_INPUT_DIR" "$TMP_LOG_DIR" "$OUTPUT_DIR" "$TMP_WORK_DIR"
 rm -rf "$WORK_DIR"
@@ -213,11 +209,7 @@ echo "  output:  $OUTPUT_FILE"
 echo "  workdir: $WORK_DIR"
 echo "  threads: $THREADS"
 echo "  max read length: $MAX_READ_LENGTH"
-if ((${#LONG_MODE_ARGS[@]} > 0)); then
-	echo "  mode:    lossless long-read mode (-l)"
-else
-	echo "  mode:    lossless short-read mode"
-fi
+echo "  mode:    lossless"
 
 spring_args=(
 	-c
@@ -225,7 +217,6 @@ spring_args=(
 	-o "$OUTPUT_FILE"
 	-w "$WORK_DIR"
 	-t "$THREADS"
-	"${LONG_MODE_ARGS[@]}"
 	-q lossless
 )
 

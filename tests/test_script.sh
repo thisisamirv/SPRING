@@ -141,21 +141,21 @@ fi
 if [[ "$SPRING_SMOKE_MODE" == "windows-quick" ]]; then
 	announce_case "single fastq long-mode round-trip"
 	prepare_local_input "$ASSET_DIR/test_1.fastq" win-single-input.fastq
-	run_spring -c -i win-single-input.fastq -o win-single -l
+	run_spring -c -i win-single-input.fastq -o win-single
 	run_spring -d -i win-single -o win-single-out
 	compare_files win-single-out "$ASSET_DIR/test_1.fastq"
 
 	announce_case "paired fastq long-mode round-trip"
 	prepare_local_input "$ASSET_DIR/test_1.fastq" win-paired-input-1.fastq
 	prepare_local_input "$ASSET_DIR/test_2.fastq" win-paired-input-2.fastq
-	run_spring -c -i win-paired-input-1.fastq win-paired-input-2.fastq -o win-paired -l
+	run_spring -c -i win-paired-input-1.fastq win-paired-input-2.fastq -o win-paired
 	run_spring -d -i win-paired -o win-paired-out
 	compare_files win-paired-out.1 "$ASSET_DIR/test_1.fastq"
 	compare_files win-paired-out.2 "$ASSET_DIR/test_2.fastq"
 
 	announce_case "gzipped fastq long-mode round-trip"
 	prepare_local_input "$ASSET_DIR/test_1.fastq.gz" win-gzip-input.fastq.gz
-	run_spring -c -i win-gzip-input.fastq.gz -o win-gzip -l
+	run_spring -c -i win-gzip-input.fastq.gz -o win-gzip
 	run_spring -d -i win-gzip -o win-gzip-out
 	compare_files win-gzip-out "$ASSET_DIR/test_1.fastq"
 
@@ -181,18 +181,18 @@ compare_files tmp.2 "$ASSET_DIR/test_2.fastq"
 compare_files tmp.1 "$ASSET_DIR/test_1.fasta"
 compare_files tmp.2 "$ASSET_DIR/test_2.fasta"
 
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" -o abcd -l
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" -o abcd
 "${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
 compare_files tmp "$ASSET_DIR/test_1.fastq"
 "${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp.gz
 gunzip -f tmp.gz
 compare_files tmp "$ASSET_DIR/test_1.fastq"
 
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fasta" -o abcd -l
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fasta" -o abcd
 "${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
 compare_files tmp "$ASSET_DIR/test_1.fasta"
 
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd -l
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd
 "${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
 compare_files tmp.1 "$ASSET_DIR/test_1.fastq"
 compare_files tmp.2 "$ASSET_DIR/test_2.fastq"
@@ -235,7 +235,7 @@ compare_files tmp "$ASSET_DIR/test_1.fastq"
 cmp tmp.1 "$ASSET_DIR/test_1.fastq"
 cmp tmp.2 "$ASSET_DIR/test_2.fastq"
 
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" -o abcd -r
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" -o abcd -s o
 "${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
 sort tmp >tmp.sorted
 sort "$ASSET_DIR/test_1.fastq" >tmp_1.sorted
