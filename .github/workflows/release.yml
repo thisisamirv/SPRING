@@ -1,0 +1,231 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux
+            arch: x86_64
+            artifact_name: spring2-linux-x86_64
+          - os: ubuntu-latest
+            name: linux
+            arch: arm64
+            artifact_name: spring2-linux-arm64
+          - os: macos-13
+            name: macos
+            arch: x86_64
+            artifact_name: spring2-macos-x86_64
+          - os: macos-latest
+            name: macos
+            arch: arm64
+            artifact_name: spring2-macos-arm64
+          - os: windows-latest
+            name: windows
+            arch: x86_64
+            msystem: UCRT64
+            artifact_name: spring2-windows-x86_64.exe
+          - os: windows-latest
+            name: windows
+            arch: arm64
+            msystem: CLANGARM64
+            artifact_name: spring2-windows-arm64.exe
+    name: Build / ${{ matrix.name }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Linux x86_64 dependencies
+      - name: Install Linux dependencies (x86_64)
+        if: matrix.name == 'linux' && matrix.arch == 'x86_64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libomp-dev nasm ninja-build python3 python3-pip python3-venv
+          python3 -m venv .cmake-venv
+          . .cmake-venv/bin/activate
+          python -m pip install "cmake==4.2.0"
+          echo "$PWD/.cmake-venv/bin" >> "$GITHUB_PATH"
+
+      # Linux ARM64 build via QEMU and Docker
+      - name: Set up QEMU for ARM64
+        if: matrix.name == 'linux' && matrix.arch == 'arm64'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build Linux ARM64 (Docker)
+        if: matrix.name == 'linux' && matrix.arch == 'arm64'
+        run: |
+          docker run --rm -v "$PWD":/work -w /work arm64v8/ubuntu:22.04 /bin/bash -c "
+            apt-get update && \
+            apt-get install -y build-essential libomp-dev ninja-build nasm python3 python3-pip python3-venv && \
+            python3 -m venv .cmake-venv && \
+            . .cmake-venv/bin/activate && \
+            python -m pip install 'cmake==4.2.0' && \
+            cmake -S . -B build -G Ninja -Dspring_optimize_for_native=OFF -Dspring_optimize_for_portability=ON && \
+            cmake --build build --parallel && \
+            strip build/spring2 && \
+            apt-get install -y wget && \
+            wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-aarch64.AppImage -O linuxdeploy && \
+            chmod +x linuxdeploy && \
+            export EXTRA_QT_PLUGINS= && \
+            ./linuxdeploy --appimage-extract-and-run --appdir AppDir --executable build/spring2 --output appimage && \
+            mv SPRING2-*.AppImage spring2-linux-arm64.AppImage
+          "
+
+      # macOS dependencies
+      - name: Install macOS dependencies
+        if: matrix.name == 'macos'
+        run: |
+          brew update
+          brew install libomp nasm ninja python
+          echo "MACOS_LIBOMP_PREFIX=$(brew --prefix libomp)" >> "$GITHUB_ENV"
+          python3 -m venv .cmake-venv
+          . .cmake-venv/bin/activate
+          python -m pip install "cmake==4.2.0"
+          echo "$PWD/.cmake-venv/bin" >> "$GITHUB_PATH"
+
+      # Windows dependencies
+      - name: Set up MSYS2
+        if: matrix.name == 'windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: true
+          install: >-
+            ${{ matrix.msystem == 'UCRT64' && 'mingw-w64-ucrt-x86_64-gcc' || 'mingw-w64-clang-aarch64-gcc' }}
+            ${{ matrix.msystem == 'UCRT64' && 'mingw-w64-ucrt-x86_64-cmake' || 'mingw-w64-clang-aarch64-cmake' }}
+            ${{ matrix.msystem == 'UCRT64' && 'mingw-w64-ucrt-x86_64-nasm' || '' }}
+            ${{ matrix.msystem == 'UCRT64' && 'mingw-w64-ucrt-x86_64-ninja' || 'mingw-w64-clang-aarch64-ninja' }}
+
+      # Build jobs (Non-Windows)
+      - name: Configure (Non-Windows)
+        if: matrix.name != 'windows' && (matrix.arch != 'arm64' || matrix.name != 'linux')
+        shell: bash
+        env:
+          CC: ${{ matrix.name == 'macos' && 'clang' || 'gcc' }}
+          CXX: ${{ matrix.name == 'macos' && 'clang++' || 'g++' }}
+        run: |
+          if [ "${{ matrix.name }}" == "macos" ]; then
+            cmake -S . -B build \
+              -G Ninja \
+              -DOpenMP_ROOT="$MACOS_LIBOMP_PREFIX" \
+              -DOpenMP_C_FLAGS="-Xpreprocessor -fopenmp" \
+              -DOpenMP_CXX_FLAGS="-Xpreprocessor -fopenmp" \
+              -DOpenMP_C_LIB_NAMES="omp" \
+              -DOpenMP_CXX_LIB_NAMES="omp" \
+              -DOpenMP_omp_LIBRARY="$MACOS_LIBOMP_PREFIX/lib/libomp.dylib" \
+              -Dspring_optimize_for_native=OFF \
+              -Dspring_optimize_for_portability=ON
+          else
+            cmake -S . -B build \
+              -G Ninja \
+              -Dspring_optimize_for_native=OFF \
+              -Dspring_optimize_for_portability=ON \
+              -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
+          fi
+
+      - name: Build (Non-Windows)
+        if: matrix.name != 'windows' && (matrix.arch != 'arm64' || matrix.name != 'linux')
+        shell: bash
+        run: cmake --build build --parallel
+
+      - name: Strip Binaries (Non-Windows)
+        if: matrix.name != 'windows' && (matrix.arch != 'arm64' || matrix.name != 'linux')
+        shell: bash
+        run: strip build/spring2
+
+      - name: Prepare Artifact (Non-Windows)
+        if: matrix.name != 'windows'
+        shell: bash
+        run: |
+          mkdir -p release
+          cp build/spring2 "release/${{ matrix.artifact_name }}"
+          if [ "${{ matrix.arch }}" == "x86_64" ] && [ "${{ matrix.name }}" == "linux" ]; then
+            wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
+            chmod +x linuxdeploy
+            # Create a minimal desktop file and icon for linuxdeploy to be happy
+            echo "[Desktop Entry]" > spring2.desktop
+            echo "Type=Application" >> spring2.desktop
+            echo "Name=SPRING2" >> spring2.desktop
+            echo "Exec=spring2" >> spring2.desktop
+            echo "Icon=spring2" >> spring2.desktop
+            echo "Categories=Science;Biology;" >> spring2.desktop
+            echo "Terminal=true" >> spring2.desktop
+            touch spring2.png # Placeholder
+            export EXTRA_QT_PLUGINS=
+            ./linuxdeploy --appimage-extract-and-run --appdir AppDir --executable build/spring2 --desktop-file spring2.desktop --icon-file spring2.png --output appimage
+            mv SPRING2-*.AppImage release/spring2-linux-x86_64.AppImage
+          elif [ "${{ matrix.arch }}" == "arm64" ] && [ "${{ matrix.name }}" == "linux" ]; then
+            cp spring2-linux-arm64.AppImage release/
+          fi
+
+      # Build jobs (Windows)
+      - name: Configure (Windows)
+        if: matrix.name == 'windows'
+        shell: msys2 {0}
+        env:
+          CC: ${{ matrix.msystem == 'UCRT64' && 'gcc' || 'clang' }}
+          CXX: ${{ matrix.msystem == 'UCRT64' && 'g++' || 'clang++' }}
+        run: |
+          cmake -S . -B build \
+            -G Ninja \
+            -Dspring_optimize_for_native=OFF \
+            -Dspring_optimize_for_portability=ON \
+            -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
+
+      - name: Build (Windows)
+        if: matrix.name == 'windows'
+        shell: msys2 {0}
+        run: cmake --build build --parallel
+
+      - name: Strip Binaries (Windows)
+        if: matrix.name == 'windows'
+        shell: msys2 {0}
+        run: strip build/spring2.exe
+
+      - name: Prepare Artifact (Windows)
+        if: matrix.name == 'windows'
+        shell: msys2 {0}
+        run: |
+          mkdir -p release
+          cp build/spring2.exe "release/${{ matrix.artifact_name }}"
+
+      - name: Calculate Checksums (Non-Windows)
+        if: matrix.name != 'windows'
+        shell: bash
+        run: |
+          cd release
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum * > SHA256SUMS.txt
+          else
+            shasum -a 256 * > SHA256SUMS.txt
+          fi
+
+      - name: Calculate Checksums (Windows)
+        if: matrix.name == 'windows'
+        shell: msys2 {0}
+        run: |
+          cd release
+          sha256sum * > SHA256SUMS.txt
+
+      - name: Upload Artifact to Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            release/${{ matrix.artifact_name }}
+            release/*.AppImage
+            release/SHA256SUMS.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

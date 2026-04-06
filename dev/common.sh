@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
 BUILD_DIR="$ROOT_DIR/build"
-SPRING_BIN="$BUILD_DIR/spring"
+SPRING_BIN="$BUILD_DIR/spring2"
 COMPILE_COMMANDS="$BUILD_DIR/compile_commands.json"
 readonly DEFAULT_CPP_ROOTS=("$ROOT_DIR/src" "$ROOT_DIR/experimental" "$ROOT_DIR/tests")
 readonly DEFAULT_PY_ROOTS=("$ROOT_DIR/experimental" "$ROOT_DIR/tests" "$ROOT_DIR/dev")
@@ -21,7 +21,7 @@ require_command() {
 require_build_dir() {
 	if [[ ! -d "$BUILD_DIR" ]]; then
 		echo "Expected build directory at $BUILD_DIR" >&2
-		echo "Configure SPRING first, for example: cmake -S $ROOT_DIR -B $BUILD_DIR" >&2
+		echo "Configure SPRING2 first, for example: cmake -S $ROOT_DIR -B $BUILD_DIR" >&2
 		exit 1
 	fi
 }
@@ -38,7 +38,7 @@ require_compile_commands() {
 require_spring_binary() {
 	if [[ ! -x "$SPRING_BIN" ]]; then
 		echo "Expected built binary at $SPRING_BIN" >&2
-		echo "Build SPRING first, for example: cmake --build $BUILD_DIR" >&2
+		echo "Build SPRING2 first, for example: cmake --build $BUILD_DIR" >&2
 		exit 1
 	fi
 }
