@@ -31,11 +31,6 @@ jobs:
             arch: x86_64
             msystem: UCRT64
             artifact_name: spring2-windows-x86_64.exe
-          - os: windows-latest
-            name: windows
-            arch: arm64
-            msystem: UCRT64
-            artifact_name: spring2-windows-arm64.exe
     name: Build / ${{ matrix.name }} (${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
 
@@ -79,7 +74,8 @@ jobs:
             echo "Icon=spring2" >> spring2.desktop && \
             echo "Categories=Science;Biology;" >> spring2.desktop && \
             echo "Terminal=true" >> spring2.desktop && \
-            python3 -c "import zlib, struct; make_png = lambda w, h, p: b'\x89PNG\r\n\x1a\n' + (lambda chunk: lambda type, data: struct.pack('>I', len(data)) + type + data + struct.pack('>I', zlib.crc32(type + data) & 0xffffffff))(0)(b'IHDR', struct.pack('>2I5B', w, h, 8, 2, 0, 0, 0)) + (lambda chunk: lambda type, data: struct.pack('>I', len(data)) + type + data + struct.pack('>I', zlib.crc32(type + data) & 0xffffffff))(0)(b'IDAT', zlib.compress(b''.join(b'\x00' + p[i*w*3:(i+1)*w*3] for i in range(h)))) + (lambda chunk: lambda type, data: struct.pack('>I', len(data)) + type + data + struct.pack('>I', zlib.crc32(type + data) & 0xffffffff))(0)(b'IEND', b''); open('spring2.png', 'wb').write(make_png(32, 32, b'\xff\x00\x00' * 1024))" && \
+            echo \"import zlib, struct; make_png = lambda w, h, p: b'\\x89PNG\\r\\n\\x1a\\n' + (lambda chunk: lambda type, data: struct.pack('>I', len(data)) + type + data + struct.pack('>I', zlib.crc32(type + data) & 0xffffffff))(0)(b'IHDR', struct.pack('>2I5B', w, h, 8, 2, 0, 0, 0)) + (lambda chunk: lambda type, data: struct.pack('>I', len(data)) + type + data + struct.pack('>I', zlib.crc32(type + data) & 0xffffffff))(0)(b'IDAT', zlib.compress(b''.join(b'\\x00' + p[i*w*3:(i+1)*w*3] for i in range(h)))) + (lambda chunk: lambda type, data: struct.pack('>I', len(data)) + type + data + struct.pack('>I', zlib.crc32(type + data) & 0xffffffff))(0)(b'IEND', b''); open('spring2.png', 'wb').write(make_png(32, 32, b'\\xff\\x00\\x00' * 1024))\" > gen_icon.py && \
+            python3 gen_icon.py && \
             export EXTRA_QT_PLUGINS= && \
             ./linuxdeploy --appimage-extract-and-run --appdir AppDir --executable build/spring2 --desktop-file spring2.desktop --icon-file spring2.png --output appimage && \
             mv SPRING2-*.AppImage spring2-linux-arm64.AppImage
@@ -110,7 +106,6 @@ jobs:
             mingw-w64-ucrt-x86_64-nasm
             mingw-w64-ucrt-x86_64-ninja
             mingw-w64-ucrt-x86_64-clang
-            mingw-w64-ucrt-x86_64-lld
 
       # Build jobs (Non-Windows)
       - name: Configure (Non-Windows)
@@ -131,6 +126,7 @@ jobs:
               -DOpenMP_C_LIB_NAMES="omp" \
               -DOpenMP_CXX_LIB_NAMES="omp" \
               -DOpenMP_omp_LIBRARY="$MACOS_LIBOMP_PREFIX/lib/libomp.dylib" \
+              -DLIBRAPIDARCHIVE_WITH_ISAL=OFF \
               -Dspring_optimize_for_native=OFF \
               -Dspring_optimize_for_portability=ON
             cmake -S . -B build_x86_64 \
@@ -142,6 +138,7 @@ jobs:
               -DOpenMP_C_LIB_NAMES="omp" \
               -DOpenMP_CXX_LIB_NAMES="omp" \
               -DOpenMP_omp_LIBRARY="$MACOS_LIBOMP_PREFIX/lib/libomp.dylib" \
+              -DLIBRAPIDARCHIVE_WITH_ISAL=OFF \
               -Dspring_optimize_for_native=OFF \
               -Dspring_optimize_for_portability=ON
           else
@@ -195,7 +192,8 @@ jobs:
               echo "Icon=spring2" >> spring2.desktop
               echo "Categories=Science;Biology;" >> spring2.desktop
               echo "Terminal=true" >> spring2.desktop
-              python3 -c "import zlib, struct; make_png = lambda w, h, p: b'\x89PNG\r\n\x1a\n' + (lambda chunk: lambda type, data: struct.pack('>I', len(data)) + type + data + struct.pack('>I', zlib.crc32(type + data) & 0xffffffff))(0)(b'IHDR', struct.pack('>2I5B', w, h, 8, 2, 0, 0, 0)) + (lambda chunk: lambda type, data: struct.pack('>I', len(data)) + type + data + struct.pack('>I', zlib.crc32(type + data) & 0xffffffff))(0)(b'IDAT', zlib.compress(b''.join(b'\x00' + p[i*w*3:(i+1)*w*3] for i in range(h)))) + (lambda chunk: lambda type, data: struct.pack('>I', len(data)) + type + data + struct.pack('>I', zlib.crc32(type + data) & 0xffffffff))(0)(b'IEND', b''); open('spring2.png', 'wb').write(make_png(32, 32, b'\xff\x00\x00' * 1024))"
+              echo "import zlib, struct; make_png = lambda w, h, p: b'\x89PNG\r\n\x1a\n' + (lambda chunk: lambda type, data: struct.pack('>I', len(data)) + type + data + struct.pack('>I', zlib.crc32(type + data) & 0xffffffff))(0)(b'IHDR', struct.pack('>2I5B', w, h, 8, 2, 0, 0, 0)) + (lambda chunk: lambda type, data: struct.pack('>I', len(data)) + type + data + struct.pack('>I', zlib.crc32(type + data) & 0xffffffff))(0)(b'IDAT', zlib.compress(b''.join(b'\x00' + p[i*w*3:(i+1)*w*3] for i in range(h)))) + (lambda chunk: lambda type, data: struct.pack('>I', len(data)) + type + data + struct.pack('>I', zlib.crc32(type + data) & 0xffffffff))(0)(b'IEND', b''); open('spring2.png', 'wb').write(make_png(32, 32, b'\xff\x00\x00' * 1024))" > gen_icon.py
+              python3 gen_icon.py
               export EXTRA_QT_PLUGINS=
               ./linuxdeploy --appimage-extract-and-run --appdir AppDir --executable build/spring2 --desktop-file spring2.desktop --icon-file spring2.png --output appimage
               mv SPRING2-*.AppImage release/spring2-linux-x86_64.AppImage
@@ -209,31 +207,14 @@ jobs:
         if: matrix.name == 'windows'
         shell: msys2 {0}
         env:
-          CC: ${{ matrix.arch == 'arm64' && 'clang' || 'gcc' }}
-          CXX: ${{ matrix.arch == 'arm64' && 'clang++' || 'g++' }}
+          CC: gcc
+          CXX: g++
         run: |
-          if [ "${{ matrix.arch }}" == "arm64" ]; then
-            cmake -S . -B build \
-              -G Ninja \
-              -DCMAKE_SYSTEM_NAME=Windows \
-              -DCMAKE_SYSTEM_PROCESSOR=ARM64 \
-              -DCMAKE_C_FLAGS="-target aarch64-w64-mingw32 -fuse-ld=lld" \
-              -DCMAKE_CXX_FLAGS="-target aarch64-w64-mingw32 -fuse-ld=lld" \
-              -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld" \
-              -Dspring_optimize_for_native=OFF \
-              -Dspring_optimize_for_portability=ON \
-              -DOpenMP_C_FLAGS=" " \
-              -DOpenMP_CXX_FLAGS=" " \
-              -DOpenMP_C_LIB_NAMES=" " \
-              -DOpenMP_CXX_LIB_NAMES=" " \
-              -DOpenMP_omp_LIBRARY=" "
-          else
-            cmake -S . -B build \
-              -G Ninja \
-              -Dspring_optimize_for_native=OFF \
-              -Dspring_optimize_for_portability=ON \
-              -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
-          fi
+          cmake -S . -B build \
+            -G Ninja \
+            -Dspring_optimize_for_native=OFF \
+            -Dspring_optimize_for_portability=ON \
+            -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
 
       - name: Build (Windows)
         if: matrix.name == 'windows'
