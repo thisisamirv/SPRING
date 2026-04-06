@@ -181,6 +181,10 @@ endif()
 message(STATUS "** CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
 message(STATUS "** CMAKE_C_FLAGS: ${CMAKE_C_FLAGS}")
 
+# Option to statically link common GCC runtimes so the executable can run
+# on Windows `cmd.exe` without shipping DLLs next to the binary.
+option(SPRING_STATIC_RUNTIMES "Statically link libgcc/libstdc++/libgomp on supported toolchains" OFF)
+
 set(BBHASH_DIR ${build_vendor_dir}/BBHash)
 set(CLOUDFLARE_ZLIB_DIR ${build_vendor_dir}/cloudflare_zlib)
 set(ZSTD_DIR ${build_vendor_dir}/zstd)
@@ -374,6 +378,53 @@ if (WIN32)
 endif ()
 
 add_dependencies(spring2 rapidgzip)
+
+# On Windows with GNU toolchain: support static linking of GCC runtimes
+if (WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    if (SPRING_STATIC_RUNTIMES)
+        message(STATUS "SPRING: linking libgcc/libstdc++/libgomp statically")
+        # Prefer modern CMake link options when available
+        if (COMMAND target_link_options)
+            target_link_options(spring2 PRIVATE -static-libgcc -static-libstdc++ -static-libgomp)
+        else()
+            set_property(TARGET spring2 APPEND_STRING PROPERTY LINK_FLAGS " -static-libgcc -static-libstdc++ -static-libgomp")
+        endif()
+    else()
+        # Add a post-build step and a convenience target to copy commonly required
+        # GCC runtime DLLs (if present near the compiler) into the executable dir.
+        get_filename_component(SPRING_GCC_BIN_DIR "${CMAKE_C_COMPILER}" DIRECTORY)
+        set(SPRING_RUNTIME_DLLS
+            libgomp-1.dll
+            libstdc++-6.dll
+            libgcc_s_seh-1.dll
+            libwinpthread-1.dll
+        )
+
+        foreach(_dll IN LISTS SPRING_RUNTIME_DLLS)
+            set(_src "${SPRING_GCC_BIN_DIR}/${_dll}")
+            if (EXISTS "${_src}")
+                add_custom_command(TARGET spring2 POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_src}" "$<TARGET_FILE_DIR:spring2>/${_dll}"
+                    COMMENT "Copying runtime ${_dll} to target directory"
+                )
+            endif()
+        endforeach()
+
+        # Convenience target to explicitly copy runtime DLLs (useful for installers)
+        add_custom_target(copy_runtime_dlls
+            COMMENT "Copy GCC runtime DLLs next to spring2 executable"
+        )
+        add_dependencies(copy_runtime_dlls spring2)
+        foreach(_dll IN LISTS SPRING_RUNTIME_DLLS)
+            set(_src "${SPRING_GCC_BIN_DIR}/${_dll}")
+            if (EXISTS "${_src}")
+                add_custom_command(TARGET copy_runtime_dlls POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_src}" "$<TARGET_FILE_DIR:spring2>/${_dll}"
+                )
+            endif()
+        endforeach()
+    endif()
+endif()
 
 add_dev_script_target(dev-lint lint.sh)
 add_dev_script_target(dev-cppcheck cppcheck.sh)

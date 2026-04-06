@@ -131,48 +131,39 @@ export PATH="$HOMEBREW_LLVM_BIN:$PATH"
 
 ### Windows
 
-CI uses MSYS2 UCRT64. Installing the same environment locally is the easiest way to match the supported build.
+### Windows (native MinGW-w64)
 
-Install MSYS2 from <https://www.msys2.org/> and then open an `MSYS2 UCRT64` shell.
+You can build using a standalone MinGW-w64 (UCRT) distribution and native CMake/Ninja.
 
-Install the build requirements:
+What to install (exact recommendations):
 
-```bash
-pacman -Syu
-pacman -S --needed \
-  mingw-w64-ucrt-x86_64-gcc \
-  mingw-w64-ucrt-x86_64-cmake \
-  mingw-w64-ucrt-x86_64-nasm \
-  mingw-w64-ucrt-x86_64-ninja
+- MinGW-w64 UCRT64 (standalone): get a winlibs MinGW build
+  https://winlibs.com/ — download the latest "ucrt64" archive and extract it to C:\mingw-w64\ucrt64
+- CMake (>= 4.2): Windows installer from Kitware
+  https://cmake.org/download/
+- Ninja: download single `ninja.exe` binary and extract it to C:\ninja\
+  https://github.com/ninja-build/ninja/releases
+- NASM (assembler): Windows installer
+  https://www.nasm.us/
+(Optionally install Python if you prefer to use a CMake venv, but not required.)
+
+Arrange PATH (temporary for current cmd session)
+Open a new `cmd.exe` and run (adjust paths to where you installed/extracted):
+
+```cmd
+set PATH=C:\mingw-w64\ucrt64\bin;C:\Program Files\CMake\bin;C:\path\to\ninja;%PATH%
+set CC=gcc
+set CXX=g++
 ```
 
-If you installed the UCRT64 packages but are in a different MSYS shell, ensure the UCRT64 toolchain is on your `PATH` for this session and verify `cmake` is available:
+Configure & build (native cmd)
+From the repo root:
 
-```bash
-export PATH="/ucrt64/bin:$PATH"
-which cmake
-cmake --version
-```
-
-Configure and build:
-
-```bash
-CC=gcc CXX=g++ \
-cmake -S . -B build \
-  -G Ninja \
-  -Dspring_optimize_for_native=OFF \
-  -Dspring_optimize_for_portability=ON
-
+```cmd
+rmdir /s /q build
+cmake -S . -B build -G Ninja -DSPRING_STATIC_RUNTIMES=OFF -Dspring_optimize_for_native=OFF -Dspring_optimize_for_portability=ON
 cmake --build build --parallel
-```
-
-Optional analysis tools used in CI:
-
-```bash
-pacman -S --needed \
-  mingw-w64-ucrt-x86_64-clang-tools-extra \
-  mingw-w64-ucrt-x86_64-cppcheck \
-  mingw-w64-ucrt-x86_64-python
+cmake --build build --target copy_runtime_dlls
 ```
 
 ## Running SPRING

@@ -60,17 +60,11 @@ jobs:
           echo "$CMAKE_VENV/bin" >> "$GITHUB_PATH"
           "$CMAKE_VENV/bin/cmake" --version
 
-      - name: Set up MSYS2
+      - name: Install native MinGW-w64 toolchain (winlibs) and tools
         if: runner.os == 'Windows'
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          update: true
-          install: >-
-            mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-cmake
-            mingw-w64-ucrt-x86_64-nasm
-            mingw-w64-ucrt-x86_64-ninja
+        run: |
+          choco install -y cmake ninja nasm
+          powershell -Command "$ErrorActionPreference='Stop'; Write-Host 'Downloading winlibs...'; $tmp=Join-Path $env:TEMP 'winlibs.zip'; Invoke-WebRequest -Uri 'https://winlibs.com/remote.php?file=winlibs-x86_64-posix-seh-gcc-12.2.0-ucrt-11.0.0.zip' -OutFile $tmp; Expand-Archive -Path $tmp -DestinationPath C:\mingw-w64; Remove-Item $tmp -Force; Write-Host 'Configuring PATH'; Add-Content -Path $env:GITHUB_PATH -Value 'C:\mingw-w64\winlibs\ucrt64\bin'"
 
       - name: Configure on Linux
         if: runner.os == 'Linux'
@@ -103,15 +97,12 @@ jobs:
 
       - name: Configure on Windows
         if: runner.os == 'Windows'
-        shell: msys2 {0}
+        shell: powershell
         env:
           CC: gcc
           CXX: g++
         run: |
-          cmake -S . -B build \
-            -G Ninja \
-            -Dspring_optimize_for_native=OFF \
-            -Dspring_optimize_for_portability=ON
+          cmake -S . -B build -G Ninja -Dspring_optimize_for_native=OFF -Dspring_optimize_for_portability=ON
 
       - name: Build on Linux and macOS
         if: runner.os != 'Windows'
@@ -119,21 +110,24 @@ jobs:
 
       - name: Build on Windows
         if: runner.os == 'Windows'
-        shell: msys2 {0}
+        shell: powershell
         run: cmake --build build --parallel
 
       - name: Smoke test on Linux and macOS
         if: runner.os != 'Windows'
         run: tests/test_script.sh
 
-      - name: Smoke test on Windows
+      - name: Smoke test on Windows (basic native check)
         if: runner.os == 'Windows'
-        shell: msys2 {0}
+        shell: powershell
         env:
           SPRING_TEST_ARGS: -t 1 --memory 1
-          SPRING_COMMAND_TIMEOUT_SECONDS: 300
-          SPRING_SMOKE_MODE: windows-quick
-        run: tests/test_script.sh
+        run: |
+          Write-Host 'Running basic native smoke: help and quick compress/decompress'
+          & build\spring2.exe -h
+          & build\spring2.exe -c -i tests/assets/test_1.fastq -o abcd $env:SPRING_TEST_ARGS
+          & build\spring2.exe -d -i abcd -o tmp
+          if ((Get-Content tmp -Raw) -ne (Get-Content tests\assets\test_1.fastq -Raw)) { Write-Error 'Decompressed output mismatch' }
 
   static-analysis:
     name: Analysis / ${{ matrix.name }}
