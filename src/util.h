@@ -139,6 +139,14 @@ void decompress_id_block(const char *input_path, std::string *id_array,
 void quantize_quality(std::string *quality_array, const uint32_t &num_lines,
                       char *quantization_table);
 
+// Reliability helpers.
+void safe_bsc_decompress(const std::string &input_path,
+                         const std::string &output_path);
+void safe_bsc_str_array_decompress(const std::string &input_path,
+                                   std::string *string_array,
+                                   uint32_t num_strings,
+                                   uint32_t *string_lengths);
+
 void quantize_quality_qvz(std::string *quality_array, const uint32_t &num_lines,
                           uint32_t *str_len_array, double qv_ratio);
 

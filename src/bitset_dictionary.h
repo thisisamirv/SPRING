@@ -40,13 +40,13 @@ public:
   uint32_t dict_numreads; // Number of reads long enough to participate here.
   uint32_t *startpos;
   uint32_t *read_id;
-  bool *empty_bin;
+  std::vector<bool> empty_bin;
   void findpos(int64_t *dictidx, const uint64_t &startposidx);
   void remove(const int64_t *dictidx, const uint64_t &startposidx,
               const int64_t read_id_to_remove);
   bbhashdict()
       : bphf(NULL), start(0), end(0), numkeys(0), dict_numreads(0),
-        startpos(NULL), read_id(NULL), empty_bin(NULL) {}
+        startpos(NULL), read_id(NULL) {}
   bbhashdict(const bbhashdict &) = delete;
   bbhashdict &operator=(const bbhashdict &) = delete;
   ~bbhashdict() {
@@ -54,8 +54,6 @@ public:
       delete[] startpos;
     if (read_id != NULL)
       delete[] read_id;
-    if (empty_bin != NULL)
-      delete[] empty_bin;
     if (bphf != NULL)
       delete bphf;
   }
@@ -191,7 +189,7 @@ inline void count_bucket_sizes(bbhashdict &dictionary,
 }
 
 inline void finalize_bucket_offsets(bbhashdict &dictionary) {
-  dictionary.empty_bin = new bool[dictionary.numkeys]();
+  dictionary.empty_bin.assign(dictionary.numkeys, false);
   for (uint32_t key_index = 1; key_index < dictionary.numkeys; key_index++) {
     dictionary.startpos[key_index] += dictionary.startpos[key_index - 1];
   }

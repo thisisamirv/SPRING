@@ -17,8 +17,7 @@ uint32_t bucket_tail_marker(const uint32_t *read_ids,
 
 int64_t logical_bin_end(const uint32_t *read_ids, const int64_t bin_begin,
                         const uint32_t bucket_end_index) {
-  const uint32_t tail_marker =
-      bucket_tail_marker(read_ids, bucket_end_index);
+  const uint32_t tail_marker = bucket_tail_marker(read_ids, bucket_end_index);
 
   if (tail_marker == MAX_NUM_READS)
     return bucket_end_index - 1;
@@ -33,10 +32,9 @@ void update_tail_marker_after_remove(uint32_t *read_ids,
                                      const int64_t logical_end,
                                      const int64_t original_bin_size,
                                      const uint32_t bucket_end_index) {
-  const uint32_t tail_marker =
-      bucket_tail_marker(read_ids, bucket_end_index);
+  const uint32_t tail_marker = bucket_tail_marker(read_ids, bucket_end_index);
 
-  if (logical_end == static_cast<int64_t>(bucket_end_index)) { // NOLINT(modernize-use-integer-sign-comparison)
+  if (std::cmp_equal(logical_end, bucket_end_index)) {
     read_ids[bucket_end_index - 1] = MAX_NUM_READS;
     return;
   }

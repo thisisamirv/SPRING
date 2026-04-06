@@ -14,7 +14,6 @@
 #include <omp.h>
 #include <sstream>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace spring {
@@ -99,11 +98,12 @@ uint64_t write_packed_sequence(const std::string &sequence_path,
   return sequence_length;
 }
 
-void pack_sequence_chunk(const encoder_global &encoder_state, const int thread_id,
+void pack_sequence_chunk(const encoder_global &encoder_state,
+                         const int thread_id,
                          uint64_t *thread_sequence_lengths) {
   const sequence_pack_paths paths =
       make_sequence_pack_paths(encoder_state.outfile_seq, thread_id);
-  
+
   const uint64_t sequence_length = write_packed_sequence(
       paths.input_path, paths.packed_path, paths.tail_path);
   thread_sequence_lengths[thread_id] = sequence_length;
@@ -138,7 +138,8 @@ void pack_compress_seq(const encoder_global &encoder_state,
     }
   }
 
-  // Concatenate all thread-local packed files and compress as one monolithic block.
+  // Concatenate all thread-local packed files and compress as one monolithic
+  // block.
   std::string monolithic_packed_path = encoder_state.outfile_seq + ".packed";
   std::ofstream monolithic_out(monolithic_packed_path, std::ios::binary);
   for (int tid = 0; tid < encoder_state.num_thr; tid++) {
@@ -154,7 +155,7 @@ void pack_compress_seq(const encoder_global &encoder_state,
   monolithic_out.close();
 
   std::string monolithic_compressed_path = encoder_state.outfile_seq + ".bsc";
-  bsc::BSC_compress(monolithic_packed_path.c_str(), 
+  bsc::BSC_compress(monolithic_packed_path.c_str(),
                     monolithic_compressed_path.c_str());
   remove(monolithic_packed_path.c_str());
 }
@@ -195,7 +196,7 @@ std::string buildcontig(std::list<contig_reads> &current_contig,
   int64_t current_position = 0;
   int64_t contig_size = 0;
   int64_t positions_to_append;
-  std::vector<std::array<uint32_t, 4>> base_counts;
+  std::vector<std::array<uint16_t, 4>> base_counts;
   for (; current_contig_it != current_contig.end(); ++current_contig_it) {
     if (current_contig_it == current_contig.begin())
       positions_to_append = (*current_contig_it).read_length;
@@ -222,15 +223,18 @@ std::string buildcontig(std::list<contig_reads> &current_contig,
     base_counts.insert(base_counts.end(), (size_t)positions_to_append,
                        {0, 0, 0, 0});
     contig_size = contig_size + positions_to_append;
-    for (size_t i = 0; i < static_cast<size_t>((*current_contig_it).read_length);
-         ++i) {
+    for (size_t i = 0;
+         i < static_cast<size_t>((*current_contig_it).read_length); ++i) {
       const size_t idx = static_cast<size_t>(current_position) + i;
-      base_counts[idx][base_index_lookup[(uint8_t)(*current_contig_it).read[i]]] += 1;
+      uint8_t base_idx = base_index_lookup[(uint8_t)(*current_contig_it).read[i]];
+      if (base_counts[idx][base_idx] < 65535) {
+        base_counts[idx][base_idx] += 1;
+      }
     }
   }
   std::string ref(base_counts.size(), 'A');
   for (size_t i = 0; i < base_counts.size(); i++) {
-    uint32_t best_base_count = 0;
+    uint16_t best_base_count = 0;
     uint32_t best_base_index = 0;
     for (uint32_t base_index = 0; base_index < 4; base_index++)
       if (base_counts[i][base_index] > best_base_count) {
@@ -262,7 +266,8 @@ void writecontig(const std::string &ref,
          ++read_offset) {
       const size_t pos = static_cast<size_t>(current_position) + read_offset;
       if ((*current_contig_it).read[read_offset] != ref[pos]) {
-        f_noise << eg.enc_noise[(uint8_t)ref[pos]][(uint8_t)(*current_contig_it).read[read_offset]];
+        f_noise << eg.enc_noise[(
+            uint8_t)ref[pos]][(uint8_t)(*current_contig_it).read[read_offset]];
         pos_var = static_cast<uint16_t>(read_offset - previous_noise_offset);
         f_noisepos.write(byte_ptr(&pos_var), sizeof(uint16_t));
         previous_noise_offset = read_offset;
@@ -279,7 +284,6 @@ void writecontig(const std::string &ref,
   abs_pos += ref.size();
   return;
 }
-
 
 void getDataParams(encoder_global &eg, const compression_params &cp) {
   uint32_t clean_read_count;

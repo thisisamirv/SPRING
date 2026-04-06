@@ -2,8 +2,8 @@
 // layout, temporary-file coordination, and user-facing workflow decisions.
 
 #include <algorithm>
-#include <chrono>
 #include <cctype>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -18,14 +18,14 @@
 #include <utility>
 #include <vector>
 
-#include "template_dispatch.h"
 #include "decompress.h"
-#include "params.h"
 #include "paired_end_order.h"
+#include "params.h"
 #include "preprocess.h"
 #include "reordered_quality_id.h"
 #include "reordered_streams.h"
 #include "spring.h"
+#include "template_dispatch.h"
 #include "util.h"
 
 namespace spring {
@@ -93,10 +93,10 @@ void read_compression_params(std::istream &in, compression_params &cp) {
   in.read(byte_ptr(&cp.num_reads_per_block_long), sizeof(int));
   in.read(byte_ptr(&cp.num_thr), sizeof(int));
   in.read(byte_ptr(&cp.compression_level), sizeof(int));
-    in.read(reinterpret_cast<char *>(cp.file_len_seq_thr),
-      sizeof(uint64_t) * compression_params::kFileLenThrSize);
-    in.read(reinterpret_cast<char *>(cp.file_len_id_thr),
-      sizeof(uint64_t) * compression_params::kFileLenThrSize);
+  in.read(reinterpret_cast<char *>(cp.file_len_seq_thr),
+          sizeof(uint64_t) * compression_params::kFileLenThrSize);
+  in.read(reinterpret_cast<char *>(cp.file_len_id_thr),
+          sizeof(uint64_t) * compression_params::kFileLenThrSize);
 }
 
 namespace {
@@ -188,7 +188,7 @@ int parse_int_or_throw(const std::string &value, const char *error_message) {
 bool has_suffix(const std::string &value, const std::string &suffix) {
   if (suffix.size() > value.size())
     return false;
-  return value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0; // NOLINT(modernize-use-starts-ends-with)
+  return value.ends_with(suffix);
 }
 
 std::string to_ascii_lowercase(std::string value) {
@@ -243,10 +243,11 @@ std::string strip_gzip_suffix(const std::string &input_path) {
 std::string decompressed_input_path(const std::string &temp_dir,
                                     const std::string &input_path,
                                     const int input_index) {
-  const std::filesystem::path stripped_input_path(strip_gzip_suffix(input_path));
+  const std::filesystem::path stripped_input_path(
+      strip_gzip_suffix(input_path));
   const std::string filename = stripped_input_path.filename().string();
-  return temp_dir + "/compression_input_" + std::to_string(input_index) +
-         "." + filename;
+  return temp_dir + "/compression_input_" + std::to_string(input_index) + "." +
+         filename;
 }
 
 #ifdef SPRING_RAPIDGZIP_EXECUTABLE
@@ -305,9 +306,9 @@ void decompress_gzip_input_file(const std::string &input_path,
   decompress_gzip_input_file_with_zlib(input_path, output_path);
 }
 
-prepared_compression_inputs prepare_compression_inputs(
-    const compression_io_config &io_config, const std::string &temp_dir,
-    const int num_thr) {
+prepared_compression_inputs
+prepare_compression_inputs(const compression_io_config &io_config,
+                           const std::string &temp_dir, const int num_thr) {
   prepared_compression_inputs prepared_inputs{
       .input_path_1 = io_config.input_path_1,
       .input_path_2 = io_config.input_path_2,
@@ -351,17 +352,20 @@ void cleanup_prepared_compression_inputs(
 
 bool is_fastq_extension(const std::string &path) {
   const std::string lowercase_path = to_ascii_lowercase(path);
-  return has_suffix(lowercase_path, ".fastq") || has_suffix(lowercase_path, ".fq");
+  return has_suffix(lowercase_path, ".fastq") ||
+         has_suffix(lowercase_path, ".fq");
 }
 
 bool is_fasta_extension(const std::string &path) {
   const std::string lowercase_path = to_ascii_lowercase(path);
-  return has_suffix(lowercase_path, ".fasta") || has_suffix(lowercase_path, ".fa") ||
+  return has_suffix(lowercase_path, ".fasta") ||
+         has_suffix(lowercase_path, ".fa") ||
          has_suffix(lowercase_path, ".fna");
 }
 
-input_record_format detect_input_format_from_extension(const std::string &input_path,
-                                                       bool &detected) {
+input_record_format
+detect_input_format_from_extension(const std::string &input_path,
+                                   bool &detected) {
   if (is_fastq_extension(input_path)) {
     detected = true;
     return input_record_format::fastq;
@@ -375,8 +379,9 @@ input_record_format detect_input_format_from_extension(const std::string &input_
   return input_record_format::fastq;
 }
 
-input_record_format detect_input_format_from_content(const std::string &input_path,
-                                                     bool &detected) {
+input_record_format
+detect_input_format_from_content(const std::string &input_path,
+                                 bool &detected) {
   std::ifstream input_stream(input_path);
   if (!input_stream.is_open()) {
     throw std::runtime_error("Error opening input file: " + input_path);
@@ -396,8 +401,8 @@ input_record_format detect_input_format_from_content(const std::string &input_pa
     if (first_marker == '>')
       return input_record_format::fasta;
     if (first_marker != '@') {
-      throw std::runtime_error("Unable to detect whether input is FASTA or FASTQ: " +
-                               input_path);
+      throw std::runtime_error(
+          "Unable to detect whether input is FASTA or FASTQ: " + input_path);
     }
 
     if (non_empty_lines.size() < 3)
@@ -557,9 +562,10 @@ void print_compressed_stream_sizes(const std::string &temp_dir) {
   std::cout << "ID:         " << std::setw(12) << size_id << " bytes\n";
 }
 
-decompression_io_config resolve_decompression_io(const string_list &input_paths,
-                                                 const string_list &output_paths,
-                                                 const bool paired_end) {
+decompression_io_config
+resolve_decompression_io(const string_list &input_paths,
+                         const string_list &output_paths,
+                         const bool paired_end) {
   decompression_io_config io_config;
 
   if (input_paths.size() != 1)
@@ -594,8 +600,9 @@ decompression_io_config resolve_decompression_io(const string_list &input_paths,
   return io_config;
 }
 
-decompression_span resolve_decompression_span(const read_range &decompress_range,
-                                              const uint64_t total_read_pairs) {
+decompression_span
+resolve_decompression_span(const read_range &decompress_range,
+                           const uint64_t total_read_pairs) {
   decompression_span span{.start_read_index = 0,
                           .end_read_index = total_read_pairs};
   if (decompress_range.empty())
@@ -603,8 +610,7 @@ decompression_span resolve_decompression_span(const read_range &decompress_range
 
   if (decompress_range.size() != 2)
     throw std::runtime_error("Invalid decompression range parameters.");
-  if (decompress_range[0] == 0 ||
-      decompress_range[0] > decompress_range[1] ||
+  if (decompress_range[0] == 0 || decompress_range[0] > decompress_range[1] ||
       decompress_range[0] > total_read_pairs ||
       decompress_range[1] > total_read_pairs) {
     throw std::runtime_error("Invalid decompression range parameters.");
@@ -619,10 +625,10 @@ decompression_span resolve_decompression_span(const read_range &decompress_range
 
 void compress(const std::string &temp_dir,
               const std::vector<std::string> &input_paths,
-              const std::vector<std::string> &output_paths,
-              const int &num_thr,
+              const std::vector<std::string> &output_paths, const int &num_thr,
               const bool &pairing_only_flag, const bool &no_quality_flag,
-              const bool &no_ids_flag, const std::vector<std::string> &quality_options,
+              const bool &no_ids_flag,
+              const std::vector<std::string> &quality_options,
               const bool &long_flag, const int &compression_level) {
   omp_set_dynamic(0);
 
@@ -633,23 +639,23 @@ void compress(const std::string &temp_dir,
       resolve_compression_io(input_paths, output_paths);
   const prepared_compression_inputs prepared_inputs =
       prepare_compression_inputs(io_config, temp_dir, num_thr);
-    const input_record_format input_format_1 =
+  const input_record_format input_format_1 =
       detect_input_format(prepared_inputs.input_path_1);
-    input_record_format input_format = input_format_1;
-    if (io_config.paired_end) {
+  input_record_format input_format = input_format_1;
+  if (io_config.paired_end) {
     const input_record_format input_format_2 =
-      detect_input_format(prepared_inputs.input_path_2);
+        detect_input_format(prepared_inputs.input_path_2);
     if (input_format_1 != input_format_2) {
       cleanup_prepared_compression_inputs(prepared_inputs);
       throw std::runtime_error(
-        "Paired-end inputs must both be FASTQ or both be FASTA.");
+          "Paired-end inputs must both be FASTQ or both be FASTA.");
     }
     input_format = input_format_2;
-    }
-    const bool fasta_input = input_format == input_record_format::fasta;
+  }
+  const bool fasta_input = input_format == input_record_format::fasta;
   const bool preserve_order = !pairing_only_flag;
   const bool preserve_id = !no_ids_flag;
-    const bool preserve_quality = !no_quality_flag && !fasta_input;
+  const bool preserve_quality = !no_quality_flag && !fasta_input;
 
   compression_params cp{};
   cp.paired_end = io_config.paired_end;
@@ -671,14 +677,15 @@ void compress(const std::string &temp_dir,
     std::cout << "FASTA input detected; quality values will not be stored.\n";
   }
 
-  if (prepared_inputs.input_1_was_gzipped || prepared_inputs.input_2_was_gzipped) {
-    std::cout << "Detected gzipped input; decompressing to temporary input files before compression.\n";
+  if (prepared_inputs.input_1_was_gzipped ||
+      prepared_inputs.input_2_was_gzipped) {
+    std::cout << "Detected gzipped input; decompressing to temporary input "
+                 "files before compression.\n";
   }
 
   run_timed_step("Preprocessing ...", "Preprocessing", [&] {
     preprocess(prepared_inputs.input_path_1, prepared_inputs.input_path_2,
-               temp_dir, cp,
-               fasta_input);
+               temp_dir, cp, fasta_input);
   });
   cleanup_prepared_compression_inputs(prepared_inputs);
   print_temp_dir_size(temp_dir);
@@ -695,9 +702,8 @@ void compress(const std::string &temp_dir,
 
     if (!preserve_order && (preserve_quality || preserve_id)) {
       run_timed_step("Reordering and compressing quality and/or ids ...",
-                     "Reordering and compressing quality and/or ids", [&] {
-                       reorder_compress_quality_id(temp_dir, cp);
-                     });
+                     "Reordering and compressing quality and/or ids",
+                     [&] { reorder_compress_quality_id(temp_dir, cp); });
       print_temp_dir_size(temp_dir);
     }
 
@@ -724,10 +730,10 @@ void compress(const std::string &temp_dir,
 
   run_timed_step("Creating tar archive ...", "Tar archive", [&] {
     const std::string tar_command =
-      "tar -cf " + shell_quote(shell_path(io_config.archive_path)) +
-      " -C " + shell_quote(shell_path(temp_dir)) + " .";
-    run_system_command_or_throw(tar_command,
-                                "Error occurred during tar archive generation.");
+        "tar -cf " + shell_quote(shell_path(io_config.archive_path)) + " -C " +
+        shell_quote(shell_path(temp_dir)) + " .";
+    run_system_command_or_throw(
+        tar_command, "Error occurred during tar archive generation.");
   });
 
   const auto compression_end = clock_type::now();
@@ -742,8 +748,7 @@ void compress(const std::string &temp_dir,
   fs::path archive_file_path{io_config.archive_path};
   std::cout << "\n";
   std::cout << "Total size: " << std::setw(12)
-            << fs::file_size(archive_file_path)
-            << " bytes\n";
+            << fs::file_size(archive_file_path) << " bytes\n";
   return;
 }
 

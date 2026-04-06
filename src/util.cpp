@@ -719,7 +719,7 @@ void decompress_id_block(const char *input_path, std::string *id_array,
   } else {
     // ID decompression switched back to BSC to match the restored encoder.
     temp_id_path = std::string(input_path) + ".tmp_id_dec";
-    bsc::BSC_decompress(input_path, temp_id_path.c_str());
+    safe_bsc_decompress(input_path, temp_id_path);
   }
 
   std::ifstream id_in(temp_id_path, std::ios::binary | std::ios::ate);
@@ -999,6 +999,56 @@ int64_t read_var_int64(std::ifstream &input_stream) {
     shift += 7;
   } while (byte & 0x80);
   return zigzag_decode64(encoded_value);
+}
+
+
+void safe_bsc_decompress(const std::string &input_path,
+                         const std::string &output_path) {
+  std::ifstream input(input_path, std::ios::binary | std::ios::ate);
+  if (!input.is_open()) {
+    throw std::runtime_error("Can't open compressed file for validation: " +
+                             input_path);
+  }
+
+  const std::streampos file_size = input.tellg();
+  if (file_size < 4) {
+    throw std::runtime_error("Compressed file is too small to be valid: " +
+                             input_path);
+  }
+  input.close();
+
+  try {
+    bsc::BSC_decompress(input_path.c_str(), output_path.c_str());
+  } catch (const std::exception &e) {
+    throw std::runtime_error("BSC decompression failed for " + input_path +
+                             ": " + e.what());
+  }
+}
+
+void safe_bsc_str_array_decompress(const std::string &input_path,
+                                   std::string *string_array,
+                                   uint32_t num_strings,
+                                   uint32_t *string_lengths) {
+  std::ifstream input(input_path, std::ios::binary | std::ios::ate);
+  if (!input.is_open()) {
+    throw std::runtime_error(
+        "Can't open compressed string array for validation: " + input_path);
+  }
+
+  const std::streampos file_size = input.tellg();
+  if (file_size < 4) {
+    throw std::runtime_error("Compressed string array is too small to be valid: " +
+                             input_path);
+  }
+  input.close();
+
+  try {
+    bsc::BSC_str_array_decompress(input_path.c_str(), string_array, num_strings,
+                                  string_lengths);
+  } catch (const std::exception &e) {
+    throw std::runtime_error("BSC string array decompression failed for " +
+                             input_path + ": " + e.what());
+  }
 }
 
 } // namespace spring
