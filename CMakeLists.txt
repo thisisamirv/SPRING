@@ -165,7 +165,18 @@ foreach(openmp_include_dir IN LISTS SPRING_OPENMP_INCLUDE_DIRS)
     string(APPEND SPRING_CLANGD_FLAGS ", \"-I${openmp_include_dir}\"")
 endforeach ()
 file(WRITE "${CMAKE_SOURCE_DIR}/.clangd" "CompileFlags:\n  Add: [${SPRING_CLANGD_FLAGS}]\n")
-file(CREATE_LINK "${CMAKE_BINARY_DIR}/compile_commands.json" "${CMAKE_SOURCE_DIR}/compile_commands.json" SYMBOLIC)
+if (WIN32)
+    # On Windows creating symbolic links often requires elevated privileges.
+    # Instead of creating a symbolic link during configure, add a build
+    # target that copies compile_commands.json from the build directory
+    # into the source tree after it is generated.
+    add_custom_target(copy_compile_commands ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_BINARY_DIR}/compile_commands.json" "${CMAKE_SOURCE_DIR}/compile_commands.json"
+        COMMENT "Copying compile_commands.json into source tree"
+    )
+else()
+    file(CREATE_LINK "${CMAKE_BINARY_DIR}/compile_commands.json" "${CMAKE_SOURCE_DIR}/compile_commands.json" SYMBOLIC)
+endif()
 
 message(STATUS "** CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
 message(STATUS "** CMAKE_C_FLAGS: ${CMAKE_C_FLAGS}")

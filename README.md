@@ -146,6 +146,14 @@ pacman -S --needed \
   mingw-w64-ucrt-x86_64-ninja
 ```
 
+If you installed the UCRT64 packages but are in a different MSYS shell, ensure the UCRT64 toolchain is on your `PATH` for this session and verify `cmake` is available:
+
+```bash
+export PATH="/ucrt64/bin:$PATH"
+which cmake
+cmake --version
+```
+
 Configure and build:
 
 ```bash
