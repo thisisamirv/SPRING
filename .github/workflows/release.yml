@@ -8,6 +8,9 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     strategy:
@@ -59,14 +62,18 @@ jobs:
         run: |
           docker run --rm --platform linux/arm64 -v "$PWD":/work -w /work arm64v8/ubuntu:22.04 /bin/bash -c "
             apt-get update && \
-            apt-get install -y build-essential libomp-dev ninja-build nasm python3 python3-pip python3-venv && \
+            apt-get install -y --no-install-recommends build-essential libomp-dev ninja-build nasm python3 python3-pip python3-venv && \
             python3 -m venv .cmake-venv && \
             . .cmake-venv/bin/activate && \
             python -m pip install 'cmake==4.2.0' && \
-            cmake -S . -B build -G Ninja -Dspring_optimize_for_native=OFF -Dspring_optimize_for_portability=ON && \
+            cmake -S . -B build -G Ninja \
+              -DCMAKE_C_FLAGS="-march=armv8-a+crc" \
+              -DCMAKE_CXX_FLAGS="-march=armv8-a+crc" \
+              -Dspring_optimize_for_native=OFF \
+              -Dspring_optimize_for_portability=ON && \
             cmake --build build --parallel && \
             strip build/spring2 && \
-            apt-get install -y wget && \
+            apt-get install -y --no-install-recommends wget && \
             echo "Name=SPRING2" > spring2.desktop && \
             echo "[Desktop Entry]" >> spring2.desktop && \
             echo "Type=Application" >> spring2.desktop && \
