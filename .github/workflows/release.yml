@@ -79,7 +79,7 @@ jobs:
             echo "Icon=spring2" >> spring2.desktop && \
             echo "Categories=Science;Biology;" >> spring2.desktop && \
             echo "Terminal=true" >> spring2.desktop && \
-            echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" | base64 -d > spring2.png && \
+            python3 -c "import zlib, struct; make_png = lambda w, h, p: b'\x89PNG\r\n\x1a\n' + (lambda chunk: lambda type, data: struct.pack('>I', len(data)) + type + data + struct.pack('>I', zlib.crc32(type + data) & 0xffffffff))(0)(b'IHDR', struct.pack('>2I5B', w, h, 8, 2, 0, 0, 0)) + (lambda chunk: lambda type, data: struct.pack('>I', len(data)) + type + data + struct.pack('>I', zlib.crc32(type + data) & 0xffffffff))(0)(b'IDAT', zlib.compress(b''.join(b'\x00' + p[i*w*3:(i+1)*w*3] for i in range(h)))) + (lambda chunk: lambda type, data: struct.pack('>I', len(data)) + type + data + struct.pack('>I', zlib.crc32(type + data) & 0xffffffff))(0)(b'IEND', b''); open('spring2.png', 'wb').write(make_png(32, 32, b'\xff\x00\x00' * 1024))" && \
             export EXTRA_QT_PLUGINS= && \
             ./linuxdeploy --appimage-extract-and-run --appdir AppDir --executable build/spring2 --desktop-file spring2.desktop --icon-file spring2.png --output appimage && \
             mv SPRING2-*.AppImage spring2-linux-arm64.AppImage
@@ -110,6 +110,7 @@ jobs:
             mingw-w64-ucrt-x86_64-nasm
             mingw-w64-ucrt-x86_64-ninja
             mingw-w64-ucrt-x86_64-clang
+            mingw-w64-ucrt-x86_64-lld
 
       # Build jobs (Non-Windows)
       - name: Configure (Non-Windows)
@@ -120,9 +121,21 @@ jobs:
           CXX: ${{ matrix.name == 'macos' && 'clang++' || 'g++' }}
         run: |
           if [ "${{ matrix.name }}" == "macos" ]; then
-            cmake -S . -B build \
+            # Two-pass build for macOS to avoid arch-specific library conflicts (e.g. isa-l)
+            cmake -S . -B build_arm64 \
               -G Ninja \
-              -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+              -DCMAKE_OSX_ARCHITECTURES="arm64" \
+              -DOpenMP_ROOT="$MACOS_LIBOMP_PREFIX" \
+              -DOpenMP_C_FLAGS="-Xpreprocessor -fopenmp" \
+              -DOpenMP_CXX_FLAGS="-Xpreprocessor -fopenmp" \
+              -DOpenMP_C_LIB_NAMES="omp" \
+              -DOpenMP_CXX_LIB_NAMES="omp" \
+              -DOpenMP_omp_LIBRARY="$MACOS_LIBOMP_PREFIX/lib/libomp.dylib" \
+              -Dspring_optimize_for_native=OFF \
+              -Dspring_optimize_for_portability=ON
+            cmake -S . -B build_x86_64 \
+              -G Ninja \
+              -DCMAKE_OSX_ARCHITECTURES="x86_64" \
               -DOpenMP_ROOT="$MACOS_LIBOMP_PREFIX" \
               -DOpenMP_C_FLAGS="-Xpreprocessor -fopenmp" \
               -DOpenMP_CXX_FLAGS="-Xpreprocessor -fopenmp" \
@@ -142,36 +155,53 @@ jobs:
       - name: Build (Non-Windows)
         if: matrix.name != 'windows' && (matrix.arch != 'arm64' || matrix.name != 'linux')
         shell: bash
-        run: cmake --build build --parallel
+        run: |
+          if [ "${{ matrix.name }}" == "macos" ]; then
+            cmake --build build_arm64 --parallel
+            cmake --build build_x86_64 --parallel
+          else
+            cmake --build build --parallel
+          fi
 
       - name: Strip Binaries (Non-Windows)
         if: matrix.name != 'windows' && (matrix.arch != 'arm64' || matrix.name != 'linux')
         shell: bash
-        run: strip build/spring2
+        run: |
+          if [ "${{ matrix.name }}" == "macos" ]; then
+            strip build_arm64/spring2
+            strip build_x86_64/spring2
+          else
+            strip build/spring2
+          fi
 
       - name: Prepare Artifact (Non-Windows)
         if: matrix.name != 'windows'
         shell: bash
         run: |
           mkdir -p release
-          cp build/spring2 "release/${{ matrix.artifact_name }}"
-          if [ "${{ matrix.arch }}" == "x86_64" ] && [ "${{ matrix.name }}" == "linux" ]; then
-            wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
-            chmod +x linuxdeploy
-            # Create a minimal desktop file and icon for linuxdeploy to be happy
-            echo "[Desktop Entry]" > spring2.desktop
-            echo "Type=Application" >> spring2.desktop
-            echo "Name=SPRING2" >> spring2.desktop
-            echo "Exec=spring2" >> spring2.desktop
-            echo "Icon=spring2" >> spring2.desktop
-            echo "Categories=Science;Biology;" >> spring2.desktop
-            echo "Terminal=true" >> spring2.desktop
-            echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" | base64 -d > spring2.png
-            export EXTRA_QT_PLUGINS=
-            ./linuxdeploy --appimage-extract-and-run --appdir AppDir --executable build/spring2 --desktop-file spring2.desktop --icon-file spring2.png --output appimage
-            mv SPRING2-*.AppImage release/spring2-linux-x86_64.AppImage
-          elif [ "${{ matrix.arch }}" == "arm64" ] && [ "${{ matrix.name }}" == "linux" ]; then
-            cp spring2-linux-arm64.AppImage release/
+          if [ "${{ matrix.name }}" == "macos" ]; then
+            lipo -create build_arm64/spring2 build_x86_64/spring2 -output release/spring2-macos-universal
+            file release/spring2-macos-universal
+          else
+            cp build/spring2 "release/${{ matrix.artifact_name }}"
+            if [ "${{ matrix.arch }}" == "x86_64" ] && [ "${{ matrix.name }}" == "linux" ]; then
+              wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
+              chmod +x linuxdeploy
+              # Create a minimal desktop file and icon for linuxdeploy to be happy
+              echo "[Desktop Entry]" > spring2.desktop
+              echo "Type=Application" >> spring2.desktop
+              echo "Name=SPRING2" >> spring2.desktop
+              echo "Exec=spring2" >> spring2.desktop
+              echo "Icon=spring2" >> spring2.desktop
+              echo "Categories=Science;Biology;" >> spring2.desktop
+              echo "Terminal=true" >> spring2.desktop
+              python3 -c "import zlib, struct; make_png = lambda w, h, p: b'\x89PNG\r\n\x1a\n' + (lambda chunk: lambda type, data: struct.pack('>I', len(data)) + type + data + struct.pack('>I', zlib.crc32(type + data) & 0xffffffff))(0)(b'IHDR', struct.pack('>2I5B', w, h, 8, 2, 0, 0, 0)) + (lambda chunk: lambda type, data: struct.pack('>I', len(data)) + type + data + struct.pack('>I', zlib.crc32(type + data) & 0xffffffff))(0)(b'IDAT', zlib.compress(b''.join(b'\x00' + p[i*w*3:(i+1)*w*3] for i in range(h)))) + (lambda chunk: lambda type, data: struct.pack('>I', len(data)) + type + data + struct.pack('>I', zlib.crc32(type + data) & 0xffffffff))(0)(b'IEND', b''); open('spring2.png', 'wb').write(make_png(32, 32, b'\xff\x00\x00' * 1024))"
+              export EXTRA_QT_PLUGINS=
+              ./linuxdeploy --appimage-extract-and-run --appdir AppDir --executable build/spring2 --desktop-file spring2.desktop --icon-file spring2.png --output appimage
+              mv SPRING2-*.AppImage release/spring2-linux-x86_64.AppImage
+            elif [ "${{ matrix.arch }}" == "arm64" ] && [ "${{ matrix.name }}" == "linux" ]; then
+              cp spring2-linux-arm64.AppImage release/
+            fi
           fi
 
       # Build jobs (Windows)
@@ -187,8 +217,9 @@ jobs:
               -G Ninja \
               -DCMAKE_SYSTEM_NAME=Windows \
               -DCMAKE_SYSTEM_PROCESSOR=ARM64 \
-              -DCMAKE_C_FLAGS="-target aarch64-w64-mingw32" \
-              -DCMAKE_CXX_FLAGS="-target aarch64-w64-mingw32" \
+              -DCMAKE_C_FLAGS="-target aarch64-w64-mingw32 -fuse-ld=lld" \
+              -DCMAKE_CXX_FLAGS="-target aarch64-w64-mingw32 -fuse-ld=lld" \
+              -DCMAKE_EXE_LINKER_FLAGS="-fuse-ld=lld" \
               -Dspring_optimize_for_native=OFF \
               -Dspring_optimize_for_portability=ON \
               -DOpenMP_C_FLAGS=" " \
