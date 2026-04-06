@@ -1,5 +1,5 @@
 <!-- markdownlint-disable MD033 -->
-# SPRING
+# SPRING2
 
 <p align="center">
   <a href="https://github.com/thisisamirv/Spring/actions/workflows/ci.yml">
@@ -11,10 +11,10 @@
 >
 > **SPRING is not provided under a permissive open-source license. Under the Non-Exclusive Research Use Software and Patent License Agreement, the software and patent rights are licensed only for non-profit research, educational, personal, and individual use. Commercial use, sublicensing, assignment, transfer, or other unlicensed making-available to third parties is not authorized absent a separate license from the University of Illinois. Any use, copying, modification, disclosure, or redistribution must comply with the original license terms, and derivative works must be clearly marked and renamed. Treat this repository as demonstration and reference material unless your intended use is expressly permitted by that license.**
 
-SPRING is a compressor for FASTQ and FASTA sequencing data, including paired-end data and gzipped FASTQ inputs.
+SPRING2 is a compressor for FASTQ and FASTA sequencing data, including paired-end data and gzipped FASTQ inputs. It is built on top of the original **[SPRING](https://github.com/shubhamchandak94/SPRING)** project and represents a substantial modernization of that codebase.
 
 > [!TIP]
-> This revision is a substantial modernization of the original SPRING codebase. In brief, it upgrades the build baseline to C++20 and CMake 4.2, removes the remaining Boost dependency, adds cross-platform build and CI support including Windows via MSYS2 UCRT64, auto-detects FASTA and gzipped compression inputs, infers gzipped decompression output from the output filename, adds the `--memory-cap-gb` safety knob, and introduces cleaner developer tooling and benchmark scripts alongside broader portability, lint, and reliability fixes.
+> This revision is a substantial modernization of the original SPRING codebase. In brief, it upgrades the build baseline to C++20 and CMake 4.2, removes the remaining Boost dependency, adds cross-platform build and CI support including Windows via MSYS2 UCRT64, auto-detects FASTA and gzipped compression inputs, infers gzipped decompression output from the output filename, adds the `--memory` safety knob, and introduces cleaner developer tooling and benchmark scripts alongside broader portability, lint, and reliability fixes.
 
 ## Features
 
@@ -210,7 +210,7 @@ Allowed options:
                                   and scaled to Zstd 1-22 internally)
 ```
 
-SPRING archives are tar files containing the internal compressed streams, though using a `.sp` extension is recommended.
+SPRING2 archives are tar files containing the internal compressed streams, though using a `.sp` extension is recommended.
 
 `--memory` is a conservative safety knob for machines with many cores and limited RAM. It does not hard-limit total allocation. Instead, it reduces the effective worker-thread count using an approximate budget of about 1 GB per worker thread.
 
@@ -232,7 +232,7 @@ On macOS analysis runs, CI prepends Homebrew LLVM to `PATH` before linting.
 
 ## Resource Usage
 
-For memory and CPU performance numbers, see the paper and supplementary material. SPRING also uses temporary disk space during compression.
+For memory and CPU performance numbers, see the paper and supplementary material. SPRING2 also uses temporary disk space during compression.
 
 In short-read mode, when qualities and identifiers are retained:
 
@@ -246,85 +246,85 @@ These figures are approximate and include the space needed for the final compres
 Compress paired-end FASTQ losslessly:
 
 ```bash
-./spring -c -i file_1.fastq file_2.fastq -o file.sp
+./spring2 -c -i file_1.fastq file_2.fastq -o file.sp
 ```
 
 Compress gzipped paired-end FASTQ losslessly:
 
 ```bash
-./spring -c -i file_1.fastq.gz file_2.fastq.gz -o file.sp
+./spring2 -c -i file_1.fastq.gz file_2.fastq.gz -o file.sp
 ```
 
 Compress with 16 threads:
 
 ```bash
-./spring -c -i file_1.fastq file_2.fastq -o file.sp -t 16
+./spring2 -c -i file_1.fastq file_2.fastq -o file.sp -t 16
 ```
 
 Compress with Illumina binning and no stored identifiers:
 
 ```bash
-./spring -c -i file_1.fastq file_2.fastq -s oi -q ill_bin -o file.sp
+./spring2 -c -i file_1.fastq file_2.fastq -s oi -q ill_bin -o file.sp
 ```
 
 Compress with binary-thresholded qualities:
 
 ```bash
-./spring -c -i file_1.fastq file_2.fastq -s oi -q binary 20 40 6 -o file.sp
+./spring2 -c -i file_1.fastq file_2.fastq -s oi -q binary 20 40 6 -o file.sp
 ```
 
 Compress with QVZ quantization:
 
 ```bash
-./spring -c -i file_1.fastq file_2.fastq -s oi -q qvz 1.0 -o file.sp
+./spring2 -c -i file_1.fastq file_2.fastq -s oi -q qvz 1.0 -o file.sp
 ```
 
 Compress reads and identifiers only:
 
 ```bash
-./spring -c -i file_1.fastq file_2.fastq -s q -o file.sp
+./spring2 -c -i file_1.fastq file_2.fastq -s q -o file.sp
 ```
 
 Compress single-end data without preserving order:
 
 ```bash
-./spring -c -i file.fastq -s o -o file.sp
+./spring2 -c -i file.fastq -s o -o file.sp
 ```
 
 Decompress single-end data:
 
 ```bash
-./spring -d -i file.sp -o file.fastq
+./spring2 -d -i file.sp -o file.fastq
 ```
 
 Decompress paired-end data to suffixed outputs:
 
 ```bash
-./spring -d -i file.sp -o file.fastq
+./spring2 -d -i file.sp -o file.fastq
 ```
 
 Decompress paired-end data to explicit outputs:
 
 ```bash
-./spring -d -i file.sp -o file_1.fastq file_2.fastq
+./spring2 -d -i file.sp -o file_1.fastq file_2.fastq
 ```
 
 Decompress paired-end data directly to gzip outputs:
 
 ```bash
-./spring -d -i file.sp -o file_1.fastq.gz file_2.fastq.gz
+./spring2 -d -i file.sp -o file_1.fastq.gz file_2.fastq.gz
 ```
 
 Compress paired-end FASTA losslessly:
 
 ```bash
-./spring -c -i file_1.fasta file_2.fasta -o file.sp
+./spring2 -c -i file_1.fasta file_2.fasta -o file.sp
 ```
 
 Decompress paired-end FASTA:
 
 ```bash
-./spring -d -i file.sp -o file_1.fasta file_2.fasta
+./spring2 -d -i file.sp -o file_1.fasta file_2.fasta
 ```
 
 ## Related

@@ -4,6 +4,8 @@
 
 ### Added
 
+* Formally rebranded the software to **SPRING2**.
+* Renamed the project and executable binary to `spring2`.
 * Added benchmark scripts under `benchmark/` for lossless round-trip runs, comparison runs, and larger manual benchmarking workflows.
 * Added round-trip integrity verification to the lossless benchmark flow, including checksum reporting when hashing tools are available.
 * Added automatic support for gzipped compression inputs by staging `.gz` inputs into the temporary working directory before normal compression.

@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
-SPRING_BIN=${SPRING_BIN:-"$ROOT_DIR/build/spring"}
+SPRING_BIN=${SPRING_BIN:-"$ROOT_DIR/build/spring2"}
 THREADS=${THREADS:-8}
 BUILD_DIR="$ROOT_DIR/build"
 TMP_DIR="$SCRIPT_DIR/tmp"
