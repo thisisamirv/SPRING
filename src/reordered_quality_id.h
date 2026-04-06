@@ -12,7 +12,7 @@ struct compression_params;
 
 // Reorder preserved ids and qualities to match the post-reorder read layout.
 void reorder_compress_quality_id(const std::string &temp_dir,
-                                 const compression_params &cp);
+                                 compression_params &cp);
 
 } // namespace spring
 

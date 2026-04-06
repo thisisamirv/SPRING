@@ -286,7 +286,7 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
                                                     current_dict.numkeys));
     std::cout << "Dictionary " << (dict_index + 1) << " of " << numdict
               << ": Building MPHF for " << current_dict.numkeys << " keys...\n";
-    const double gamma_factor = 2.0; // balance between speed and memory (reduced from 5.0 for stability)
+    const double gamma_factor = 5.0; // balance between speed and memory
     current_dict.bphf = new boomphf::mphf<uint64_t, hasher_t>(
         current_dict.numkeys, data_iterator, num_thr, gamma_factor, true,
         false);

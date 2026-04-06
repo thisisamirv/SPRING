@@ -35,7 +35,8 @@ void decompress_long(const std::string &temp_dir,
 // Packed reference chunks are decoded once, then concatenated by callers.
 void decompress_unpack_seq(const std::string &packed_seq_base_path,
                            const int &encoding_thread_count,
-                           const int &decoding_thread_count);
+                           const int &decoding_thread_count,
+                           const compression_params &cp);
 
 } // namespace spring
 

@@ -64,6 +64,10 @@ void write_compression_params(std::ostream &out, const compression_params &cp) {
   out.write(byte_ptr(&cp.num_reads_per_block_long), sizeof(int));
   out.write(byte_ptr(&cp.num_thr), sizeof(int));
   out.write(byte_ptr(&cp.compression_level), sizeof(int));
+  out.write(reinterpret_cast<const char *>(cp.file_len_seq_thr),
+            sizeof(uint64_t) * compression_params::kFileLenThrSize);
+  out.write(reinterpret_cast<const char *>(cp.file_len_id_thr),
+            sizeof(uint64_t) * compression_params::kFileLenThrSize);
 }
 
 void read_compression_params(std::istream &in, compression_params &cp) {
@@ -89,6 +93,10 @@ void read_compression_params(std::istream &in, compression_params &cp) {
   in.read(byte_ptr(&cp.num_reads_per_block_long), sizeof(int));
   in.read(byte_ptr(&cp.num_thr), sizeof(int));
   in.read(byte_ptr(&cp.compression_level), sizeof(int));
+    in.read(reinterpret_cast<char *>(cp.file_len_seq_thr),
+      sizeof(uint64_t) * compression_params::kFileLenThrSize);
+    in.read(reinterpret_cast<char *>(cp.file_len_id_thr),
+      sizeof(uint64_t) * compression_params::kFileLenThrSize);
 }
 
 namespace {
@@ -178,7 +186,9 @@ int parse_int_or_throw(const std::string &value, const char *error_message) {
 }
 
 bool has_suffix(const std::string &value, const std::string &suffix) {
-  return value.ends_with(suffix);
+  if (suffix.size() > value.size())
+    return false;
+  return value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0; // NOLINT(modernize-use-starts-ends-with)
 }
 
 std::string to_ascii_lowercase(std::string value) {

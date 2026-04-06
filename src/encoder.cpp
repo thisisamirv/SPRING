@@ -108,10 +108,7 @@ void pack_sequence_chunk(const encoder_global &encoder_state, const int thread_i
       paths.input_path, paths.packed_path, paths.tail_path);
   thread_sequence_lengths[thread_id] = sequence_length;
 
-  bsc::BSC_compress(paths.packed_path.c_str(), paths.compressed_path.c_str());
-
   remove(paths.input_path.c_str());
-  remove(paths.packed_path.c_str());
 }
 
 void calculate_sequence_lengths(const encoder_global &encoder_state,
@@ -140,6 +137,26 @@ void pack_compress_seq(const encoder_global &encoder_state,
       pack_sequence_chunk(encoder_state, tid, thread_sequence_lengths);
     }
   }
+
+  // Concatenate all thread-local packed files and compress as one monolithic block.
+  std::string monolithic_packed_path = encoder_state.outfile_seq + ".packed";
+  std::ofstream monolithic_out(monolithic_packed_path, std::ios::binary);
+  for (int tid = 0; tid < encoder_state.num_thr; tid++) {
+    const sequence_pack_paths paths =
+        make_sequence_pack_paths(encoder_state.outfile_seq, tid);
+    std::ifstream chunk_in(paths.packed_path, std::ios::binary);
+    if (chunk_in.is_open()) {
+      monolithic_out << chunk_in.rdbuf();
+      chunk_in.close();
+      remove(paths.packed_path.c_str());
+    }
+  }
+  monolithic_out.close();
+
+  std::string monolithic_compressed_path = encoder_state.outfile_seq + ".bsc";
+  bsc::BSC_compress(monolithic_packed_path.c_str(), 
+                    monolithic_compressed_path.c_str());
+  remove(monolithic_packed_path.c_str());
 }
 
 void rewrite_thread_order_file(
@@ -205,10 +222,11 @@ std::string buildcontig(std::list<contig_reads> &current_contig,
     base_counts.insert(base_counts.end(), (size_t)positions_to_append,
                        {0, 0, 0, 0});
     contig_size = contig_size + positions_to_append;
-    for (long i = 0; std::cmp_less(i, (*current_contig_it).read_length); i++)
-      base_counts[current_position + i]
-                 [base_index_lookup[(uint8_t)(*current_contig_it).read[i]]] +=
-          1;
+    for (size_t i = 0; i < static_cast<size_t>((*current_contig_it).read_length);
+         ++i) {
+      const size_t idx = static_cast<size_t>(current_position) + i;
+      base_counts[idx][base_index_lookup[(uint8_t)(*current_contig_it).read[i]]] += 1;
+    }
   }
   std::string ref(base_counts.size(), 'A');
   for (size_t i = 0; i < base_counts.size(); i++) {
@@ -232,25 +250,24 @@ void writecontig(const std::string &ref,
                  const encoder_global &eg, uint64_t &abs_pos) {
   f_seq << ref;
   uint16_t pos_var;
-  long previous_noise_offset = 0;
+  size_t previous_noise_offset = 0;
   auto current_contig_it = current_contig.begin();
   long current_position;
   uint64_t absolute_current_position;
   for (; current_contig_it != current_contig.end(); ++current_contig_it) {
     current_position = (*current_contig_it).pos;
     previous_noise_offset = 0;
-    for (long read_offset = 0;
-         std::cmp_less(read_offset, (*current_contig_it).read_length);
-         read_offset++)
-      if ((*current_contig_it).read[read_offset] !=
-          ref[current_position + read_offset]) {
-        f_noise
-            << eg.enc_noise[(uint8_t)ref[current_position + read_offset]]
-                           [(uint8_t)(*current_contig_it).read[read_offset]];
-        pos_var = read_offset - previous_noise_offset;
+    for (size_t read_offset = 0;
+         read_offset < static_cast<size_t>((*current_contig_it).read_length);
+         ++read_offset) {
+      const size_t pos = static_cast<size_t>(current_position) + read_offset;
+      if ((*current_contig_it).read[read_offset] != ref[pos]) {
+        f_noise << eg.enc_noise[(uint8_t)ref[pos]][(uint8_t)(*current_contig_it).read[read_offset]];
+        pos_var = static_cast<uint16_t>(read_offset - previous_noise_offset);
         f_noisepos.write(byte_ptr(&pos_var), sizeof(uint16_t));
         previous_noise_offset = read_offset;
       }
+    }
     f_noise << "\n";
     absolute_current_position = abs_pos + current_position;
     f_pos.write(byte_ptr(&absolute_current_position), sizeof(uint64_t));

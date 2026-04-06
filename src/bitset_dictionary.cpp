@@ -36,7 +36,7 @@ void update_tail_marker_after_remove(uint32_t *read_ids,
   const uint32_t tail_marker =
       bucket_tail_marker(read_ids, bucket_end_index);
 
-  if (std::cmp_equal(logical_end, bucket_end_index)) {
+  if (logical_end == static_cast<int64_t>(bucket_end_index)) { // NOLINT(modernize-use-integer-sign-comparison)
     read_ids[bucket_end_index - 1] = MAX_NUM_READS;
     return;
   }

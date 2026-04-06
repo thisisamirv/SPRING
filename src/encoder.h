@@ -87,10 +87,11 @@ void writecontig(const std::string &ref,
                  std::ofstream &f_RC, std::ofstream &f_readlength,
                  const encoder_global &eg, uint64_t &abs_pos);
 
-void pack_compress_seq(const encoder_global &eg, uint64_t *file_len_seq_thr);
+void pack_compress_seq(const encoder_global &encoder_state,
+                       uint64_t *thread_sequence_lengths);
 
-void calculate_sequence_lengths(const encoder_global &eg,
-                                uint64_t *file_len_seq_thr);
+void calculate_sequence_lengths(const encoder_global &encoder_state,
+                                uint64_t *thread_sequence_lengths);
 
 void getDataParams(encoder_global &eg, const compression_params &cp);
 
@@ -318,7 +319,7 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
     std::bitset<bitset_size> forward_bitset, reverse_bitset, masked_window_bits;
     char read_flag = '0', orientation = 'd';
     std::list<contig_reads> current_contig;
-    int64_t relative_position;
+    int64_t relative_position = 0;
     uint16_t read_length;
     uint32_t read_order, contig_read_count = 0;
     std::array<std::list<uint32_t>, NUM_DICT_ENCODER> deleted_rids;
@@ -575,7 +576,7 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
     orientation_output.close();
   }
 
-  for (int read_length_index = 0; read_length_index < eg.max_readlen;
+  for (int read_length_index = 0; read_length_index <= eg.max_readlen;
        read_length_index++)
     delete[] length_masks[read_length_index];
   delete[] length_masks;
@@ -660,7 +661,12 @@ void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
 }
 
 template <size_t bitset_size>
-void encoder_main(const std::string &temp_dir, const compression_params &cp) {
+void encoder_main(const std::string &temp_dir, compression_params &cp) {
+  if (cp.num_thr > static_cast<int>(compression_params::kFileLenThrSize)) {
+    throw std::runtime_error(std::string("Exceeded maximum supported thread count (") +
+                             std::to_string(compression_params::kFileLenThrSize) +
+                             "). Increase array size in util.h.");
+  }
   encoder_global_b<bitset_size> egb(cp.max_readlen);
   encoder_global eg;
 
@@ -794,6 +800,14 @@ void encoder_main(const std::string &temp_dir, const compression_params &cp) {
     abs_pos += file_len_seq_thr[tid];
   }
   fout_pos.close();
+  for (int tid = 0; tid < cp.num_thr; tid++) {
+    if (static_cast<size_t>(tid) >= compression_params::kFileLenThrSize) {
+      throw std::runtime_error(std::string("Exceeded maximum supported thread count (") +
+                               std::to_string(compression_params::kFileLenThrSize) +
+                               "). Increase array size in util.h.");
+    }
+    cp.file_len_seq_thr[tid] = file_len_seq_thr[tid];
+  }
 
   // Generate per-thread .bsc sequence blocks as expected by the decompressor.
   pack_compress_seq(eg, file_len_seq_thr.data());

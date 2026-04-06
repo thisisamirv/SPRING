@@ -53,6 +53,9 @@ struct compression_params {
   int num_reads_per_block_long;
   int num_thr;
   int compression_level;
+  static constexpr size_t kFileLenThrSize = 1024;
+  uint64_t file_len_seq_thr[kFileLenThrSize];
+  uint64_t file_len_id_thr[kFileLenThrSize];
 };
 
 class gzip_istreambuf : public std::streambuf {
@@ -126,10 +129,11 @@ void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
 
 // ID stream helpers.
 void compress_id_block(const char *output_path, std::string *id_array,
-                       const uint32_t &num_ids, const int &compression_level);
+                       const uint32_t &num_ids, const int &compression_level,
+                       bool pack_only = false);
 
 void decompress_id_block(const char *input_path, std::string *id_array,
-                         const uint32_t &num_ids);
+                         const uint32_t &num_ids, bool pack_only = false);
 
 // Quality helpers.
 void quantize_quality(std::string *quality_array, const uint32_t &num_lines,

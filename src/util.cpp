@@ -16,6 +16,7 @@
 #include <cstring>
 #include <libdeflate.h>
 #include <zstd.h>
+#include "libbsc/bsc.h"
 
 #include "omp.h"
 #include "qvz/include/qvz.h"
@@ -533,7 +534,9 @@ void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
 }
 
 void compress_id_block(const char *output_path, std::string *id_array,
-                       const uint32_t &num_ids, const int &compression_level) {
+                       const uint32_t &num_ids, const int &compression_level,
+                       bool pack_only) {
+  (void)compression_level;
   if (num_ids == 0)
     return;
 
@@ -685,61 +688,62 @@ void compress_id_block(const char *output_path, std::string *id_array,
     write_str(new_alpha_cols[i]);
   }
 
-  size_t bound = ZSTD_compressBound(buffer.size());
-  std::vector<uint8_t> compressed(bound);
-  // Map CLI compression level (1-9) to Zstd level (1-22), using nearest
-  // integer scaling so high CLI levels approach Zstd max compression.
-  int id_zstd_level = 1 + (((compression_level - 1) * 21 + 4) / 8);
-  if (id_zstd_level < 1)
-    id_zstd_level = 1;
-  if (id_zstd_level > 22)
-    id_zstd_level = 22;
-  size_t c_size = ZSTD_compress(compressed.data(), compressed.size(),
-                                buffer.data(), buffer.size(), id_zstd_level);
-  if (ZSTD_isError(c_size))
-    throw std::runtime_error(
-        "Zstd execution failed during C-SiT ID compression.");
-
-  FILE *f = fopen(output_path, "wb");
-  if (!f)
-    throw std::runtime_error("Failed to open ID output file for writing.");
-  if (fwrite(compressed.data(), 1, c_size, f) != c_size) {
-    fclose(f);
-    throw std::runtime_error("Failed to write compressed ID block.");
+  if (pack_only) {
+    std::ofstream fout(output_path, std::ios::binary);
+    if (!fout)
+      throw std::runtime_error("Failed to open ID pack output file.");
+    fout.write(reinterpret_cast<const char *>(buffer.data()), buffer.size());
+    return;
   }
-  fclose(f);
+
+  // ID compression switched from Zstd to BSC to restore the optimal 48MB ratio.
+  const std::string temp_id_path = std::string(output_path) + ".tmp_id";
+  std::ofstream id_out(temp_id_path, std::ios::binary);
+  if (!id_out)
+    throw std::runtime_error("Failed to open temporary ID file for writing.");
+  id_out.write(reinterpret_cast<const char *>(buffer.data()), buffer.size());
+  id_out.close();
+
+  bsc::BSC_compress(temp_id_path.c_str(), output_path);
+  remove(temp_id_path.c_str());
 }
 
 void decompress_id_block(const char *input_path, std::string *id_array,
-                         const uint32_t &num_ids) {
+                         const uint32_t &num_ids, bool pack_only) {
   if (num_ids == 0)
     return;
 
-  FILE *f = fopen(input_path, "rb");
-  if (!f)
-    throw std::runtime_error("Failed to open ID input file for reading.");
-  fseek(f, 0, SEEK_END);
-  size_t f_size = ftell(f);
-  fseek(f, 0, SEEK_SET);
-  std::vector<uint8_t> compressed(f_size);
-  if (fread(compressed.data(), 1, f_size, f) != f_size) {
-    fclose(f);
-    throw std::runtime_error("Unexpected end of file during ID reading.");
+  std::string temp_id_path;
+  if (pack_only) {
+    temp_id_path = input_path;
+  } else {
+    // ID decompression switched back to BSC to match the restored encoder.
+    temp_id_path = std::string(input_path) + ".tmp_id_dec";
+    bsc::BSC_decompress(input_path, temp_id_path.c_str());
   }
-  fclose(f);
 
-  unsigned long long r_size =
-      ZSTD_getFrameContentSize(compressed.data(), compressed.size());
-  if (r_size == ZSTD_CONTENTSIZE_ERROR || r_size == ZSTD_CONTENTSIZE_UNKNOWN)
-    throw std::runtime_error("Corrupted Zstd ID block content.");
+  std::ifstream id_in(temp_id_path, std::ios::binary | std::ios::ate);
+  if (!id_in) {
+    if (!pack_only)
+      remove(temp_id_path.c_str());
+    throw std::runtime_error("Failed to open temporary decompressed ID file.");
+  }
+  const size_t r_size = static_cast<size_t>(id_in.tellg());
+  id_in.seekg(0, std::ios::beg);
 
   std::vector<uint8_t> buffer(r_size);
-  size_t d_size = ZSTD_decompress(buffer.data(), buffer.size(),
-                                  compressed.data(), compressed.size());
-  if (ZSTD_isError(d_size))
-    throw std::runtime_error("Zstd ID block decompression failed.");
+  if (!id_in.read(reinterpret_cast<char *>(buffer.data()), r_size)) {
+    id_in.close();
+    if (!pack_only)
+      remove(temp_id_path.c_str());
+    throw std::runtime_error("Failed to read decompressed ID block.");
+  }
+  id_in.close();
+  if (!pack_only)
+    remove(temp_id_path.c_str());
 
   const char *curr = reinterpret_cast<const char *>(buffer.data());
+  const size_t d_size = r_size;
   const char *end = curr + d_size;
 
   auto read_u32 = [&]() {
