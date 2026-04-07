@@ -150,7 +150,12 @@ void run_timed_step(const char *start_message, const char *step_name,
 
 void run_system_command_or_throw(const std::string &command,
                                  const char *error_message) {
+#ifdef _WIN32
+  std::string wrapped_command = "\"" + command + "\"";
+  const int command_status = std::system(wrapped_command.c_str());
+#else
   const int command_status = std::system(command.c_str());
+#endif
   if (command_status != 0)
     throw std::runtime_error(error_message);
 }
@@ -198,6 +203,8 @@ std::string to_ascii_lowercase(std::string value) {
 
 std::string shell_quote(const std::string &value) {
 #ifdef _WIN32
+  // On Windows, use generic_string() (forward slashes) for relative/absolute
+  // paths passed to system(). cmd.exe and Windows APIs usually handle them.
   std::string quoted = "\"";
   for (const char character : value) {
     if (character == '"') {
@@ -257,9 +264,10 @@ std::string build_rapidgzip_command(const std::string &input_path,
                                     const std::string &output_path,
                                     const int num_thr) {
   const int decoder_parallelism = num_thr > 0 ? num_thr : 0;
-  return shell_quote(kRapidgzipExecutable) + " --decompress --force --output " +
-         shell_quote(output_path) + " --decoder-parallelism " +
-         std::to_string(decoder_parallelism) + " " + shell_quote(input_path);
+  return shell_quote(shell_path(kRapidgzipExecutable)) +
+         " --decompress --force --output " + shell_quote(shell_path(output_path)) +
+         " --decoder-parallelism " + std::to_string(decoder_parallelism) + " " +
+         shell_quote(shell_path(input_path));
 }
 
 void decompress_gzip_input_file_with_zlib(const std::string &input_path,
@@ -295,9 +303,16 @@ void decompress_gzip_input_file(const std::string &input_path,
       std::filesystem::exists(kRapidgzipExecutable)) {
     const std::string rapidgzip_command =
         build_rapidgzip_command(input_path, output_path, num_thr);
+#ifdef _WIN32
+    std::string wrapped_command = "\"" + rapidgzip_command + "\"";
+    if (std::system(wrapped_command.c_str()) == 0) {
+      return;
+    }
+#else
     if (std::system(rapidgzip_command.c_str()) == 0) {
       return;
     }
+#endif
   }
 
   decompress_gzip_input_file_with_zlib(input_path, output_path);

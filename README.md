@@ -138,29 +138,30 @@ You can build using a standalone MinGW-w64 (UCRT) distribution and native CMake/
 What to install (exact recommendations):
 
 - MinGW-w64 UCRT64 (standalone): get a winlibs MinGW build
-  https://winlibs.com/ — download the latest "ucrt64" archive and extract it to C:\mingw-w64\ucrt64
+  https://winlibs.com/ — download the latest "ucrt64" archive and extract it to C:\Program Files\mingw-w64\ucrt64\
 - CMake (>= 4.2): Windows installer from Kitware
   https://cmake.org/download/
-- Ninja: download single `ninja.exe` binary and extract it to C:\ninja\
+- Ninja: download single `ninja.exe` binary and extract it to C:\Program Files\Ninja\
   https://github.com/ninja-build/ninja/releases
 - NASM (assembler): Windows installer
   https://www.nasm.us/
+- Gzip: required for gzipped FASTQ support. You can use the one included in Git for Windows or a standalone binary.
+  Ensure `gzip.exe` is in your PATH.
 (Optionally install Python if you prefer to use a CMake venv, but not required.)
 
 Arrange PATH (temporary for current cmd session)
-Open a new `cmd.exe` and run (adjust paths to where you installed/extracted):
+Open a new `PowerShell` and run (adjust paths to where you installed/extracted):
 
-```cmd
-set PATH=C:\mingw-w64\ucrt64\bin;C:\Program Files\CMake\bin;C:\path\to\ninja;%PATH%
-set CC=gcc
-set CXX=g++
+```powershell
+$env:PATH="C:\Program Files\mingw-w64\ucrt64\bin;C:\Program Files\CMake\bin;C:\Program Files\Ninja\ninja.exe;$env:PATH"
+$env:CC="gcc"
+$env:CXX="g++"
 ```
 
 Configure & build (native cmd)
 From the repo root:
 
-```cmd
-rmdir /s /q build
+```powershell
 cmake -S . -B build -G Ninja -DSPRING_STATIC_RUNTIMES=OFF -Dspring_optimize_for_native=OFF -Dspring_optimize_for_portability=ON
 cmake --build build --parallel
 cmake --build build --target copy_runtime_dlls

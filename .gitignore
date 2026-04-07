@@ -1,44 +1,69 @@
-# Directory attributes files
-.directory
-.DS_Store
+# Prerequisites
+*.d
 
-# Regeneratables
-build/
-data/
-
-# CMake
-CMakeCache.txt
-CMakeFiles/
-Makefile
-cmake_install.cmake
-install_manifest.txt
-compile_commands.json
-.clangd
-
-# Binaries and libraries
-spring
+# Compiled Object files
+*.slo
+*.lo
 *.o
-*.a
-*.so
 *.obj
-*.lib
-*.dll
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
 *.dylib
+*.dll
 
-# Specific build artifacts (subprojects)
-boost-cmake/CMakeFiles/
-boost-cmake/Makefile
-boost-cmake/cmake_install.cmake
-boost-cmake/*.a
+# Fortran module files
+*.mod
+*.smod
 
-# Temporary and IDE
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# IDEs and editors
 .vscode/
+!.vscode/launch.json
+!.vscode/tasks.json
 .idea/
 *.swp
-*.patch
-*.diff
+*.swo
+.project
+.settings/
+.cproject
+
+# Build and IDE artifacts
+out/
+build/
+CMakeUserPresets.json
+.vscode/clangd_compat/
+.clangd
+compile_commands.json
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project-specific
 benchmark/tmp/*
+benchmark/output/
+.tmp/
 **/__pycache__/
 *.pyc
-.tmp/
-benchmark/output/
+*.patch
+*.diff
