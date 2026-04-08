@@ -200,7 +200,7 @@ extract_archive_if_needed(
     "${CLOUDFLARE_ZLIB_DIR}/zlib.h"
 )
 
-add_subdirectory("${PTHASH_DIR}" "${CMAKE_BINARY_DIR}/pthash-build" EXCLUDE_FROM_ALL)
+# add_subdirectory("${PTHASH_DIR}" "${CMAKE_BINARY_DIR}/pthash-build" EXCLUDE_FROM_ALL)
 
 extract_archive_if_needed(
     "${CMAKE_SOURCE_DIR}/vendor/zstd.tar.xz"
@@ -352,6 +352,13 @@ add_executable (spring2 ${source_files})
 # Spring headers live in src/, while vendor/ exposes bundled libraries such
 # as BBHash, libbsc, id_compression, qvz, and the vendored libdeflate sources.
 target_include_directories(spring2 PRIVATE ${include_dir} ${vendor_dir} ${build_vendor_dir} ${ZSTD_DIR}/lib)
+target_include_directories(spring2 SYSTEM PRIVATE
+    ${vendor_dir}/pthash/include
+    ${vendor_dir}/pthash/external/xxHash
+    ${vendor_dir}/pthash/external/bits/include
+    ${vendor_dir}/pthash/external/bits/external/essentials/include
+    ${vendor_dir}/pthash/external/mm_file/include
+)
 if (WIN32)
     target_include_directories(spring2 PRIVATE ${CMAKE_SOURCE_DIR}/src)
 endif ()
@@ -362,7 +369,7 @@ target_link_libraries(spring2 PUBLIC
     libdeflate::libdeflate_static
     libzstd_static
     ZLIB::ZLIB
-    PTHASH
+    # PTHASH (target removed as standalone Build system is gone; using headers directly)
 )
 if (TARGET OpenMP::OpenMP_CXX)
     target_link_libraries(spring2 PUBLIC OpenMP::OpenMP_CXX)

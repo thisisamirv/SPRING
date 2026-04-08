@@ -30,7 +30,8 @@
 * Repackaged `indexed_bzip2` into a smaller Spring-specific archive payload that retains only the pieces needed for the current gzip workflow.
 * Removed the final Boost dependency from the build and runtime path by replacing the remaining Boost-based gzip and mapped-file usage with local implementations.
 * Upgraded the project toolchain baseline to C++20 and CMake 4.2.
-* Refreshed the vendored dependency set used by the current tree, including `libbsc`, Cloudflare zlib, BBHash, `libdeflate`, `qvz`, and the pruned `indexed_bzip2` payload.
+* Refreshed the vendored dependency set used by the current tree, including `libbsc`, Cloudflare zlib, `libdeflate`, `qvz`, and the pruned `indexed_bzip2` payload.
+* Replaced the unmaintained BBHash with a patched version of PTHash (making it more compatible with windows) for the hash table implementation.
 * Made vendor extraction idempotent so repeated configure runs only re-extract archives when their content hash changes.
 * Standardized formatting with the repository `.clang-format` configuration.
 * Renamed several core source files to clearer role-based names, including `bitset_dictionary`, `template_dispatch`, `paired_end_order`, `reordered_quality_id`, and `reordered_streams`.
