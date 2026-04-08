@@ -185,7 +185,7 @@ message(STATUS "** CMAKE_C_FLAGS: ${CMAKE_C_FLAGS}")
 # on Windows `cmd.exe` without shipping DLLs next to the binary.
 option(SPRING_STATIC_RUNTIMES "Statically link libgcc/libstdc++/libgomp on supported toolchains" OFF)
 
-set(PTHASH_DIR ${vendor_dir}/pthash)
+set(PTHASH_DIR "${build_vendor_dir}/pthash")
 set(CLOUDFLARE_ZLIB_DIR ${build_vendor_dir}/cloudflare_zlib)
 set(ZSTD_DIR ${build_vendor_dir}/zstd)
 set(INDEXED_BZIP2_DIR ${build_vendor_dir}/indexed_bzip2)
@@ -198,6 +198,12 @@ extract_archive_if_needed(
     "${CMAKE_SOURCE_DIR}/vendor/cloudflare_zlib.tar.xz"
     "${CLOUDFLARE_ZLIB_DIR}"
     "${CLOUDFLARE_ZLIB_DIR}/zlib.h"
+)
+
+extract_archive_if_needed(
+    "${CMAKE_SOURCE_DIR}/vendor/pthash.tar.xz"
+    "${PTHASH_DIR}"
+    "${PTHASH_DIR}/vendor/pthash/include/pthash.hpp"
 )
 
 # add_subdirectory("${PTHASH_DIR}" "${CMAKE_BINARY_DIR}/pthash-build" EXCLUDE_FROM_ALL)
@@ -353,11 +359,11 @@ add_executable (spring2 ${source_files})
 # as BBHash, libbsc, id_compression, qvz, and the vendored libdeflate sources.
 target_include_directories(spring2 PRIVATE ${include_dir} ${vendor_dir} ${build_vendor_dir} ${ZSTD_DIR}/lib)
 target_include_directories(spring2 SYSTEM PRIVATE
-    ${vendor_dir}/pthash/include
-    ${vendor_dir}/pthash/external/xxHash
-    ${vendor_dir}/pthash/external/bits/include
-    ${vendor_dir}/pthash/external/bits/external/essentials/include
-    ${vendor_dir}/pthash/external/mm_file/include
+    ${PTHASH_DIR}/vendor/pthash/include
+    ${PTHASH_DIR}/vendor/pthash/external/xxHash
+    ${PTHASH_DIR}/vendor/pthash/external/bits/include
+    ${PTHASH_DIR}/vendor/pthash/external/bits/external/essentials/include
+    ${PTHASH_DIR}/vendor/pthash/external/mm_file/include
 )
 if (WIN32)
     target_include_directories(spring2 PRIVATE ${CMAKE_SOURCE_DIR}/src)

@@ -14,10 +14,10 @@ The upstream Spring license PDF is stored at `LICENSES/SPRING-upstream-license.p
 
 ## Vendored third-party code
 
-- `vendor/BBHash.tar.xz` — MIT License
 - `vendor/cloudflare_zlib.tar.xz` — zlib License
 - `vendor/indexed_bzip2.tar.xz` — Apache License 2.0 or the MIT License
 - `vendor/libbsc.tar.xz` — Apache License 2.0
 - `vendor/libdeflate.tar.xz` — MIT License
+- `vendor/PTHash.tar.xz` — MIT License
 - `vendor/qvz.tar.xz` — GNU General Public License v3.0
 - `vendor/zstd.tar.xz` — BSD 3-Clause License or GPLv2 License
