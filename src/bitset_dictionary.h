@@ -4,8 +4,6 @@
 #ifndef SPRING_BITSET_DICTIONARY_H_
 #define SPRING_BITSET_DICTIONARY_H_
 
-#include "BBHash/BooPHF.h"
-#include "util.h"
 #include <algorithm>
 #include <bitset>
 #include <cstdint>
@@ -14,10 +12,13 @@
 #include <string>
 #include <vector>
 
+#include "pthash.hpp"
+#include "util.h"
+
 namespace spring {
 
-using hasher_t = boomphf::SingleHashFunctor<uint64_t>;
-using boophf_t = boomphf::mphf<uint64_t, hasher_t>;
+using boophf_t = pthash::single_phf<pthash::xxhash_64, pthash::range_bucketer,
+                                   pthash::compact, false>;
 
 inline std::string keys_bin_path(const std::string &base_dir,
                                  const int thread_id) {
@@ -161,11 +162,17 @@ inline void write_hash_chunks(const bbhashdict &dictionary,
     std::ofstream hash_output(hash_path, std::ios::binary);
     uint64_t current_key;
 
+    int log_count = 0;
     for (uint64_t key_index = range.begin; key_index < range.end; key_index++) {
-      key_input.read(byte_ptr(&current_key), sizeof(uint64_t));
-      const uint64_t current_hash = dictionary.bphf->lookup(current_key);
+      if (!key_input.read(byte_ptr(&current_key), sizeof(uint64_t))) {
+          std::cerr << "T" << thread_id << " read failed at index " << key_index << std::endl;
+          break;
+      }
+      const uint64_t current_hash = (*dictionary.bphf)(current_key);
       hash_output.write(byte_ptr(&current_hash), sizeof(uint64_t));
     }
+    hash_output.flush();
+    hash_output.close();
 
     key_input.close();
     remove(key_path.c_str());
@@ -178,12 +185,16 @@ inline void count_bucket_sizes(bbhashdict &dictionary,
                                const int thread_count) {
   uint64_t current_hash;
   for (int thread_id = 0; thread_id < thread_count; thread_id++) {
-    std::ifstream hash_input(hash_bin_path(base_dir, thread_id, dict_index),
-                             std::ios::binary);
-    hash_input.read(byte_ptr(&current_hash), sizeof(uint64_t));
-    while (!hash_input.eof()) {
+    std::string path = hash_bin_path(base_dir, thread_id, dict_index);
+    std::cout << "      opening " << path << "... " << std::flush;
+    std::ifstream hash_input(path, std::ios::binary);
+    if (!hash_input.is_open()) {
+        std::cout << "FAILED to open." << std::endl;
+        continue;
+    }
+    std::cout << "opened. " << std::flush;
+    while (hash_input.read(byte_ptr(&current_hash), sizeof(uint64_t))) {
       dictionary.startpos[current_hash + 1]++;
-      hash_input.read(byte_ptr(&current_hash), sizeof(uint64_t));
     }
   }
 }
@@ -199,6 +210,7 @@ inline void populate_bucket_read_ids(bbhashdict &dictionary,
                                      uint16_t *read_lengths,
                                      const std::string &base_dir,
                                      const int dict_index,
+                                     const uint32_t numreads,
                                      const int thread_count) {
   dictionary.read_id = new uint32_t[dictionary.dict_numreads];
   uint32_t read_index = 0;
@@ -207,14 +219,19 @@ inline void populate_bucket_read_ids(bbhashdict &dictionary,
   for (int thread_id = 0; thread_id < thread_count; thread_id++) {
     const std::string hash_path = hash_bin_path(base_dir, thread_id, dict_index);
     std::ifstream hash_input(hash_path, std::ios::binary);
-    hash_input.read(byte_ptr(&current_hash), sizeof(uint64_t));
-    while (!hash_input.eof()) {
-      while (read_lengths[read_index] <= dictionary.end)
-        read_index++;
-      dictionary.read_id[dictionary.startpos[current_hash]++] = read_index;
-      read_index++;
-      hash_input.read(byte_ptr(&current_hash), sizeof(uint64_t));
+    if (!hash_input.is_open()) {
+        std::cerr << "Error: Could not open hash chunk for populating: " << hash_path << std::endl;
+        continue;
     }
+    while (hash_input.read(byte_ptr(&current_hash), sizeof(uint64_t))) {
+      while (read_index < numreads && read_lengths[read_index] <= dictionary.end)
+        read_index++;
+      if (read_index < numreads) {
+          dictionary.read_id[dictionary.startpos[current_hash]++] = read_index;
+          read_index++;
+      }
+    }
+    hash_input.close();
     remove(hash_path.c_str());
   }
 }
@@ -250,11 +267,10 @@ void generateindexmasks(std::bitset<bitset_size> *index_masks,
 template <size_t bitset_size>
 void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
                          uint16_t *read_lengths, const int numdict,
-                         const uint32_t &numreads, const int bpb,
-                         const std::string &basedir, const int &num_thr) {
-  std::bitset<bitset_size> *index_masks =
-      new std::bitset<bitset_size>[numdict];
-  generateindexmasks<bitset_size>(index_masks, dict, numdict, bpb);
+                         const uint32_t numreads, const int bpb,
+                         const std::string &basedir, const int num_thr) {
+  std::vector<std::bitset<bitset_size>> index_masks(numdict);
+  generateindexmasks<bitset_size>(index_masks.data(), dict, numdict, bpb);
 
   for (int dict_index = 0; dict_index < numdict; dict_index++) {
     bbhashdict &current_dict = dict[dict_index];
@@ -277,45 +293,43 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
     current_dict.numkeys = detail::sort_and_deduplicate_keys(
       dictionary_keys_data, current_dict.dict_numreads);
 
-    // Build the MPHF over the distinct keys.
-    auto data_iterator =
-      boomphf::range(static_cast<const uint64_t *>(dictionary_keys_data),
-               static_cast<const uint64_t *>(dictionary_keys_data +
-                                                    current_dict.numkeys));
     std::cout << "Dictionary " << (dict_index + 1) << " of " << numdict
               << ": Building MPHF for " << current_dict.numkeys << " keys...\n";
-    const double gamma_factor = 5.0; // balance between speed and memory
-    current_dict.bphf = new boomphf::mphf<uint64_t, hasher_t>(
-        current_dict.numkeys, data_iterator, num_thr, gamma_factor, true,
-        false);
+    pthash::build_configuration config;
+    config.num_threads = 1;
+    config.minimal = false;
+    config.verbose = false;
+    current_dict.bphf = new boophf_t();
+    std::cout << "  Building MPHF... " << std::flush;
+    current_dict.bphf->build_in_internal_memory(dictionary_keys_data,
+                                                current_dict.numkeys, config);
+    current_dict.numkeys = current_dict.bphf->table_size();
+    std::cout << "Done. (T=" << current_dict.numkeys << ")\n" << std::flush;
 
     // Re-read the stored keys and materialize their hash buckets.
+    std::cout << "  Writing hash chunks... " << std::flush;
     detail::write_hash_chunks(current_dict, basedir, dict_index);
+    std::cout << "Done.\n" << std::flush;
   }
 
-  // The remaining passes parallelize across dictionaries instead of reads.
-  omp_set_num_threads(std::min(numdict, num_thr));
-#pragma omp parallel
-  {
-#pragma omp for
-    for (int dict_index = 0; dict_index < numdict; dict_index++) {
-      bbhashdict &current_dict = dict[dict_index];
-      // Count bucket sizes, then prefix-sum them into start positions.
-      current_dict.startpos =
-          new uint32_t[current_dict.numkeys +
-                       1](); // 1 extra to store end pos of last key
-
-      detail::count_bucket_sizes(current_dict, basedir, dict_index, num_thr);
-      detail::finalize_bucket_offsets(current_dict);
-      detail::populate_bucket_read_ids(current_dict, read_lengths, basedir,
-                                       dict_index, num_thr);
-
-      // Restore the prefix offsets after the insertion walk above.
-      detail::restore_bucket_starts(current_dict);
-    }
+  std::cout << "  Finalizing dictionaries (sequentially)..." << std::endl;
+  for (int dict_index = 0; dict_index < numdict; dict_index++) {
+    bbhashdict &current_dict = dict[dict_index];
+    std::cout << "    Dict " << (dict_index + 1) << ": allocating " << (current_dict.numkeys + 1) << " entries... " << std::flush;
+    current_dict.startpos = new uint32_t[current_dict.numkeys + 1]();
+    std::cout << "Done. counting... " << std::flush;
+    detail::count_bucket_sizes(current_dict, basedir, dict_index, num_thr);
+    std::cout << "Done. finalizing offsets... " << std::flush;
+    detail::finalize_bucket_offsets(current_dict);
+    std::cout << "Done. populating... " << std::flush;
+    detail::populate_bucket_read_ids(current_dict, read_lengths, basedir,
+                                     dict_index, numreads, num_thr);
+    std::cout << "Done. restoring starts... " << std::flush;
+    detail::restore_bucket_starts(current_dict);
+    std::cout << "Done dictionary " << (dict_index + 1) << "." << std::endl;
   }
-  omp_set_num_threads(num_thr);
-  delete[] index_masks;
+  std::cout << "Done finalization." << std::endl;
+  std::cout << "Exiting constructdictionary." << std::endl;
   return;
 }
 

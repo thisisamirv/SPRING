@@ -56,6 +56,7 @@ struct compression_params {
   static constexpr size_t kFileLenThrSize = 1024;
   uint64_t file_len_seq_thr[kFileLenThrSize];
   uint64_t file_len_id_thr[kFileLenThrSize];
+  bool use_crlf;
 };
 
 class gzip_istreambuf : public std::streambuf {
@@ -125,7 +126,7 @@ void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
                        std::string *read_array, std::string *quality_array,
                        const uint32_t &num_reads, const bool preserve_quality,
                        const int &num_thr, const bool &gzip_flag,
-                       const int &compression_level);
+                       const int &compression_level, const bool use_crlf);
 
 // ID stream helpers.
 void compress_id_block(const char *output_path, std::string *id_array,

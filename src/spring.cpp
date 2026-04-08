@@ -68,6 +68,7 @@ void write_compression_params(std::ostream &out, const compression_params &cp) {
             sizeof(uint64_t) * compression_params::kFileLenThrSize);
   out.write(reinterpret_cast<const char *>(cp.file_len_id_thr),
             sizeof(uint64_t) * compression_params::kFileLenThrSize);
+  write_bool(out, cp.use_crlf);
 }
 
 void read_compression_params(std::istream &in, compression_params &cp) {
@@ -97,6 +98,7 @@ void read_compression_params(std::istream &in, compression_params &cp) {
           sizeof(uint64_t) * compression_params::kFileLenThrSize);
   in.read(reinterpret_cast<char *>(cp.file_len_id_thr),
           sizeof(uint64_t) * compression_params::kFileLenThrSize);
+  cp.use_crlf = read_bool(in);
 }
 
 namespace {
@@ -650,10 +652,11 @@ void compress(const std::string &temp_dir,
   const bool preserve_id = !no_ids_flag;
   const bool preserve_quality = !no_quality_flag && !fasta_input;
 
+  bool use_crlf = false;
   const uint32_t max_read_length =
       detect_max_read_length(prepared_inputs.input_path_1,
                              prepared_inputs.input_path_2, io_config.paired_end,
-                             fasta_input);
+                             fasta_input, use_crlf);
   const bool long_flag = max_read_length > MAX_READ_LEN;
 
   if (long_flag) {
@@ -666,9 +669,10 @@ void compress(const std::string &temp_dir,
   compression_params cp{};
   cp.paired_end = io_config.paired_end;
   cp.preserve_order = preserve_order;
-  cp.preserve_id = preserve_id;
   cp.preserve_quality = preserve_quality;
+  cp.preserve_id = preserve_id;
   cp.long_flag = long_flag;
+  cp.use_crlf = use_crlf;
   cp.num_reads_per_block = NUM_READS_PER_BLOCK;
   cp.num_reads_per_block_long = NUM_READS_PER_BLOCK_LONG;
   cp.num_thr = num_thr;
@@ -799,14 +803,13 @@ void decompress(const std::string &temp_dir,
 
   // Long-read and short-read archives diverge only at the reconstruction step.
   run_timed_step("Decompressing ...", "Decompressing", [&] {
-    if (long_flag)
-      decompress_long(temp_dir, io_config.output_path_1,
-                      io_config.output_path_2, cp, num_thr,
-                      compression_level);
-    else
+    if (cp.long_flag) {
+      decompress_long(temp_dir, io_config.output_path_1, io_config.output_path_2,
+                      cp, cp.use_crlf);
+    } else {
       decompress_short(temp_dir, io_config.output_path_1,
-                       io_config.output_path_2, cp, num_thr,
-                       compression_level);
+                       io_config.output_path_2, cp, cp.use_crlf);
+    }
   });
 
   const auto decompression_end = clock_type::now();

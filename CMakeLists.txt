@@ -185,7 +185,7 @@ message(STATUS "** CMAKE_C_FLAGS: ${CMAKE_C_FLAGS}")
 # on Windows `cmd.exe` without shipping DLLs next to the binary.
 option(SPRING_STATIC_RUNTIMES "Statically link libgcc/libstdc++/libgomp on supported toolchains" OFF)
 
-set(BBHASH_DIR ${build_vendor_dir}/BBHash)
+set(PTHASH_DIR ${vendor_dir}/pthash)
 set(CLOUDFLARE_ZLIB_DIR ${build_vendor_dir}/cloudflare_zlib)
 set(ZSTD_DIR ${build_vendor_dir}/zstd)
 set(INDEXED_BZIP2_DIR ${build_vendor_dir}/indexed_bzip2)
@@ -200,11 +200,7 @@ extract_archive_if_needed(
     "${CLOUDFLARE_ZLIB_DIR}/zlib.h"
 )
 
-extract_archive_if_needed(
-    "${CMAKE_SOURCE_DIR}/vendor/BBHash.tar.xz"
-    "${BBHASH_DIR}"
-    "${BBHASH_DIR}/BooPHF.h"
-)
+add_subdirectory("${PTHASH_DIR}" "${CMAKE_BINARY_DIR}/pthash-build" EXCLUDE_FROM_ALL)
 
 extract_archive_if_needed(
     "${CMAKE_SOURCE_DIR}/vendor/zstd.tar.xz"
@@ -356,6 +352,9 @@ add_executable (spring2 ${source_files})
 # Spring headers live in src/, while vendor/ exposes bundled libraries such
 # as BBHash, libbsc, id_compression, qvz, and the vendored libdeflate sources.
 target_include_directories(spring2 PRIVATE ${include_dir} ${vendor_dir} ${build_vendor_dir} ${ZSTD_DIR}/lib)
+if (WIN32)
+    target_include_directories(spring2 PRIVATE ${CMAKE_SOURCE_DIR}/src)
+endif ()
 if (SPRING_OPENMP_INCLUDE_DIRS)
     target_include_directories(spring2 SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
 endif ()
@@ -363,13 +362,14 @@ target_link_libraries(spring2 PUBLIC
     libdeflate::libdeflate_static
     libzstd_static
     ZLIB::ZLIB
+    PTHASH
 )
 if (TARGET OpenMP::OpenMP_CXX)
     target_link_libraries(spring2 PUBLIC OpenMP::OpenMP_CXX)
 endif ()
 
 if (WIN32)
-    target_link_libraries(spring2 PRIVATE ws2_32)
+    target_link_libraries(spring2 PRIVATE ws2_32 psapi)
 endif ()
 
 target_compile_definitions(spring2 PRIVATE SPRING_RAPIDGZIP_EXECUTABLE=\"$<TARGET_FILE:rapidgzip>\")

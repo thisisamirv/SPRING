@@ -19,7 +19,8 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
 // Quick pre-scan to determine the maximum read length across input files.
 uint32_t detect_max_read_length(const std::string &infile_1,
                                 const std::string &infile_2,
-                                const bool paired_end, const bool fasta_input);
+                                const bool paired_end, const bool fasta_input,
+                                bool &use_crlf);
 
 } // namespace spring
 

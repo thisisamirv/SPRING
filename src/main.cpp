@@ -56,8 +56,15 @@ void delete_temp_dir_if_present() {
   if (!temp_dir_flag_global)
     return;
 
-  std::cout << "Deleting temporary directory...\n";
-  std::filesystem::remove_all(temp_dir_global);
+  std::cout << "Deleting temporary directory: " << temp_dir_global << "\n";
+  std::filesystem::path p(temp_dir_global);
+  // remove_all can fail on Windows if path has trailing slash.
+  // Converting to path object and using that is more robust.
+  std::error_code ec;
+  std::filesystem::remove_all(p, ec);
+  if (ec) {
+      std::cerr << "Warning: could not delete temporary directory: " << ec.message() << std::endl;
+  }
   temp_dir_flag_global = false;
 }
 
@@ -367,7 +374,8 @@ void signalHandler(int signum) {
   std::cout << "Program terminated unexpectedly\n";
   if (temp_dir_flag_global) {
     std::cout << "Deleting temporary directory: " << temp_dir_global << "\n";
-    std::filesystem::remove_all(temp_dir_global);
+    std::error_code ec;
+    std::filesystem::remove_all(std::filesystem::path(temp_dir_global), ec);
     temp_dir_flag_global = false;
   }
   delete_working_dir_if_present();

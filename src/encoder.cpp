@@ -52,7 +52,7 @@ uint64_t write_packed_sequence(const std::string &sequence_path,
   constexpr size_t input_buffer_size = 1 << 16;
   std::ifstream sequence_input(sequence_path, std::ios::binary);
   std::ofstream packed_output(packed_path, std::ios::binary);
-  std::ofstream tail_output(tail_path);
+  std::ofstream tail_output(tail_path, std::ios::binary);
   std::array<char, input_buffer_size> input_buffer{};
   std::array<char, input_buffer_size / 4 + 1> packed_buffer{};
   std::array<char, 4> trailing_bases{};
@@ -91,8 +91,11 @@ uint64_t write_packed_sequence(const std::string &sequence_path,
   }
 
   if (trailing_count > 0) {
-    tail_output.write(trailing_bases.data(),
-                      static_cast<std::streamsize>(trailing_count));
+    uint8_t packed_byte = 0;
+    for (size_t i = 0; i < trailing_count; ++i) {
+      packed_byte |= (base_to_int[(uint8_t)trailing_bases[i]] << (2 * i));
+    }
+    packed_output.write(reinterpret_cast<const char *>(&packed_byte), 1);
   }
 
   return sequence_length;
@@ -168,11 +171,9 @@ void rewrite_thread_order_file(
   std::ofstream order_output(order_tmp_path, std::ios::binary);
   uint32_t read_position;
 
-  order_input.read(byte_ptr(&read_position), sizeof(uint32_t));
-  while (!order_input.eof()) {
+  while (order_input.read(byte_ptr(&read_position), sizeof(uint32_t))) {
     read_position += cumulative_n_reads[read_position];
     order_output.write(byte_ptr(&read_position), sizeof(uint32_t));
-    order_input.read(byte_ptr(&read_position), sizeof(uint32_t));
   }
 
   remove(order_path.c_str());

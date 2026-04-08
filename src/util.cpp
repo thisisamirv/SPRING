@@ -109,12 +109,14 @@ const std::array<char, 5> &int_to_dna_n_lookup() {
 
 void write_fastq_record(std::ostream &out, const std::string &id,
                         const std::string &read,
-                        const std::string *quality_or_null) {
-  out << id << "\n";
-  out << read << "\n";
+                        const std::string *quality_or_null,
+                        const bool use_crlf) {
+  const char *eol = use_crlf ? "\r\n" : "\n";
+  out << id << eol;
+  out << read << eol;
   if (quality_or_null != nullptr) {
-    out << "+\n";
-    out << *quality_or_null << "\n";
+    out << "+" << eol;
+    out << *quality_or_null << eol;
   }
 }
 
@@ -122,12 +124,14 @@ void write_fastq_records_range(std::ostream &output_stream,
                                std::string *id_array, std::string *read_array,
                                const std::string *quality_or_null,
                                const uint64_t start_read_index,
-                               const uint64_t end_read_index) {
+                               const uint64_t end_read_index,
+                               const bool use_crlf) {
   for (uint64_t read_index = start_read_index; read_index < end_read_index;
        read_index++) {
     write_fastq_record(
         output_stream, id_array[read_index], read_array[read_index],
-        quality_or_null == nullptr ? nullptr : &quality_or_null[read_index]);
+        quality_or_null == nullptr ? nullptr : &quality_or_null[read_index],
+        use_crlf);
   }
 }
 
@@ -135,7 +139,7 @@ void write_gzip_fastq_block(std::ofstream &output_stream, std::string *id_array,
                             std::string *read_array,
                             const std::string *quality_or_null,
                             const uint32_t num_reads, const int num_thr,
-                            const int gzip_level) {
+                            const int gzip_level, const bool use_crlf) {
   if (num_reads == 0)
     return;
 
@@ -148,7 +152,8 @@ void write_gzip_fastq_block(std::ofstream &output_stream, std::string *id_array,
     std::ostringstream plain_output;
     const read_range &range = thread_ranges[static_cast<size_t>(tid)];
     write_fastq_records_range(plain_output, id_array, read_array,
-                              quality_or_null, range.start, range.end);
+                              quality_or_null, range.start, range.end,
+                              use_crlf);
     gzip_compressed[tid] = gzip_compress_string(plain_output.str(), gzip_level);
   }
 
@@ -519,17 +524,17 @@ void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
                        std::string *read_array, std::string *quality_array,
                        const uint32_t &num_reads, const bool preserve_quality,
                        const int &num_thr, const bool &gzip_flag,
-                       const int &compression_level) {
+                       const int &compression_level, const bool use_crlf) {
   const std::string *quality_or_null =
       preserve_quality ? quality_array : nullptr;
   if (!gzip_flag) {
     write_fastq_records_range(output_stream, id_array, read_array,
-                              quality_or_null, 0, num_reads);
+                              quality_or_null, 0, num_reads, use_crlf);
   } else {
     // Compression level is 1-9 for CLI; pass to gzip unchanged (clamped).
     const int mapped_gzip_level = std::max(1, std::min(9, compression_level));
     write_gzip_fastq_block(output_stream, id_array, read_array, quality_or_null,
-                           num_reads, num_thr, mapped_gzip_level);
+                           num_reads, num_thr, mapped_gzip_level, use_crlf);
   }
 }
 
@@ -959,10 +964,22 @@ void remove_CR_from_end(std::string &str) {
 size_t get_directory_size(const std::string &temp_dir) {
   namespace fs = std::filesystem;
   size_t size = 0;
+  std::error_code ec;
   fs::path p{temp_dir};
-  fs::directory_iterator itr{p};
-  for (; itr != fs::directory_iterator{}; ++itr) {
-    size += fs::file_size(itr->path());
+
+  // On Windows, directory_iterator often fails if there's a trailing slash.
+  if (p.has_relative_path() && !p.has_filename()) {
+    p = p.parent_path();
+  }
+
+  if (!fs::exists(p, ec)) return 0;
+
+  for (const auto &entry : fs::recursive_directory_iterator(p, ec)) {
+    if (ec) break;
+    std::error_code size_ec;
+    if (fs::is_regular_file(entry.path(), size_ec)) {
+      size += fs::file_size(entry.path(), size_ec);
+    }
   }
   return size;
 }

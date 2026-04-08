@@ -218,9 +218,9 @@ void reorder_compress_streams(const std::string &temp_dir,
   std::ifstream order_input;
   if (paired_end || preserve_order)
     order_input.open(paths.order_path, std::ios::binary);
-  std::ifstream orientation_input(paths.orientation_path);
+  std::ifstream orientation_input(paths.orientation_path, std::ios::binary);
   std::ifstream read_length_input(paths.read_length_path, std::ios::binary);
-  std::ifstream noise_input(paths.noise_path);
+  std::ifstream noise_input(paths.noise_path, std::ios::binary);
   std::ifstream noise_position_input(paths.noise_position_path,
                                      std::ios::binary);
   std::ifstream position_input(paths.position_path, std::ios::binary);
@@ -279,7 +279,7 @@ void reorder_compress_streams(const std::string &temp_dir,
 
   unaligned_read_count = num_reads - aligned_read_count;
   std::string unaligned_count_path = paths.unaligned_path + ".count";
-  std::ifstream unaligned_count_input(unaligned_count_path);
+  std::ifstream unaligned_count_input(unaligned_count_path, std::ios::binary);
   uint64_t unaligned_char_count;
   unaligned_count_input.read(byte_ptr(&unaligned_char_count), sizeof(uint64_t));
   unaligned_count_input.close();
@@ -333,9 +333,9 @@ void reorder_compress_streams(const std::string &temp_dir,
         break;
 
       std::ofstream flag_output(
-          block_file_path(temp_paths.flag_path, block_num));
+          block_file_path(temp_paths.flag_path, block_num), std::ios::binary);
       std::ofstream noise_output(
-          block_file_path(temp_paths.noise_path, block_num));
+          block_file_path(temp_paths.noise_path, block_num), std::ios::binary);
       std::ofstream noise_position_output(
           block_file_path(temp_paths.noise_position_path, block_num),
           std::ios::binary);
@@ -343,9 +343,9 @@ void reorder_compress_streams(const std::string &temp_dir,
           block_file_path(temp_paths.position_path, block_num),
           std::ios::binary);
       std::ofstream orientation_output(
-          block_file_path(temp_paths.orientation_path, block_num));
+          block_file_path(temp_paths.orientation_path, block_num), std::ios::binary);
       std::ofstream unaligned_output(
-          block_file_path(temp_paths.unaligned_path, block_num));
+          block_file_path(temp_paths.unaligned_path, block_num), std::ios::binary);
       std::ofstream read_length_output(
           block_file_path(temp_paths.read_length_path, block_num),
           std::ios::binary);
@@ -356,7 +356,7 @@ void reorder_compress_streams(const std::string &temp_dir,
             block_file_path(paths.mate_position_path, block_num),
             std::ios::binary);
         mate_orientation_output.open(
-            block_file_path(paths.mate_orientation_path, block_num));
+            block_file_path(paths.mate_orientation_path, block_num), std::ios::binary);
       }
 
       uint64_t previous_position = 0;

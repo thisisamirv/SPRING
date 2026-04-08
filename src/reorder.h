@@ -63,10 +63,6 @@ template <size_t bitset_size> struct reorder_global {
 
 namespace detail {
 
-inline uint32_t lock_shard(const uint64_t item_id) {
-  return static_cast<uint32_t>(item_id & (NUM_LOCKS_REORDER - 1));
-}
-
 inline std::string thread_output_path(const std::string &base_path,
                                       const int thread_id) {
   return base_path + '.' + std::to_string(thread_id);
@@ -340,7 +336,7 @@ bool search_match(const std::bitset<bitset_size> &ref,
     masked_ref_bits = ref & index_masks[dictionary_index];
     lookup_key =
         (masked_ref_bits >> 2 * dict[dictionary_index].start).to_ullong();
-    bucket_start_index = dict[dictionary_index].bphf->lookup(lookup_key);
+    bucket_start_index = (*dict[dictionary_index].bphf)(lookup_key);
     if (bucket_start_index >= dict[dictionary_index].numkeys)
       continue;
     if (!omp_test_lock(&dict_locks[detail::lock_shard(bucket_start_index)]))
@@ -537,7 +533,7 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
               read[current_read_id] & index_masks[dictionary_index];
           lookup_key = (masked_read_bits >> 2 * dict[dictionary_index].start)
                            .to_ullong();
-          bucket_start_index = dict[dictionary_index].bphf->lookup(lookup_key);
+          bucket_start_index = (*dict[dictionary_index].bphf)(lookup_key);
           if (!omp_test_lock(
                   &dict_locks[detail::lock_shard(bucket_start_index)])) {
             pending_bin_deletions[dictionary_index].push_back(
@@ -719,6 +715,11 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
   }
 
   delete[] remaining_reads;
+  for (uint32_t lock_index = 0; lock_index < num_locks; lock_index++) {
+    omp_destroy_lock(&dict_locks[lock_index]);
+    omp_destroy_lock(&read_locks[lock_index]);
+    omp_destroy_lock(&remaining_read_lock[lock_index]);
+  }
   delete[] dict_locks;
   delete[] read_locks;
   delete[] remaining_read_lock;
@@ -791,7 +792,7 @@ void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
     numreads_s += numreads_s_thr[i];
   // write numreads_s to a file
   std::ofstream fout_s_count(rg.outfile + ".singleton" + ".count",
-                             std::ofstream::out | std::ios::binary);
+                             std::ios::out | std::ios::binary);
   fout_s_count.write(byte_ptr(&numreads_s), sizeof(uint32_t));
   fout_s_count.close();
 

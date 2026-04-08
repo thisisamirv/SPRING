@@ -53,7 +53,7 @@ void open_input_stream(std::ifstream &file_stream, std::istream *&input_stream,
     return;
   }
 
-  file_stream.open(path);
+  file_stream.open(path, std::ios::binary);
   input_stream = &file_stream;
   gzip_stream = nullptr;
 }
@@ -140,10 +140,11 @@ void open_preprocess_streams(std::array<std::ifstream, 2> &input_files,
         paths.n_read_order_paths[stream_index], std::ios::binary);
     if (!compression_params.preserve_order) {
       if (compression_params.preserve_id)
-        id_outputs[stream_index].open(paths.id_output_paths[stream_index]);
+        id_outputs[stream_index].open(paths.id_output_paths[stream_index],
+                                      std::ios::binary);
       if (compression_params.preserve_quality)
         quality_outputs[stream_index].open(
-            paths.quality_output_paths[stream_index]);
+            paths.quality_output_paths[stream_index], std::ios::binary);
     }
   }
 }
@@ -256,7 +257,7 @@ uint32_t max_read_length_in_step(const std::vector<uint32_t> &read_lengths,
 } // namespace
 
 uint32_t detect_max_read_length_in_file(const std::string &path,
-                                        bool fasta_input) {
+                                        bool fasta_input, bool &use_crlf) {
   std::ifstream input(path, std::ios::binary);
   if (!input.is_open())
     throw std::runtime_error("Can't open file for pre-scan: " + path);
@@ -266,6 +267,8 @@ uint32_t detect_max_read_length_in_file(const std::string &path,
   if (fasta_input) {
     uint32_t current_len = 0;
     while (std::getline(input, line)) {
+      if (!line.empty() && line.back() == '\r')
+        use_crlf = true;
       if (line.empty())
         continue;
       if (line[0] == '>') {
@@ -279,7 +282,9 @@ uint32_t detect_max_read_length_in_file(const std::string &path,
   } else {
     // FASTQ: Seq is 2nd line of every 4.
     while (std::getline(input, line)) { // 1: Header
-      if (std::getline(input, line)) {  // 2: Sequence
+      if (!line.empty() && line.back() == '\r')
+        use_crlf = true;
+      if (std::getline(input, line)) { // 2: Sequence
         max_len = std::max(max_len, (uint32_t)line.length());
       }
       std::getline(input, line); // 3: +
@@ -291,12 +296,15 @@ uint32_t detect_max_read_length_in_file(const std::string &path,
 
 uint32_t detect_max_read_length(const std::string &infile_1,
                                 const std::string &infile_2,
-                                const bool paired_end, const bool fasta_input) {
-  std::cout << "Auto-detecting read lengths ...\n";
-  uint32_t max_len_1 = detect_max_read_length_in_file(infile_1, fasta_input);
+                                const bool paired_end, const bool fasta_input,
+                                bool &use_crlf) {
+  std::cout << "Auto-detecting read lengths and line endings ...\n";
+  use_crlf = false;
+  uint32_t max_len_1 =
+      detect_max_read_length_in_file(infile_1, fasta_input, use_crlf);
   uint32_t max_len_2 = 0;
   if (paired_end) {
-    max_len_2 = detect_max_read_length_in_file(infile_2, fasta_input);
+    max_len_2 = detect_max_read_length_in_file(infile_2, fasta_input, use_crlf);
   }
   return std::max(max_len_1, max_len_2);
 }

@@ -18,8 +18,14 @@ constexpr int NUM_DICT_REORDER = 2;
 constexpr int MAX_SEARCH_REORDER = 1000;
 constexpr int THRESH_REORDER = 4;
 // Keep this a power of two so lock sharding can use fast masking.
-constexpr int NUM_LOCKS_REORDER = 0x1000000;
+constexpr int NUM_LOCKS_REORDER = 0x10000;
 constexpr float STOP_CRITERIA_REORDER = 0.5F;
+
+namespace detail {
+inline uint32_t lock_shard(const uint64_t item_id) {
+  return static_cast<uint32_t>(item_id & (NUM_LOCKS_REORDER - 1));
+}
+} // namespace detail
 
 // Encoding parameters.
 constexpr int NUM_DICT_ENCODER = 2;

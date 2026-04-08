@@ -109,10 +109,10 @@ inline std::string thread_output_tmp_path(const std::string &base_path,
   return base_path + '.' + std::to_string(thread_id) + ".tmp";
 }
 
-inline void append_thread_stream(std::ofstream &merged_output,
-                                 const std::string &thread_output_path,
-                                 const std::ios::openmode mode = std::ios::in) {
-  std::ifstream thread_input(thread_output_path, mode | std::ios::in);
+inline void append_thread_stream(
+    std::ofstream &merged_output, const std::string &thread_output_path,
+    const std::ios::openmode mode = std::ios::in | std::ios::binary) {
+  std::ifstream thread_input(thread_output_path, mode);
   if (!thread_input.is_open()) {
     std::cerr << "Warning: Failed to open thread output stream for merging at "
               << thread_output_path << "\n";
@@ -156,8 +156,10 @@ inline void merge_thread_encoded_outputs(const encoder_global &encoder_state) {
                                    std::ios::binary | std::ios::app);
   std::ofstream noise_position_output(encoder_state.outfile_noisepos,
                                       std::ios::binary | std::ios::app);
-  std::ofstream noise_output(encoder_state.outfile_noise, std::ios::app);
-  std::ofstream orientation_output(encoder_state.infile_RC, std::ios::app);
+  std::ofstream noise_output(encoder_state.outfile_noise,
+                             std::ios::binary | std::ios::app);
+  std::ofstream orientation_output(encoder_state.infile_RC,
+                                   std::ios::binary | std::ios::app);
 
   for (int thread_id = 0; thread_id < encoder_state.num_thr; thread_id++) {
     append_thread_stream(
@@ -261,7 +263,7 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
   static const int maxsearch = MAX_SEARCH_ENCODER;
   // Use a fixed large size for locks to avoid any BBHash-related out-of-bounds
   // indexing.
-  const uint32_t num_locks = 0x1000000;
+  const uint32_t num_locks = NUM_LOCKS_REORDER;
 
   std::bitset<bitset_size> *index_masks =
       new std::bitset<bitset_size>[eg.numdict_s];
@@ -292,11 +294,11 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                                          std::to_string(thread_id),
                                      std::ios::binary);
     std::ofstream sequence_output(eg.outfile_seq + '.' +
-                                  std::to_string(thread_id));
+                                  std::to_string(thread_id), std::ios::binary);
     std::ofstream position_output(
         eg.outfile_pos + '.' + std::to_string(thread_id), std::ios::binary);
     std::ofstream noise_output(eg.outfile_noise + '.' +
-                               std::to_string(thread_id));
+                               std::to_string(thread_id), std::ios::binary);
     std::ofstream noise_position_output(eg.outfile_noisepos + '.' +
                                             std::to_string(thread_id),
                                         std::ios::binary);
@@ -304,7 +306,7 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                                    std::to_string(thread_id) + ".tmp",
                                std::ios::binary);
     std::ofstream orientation_output(eg.infile_RC + '.' +
-                                     std::to_string(thread_id) + ".tmp");
+                                     std::to_string(thread_id) + ".tmp", std::ios::binary);
     std::ofstream read_length_output(eg.infile_readlength + '.' +
                                          std::to_string(thread_id) + ".tmp",
                                      std::ios::binary);
@@ -409,7 +411,7 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                                 3 * dictionaries[dictionary_index].start)
                                    .to_ullong();
                   bucket_start_index =
-                      dictionaries[dictionary_index].bphf->lookup(lookup_key);
+                      (*dictionaries[dictionary_index].bphf)(lookup_key);
                   if (bucket_start_index >=
                       dictionaries[dictionary_index].numkeys)
                     continue;
@@ -449,13 +451,13 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                                                    read_lengths[read_id]])
                                       .count();
                       if (hamming <= thresh_s) {
-                        if (!omp_test_lock(&read_locks[read_id]))
+                        if (!omp_test_lock(&read_locks[detail::lock_shard(read_id)]))
                           continue;
                         if (remaining_reads[read_id]) {
                           remaining_reads[read_id] = 0;
                           matched_read = 1;
                         }
-                        omp_unset_lock(&read_locks[read_id]);
+                        omp_unset_lock(&read_locks[detail::lock_shard(read_id)]);
                       }
                       if (matched_read == 1) {
                         matched_read = 0;
@@ -502,7 +504,7 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                                     3 * dictionaries[delete_dict_index].start)
                                        .to_ullong();
                       bucket_start_index =
-                          dictionaries[delete_dict_index].bphf->lookup(
+                          (*dictionaries[delete_dict_index].bphf)(
                               lookup_key);
                       if (!omp_test_lock(&dictionary_locks[bucket_start_index %
                                                            num_locks])) {
@@ -517,7 +519,7 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                       deleted_it =
                           deleted_rids[delete_dict_index].erase(deleted_it);
                       omp_unset_lock(
-                          &dictionary_locks[bucket_start_index % num_locks]);
+                          &dictionary_locks[detail::lock_shard(bucket_start_index)]);
                     }
                 }
               }
@@ -696,16 +698,21 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
       new std::bitset<bitset_size>[singleton_pool_size];
   uint32_t *order_s = new uint32_t[singleton_pool_size];
   uint16_t *read_lengths_s = new uint16_t[singleton_pool_size];
+  std::cout << "Reading singletons..." << std::endl;
   readsingletons<bitset_size>(read, order_s, read_lengths_s, eg, egb);
   remove(eg.infile_N.c_str());
+  std::cout << "Correcting order..." << std::endl;
   correct_order(order_s, eg);
 
   std::array<bbhashdict, NUM_DICT_ENCODER> dict;
   initialize_encoder_dict_ranges(dict, eg.max_readlen);
-  if (singleton_pool_size > 0)
+  if (singleton_pool_size > 0) {
+    std::cout << "Building encoder dictionary for " << singleton_pool_size << " singletons..." << std::endl;
     constructdictionary<bitset_size>(read, dict.data(), read_lengths_s,
                                      eg.numdict_s, singleton_pool_size, 3,
                                      eg.basedir, eg.num_thr);
+  }
+  std::cout << "Starting main encoding loop..." << std::endl;
 
   std::vector<uint16_t> all_read_lengths;
   {
@@ -717,15 +724,13 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
     }
   }
 
-  const uint32_t num_locks = 0x1000000;
-  omp_lock_t *read_locks = new omp_lock_t[eg.numreads_s + eg.numreads_N + 1];
+  const uint32_t num_locks = NUM_LOCKS_REORDER;
+  omp_lock_t *read_locks = new omp_lock_t[num_locks];
   omp_lock_t *dictionary_locks = new omp_lock_t[num_locks];
   bool *remaining_reads = new bool[eg.numreads_s + eg.numreads_N];
 
-  for (uint64_t i = 0; i < eg.numreads_s + eg.numreads_N + 1; i++) {
-    omp_init_lock(&read_locks[i]);
-  }
   for (uint32_t i = 0; i < num_locks; i++) {
+    omp_init_lock(&read_locks[i]);
     omp_init_lock(&dictionary_locks[i]);
   }
   std::fill(remaining_reads, remaining_reads + eg.numreads_s + eg.numreads_N,
@@ -738,10 +743,9 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   // Stitch the per-thread streams back into the final encoded outputs.
   detail::merge_thread_encoded_outputs(eg);
 
-  std::ofstream order_output(eg.infile_order,
-                             std::ios::binary | std::ofstream::app);
+  std::ofstream order_output(eg.infile_order, std::ios::out | std::ios::binary | std::ios::app);
   std::ofstream read_length_output(eg.infile_readlength,
-                                   std::ios::binary | std::ofstream::app);
+                                   std::ios::out | std::ios::binary | std::ios::app);
   std::ofstream unaligned_output(eg.outfile_unaligned, std::ios::binary);
 
   uint64_t len_unaligned = 0;
@@ -759,18 +763,16 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   unaligned_output.close();
 
   // Cleanup state arrays and locks
-  delete[] remaining_reads;
   for (uint32_t i = 0; i < num_locks; i++) {
+    omp_destroy_lock(&read_locks[i]);
     omp_destroy_lock(&dictionary_locks[i]);
   }
-  delete[] dictionary_locks;
-  for (uint64_t i = 0; i < singleton_pool_size + 1; i++) {
-    omp_destroy_lock(&read_locks[i]);
-  }
   delete[] read_locks;
+  delete[] dictionary_locks;
+  delete[] remaining_reads;
 
   std::ofstream f_unaligned_count(eg.outfile_unaligned + ".count",
-                                  std::ios::binary);
+                                  std::ios::out | std::ios::binary);
   f_unaligned_count.write(byte_ptr(&len_unaligned), sizeof(uint64_t));
   f_unaligned_count.close();
 
@@ -787,13 +789,9 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   for (int tid = 0; tid < eg.num_thr; tid++) {
     std::ifstream fin_pos(eg.outfile_pos + '.' + std::to_string(tid),
                           std::ios::binary);
-    if (fin_pos.read(byte_ptr(&abs_pos_thr), sizeof(uint64_t))) {
-      while (!fin_pos.eof()) {
-        abs_pos_thr += abs_pos;
-        fout_pos.write(byte_ptr(&abs_pos_thr), sizeof(uint64_t));
-        if (!fin_pos.read(byte_ptr(&abs_pos_thr), sizeof(uint64_t)))
-          break;
-      }
+    while (fin_pos.read(byte_ptr(&abs_pos_thr), sizeof(uint64_t))) {
+      abs_pos_thr += abs_pos;
+      fout_pos.write(byte_ptr(&abs_pos_thr), sizeof(uint64_t));
     }
     fin_pos.close();
     remove((eg.outfile_pos + '.' + std::to_string(tid)).c_str());
