@@ -325,7 +325,8 @@ bool is_gzip_output_path(const std::string &output_path) {
 
 void open_output_files(std::ofstream (&output_streams)[2],
                        const std::string (&output_paths)[2],
-                       const bool paired_end, const bool (&gzip_outputs)[2]) {
+                       const bool paired_end,
+                       const bool (&/*gzip_outputs*/)[2]) {
   for (int stream_index = 0; stream_index < 2; stream_index++) {
     if (stream_index == 1 && !paired_end)
       continue;

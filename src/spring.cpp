@@ -765,8 +765,8 @@ void compress(const std::string &temp_dir,
 void decompress(const std::string &temp_dir,
                 const std::vector<std::string> &input_paths,
                 const std::vector<std::string> &output_paths,
-                const int &num_thr,
-                const int &compression_level) {
+                const int &/*num_thr*/,
+                const int &/*compression_level*/) {
   omp_set_dynamic(0);
 
   std::cout << "Starting decompression...\n";
@@ -795,9 +795,9 @@ void decompress(const std::string &temp_dir,
   compression_params_input.close();
 
   bool paired_end = cp.paired_end;
-  bool long_flag = cp.long_flag;
   const decompression_io_config io_config =
       resolve_decompression_io(input_paths, output_paths, paired_end);
+
 
 
 
