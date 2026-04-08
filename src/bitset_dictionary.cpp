@@ -56,7 +56,11 @@ void bbhashdict::findpos(int64_t *dictidx, const uint64_t &startposidx) {
   const uint32_t bucket_end_index = startpos[startposidx + 1];
 
   dictidx[0] = bin_begin;
-  dictidx[1] = logical_bin_end(read_id, bin_begin, bucket_end_index);
+  if (std::cmp_less(bin_begin, bucket_end_index) && !empty_bin[startposidx]) {
+    dictidx[1] = logical_bin_end(read_id, bin_begin, bucket_end_index);
+  } else {
+    dictidx[1] = bin_begin;
+  }
 }
 
 void bbhashdict::remove(const int64_t *dictidx, const uint64_t &startposidx,

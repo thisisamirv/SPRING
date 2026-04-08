@@ -8,11 +8,12 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(CheckIPOSupported)
 
-function(extract_archive_if_needed archive_path destination_dir expected_path)
+function(extract_archive_if_needed archive_path destination_parent expected_path)
     file(SHA256 "${archive_path}" archive_hash)
-    set(stamp_path "${destination_dir}/.spring-archive-sha256")
-    set(should_extract TRUE)
+    get_filename_component(archive_name "${archive_path}" NAME)
+    set(stamp_path "${build_vendor_dir}/.${archive_name}.sha256")
 
+    set(should_extract TRUE)
     if (EXISTS "${expected_path}" AND EXISTS "${stamp_path}")
         file(READ "${stamp_path}" recorded_hash)
         string(STRIP "${recorded_hash}" recorded_hash)
@@ -22,31 +23,17 @@ function(extract_archive_if_needed archive_path destination_dir expected_path)
     endif ()
 
     if (should_extract)
-        file(REMOVE_RECURSE "${destination_dir}")
-        file(MAKE_DIRECTORY "${destination_dir}")
-        file(ARCHIVE_EXTRACT INPUT "${archive_path}" DESTINATION "${destination_dir}")
-        # Some archives contain a single top-level directory (e.g. "zstd/")
-        # Normalize that case by moving the inner contents up one level
-        if (NOT EXISTS "${expected_path}")
-            file(RELATIVE_PATH rel_expected "${expected_path}" "${destination_dir}")
-            file(GLOB children RELATIVE "${destination_dir}" "${destination_dir}/*")
-            list(LENGTH children children_count)
-            if (children_count EQUAL 1)
-                list(GET children 0 only_child)
-                if (IS_DIRECTORY "${destination_dir}/${only_child}")
-                    if (EXISTS "${destination_dir}/${only_child}/${rel_expected}")
-                        file(GLOB inner_items RELATIVE "${destination_dir}/${only_child}" "${destination_dir}/${only_child}/*")
-                        foreach(inner_item IN LISTS inner_items)
-                            file(RENAME "${destination_dir}/${only_child}/${inner_item}" "${destination_dir}/${inner_item}")
-                        endforeach()
-                        file(REMOVE_RECURSE "${destination_dir}/${only_child}")
-                    endif()
-                endif()
-            endif()
+        file(MAKE_DIRECTORY "${destination_parent}")
+        message(STATUS "Extracting ${archive_name}...")
+        execute_process(
+            COMMAND tar -xf "${archive_path}" -C "${destination_parent}" ${ARGN}
+            RESULT_VARIABLE tar_result
+        )
+        if (NOT tar_result EQUAL 0)
+            message(FATAL_ERROR "Failed to extract ${archive_path}")
         endif()
-
-        file(WRITE "${stamp_path}" "${archive_hash}\n")
-    endif ()
+        file(WRITE "${stamp_path}" "${archive_hash}")
+    endif()
 endfunction()
 
 function(replace_in_file_if_needed file_path old_text new_text)
@@ -196,21 +183,22 @@ set(include_dir ${CMAKE_SOURCE_DIR}/src)
 
 extract_archive_if_needed(
     "${CMAKE_SOURCE_DIR}/vendor/cloudflare_zlib.tar.xz"
-    "${CLOUDFLARE_ZLIB_DIR}"
+    "${build_vendor_dir}"
     "${CLOUDFLARE_ZLIB_DIR}/zlib.h"
 )
 
 extract_archive_if_needed(
     "${CMAKE_SOURCE_DIR}/vendor/pthash.tar.xz"
-    "${PTHASH_DIR}"
-    "${PTHASH_DIR}/vendor/pthash/include/pthash.hpp"
+    "${build_vendor_dir}"
+    "${PTHASH_DIR}/include/pthash.hpp"
+    --strip-components=1
 )
 
 # add_subdirectory("${PTHASH_DIR}" "${CMAKE_BINARY_DIR}/pthash-build" EXCLUDE_FROM_ALL)
 
 extract_archive_if_needed(
     "${CMAKE_SOURCE_DIR}/vendor/zstd.tar.xz"
-    "${ZSTD_DIR}"
+    "${build_vendor_dir}"
     "${ZSTD_DIR}/lib/zstd.h"
 )
 
@@ -228,25 +216,25 @@ add_subdirectory("${ZSTD_DIR}/cmake" "${CMAKE_BINARY_DIR}/zstd-build")
 
 extract_archive_if_needed(
     "${CMAKE_SOURCE_DIR}/vendor/libbsc.tar.xz"
-    "${LIBBSC_DIR}"
+    "${build_vendor_dir}"
     "${LIBBSC_DIR}/bsc.cpp"
 )
 
 extract_archive_if_needed(
     "${CMAKE_SOURCE_DIR}/vendor/qvz.tar.xz"
-    "${QVZ_DIR}"
+    "${build_vendor_dir}"
     "${QVZ_DIR}/src/qvz.cpp"
 )
 
 extract_archive_if_needed(
     "${CMAKE_SOURCE_DIR}/vendor/libdeflate.tar.xz"
-    "${LIBDEFLATE_DIR}"
+    "${build_vendor_dir}"
     "${LIBDEFLATE_DIR}/libdeflate.h"
 )
 
 extract_archive_if_needed(
     "${CMAKE_SOURCE_DIR}/vendor/indexed_bzip2.tar.xz"
-    "${INDEXED_BZIP2_DIR}"
+    "${build_vendor_dir}"
     "${INDEXED_BZIP2_DIR}/CMakeLists.txt"
 )
 
@@ -308,18 +296,18 @@ list(APPEND source_files
     # bsc
     ${LIBBSC_DIR}/bsc.cpp
     ${LIBBSC_DIR}/bsc_str_array.cpp
-    ${LIBBSC_DIR}/libbsc/adler32/adler32.cpp
-    ${LIBBSC_DIR}/libbsc/bwt/libsais/libsais.c
-    ${LIBBSC_DIR}/libbsc/bwt/bwt.cpp
-    ${LIBBSC_DIR}/libbsc/coder/coder.cpp
-    ${LIBBSC_DIR}/libbsc/coder/qlfc/qlfc.cpp
-    ${LIBBSC_DIR}/libbsc/coder/qlfc/qlfc_model.cpp
-    ${LIBBSC_DIR}/libbsc/filters/detectors.cpp
-    ${LIBBSC_DIR}/libbsc/filters/preprocessing.cpp
-    ${LIBBSC_DIR}/libbsc/libbsc/libbsc.cpp
-    ${LIBBSC_DIR}/libbsc/lzp/lzp.cpp
-    ${LIBBSC_DIR}/libbsc/platform/platform.cpp
-    ${LIBBSC_DIR}/libbsc/st/st.cpp
+    ${LIBBSC_DIR}/adler32/adler32.cpp
+    ${LIBBSC_DIR}/bwt/libsais/libsais.c
+    ${LIBBSC_DIR}/bwt/bwt.cpp
+    ${LIBBSC_DIR}/coder/coder.cpp
+    ${LIBBSC_DIR}/coder/qlfc/qlfc.cpp
+    ${LIBBSC_DIR}/coder/qlfc/qlfc_model.cpp
+    ${LIBBSC_DIR}/filters/detectors.cpp
+    ${LIBBSC_DIR}/filters/preprocessing.cpp
+    ${LIBBSC_DIR}/libbsc/libbsc.cpp
+    ${LIBBSC_DIR}/lzp/lzp.cpp
+    ${LIBBSC_DIR}/platform/platform.cpp
+    ${LIBBSC_DIR}/st/st.cpp
 
     # qvz
     ${QVZ_DIR}/src/cluster.cpp
@@ -359,11 +347,11 @@ add_executable (spring2 ${source_files})
 # as BBHash, libbsc, id_compression, qvz, and the vendored libdeflate sources.
 target_include_directories(spring2 PRIVATE ${include_dir} ${vendor_dir} ${build_vendor_dir} ${ZSTD_DIR}/lib)
 target_include_directories(spring2 SYSTEM PRIVATE
-    ${PTHASH_DIR}/vendor/pthash/include
-    ${PTHASH_DIR}/vendor/pthash/external/xxHash
-    ${PTHASH_DIR}/vendor/pthash/external/bits/include
-    ${PTHASH_DIR}/vendor/pthash/external/bits/external/essentials/include
-    ${PTHASH_DIR}/vendor/pthash/external/mm_file/include
+    ${PTHASH_DIR}/include
+    ${PTHASH_DIR}/external/xxHash
+    ${PTHASH_DIR}/external/bits/include
+    ${PTHASH_DIR}/external/bits/external/essentials/include
+    ${PTHASH_DIR}/external/mm_file/include
 )
 if (WIN32)
     target_include_directories(spring2 PRIVATE ${CMAKE_SOURCE_DIR}/src)

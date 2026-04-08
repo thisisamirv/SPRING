@@ -12,8 +12,11 @@
 #include <string>
 #include <vector>
 
-#include "pthash.hpp"
+#include "single_phf.hpp"
 #include "util.h"
+#include "utils/bucketers.hpp"
+#include "utils/encoders.hpp"
+#include "utils/hasher.hpp"
 
 namespace spring {
 
@@ -198,6 +201,10 @@ inline void count_bucket_sizes(bbhashdict &dictionary,
 
 inline void finalize_bucket_offsets(bbhashdict &dictionary) {
   dictionary.empty_bin.assign(dictionary.numkeys, false);
+  for (uint32_t key_index = 0; key_index < dictionary.numkeys; key_index++) {
+    if (dictionary.startpos[key_index + 1] == 0)
+      dictionary.empty_bin[key_index] = true;
+  }
   for (uint32_t key_index = 1; key_index < dictionary.numkeys; key_index++) {
     dictionary.startpos[key_index] += dictionary.startpos[key_index - 1];
   }

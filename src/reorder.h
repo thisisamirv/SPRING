@@ -534,6 +534,9 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
           lookup_key = (masked_read_bits >> 2 * dict[dictionary_index].start)
                            .to_ullong();
           bucket_start_index = (*dict[dictionary_index].bphf)(lookup_key);
+          if (bucket_start_index >= dict[dictionary_index].numkeys ||
+              dict[dictionary_index].empty_bin[bucket_start_index])
+            continue;
           if (!omp_test_lock(
                   &dict_locks[detail::lock_shard(bucket_start_index)])) {
             pending_bin_deletions[dictionary_index].push_back(
