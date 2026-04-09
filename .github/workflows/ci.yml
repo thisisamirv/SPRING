@@ -74,15 +74,14 @@ jobs:
         run: |
           choco install -y cmake ninja nasm
           Write-Host 'Downloading winlibs...'
-          $url = 'https://winlibs.com/remote.php?file=' +
-                 'winlibs-x86_64-posix-seh-gcc-12.2.0-ucrt-11.0.0.zip'
+          $url = 'https://github.com/brechtsanders/winlibs_mingw/releases/download/15.2.0posix-14.0.0-ucrt-r7/winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-14.0.0-r7.zip'
           $tmp = Join-Path $env:TEMP 'winlibs.zip'
           Invoke-WebRequest -Uri $url -OutFile $tmp
           Expand-Archive -Path $tmp -DestinationPath C:\mingw-w64
           Remove-Item $tmp -Force
           Write-Host 'Configuring PATH'
-          $p = 'C:\mingw-w64\winlibs\ucrt64\bin'
-          Add-Content -Path $env:GITHUB_PATH -Value $p
+          $gccbin = Get-ChildItem -Path C:\mingw-w64 -Filter gcc.exe -Recurse | Select-Object -First 1 -ExpandProperty DirectoryName
+          Add-Content -Path $env:GITHUB_PATH -Value $gccbin
 
       - name: Configure on Linux
         if: runner.os == 'Linux'

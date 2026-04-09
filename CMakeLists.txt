@@ -25,8 +25,15 @@ function(extract_archive_if_needed archive_path destination_parent expected_path
     if (should_extract)
         file(MAKE_DIRECTORY "${destination_parent}")
         message(STATUS "Extracting ${archive_name}...")
+        # On Windows/MSYS2, GNU tar treats "C:" as a remote host. --force-local fixes this.
+        execute_process(COMMAND tar --version OUTPUT_VARIABLE tar_version ERROR_QUIET)
+        if (tar_version MATCHES "GNU tar")
+            set(force_local "--force-local")
+        endif()
+
         execute_process(
-            COMMAND tar -xf "${archive_path}" -C "${destination_parent}" ${ARGN}
+            COMMAND tar ${force_local} -xf "${archive_path}" -C "${destination_parent}" ${ARGN}
+            WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
             RESULT_VARIABLE tar_result
         )
         if (NOT tar_result EQUAL 0)
