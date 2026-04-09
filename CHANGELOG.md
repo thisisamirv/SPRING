@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## V1.0.0-alpha
 
 ### Added
 
