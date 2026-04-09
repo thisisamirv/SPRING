@@ -119,8 +119,8 @@ if (CMAKE_BUILD_TYPE MATCHES "^(Debug|RelWithDebInfo)$")
     set(FLAGS "${FLAGS} -g")
 endif ()
 
-set(CMAKE_CXX_FLAGS "${FLAGS}")
-set(CMAKE_C_FLAGS "${FLAGS}")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAGS}")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${FLAGS}")
 
 # OpenMP is required across Spring and several bundled compression components.
 FIND_PACKAGE( OpenMP REQUIRED)
