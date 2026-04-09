@@ -63,7 +63,8 @@ void delete_temp_dir_if_present() {
   std::error_code ec;
   std::filesystem::remove_all(p, ec);
   if (ec) {
-      std::cerr << "Warning: could not delete temporary directory: " << ec.message() << std::endl;
+    std::cerr << "Warning: could not delete temporary directory: "
+              << ec.message() << std::endl;
   }
   temp_dir_flag_global = false;
 }
@@ -118,7 +119,7 @@ std::string build_options_description() {
          "files (default\n"
       << "                                  current directory)\n"
       << "  -t [ --threads ] arg (=" << default_num_threads()
-      << ")   number of threads\n"
+      << ")      number of threads\n"
       << "                                  (default: min(max(1, hw_threads - "
          "1), 16))\n"
       << "  -m [ --memory ] arg (=0)        approximate memory budget in GB;\n"
@@ -131,19 +132,20 @@ std::string build_options_description() {
       << "                                  Example: --strip io to drop ids "
          "and order.\n"
       << "  -q [ --qmod ] arg               quality mode: possible modes are\n"
-      << "                                  1. -q lossless (default)\n"
-      << "                                  2. -q qvz qv_ratio (QVZ lossy "
+      << "                                    1. -q lossless (default)\n"
+      << "                                    2. -q qvz qv_ratio (QVZ lossy "
          "compression,\n"
-      << "                                  parameter qv_ratio roughly "
+      << "                                    parameter qv_ratio roughly "
          "corresponds to\n"
-      << "                                  bits used per quality value)\n"
-      << "                                  3. -q ill_bin (Illumina 8-level "
+      << "                                    bits used per quality value)\n"
+      << "                                    3. -q ill_bin (Illumina 8-level "
          "binning)\n"
-      << "                                  4. -q binary thr high low (binary "
+      << "                                    4. -q binary thr high low "
+         "(binary "
          "(2-level)\n"
-      << "                                  thresholding, quality binned to "
+      << "                                    thresholding, quality binned to "
          "high if >=\n"
-      << "                                  thr and to low if < thr)\n"
+      << "                                    thr and to low if < thr)\n"
       << "  -l [ --level ] arg (=6)         Compression level (1-9) for "
          "identifiers\n"
       << "                                  and output (.gz) formatting. "

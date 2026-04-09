@@ -19,7 +19,7 @@ jobs:
             name: linux
             arch: x86_64
             artifact_name: spring2-linux-x86_64
-          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
             name: linux
             arch: arm64
             artifact_name: spring2-linux-arm64
@@ -42,22 +42,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-
-      # Linux ARM64 build via QEMU and Docker
-      - name: Set up QEMU for ARM64
-        if: matrix.name == 'linux' && matrix.arch == 'arm64'
-        uses: docker/setup-qemu-action@v3
-
       - name: Build Linux (Docker)
         if: matrix.name == 'linux'
         run: |
-          DOCKER_IMAGE="ubuntu:20.04"
+          DOCKER_IMAGE="almalinux:8"
           DOCKER_PLATFORM="linux/amd64"
           ARCH_SUFFIX="x86_64"
           CMAKE_EXTRA_FLAGS="-DSPRING_STATIC_RUNTIMES=ON"
 
           if [ "${{ matrix.arch }}" == "arm64" ]; then
-            DOCKER_IMAGE="arm64v8/ubuntu:20.04"
+            DOCKER_IMAGE="arm64v8/almalinux:8"
             DOCKER_PLATFORM="linux/arm64"
             ARCH_SUFFIX="aarch64"
             CMAKE_EXTRA_FLAGS="-DCMAKE_C_FLAGS='-march=armv8-a+crc' \
@@ -65,19 +59,24 @@ jobs:
           fi
 
           docker run --rm --platform "$DOCKER_PLATFORM" \
+            -e ARCH_SUFFIX="$ARCH_SUFFIX" \
+            -e CMAKE_EXTRA_FLAGS="$CMAKE_EXTRA_FLAGS" \
             -v "$PWD":/work -w /work "$DOCKER_IMAGE" /bin/bash -c "
-            apt-get update && \
-            apt-get install -y --no-install-recommends \
-              build-essential libomp-dev ninja-build nasm \
-              python3 python3-pip python3-venv wget libfuse2 file && \
-            python3 -m venv .cmake-venv && \
+            dnf install -y epel-release dnf-plugins-core && \
+            (dnf config-manager --set-enabled powertools || \
+              dnf config-manager --set-enabled crb) && \
+            dnf install -y gcc-toolset-12-gcc-c++ libomp-devel \
+              ninja-build nasm python39 python39-pip wget \
+              fuse-libs file && \
+            source /opt/rh/gcc-toolset-12/enable && \
+            python3.9 -m venv .cmake-venv && \
             . .cmake-venv/bin/activate && \
-            python -m pip install 'cmake==4.2.0' && \
+            python3.9 -m pip install 'cmake==4.2.0' && \
             cmake -S . -B build -G Ninja \
               -Dspring_optimize_for_native=OFF \
               -Dspring_optimize_for_portability=ON \
               -DLIBRAPIDARCHIVE_WITH_ISAL=OFF \
-              $CMAKE_EXTRA_FLAGS && \
+              \$CMAKE_EXTRA_FLAGS && \
             cmake --build build --parallel && \
             file build/spring2 && \
             ldd build/spring2 && \
@@ -164,7 +163,6 @@ jobs:
         run: |
           mkdir -p release
           if [ "${{ matrix.name }}" == "linux" ]; then
-            cp build/spring2 "release/${{ matrix.artifact_name }}"
             cp spring2-linux-${{ matrix.arch }}.AppImage release/
           else
             cp build/spring2 "release/${{ matrix.artifact_name }}"
@@ -202,16 +200,6 @@ jobs:
           }
           Copy-Item build/spring2.exe "release/${{ matrix.artifact_name }}"
 
-      - name: Calculate Checksums
-        shell: bash
-        run: |
-          cd release
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum * > "SHA256SUMS-${{ matrix.artifact_name }}.txt"
-          else
-            shasum -a 256 * > "SHA256SUMS-${{ matrix.artifact_name }}.txt"
-          fi
-
       - name: Upload binary for universalizing
         if: matrix.name == 'macos'
         uses: actions/upload-artifact@v4
@@ -227,7 +215,6 @@ jobs:
           files: |
             release/${{ matrix.artifact_name }}
             release/*.AppImage
-            release/SHA256SUMS-*.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -257,24 +244,11 @@ jobs:
           chmod +x release/spring2-macos-universal
           file release/spring2-macos-universal
 
-      - name: Calculate Checksum
-        shell: bash
-        run: |
-          cd release
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum spring2-macos-universal > \
-              SHA256SUMS-spring2-macos-universal.txt
-          else
-            shasum -a 256 spring2-macos-universal > \
-              SHA256SUMS-spring2-macos-universal.txt
-          fi
-
       - name: Upload Artifact to Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
             release/spring2-macos-universal
-            release/SHA256SUMS-spring2-macos-universal.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

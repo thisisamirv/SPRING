@@ -6,6 +6,7 @@ project (SPRING2)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 include(CheckIPOSupported)
 
 function(extract_archive_if_needed archive_path destination_parent expected_path)
@@ -271,6 +272,7 @@ add_library(spring_cloudflare_zlib STATIC
 )
 target_include_directories(spring_cloudflare_zlib PUBLIC ${CLOUDFLARE_ZLIB_DIR})
 target_compile_options(spring_cloudflare_zlib PRIVATE -fno-lto -fno-strict-aliasing)
+set_target_properties(spring_cloudflare_zlib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 add_library(ZLIB::ZLIB ALIAS spring_cloudflare_zlib)
 
 set(LIBRAPIDARCHIVE_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
