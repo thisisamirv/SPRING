@@ -26,11 +26,11 @@ jobs:
             name: linux
             arch: arm64
             artifact_name: spring2-linux-arm64
-          - os: macos-14
+          - os: macos-latest
             name: macos
             arch: arm64
             artifact_name: spring2-macos-arm64
-          - os: macos-13
+          - os: macos-15-intel
             name: macos
             arch: x86_64
             artifact_name: spring2-macos-x86_64
@@ -90,7 +90,7 @@ jobs:
             echo '[Desktop Entry]' >> spring2.desktop && \
             echo 'Type=Application' >> spring2.desktop && \
             echo 'Exec=spring2' >> spring2.desktop && \
-            echo 'Icon=spring2' >> spring2.desktop && \
+            echo 'Icon=logo' >> spring2.desktop && \
             echo 'Categories=Science;Biology;' >> spring2.desktop && \
             echo 'Terminal=true' >> spring2.desktop && \
             export EXTRA_QT_PLUGINS= && \
@@ -195,7 +195,7 @@ jobs:
               echo "Type=Application" >> spring2.desktop
               echo "Name=SPRING2" >> spring2.desktop
               echo "Exec=spring2" >> spring2.desktop
-              echo "Icon=spring2" >> spring2.desktop
+              echo "Icon=logo" >> spring2.desktop
               echo "Categories=Science;Biology;" >> spring2.desktop
               echo "Terminal=true" >> spring2.desktop
               export EXTRA_QT_PLUGINS=
@@ -210,7 +210,6 @@ jobs:
                  [ "${{ matrix.name }}" == "linux" ]; then
               cp spring2-linux-arm64.AppImage release/
             fi
-          fi
 
       - name: Configure (Windows)
         if: matrix.name == 'windows'
