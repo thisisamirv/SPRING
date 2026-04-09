@@ -211,7 +211,6 @@ jobs:
             mingw-w64-ucrt-x86_64-nasm
             mingw-w64-ucrt-x86_64-ninja
             mingw-w64-ucrt-x86_64-clang-tools-extra
-            mingw-w64-ucrt-x86_64-cppcheck
             mingw-w64-ucrt-x86_64-python
 
       - name: Configure on Linux
@@ -283,11 +282,6 @@ jobs:
       - name: Run cppcheck on Linux and macOS
         if: runner.os != 'Windows'
         run: ./dev/cppcheck.sh
-
-      - name: Run cppcheck on Windows
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: .\dev\cppcheck.ps1
 
       - name: Run valgrind smoke test
         if: runner.os == 'Linux'
