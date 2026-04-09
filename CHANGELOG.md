@@ -39,7 +39,7 @@
 
 ### Fixed
 
-* Removed the previous Unix-only build assumption and enabled the modernized build and CI flow on Windows through the MSYS2 UCRT64 toolchain.
+* Removed the previous Unix-only build assumption and enabled the modernized build and CI flow on Windows through a native MinGW-w64 toolchain.
 * Fixed empty-reference-chunk decompression failures by switching the decoded chunk path to the local mapping wrapper.
 * Reduced decompression peak memory usage by avoiding reconstruction of the full decoded reference in one large in-memory string.
 * Reduced decompression write overhead by switching packed-sequence decode output to buffered block writes.
