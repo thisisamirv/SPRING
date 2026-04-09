@@ -82,7 +82,8 @@ else ()
 	message(FATAL_ERROR "Compiler currently not supported by CMake build: ${CMAKE_CXX_COMPILER_ID}")
 endif()
 
-if (NOT WIN32)
+option(SPRING_ENABLE_IPO "Enable Interprocedural Optimization if supported" ON)
+if (NOT WIN32 AND SPRING_ENABLE_IPO AND NOT DEFINED CMAKE_INTERPROCEDURAL_OPTIMIZATION)
         check_ipo_supported(RESULT result)
         if(result)
             message(STATUS "Support for Interprocedural Optimization detected.")
@@ -269,6 +270,7 @@ add_library(spring_cloudflare_zlib STATIC
     ${CLOUDFLARE_ZLIB_DIR}/zutil.c
 )
 target_include_directories(spring_cloudflare_zlib PUBLIC ${CLOUDFLARE_ZLIB_DIR})
+target_compile_options(spring_cloudflare_zlib PRIVATE -fno-lto -fno-strict-aliasing)
 add_library(ZLIB::ZLIB ALIAS spring_cloudflare_zlib)
 
 set(LIBRAPIDARCHIVE_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
@@ -393,9 +395,9 @@ if (WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         message(STATUS "SPRING: linking libgcc/libstdc++/libgomp statically")
         # Prefer modern CMake link options when available
         if (COMMAND target_link_options)
-            target_link_options(spring2 PRIVATE -static-libgcc -static-libstdc++ -static-libgomp)
+            target_link_options(spring2 PRIVATE -static)
         else()
-            set_property(TARGET spring2 APPEND_STRING PROPERTY LINK_FLAGS " -static-libgcc -static-libstdc++ -static-libgomp")
+            set_property(TARGET spring2 APPEND_STRING PROPERTY LINK_FLAGS " -static")
         endif()
     else()
         # Add a post-build step and a convenience target to copy commonly required

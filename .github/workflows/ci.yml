@@ -11,9 +11,6 @@ name: CI
 permissions:
   contents: read
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   build-and-smoke:
     name: Build and smoke / ${{ matrix.name }}
@@ -34,7 +31,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -166,7 +163,7 @@ jobs:
             shell: msys2 {0}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Install Linux analysis dependencies
         if: runner.os == 'Linux'
