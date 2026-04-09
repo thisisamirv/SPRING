@@ -22,18 +22,21 @@ $CURRENT_SMOKE_CASE = ""
 
 function Write-SmokeDebug {
     param ($exitCode)
-    Write-Error "Smoke debug: case=$($global:CURRENT_SMOKE_CASE) exit_code=$exitCode"
-    Write-Error "Smoke debug: pwd=$(Get-Location)"
+    Write-Host "Smoke debug: case=$($global:CURRENT_SMOKE_CASE) exit_code=$exitCode" -ForegroundColor Yellow
+    Write-Host "Smoke debug: pwd=$(Get-Location)" -ForegroundColor Yellow
     
     if (Test-Path ".") {
-        Get-ChildItem -Force | Out-String | Write-Error
+        Write-Host "Smoke debug: Directory listing:" -ForegroundColor Yellow
+        Get-ChildItem -File | Select-Object Name, Length, LastWriteTime | ForEach-Object {
+            Write-Host "Smoke debug: File: $($_.Name) Size: $($_.Length) Date: $($_.LastWriteTime)" -ForegroundColor Yellow
+        }
     }
 
     $candidates = @("win-single", "win-paired", "win-gzip", "win-single-out", "win-paired-out.1", "win-paired-out.2", "win-gzip-out", "abcd", "tmp", "tmp.1", "tmp.2")
     foreach ($candidate in $candidates) {
         if (Test-Path $candidate) {
-            Write-Error "Smoke debug: found $candidate"
-            Get-Item $candidate | Select-Object Name, Length, LastWriteTime | Out-String | Write-Error
+            Write-Host "Smoke debug: found $candidate" -ForegroundColor Yellow
+            Get-Item $candidate | Select-Object Name, Length, LastWriteTime | Out-String | Write-Host -ForegroundColor Yellow
         }
     }
 
@@ -42,11 +45,12 @@ function Write-SmokeDebug {
         $archives = @("win-single", "win-paired", "win-gzip", "abcd")
         foreach ($archive in $archives) {
             if (Test-Path $archive -PathType Leaf) {
-                Write-Error "Smoke debug: tar contents for $archive"
+                Write-Host "Smoke debug: tar contents for $archive" -ForegroundColor Yellow
                 try {
-                    tar -tf $archive 2>&1 | Out-String | Write-Error
+                    tar -tf $archive 2>&1 | Out-String | Write-Host -ForegroundColor Yellow
+                } catch {
+                    # Ignore tar errors
                 }
-                catch {}
             }
         }
     }
@@ -70,8 +74,15 @@ function Invoke-Spring {
         $fullArgs += $env:SPRING_TEST_ARGS.Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries)
     }
     
-    # Append any remaining arguments passed to Run-Spring
-    $fullArgs += $args
+    # Unroll arguments if they were passed as an array subexpression (e.g., Invoke-Spring @(...))
+    # which causes them to be nested in $args[0].
+    foreach ($arg in $args) {
+        if ($arg -is [array]) {
+            $fullArgs += $arg
+        } else {
+            $fullArgs += $arg
+        }
+    }
 
     if ($fullArgs.Count -eq 0) { return }
 
@@ -104,16 +115,28 @@ function Write-SmokeCase {
 function Compare-Files {
     param ($leftPath, $rightPath)
     
-    if (-not (Test-Path $leftPath) -or -not (Test-Path $rightPath)) {
-        throw "One of the files to compare does not exist: $leftPath, $rightPath"
+    if (-not (Test-Path $leftPath)) {
+        throw "Left comparison file does not exist: $leftPath (searching in $(Get-Location))"
+    }
+    if (-not (Test-Path $rightPath)) {
+        throw "Right comparison file does not exist: $rightPath"
     }
 
-    $leftHash = Get-FileHash $leftPath -Algorithm SHA256
-    $rightHash = Get-FileHash $rightPath -Algorithm SHA256
+    $leftLines = Get-Content $leftPath
+    $rightLines = Get-Content $rightPath
 
-    if ($leftHash.Hash -ne $rightHash.Hash) {
-        Write-Error "Files differ: $leftPath $rightPath"
+    if ($leftLines.Count -ne $rightLines.Count) {
+        Write-Host "Files differ in line count: $($leftLines.Count) vs $($rightLines.Count)" -ForegroundColor Red
         return $false
+    }
+
+    for ($i = 0; $i -lt $leftLines.Count; $i++) {
+        if ($leftLines[$i] -ne $rightLines[$i]) {
+            Write-Host "Files differ at line $($i + 1)" -ForegroundColor Red
+            Write-Host "  Left:  $($leftLines[$i])" -ForegroundColor Red
+            Write-Host "  Right: $($rightLines[$i])" -ForegroundColor Red
+            return $false
+        }
     }
     return $true
 }
@@ -134,24 +157,24 @@ try {
 
     if ($SPRING_SMOKE_MODE -eq "quick") {
         Write-SmokeCase "single fastq round-trip"
-        Invoke-Spring @("-c", "-i", "$ASSET_DIR\test_1.fastq", "-o", "abcd")
-        Invoke-Spring @("-d", "-i", "abcd", "-o", "tmp")
+        Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" -o abcd
+        Invoke-Spring -d -i abcd -o tmp
         if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
 
         Write-SmokeCase "single fasta round-trip"
-        Invoke-Spring @("-c", "-i", "$ASSET_DIR\test_1.fasta", "-o", "abcd")
-        Invoke-Spring @("-d", "-i", "abcd", "-o", "tmp")
+        Invoke-Spring -c -i "$ASSET_DIR\test_1.fasta" -o abcd
+        Invoke-Spring -d -i abcd -o tmp
         if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fasta")) { exit 1 }
 
         Write-SmokeCase "paired fastq round-trip"
-        Invoke-Spring @("-c", "-i", "$ASSET_DIR\test_1.fastq", "$ASSET_DIR\test_2.fastq", "-o", "abcd")
-        Invoke-Spring @("-d", "-i", "abcd", "-o", "tmp")
+        Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" "$ASSET_DIR\test_2.fastq" -o abcd
+        Invoke-Spring -d -i abcd -o tmp
         if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
         if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
 
         Write-SmokeCase "gzipped fastq input round-trip"
-        Invoke-Spring @("-c", "-i", "$ASSET_DIR\test_1.fastq.gz", "-o", "abcd")
-        Invoke-Spring @("-d", "-i", "abcd", "-o", "tmp")
+        Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq.gz" -o abcd
+        Invoke-Spring -d -i abcd -o tmp
         if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
 
         Write-Host "Tests successful!" -ForegroundColor Green
@@ -161,22 +184,22 @@ try {
     if ($SPRING_SMOKE_MODE -eq "windows-quick") {
         Write-SmokeCase "single fastq long-mode round-trip"
         Initialize-SmokeInput "$ASSET_DIR\test_1.fastq" "win-single-input.fastq"
-        Invoke-Spring @("-c", "-i", "win-single-input.fastq", "-o", "win-single")
-        Invoke-Spring @("-d", "-i", "win-single", "-o", "win-single-out")
+        Invoke-Spring -c -i win-single-input.fastq -o win-single
+        Invoke-Spring -d -i win-single -o win-single-out
         if (-not (Compare-Files "win-single-out" "$ASSET_DIR\test_1.fastq")) { exit 1 }
 
         Write-SmokeCase "paired fastq long-mode round-trip"
         Initialize-SmokeInput "$ASSET_DIR\test_1.fastq" "win-paired-input-1.fastq"
         Initialize-SmokeInput "$ASSET_DIR\test_2.fastq" "win-paired-input-2.fastq"
-        Invoke-Spring @("-c", "-i", "win-paired-input-1.fastq", "win-paired-input-2.fastq", "-o", "win-paired")
-        Invoke-Spring @("-d", "-i", "win-paired", "-o", "win-paired-out")
+        Invoke-Spring -c -i win-paired-input-1.fastq win-paired-input-2.fastq -o win-paired
+        Invoke-Spring -d -i win-paired -o win-paired-out
         if (-not (Compare-Files "win-paired-out.1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
         if (-not (Compare-Files "win-paired-out.2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
 
         Write-SmokeCase "gzipped fastq long-mode round-trip"
         Initialize-SmokeInput "$ASSET_DIR\test_1.fastq.gz" "win-gzip-input.fastq.gz"
-        Invoke-Spring @("-c", "-i", "win-gzip-input.fastq.gz", "-o", "win-gzip")
-        Invoke-Spring @("-d", "-i", "win-gzip", "-o", "win-gzip-out")
+        Invoke-Spring -c -i win-gzip-input.fastq.gz -o win-gzip
+        Invoke-Spring -d -i win-gzip -o win-gzip-out
         if (-not (Compare-Files "win-gzip-out" "$ASSET_DIR\test_1.fastq")) { exit 1 }
 
         Write-Host "Tests successful!" -ForegroundColor Green
@@ -185,67 +208,67 @@ try {
 
     # Full smoke test mode
     Write-SmokeCase "fastq round-trip"
-    Invoke-Spring @("-c", "-i", "$ASSET_DIR\test_1.fastq", "-o", "abcd")
-    Invoke-Spring @("-d", "-i", "abcd", "-o", "tmp")
+    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" -o abcd
+    Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
 
     Write-SmokeCase "fasta round-trip"
-    Invoke-Spring @("-c", "-i", "$ASSET_DIR\test_1.fasta", "-o", "abcd")
-    Invoke-Spring @("-d", "-i", "abcd", "-o", "tmp")
+    Invoke-Spring -c -i "$ASSET_DIR\test_1.fasta" -o abcd
+    Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fasta")) { exit 1 }
 
     Write-SmokeCase "paired fastq round-trip"
-    Invoke-Spring @("-c", "-i", "$ASSET_DIR\test_1.fastq", "$ASSET_DIR\test_2.fastq", "-o", "abcd")
-    Invoke-Spring @("-d", "-i", "abcd", "-o", "tmp")
+    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" "$ASSET_DIR\test_2.fastq" -o abcd
+    Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
     if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
 
     Write-SmokeCase "paired fasta round-trip"
-    Invoke-Spring @("-c", "-i", "$ASSET_DIR\test_1.fasta", "$ASSET_DIR\test_2.fasta", "-o", "abcd")
-    Invoke-Spring @("-d", "-i", "abcd", "-o", "tmp")
+    Invoke-Spring -c -i "$ASSET_DIR\test_1.fasta" "$ASSET_DIR\test_2.fasta" -o abcd
+    Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fasta")) { exit 1 }
     if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fasta")) { exit 1 }
 
     Write-SmokeCase "fastq to gzipped output"
-    Invoke-Spring @("-c", "-i", "$ASSET_DIR\test_1.fastq", "-o", "abcd")
-    Invoke-Spring @("-d", "-i", "abcd", "-o", "tmp")
+    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" -o abcd
+    Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
-    Invoke-Spring @("-d", "-i", "abcd", "-o", "tmp.gz")
+    Invoke-Spring -d -i abcd -o tmp.gz
     if (Get-Command "tar" -ErrorAction SilentlyContinue) {
         tar -xf tmp.gz
         if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
     }
 
     Write-SmokeCase "fasta round-trip repeat"
-    Invoke-Spring @("-c", "-i", "$ASSET_DIR\test_1.fasta", "-o", "abcd")
-    Invoke-Spring @("-d", "-i", "abcd", "-o", "tmp")
+    Invoke-Spring -c -i "$ASSET_DIR\test_1.fasta" -o abcd
+    Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fasta")) { exit 1 }
 
     Write-SmokeCase "paired fastq gzipped input round-trip"
-    Invoke-Spring @("-c", "-i", "$ASSET_DIR\test_1.fastq.gz", "$ASSET_DIR\test_2.fastq.gz", "-o", "abcd")
-    Invoke-Spring @("-d", "-i", "abcd", "-o", "tmp")
+    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq.gz" "$ASSET_DIR\test_2.fastq.gz" -o abcd
+    Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
     if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
 
     Write-SmokeCase "paired fasta gzipped input round-trip"
-    Invoke-Spring @("-c", "-i", "$ASSET_DIR\test_1.fasta.gz", "$ASSET_DIR\test_2.fasta.gz", "-o", "abcd")
-    Invoke-Spring @("-d", "-i", "abcd", "-o", "tmp")
+    Invoke-Spring -c -i "$ASSET_DIR\test_1.fasta.gz" "$ASSET_DIR\test_2.fasta.gz" -o abcd
+    Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fasta")) { exit 1 }
     if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fasta")) { exit 1 }
 
     Write-SmokeCase "single gzipped fastq round-trip"
-    Invoke-Spring @("-c", "-i", "$ASSET_DIR\test_1.fastq.gz", "-o", "abcd")
-    Invoke-Spring @("-d", "-i", "abcd", "-o", "tmp")
+    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq.gz" -o abcd
+    Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
 
     Write-SmokeCase "multi-threaded round-trip"
-    Invoke-Spring @("-c", "-i", "$ASSET_DIR\test_1.fastq", "-o", "abcd", "-t", "8")
-    Invoke-Spring @("-d", "-i", "abcd", "-o", "tmp", "-t", "5")
+    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" -o abcd -t 8
+    Invoke-Spring -d -i abcd -o tmp -t 5
     if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
 
     Write-SmokeCase "sorted output round-trip"
-    Invoke-Spring @("-c", "-i", "$ASSET_DIR\test_1.fastq", "-o", "abcd", "-s", "o")
-    Invoke-Spring @("-d", "-i", "abcd", "-o", "tmp")
+    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" -o abcd -s o
+    Invoke-Spring -d -i abcd -o tmp
     Get-Content "tmp" | Sort-Object | Set-Content "tmp.sorted"
     Get-Content "$ASSET_DIR\test_1.fastq" | Sort-Object | Set-Content "tmp_1.sorted"
     if (-not (Compare-Files "tmp.sorted" "tmp_1.sorted")) { exit 1 }

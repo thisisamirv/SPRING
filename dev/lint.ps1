@@ -25,13 +25,21 @@ $ID_COMPRESSION_INCLUDE_DIR = Join-Path $BUILD_DIR "vendor/id_compression/includ
 $QVZ_INCLUDE_DIR = Join-Path $BUILD_DIR "vendor/qvz/include"
 $LIBDEFLATE_INCLUDE_DIR = Join-Path $BUILD_DIR "vendor/libdeflate"
 
+$PTHASH_INCLUDE_DIR = Join-Path $BUILD_DIR "vendor/pthash/include"
+$PTHASH_EXTERNAL_DIR = Join-Path $BUILD_DIR "vendor/pthash/external"
+
 $EXTRA_INCLUDES = @(
     (Join-Path $ROOT_DIR "src"),
     $VENDOR_ROOT,
     (Join-Path $BUILD_DIR "vendor"),
     $ID_COMPRESSION_INCLUDE_DIR,
     $LIBDEFLATE_INCLUDE_DIR,
-    $QVZ_INCLUDE_DIR
+    $QVZ_INCLUDE_DIR,
+    $PTHASH_INCLUDE_DIR,
+    (Join-Path $PTHASH_EXTERNAL_DIR "xxHash"),
+    (Join-Path $PTHASH_EXTERNAL_DIR "bits/include"),
+    (Join-Path $PTHASH_EXTERNAL_DIR "bits/external/essentials/include"),
+    (Join-Path $PTHASH_EXTERNAL_DIR "mm_file/include")
 )
 
 $commonTidyArgs = @(

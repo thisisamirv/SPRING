@@ -277,8 +277,8 @@ jobs:
 
       - name: Run lint on Windows
         if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: ./dev/lint.sh
+        shell: powershell
+        run: .\dev\lint.ps1
 
       - name: Run cppcheck on Linux and macOS
         if: runner.os != 'Windows'
@@ -286,8 +286,8 @@ jobs:
 
       - name: Run cppcheck on Windows
         if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: ./dev/cppcheck.sh
+        shell: powershell
+        run: .\dev\cppcheck.ps1
 
       - name: Run valgrind smoke test
         if: runner.os == 'Linux'
@@ -301,7 +301,6 @@ jobs:
 
       - name: Skip valgrind on Windows
         if: runner.os == 'Windows'
-        shell: msys2 {0}
+        shell: powershell
         run: |
-          echo "Valgrind is not available on GitHub-hosted " \
-               "Windows/MSYS2 runners; skipping."
+          Write-Host "Valgrind is not available on GitHub-hosted Windows runners; skipping."

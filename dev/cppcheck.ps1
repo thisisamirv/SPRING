@@ -10,12 +10,20 @@ Assert-Command "cppcheck"
 # Configure include directories
 $ID_COMPRESSION_INCLUDE_DIR = (Join-Path $BUILD_DIR "vendor/id_compression/include")
 $QVZ_INCLUDE_DIR = (Join-Path $BUILD_DIR "vendor/qvz/include")
+$PTHASH_INCLUDE_DIR = (Join-Path $BUILD_DIR "vendor/pthash/include")
+$ZSTD_INCLUDE_DIR = (Join-Path $BUILD_DIR "vendor/zstd/lib")
+$LIBBSC_INCLUDE_DIR = (Join-Path $BUILD_DIR "vendor/libbsc")
+$LIBDEFLATE_INCLUDE_DIR = (Join-Path $BUILD_DIR "vendor/libdeflate")
 
 $INCLUDE_ARGS = @(
     "-I", (Join-Path $ROOT_DIR "src"),
     "-I", $VENDOR_ROOT,
     "-I", $ID_COMPRESSION_INCLUDE_DIR,
-    "-I", $QVZ_INCLUDE_DIR
+    "-I", $QVZ_INCLUDE_DIR,
+    "-I", $PTHASH_INCLUDE_DIR,
+    "-I", $ZSTD_INCLUDE_DIR,
+    "-I", $LIBBSC_INCLUDE_DIR,
+    "-I", $LIBDEFLATE_INCLUDE_DIR
 )
 
 # Configure targets
