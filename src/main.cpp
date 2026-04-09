@@ -119,7 +119,7 @@ std::string build_options_description() {
          "files (default\n"
       << "                                  current directory)\n"
       << "  -t [ --threads ] arg (=" << default_num_threads()
-      << ")      number of threads\n"
+      << ")       number of threads\n"
       << "                                  (default: min(max(1, hw_threads - "
          "1), 16))\n"
       << "  -m [ --memory ] arg (=0)        approximate memory budget in GB;\n"

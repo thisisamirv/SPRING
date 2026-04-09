@@ -35,27 +35,21 @@ SPRING2 is built and validated on:
 - **macOS**: Universal (Intel/Apple Silicon)
 - **Windows**: Native via MinGW-w64
 
+## Documentation
+
+Detailed documentation is available in the `docs/` directory:
+
+- **[Installation & Building](docs/BUILDING.md)**: System requirements and platform-specific build instructions.
+- **[Usage Guide](docs/USAGE.md)**: Command-line options, configuration, and practical examples.
+- **[Development & Maintenance](docs/DEVELOPMENT.md)**: Information for contributors on project structure, linting, and internal architecture.
+
 ## Installation
 
 ### Pre-built Binaries
 
 The easiest way to use SPRING2 is to download the pre-built binaries from the **[Releases](https://github.com/thisisamirv/SPRING/releases)** page.
 
-- **Linux**: Portable AppImages are available for both x86_64 and ARM64.
-- **macOS**: A universal binary is provided for all modern Mac hardware.
-- **Windows**: Standalone `.exe` binaries are available.
-
-### Building from Source
-
-If you prefer to build SPRING2 yourself, please refer to our **[BUILD.md](BUILD.md)** file for a full list of dependencies and platform-specific build instructions.
-
 ## Running SPRING
-
-The built executable is:
-
-```bash
-build/spring
-```
 
 Current command-line help:
 
@@ -79,135 +73,20 @@ Allowed options:
   -s [ --strip ] arg              discard data: i (ids), o (order), q (quality)
                                   Example: --strip io to drop ids and order.
   -q [ --qmod ] arg               quality mode: possible modes are
-                                  1. -q lossless (default)
-                                  2. -q qvz qv_ratio (QVZ lossy compression,
-                                  parameter qv_ratio roughly corresponds to
-                                  bits used per quality value)
-                                  3. -q ill_bin (Illumina 8-level binning)
-                                  4. -q binary thr high low (binary (2-level)
-                                  thresholding, quality binned to high if >=
-                                  thr and to low if < thr)
+                                    1. -q lossless (default)
+                                    2. -q qvz qv_ratio (QVZ lossy compression,
+                                    parameter qv_ratio roughly corresponds to
+                                    bits used per quality value)
+                                    3. -q ill_bin (Illumina 8-level binning)
+                                    4. -q binary thr high low (binary (2-level)
+                                    thresholding, quality binned to high if >=
+                                    thr and to low if < thr)
   -l [ --level ] arg (=6)         compression level (1-9) to use for output
                                   (.gz) formatting (passed to gzip unchanged
                                   and scaled to Zstd 1-22 internally)
 ```
 
-SPRING2 archives are tar files containing the internal compressed streams, though using a `.sp` extension is recommended.
-
-`--memory` is a conservative safety knob for machines with many cores and limited RAM. It does not hard-limit total allocation. Instead, it reduces the effective worker-thread count using an approximate budget of about 1 GB per worker thread.
-
-## Smoke Tests And Lint
-
-Run the basic smoke tests:
-
-```bash
-tests/test_script.sh
-```
-
-Run the project lint wrapper:
-
-```bash
-./dev/lint.sh
-```
-
-On macOS analysis runs, CI prepends Homebrew LLVM to `PATH` before linting.
-
-## Resource Usage
-
-For memory and CPU performance numbers, see the paper and supplementary material. SPRING2 also uses temporary disk space during compression.
-
-In short-read mode, when qualities and identifiers are retained:
-
-- default lossless mode typically uses temporary disk space around 10% to 30% of the original uncompressed input
-- `-s o` mode can push temporary disk usage much higher, often around 70% to 80% of the original file size
-
-These figures are approximate and include the space needed for the final compressed output.
-
-## Example Usage
-
-Compress paired-end FASTQ losslessly:
-
-```bash
-./spring2 -c -i file_1.fastq file_2.fastq -o file.sp
-```
-
-Compress gzipped paired-end FASTQ losslessly:
-
-```bash
-./spring2 -c -i file_1.fastq.gz file_2.fastq.gz -o file.sp
-```
-
-Compress with 16 threads:
-
-```bash
-./spring2 -c -i file_1.fastq file_2.fastq -o file.sp -t 16
-```
-
-Compress with Illumina binning and no stored identifiers:
-
-```bash
-./spring2 -c -i file_1.fastq file_2.fastq -s oi -q ill_bin -o file.sp
-```
-
-Compress with binary-thresholded qualities:
-
-```bash
-./spring2 -c -i file_1.fastq file_2.fastq -s oi -q binary 20 40 6 -o file.sp
-```
-
-Compress with QVZ quantization:
-
-```bash
-./spring2 -c -i file_1.fastq file_2.fastq -s oi -q qvz 1.0 -o file.sp
-```
-
-Compress reads and identifiers only:
-
-```bash
-./spring2 -c -i file_1.fastq file_2.fastq -s q -o file.sp
-```
-
-Compress single-end data without preserving order:
-
-```bash
-./spring2 -c -i file.fastq -s o -o file.sp
-```
-
-Decompress single-end data:
-
-```bash
-./spring2 -d -i file.sp -o file.fastq
-```
-
-Decompress paired-end data to suffixed outputs:
-
-```bash
-./spring2 -d -i file.sp -o file.fastq
-```
-
-Decompress paired-end data to explicit outputs:
-
-```bash
-./spring2 -d -i file.sp -o file_1.fastq file_2.fastq
-```
-
-Decompress paired-end data directly to gzip outputs:
-
-```bash
-./spring2 -d -i file.sp -o file_1.fastq.gz file_2.fastq.gz
-```
-
-Compress paired-end FASTA losslessly:
-
-```bash
-./spring2 -c -i file_1.fasta file_2.fasta -o file.sp
-```
-
-Decompress paired-end FASTA:
-
-```bash
-./spring2 -d -i file.sp -o file_1.fasta file_2.fasta
-```
+For a comprehensive list of all options, quality modes, and multi-threaded examples, see the **[Usage Guide](docs/USAGE.md)**.
 
 ## Related
 

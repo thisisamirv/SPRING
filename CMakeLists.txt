@@ -199,11 +199,9 @@ extract_archive_if_needed(
 extract_archive_if_needed(
     "${CMAKE_SOURCE_DIR}/vendor/pthash.tar.xz"
     "${build_vendor_dir}"
-    "${PTHASH_DIR}/include/pthash.hpp"
-    --strip-components=1
+    "${PTHASH_DIR}/CMakeLists.txt"
 )
-
-# add_subdirectory("${PTHASH_DIR}" "${CMAKE_BINARY_DIR}/pthash-build" EXCLUDE_FROM_ALL)
+add_subdirectory("${PTHASH_DIR}" "${CMAKE_BINARY_DIR}/pthash-build")
 
 extract_archive_if_needed(
     "${CMAKE_SOURCE_DIR}/vendor/zstd.tar.xz"
@@ -226,14 +224,22 @@ add_subdirectory("${ZSTD_DIR}/cmake" "${CMAKE_BINARY_DIR}/zstd-build")
 extract_archive_if_needed(
     "${CMAKE_SOURCE_DIR}/vendor/libbsc.tar.xz"
     "${build_vendor_dir}"
-    "${LIBBSC_DIR}/bsc.cpp"
+    "${LIBBSC_DIR}/CMakeLists.txt"
 )
+add_subdirectory("${LIBBSC_DIR}" "${CMAKE_BINARY_DIR}/libbsc-build")
+if (TARGET libbsc AND SPRING_OPENMP_INCLUDE_DIRS)
+    target_include_directories(libbsc SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
+endif()
 
 extract_archive_if_needed(
     "${CMAKE_SOURCE_DIR}/vendor/qvz.tar.xz"
     "${build_vendor_dir}"
-    "${QVZ_DIR}/src/qvz.cpp"
+    "${QVZ_DIR}/CMakeLists.txt"
 )
+add_subdirectory("${QVZ_DIR}" "${CMAKE_BINARY_DIR}/qvz-build")
+if (TARGET qvz AND SPRING_OPENMP_INCLUDE_DIRS)
+    target_include_directories(qvz SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
+endif()
 
 extract_archive_if_needed(
     "${CMAKE_SOURCE_DIR}/vendor/libdeflate.tar.xz"
@@ -254,26 +260,7 @@ set(LIBDEFLATE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(LIBDEFLATE_INSTALL OFF CACHE BOOL "" FORCE)
 add_subdirectory("${LIBDEFLATE_DIR}" "${CMAKE_BINARY_DIR}/libdeflate-build")
 
-add_library(spring_cloudflare_zlib STATIC
-    ${CLOUDFLARE_ZLIB_DIR}/adler32.c
-    ${CLOUDFLARE_ZLIB_DIR}/compress.c
-    ${CLOUDFLARE_ZLIB_DIR}/crc32.c
-    ${CLOUDFLARE_ZLIB_DIR}/deflate.c
-    ${CLOUDFLARE_ZLIB_DIR}/gzclose.c
-    ${CLOUDFLARE_ZLIB_DIR}/gzlib.c
-    ${CLOUDFLARE_ZLIB_DIR}/gzread.c
-    ${CLOUDFLARE_ZLIB_DIR}/gzwrite.c
-    ${CLOUDFLARE_ZLIB_DIR}/inffast.c
-    ${CLOUDFLARE_ZLIB_DIR}/inflate.c
-    ${CLOUDFLARE_ZLIB_DIR}/inftrees.c
-    ${CLOUDFLARE_ZLIB_DIR}/trees.c
-    ${CLOUDFLARE_ZLIB_DIR}/uncompr.c
-    ${CLOUDFLARE_ZLIB_DIR}/zutil.c
-)
-target_include_directories(spring_cloudflare_zlib PUBLIC ${CLOUDFLARE_ZLIB_DIR})
-target_compile_options(spring_cloudflare_zlib PRIVATE -fno-lto -fno-strict-aliasing)
-set_target_properties(spring_cloudflare_zlib PROPERTIES POSITION_INDEPENDENT_CODE ON)
-add_library(ZLIB::ZLIB ALIAS spring_cloudflare_zlib)
+add_subdirectory("${CLOUDFLARE_ZLIB_DIR}" "${CMAKE_BINARY_DIR}/cloudflare_zlib-build")
 
 set(LIBRAPIDARCHIVE_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
 set(LIBRAPIDARCHIVE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -286,6 +273,9 @@ set(LIBRAPIDARCHIVE_WITH_ISAL ON CACHE BOOL "Build with ISA-L support")
 add_subdirectory("${INDEXED_BZIP2_DIR}" "${CMAKE_BINARY_DIR}/indexed_bzip2-build" EXCLUDE_FROM_ALL)
 if (TARGET rapidgzip)
     target_compile_options(rapidgzip PRIVATE -fno-fast-math)
+    if (SPRING_OPENMP_INCLUDE_DIRS)
+        target_include_directories(rapidgzip SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
+    endif()
 endif ()
 
 # The Spring executable is built from the core pipeline plus bundled
@@ -304,44 +294,8 @@ list(APPEND source_files
     ${source_dir}/decompress.cpp
     ${source_dir}/template_dispatch.cpp
 
-    # bsc
-    ${LIBBSC_DIR}/bsc.cpp
-    ${LIBBSC_DIR}/bsc_str_array.cpp
-    ${LIBBSC_DIR}/adler32/adler32.cpp
-    ${LIBBSC_DIR}/bwt/libsais/libsais.c
-    ${LIBBSC_DIR}/bwt/bwt.cpp
-    ${LIBBSC_DIR}/coder/coder.cpp
-    ${LIBBSC_DIR}/coder/qlfc/qlfc.cpp
-    ${LIBBSC_DIR}/coder/qlfc/qlfc_model.cpp
-    ${LIBBSC_DIR}/filters/detectors.cpp
-    ${LIBBSC_DIR}/filters/preprocessing.cpp
-    ${LIBBSC_DIR}/libbsc/libbsc.cpp
-    ${LIBBSC_DIR}/lzp/lzp.cpp
-    ${LIBBSC_DIR}/platform/platform.cpp
-    ${LIBBSC_DIR}/st/st.cpp
-
-    # qvz
-    ${QVZ_DIR}/src/cluster.cpp
-    ${QVZ_DIR}/src/codebook.cpp
-    ${QVZ_DIR}/src/distortion.cpp
-    ${QVZ_DIR}/src/lines.cpp
-    ${QVZ_DIR}/src/pmf.cpp
-    ${QVZ_DIR}/src/quantizer.cpp
-    ${QVZ_DIR}/src/qv_compressor.cpp
-    ${QVZ_DIR}/src/qvz.cpp
-    ${QVZ_DIR}/src/util.cpp
-    ${QVZ_DIR}/src/well.cpp
 )
 
-if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU|Clang")
-    set(vendored_unused_result_warning_sources
-        ${QVZ_DIR}/src/codebook.cpp
-    )
-    set_source_files_properties(
-        ${vendored_unused_result_warning_sources}
-        PROPERTIES COMPILE_OPTIONS "-Wno-unused-result"
-    )
-endif ()
 
 # Convenience targets for repository development checks.
 function(add_dev_script_target target_name script_name)
@@ -356,14 +310,7 @@ add_executable (spring2 ${source_files})
 
 # Spring headers live in src/, while vendor/ exposes bundled libraries such
 # as BBHash, libbsc, id_compression, qvz, and the vendored libdeflate sources.
-target_include_directories(spring2 PRIVATE ${include_dir} ${vendor_dir} ${build_vendor_dir} ${ZSTD_DIR}/lib)
-target_include_directories(spring2 SYSTEM PRIVATE
-    ${PTHASH_DIR}/include
-    ${PTHASH_DIR}/external/xxHash
-    ${PTHASH_DIR}/external/bits/include
-    ${PTHASH_DIR}/external/bits/external/essentials/include
-    ${PTHASH_DIR}/external/mm_file/include
-)
+target_include_directories(spring2 PRIVATE ${include_dir})
 if (WIN32)
     target_include_directories(spring2 PRIVATE ${CMAKE_SOURCE_DIR}/src)
 endif ()
@@ -374,7 +321,9 @@ target_link_libraries(spring2 PUBLIC
     libdeflate::libdeflate_static
     libzstd_static
     ZLIB::ZLIB
-    # PTHASH (target removed as standalone Build system is gone; using headers directly)
+    libbsc
+    qvz
+    pthash
 )
 if (TARGET OpenMP::OpenMP_CXX)
     target_link_libraries(spring2 PUBLIC OpenMP::OpenMP_CXX)
