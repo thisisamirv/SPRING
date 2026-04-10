@@ -279,6 +279,7 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
   Logger::log_info("Encoding reads");
 #pragma omp parallel
   {
+    bool done = false;
     int thread_id = omp_get_thread_num();
     std::ifstream read_input(eg.infile + '.' + std::to_string(thread_id),
                              std::ios::binary);
@@ -312,7 +313,21 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                                          std::to_string(thread_id) + ".tmp",
                                      std::ios::binary);
     // Check if any streams failed to open.
-
+    if (!read_input.is_open() || !flag_stream.is_open() ||
+        !position_stream.is_open() || !order_input.is_open() ||
+        !orientation_stream.is_open() || !read_length_stream.is_open() ||
+        !sequence_output.is_open() || !position_output.is_open() ||
+        !noise_output.is_open() || !noise_position_output.is_open() ||
+        !order_output.is_open() || !read_length_output.is_open() ||
+        !orientation_output.is_open()) {
+      std::string error_msg = "Thread " + std::to_string(thread_id) +
+                              ": Failed to open one or more temporary "
+                              "files in encoder. Working directory: " +
+                              eg.basedir;
+#pragma omp critical
+      { std::cerr << error_msg << std::endl; }
+      done = true;
+    }
     int64_t bucket_range[2];
     uint64_t bucket_start_index;
     uint64_t lookup_key;
@@ -326,7 +341,6 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
     uint16_t read_length;
     uint32_t read_order, contig_read_count = 0;
     std::array<std::list<uint32_t>, NUM_DICT_ENCODER> deleted_rids;
-    bool done = false;
 
     static std::atomic<uint32_t> total_reads_encoded{0};
     while (!done) {
@@ -426,14 +440,14 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                       dictionaries[dictionary_index].numkeys)
                     continue;
                   if (!omp_test_lock(
-                          &dictionary_locks[bucket_start_index % num_locks]))
+                          &dictionary_locks[detail::lock_shard(bucket_start_index)]))
                     continue;
                   dictionaries[dictionary_index].findpos(bucket_range,
                                                          bucket_start_index);
                   if (dictionaries[dictionary_index]
                           .empty_bin[bucket_start_index]) {
                     omp_unset_lock(
-                        &dictionary_locks[bucket_start_index % num_locks]);
+                        &dictionary_locks[detail::lock_shard(bucket_start_index)]);
                     continue;
                   }
                   uint64_t candidate_key =
@@ -502,7 +516,7 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                     }
                   }
                   omp_unset_lock(
-                      &dictionary_locks[bucket_start_index % num_locks]);
+                      &dictionary_locks[detail::lock_shard(bucket_start_index)]);
                   for (int delete_dict_index = 0;
                        delete_dict_index < eg.numdict_s; delete_dict_index++)
                     for (auto deleted_it =
@@ -516,8 +530,7 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                       bucket_start_index =
                           (*dictionaries[delete_dict_index].bphf)(
                               lookup_key);
-                      if (!omp_test_lock(&dictionary_locks[bucket_start_index %
-                                                           num_locks])) {
+                      if (!omp_test_lock(&dictionary_locks[detail::lock_shard(bucket_start_index)])) {
                         ++deleted_it;
                         continue;
                       }

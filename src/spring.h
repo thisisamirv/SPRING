@@ -24,7 +24,8 @@ void compress(const std::string &temp_dir, const string_list &input_paths,
 
 void decompress(const std::string &temp_dir, const string_list &input_paths,
                 const string_list &output_paths, const int &num_thr,
-                const int &compression_level, const bool verbose = true);
+                const int &compression_level, const bool verbose = true,
+                const bool unzip_flag = false);
 
 std::string random_string(size_t length);
 

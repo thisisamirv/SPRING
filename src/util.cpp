@@ -13,10 +13,10 @@
 #include <string>
 #include <vector>
 
+#include "libbsc/bsc.h"
 #include <cstring>
 #include <libdeflate.h>
 #include <zstd.h>
-#include "libbsc/bsc.h"
 
 #include "omp.h"
 #include "qvz/include/qvz.h"
@@ -110,13 +110,17 @@ const std::array<char, 5> &int_to_dna_n_lookup() {
 void write_fastq_record(std::ostream &out, const std::string &id,
                         const std::string &read,
                         const std::string *quality_or_null,
-                        const bool use_crlf) {
+                        const bool use_crlf, const bool fasta_mode) {
   const char *eol = use_crlf ? "\r\n" : "\n";
   out << id << eol;
   out << read << eol;
-  if (quality_or_null != nullptr) {
+  if (!fasta_mode) {
     out << "+" << eol;
-    out << *quality_or_null << eol;
+    if (quality_or_null != nullptr) {
+      out << *quality_or_null << eol;
+    } else {
+      out << std::string(read.size(), 'I') << eol;
+    }
   }
 }
 
@@ -125,13 +129,13 @@ void write_fastq_records_range(std::ostream &output_stream,
                                const std::string *quality_or_null,
                                const uint64_t start_read_index,
                                const uint64_t end_read_index,
-                               const bool use_crlf) {
+                               const bool use_crlf, const bool fasta_mode) {
   for (uint64_t read_index = start_read_index; read_index < end_read_index;
        read_index++) {
     write_fastq_record(
         output_stream, id_array[read_index], read_array[read_index],
         quality_or_null == nullptr ? nullptr : &quality_or_null[read_index],
-        use_crlf);
+        use_crlf, fasta_mode);
   }
 }
 
@@ -139,7 +143,8 @@ void write_gzip_fastq_block(std::ofstream &output_stream, std::string *id_array,
                             std::string *read_array,
                             const std::string *quality_or_null,
                             const uint32_t num_reads, const int num_thr,
-                            const int gzip_level, const bool use_crlf) {
+                            const int gzip_level, const bool use_crlf,
+                            const bool fasta_mode) {
   if (num_reads == 0)
     return;
 
@@ -153,7 +158,7 @@ void write_gzip_fastq_block(std::ofstream &output_stream, std::string *id_array,
     const read_range &range = thread_ranges[static_cast<size_t>(tid)];
     write_fastq_records_range(plain_output, id_array, read_array,
                               quality_or_null, range.start, range.end,
-                              use_crlf);
+                              use_crlf, fasta_mode);
     gzip_compressed[tid] = gzip_compress_string(plain_output.str(), gzip_level);
   }
 
@@ -521,20 +526,103 @@ uint32_t read_fastq_block(std::istream *input_stream, std::string *id_array,
 }
 
 void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
-                       std::string *read_array, std::string *quality_array,
-                       const uint32_t &num_reads, const bool preserve_quality,
+                       std::string *read_array,
+                       const std::string *quality_array,
+                       const uint32_t &num_reads,
                        const int &num_thr, const bool &gzip_flag,
-                       const int &compression_level, const bool use_crlf) {
-  const std::string *quality_or_null =
-      preserve_quality ? quality_array : nullptr;
+                       const bool &bgzf_flag, const int &compression_level,
+                       const bool use_crlf, const bool fasta_mode) {
+  const std::string *quality_or_null = quality_array;
   if (!gzip_flag) {
     write_fastq_records_range(output_stream, id_array, read_array,
-                              quality_or_null, 0, num_reads, use_crlf);
+                              quality_or_null, 0, num_reads, use_crlf,
+                              fasta_mode);
+  } else if (bgzf_flag) {
+    write_bgzf_fastq_block(output_stream, id_array, read_array, quality_or_null,
+                           num_reads, num_thr, compression_level, use_crlf,
+                           fasta_mode);
   } else {
     // Compression level is 1-9 for CLI; pass to gzip unchanged (clamped).
     const int mapped_gzip_level = std::max(1, std::min(9, compression_level));
     write_gzip_fastq_block(output_stream, id_array, read_array, quality_or_null,
-                           num_reads, num_thr, mapped_gzip_level, use_crlf);
+                           num_reads, num_thr, mapped_gzip_level, use_crlf,
+                           fasta_mode);
+  }
+}
+
+void write_bgzf_fastq_block(std::ofstream &output_stream, std::string *id_array,
+                            std::string *read_array,
+                            const std::string *quality_array,
+                            const uint32_t &num_reads, const int &num_thr,
+                            const int &compression_level, const bool use_crlf, const bool fasta_mode) {
+  if (num_reads == 0)
+    return;
+
+  std::vector<std::string> compressed_parts(num_thr);
+  const std::string eol = use_crlf ? "\r\n" : "\n";
+
+#pragma omp parallel num_threads(num_thr)
+  {
+    int thread_id = omp_get_thread_num();
+    uint32_t start_idx = (uint64_t(num_reads) * thread_id) / num_thr;
+    uint32_t end_idx = (uint64_t(num_reads) * (thread_id + 1)) / num_thr;
+
+    std::string uncompressed_chunk;
+    // Estimate size: ~200 bytes per record
+    uncompressed_chunk.reserve(static_cast<size_t>(end_idx - start_idx) * 200);
+
+    for (uint32_t i = start_idx; i < end_idx; i++) {
+      uncompressed_chunk += id_array[i] + eol;
+      uncompressed_chunk += read_array[i] + eol;
+      if (!fasta_mode) {
+        uncompressed_chunk += "+" + eol;
+        if (quality_array)
+          uncompressed_chunk += quality_array[i] + eol;
+        else
+          uncompressed_chunk += std::string(read_array[i].size(), 'I') + eol;
+      }
+    }
+
+    if (!uncompressed_chunk.empty()) {
+      libdeflate_compressor *compressor =
+          libdeflate_alloc_compressor(std::clamp(compression_level, 1, 12));
+      const char *ptr = uncompressed_chunk.data();
+      size_t remaining = uncompressed_chunk.size();
+      std::vector<char> compressed_buffer(65536 + 1024);
+
+      while (remaining > 0) {
+        size_t block_size = std::min<size_t>(remaining, 65536);
+        size_t cp_size = libdeflate_deflate_compress(
+            compressor, ptr, block_size, compressed_buffer.data(),
+            compressed_buffer.size());
+
+        // Header (10 bytes) + Extra (8 bytes)
+        unsigned char header[18] = {0x1f, 0x8b, 0x08, 0x04, 0x00, 0x00,
+                                    0x00, 0x00, 0x00, 0xff, 0x06, 0x00,
+                                    0x42, 0x43, 0x02, 0x00, 0x00, 0x00};
+        uint16_t bsiz = static_cast<uint16_t>(18 + cp_size + 8 - 1);
+        std::memcpy(&header[16], &bsiz, 2);
+
+        compressed_parts[thread_id].append(
+            reinterpret_cast<const char *>(header), 18);
+        compressed_parts[thread_id].append(compressed_buffer.data(), cp_size);
+
+        uint32_t crc = libdeflate_crc32(0, ptr, block_size);
+        uint32_t isize = static_cast<uint32_t>(block_size);
+        compressed_parts[thread_id].append(reinterpret_cast<const char *>(&crc),
+                                           4);
+        compressed_parts[thread_id].append(
+            reinterpret_cast<const char *>(&isize), 4);
+
+        ptr += block_size;
+        remaining -= block_size;
+      }
+      libdeflate_free_compressor(compressor);
+    }
+  }
+
+  for (const auto &part : compressed_parts) {
+    output_stream.write(part.data(), part.size());
   }
 }
 
@@ -972,10 +1060,12 @@ size_t get_directory_size(const std::string &temp_dir) {
     p = p.parent_path();
   }
 
-  if (!fs::exists(p, ec)) return 0;
+  if (!fs::exists(p, ec))
+    return 0;
 
   for (const auto &entry : fs::recursive_directory_iterator(p, ec)) {
-    if (ec) break;
+    if (ec)
+      break;
     std::error_code size_ec;
     if (fs::is_regular_file(entry.path(), size_ec)) {
       size += fs::file_size(entry.path(), size_ec);
@@ -1018,7 +1108,6 @@ int64_t read_var_int64(std::ifstream &input_stream) {
   return zigzag_decode64(encoded_value);
 }
 
-
 void safe_bsc_decompress(const std::string &input_path,
                          const std::string &output_path) {
   std::ifstream input(input_path, std::ios::binary | std::ios::ate);
@@ -1054,8 +1143,8 @@ void safe_bsc_str_array_decompress(const std::string &input_path,
 
   const std::streampos file_size = input.tellg();
   if (file_size < 4) {
-    throw std::runtime_error("Compressed string array is too small to be valid: " +
-                             input_path);
+    throw std::runtime_error(
+        "Compressed string array is too small to be valid: " + input_path);
   }
   input.close();
 
@@ -1129,6 +1218,7 @@ void write_compression_params(std::ostream &out, const compression_params &cp) {
   write_string(out, cp.input_filename_1);
   write_string(out, cp.input_filename_2);
   write_string(out, cp.note);
+  write_bool(out, cp.fasta_mode);
 
   // Serialize enhanced gzip/BGZF metadata
   write_bool(out, cp.input_1_was_gzipped);
@@ -1186,6 +1276,7 @@ void read_compression_params(std::istream &in, compression_params &cp) {
   cp.input_filename_1 = read_string(in);
   cp.input_filename_2 = read_string(in);
   cp.note = read_string(in);
+  cp.fasta_mode = read_bool(in);
 
   // Deserialize enhanced gzip/BGZF metadata
   cp.input_1_was_gzipped = read_bool(in);
@@ -1320,10 +1411,11 @@ void extract_gzip_detailed_info(const std::string &path, bool &is_gzipped,
       // Non-BGZF: We can't easily find the next member without decompressing.
       // For now, we'll try to get the footer of the last member if possible,
       // or just assume it's a single-member file if we can't skip.
-      // Let's at least try to read the footer of the FIRST member if it's the only one.
-      // But for multi-member non-BGZF, this is hard with just std::ifstream.
-      // We'll skip to the end of the file and read the last 8 bytes for uncompressed size.
-      // This is what `gzip -l` does for single members.
+      // Let's at least try to read the footer of the FIRST member if it's the
+      // only one. But for multi-member non-BGZF, this is hard with just
+      // std::ifstream. We'll skip to the end of the file and read the last 8
+      // bytes for uncompressed size. This is what `gzip -l` does for single
+      // members.
       break;
     }
 

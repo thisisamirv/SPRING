@@ -58,10 +58,13 @@ Allowed options:
   -h [ --help ]                   produce help message
   -c [ --compress ]               compress
   -d [ --decompress ]             decompress
+  -u [ --unzip ]                  during decompression, force output to be
+                                  uncompressed (even if original was .gz)
   -i [ --input ] arg              input file name (two files for paired end)
   -o [ --output ] arg             output file name
-                                    - in the decompression mode, if not specified,
-                                      it uses original input filenames from metadata
+                                    - if not specified, it uses original input
+                                      filenames (swapping extension to .sp during
+                                      compression)
                                     - for paired end decompression, if only one file
                                       is specified, two output files will be created
                                       by suffixing .1 and .2
@@ -106,6 +109,7 @@ Original Input 1:  file.fastq.gz
 Note:              My Note
 Mode:              Single-end
 Reads Processed:   321055
+Compression Ratio: 5.81x (2312 / 398 MB)
 Max Read Length:   301 (using short-read encoder)
 Preserve Order:    Yes
 Preserve IDs:      Yes
@@ -113,6 +117,16 @@ Preserve Quality:  Yes
 Quality Mode:      Lossless
 Compression Level: 6
 Use CRLF:          No
+--------------------------------
+Input 1 Original Compression:
+  Profile:         BGZF (Default)
+  Format:          BGZF (Block Gzip)
+  Block Size:      2185
+  Uncompressed Name: file.fastq
+  Gzip Header:     FLG=0x4, MTIME=0, OS=255
+  Member Count:    102860
+  Original Ratio:  5.53x (6382 / 1154 MB)
+  Likely Origin:   htslib/samtools/clib
 --------------------------------
 ```
 

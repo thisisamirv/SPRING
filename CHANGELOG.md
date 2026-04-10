@@ -17,9 +17,10 @@
 * Added a dedicated `dev/` tooling directory for repository maintenance, including linting, cppcheck, cbindgen validation, Valgrind smoke checks, shared helpers, and suppressions.
 * Added configure-time `.clangd` generation so editor diagnostics inherit the active compiler's include paths and OpenMP configuration.
 * Added extensive documentations.
-* Added storage of the original input filenames within the compressed archive metadata.
-* Added the `spring2-preview` utility for inspecting archive metadata, read counts, and settings without full decompression.
+* Added storage of the original input filenames and detailed gzip metadata (BGZF block size, header flags, MTIME, OS, and internal filename) within the compressed archive metadata.
+* Added the `spring2-preview` utility for inspecting archive metadata, read counts, settings, and detailed compression ratios without full decompression.
 * Added the `-n, --note` flag to store custom text notes within the archive.
+* Added the `-u, --unzip` flag to force uncompressed output during decompression, even if the original input was gzipped.
 * Added a specialized `-v, --verbose` flag to toggle between a real-time progress bar (default) and detailed informational logging.
 
 ### Changed

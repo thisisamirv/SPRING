@@ -14,13 +14,14 @@ spring2 [mode] [options] -i <input_files> -o <output_file>
 
 - `-c, --compress`: Perform compression.
 - `-d, --decompress`: Perform decompression.
+- `-u, --unzip`: During decompression, force the output to be uncompressed (plain FASTQ/FASTA), even if the original input was a `.gz` file.
 
 ## Compression Options
 
 ### Input and Output
 
 - `-i, --input arg`: Input file name. Specify two files for paired-end data.
-- `-o, --output arg`: Output file name. If omitted during decompression, SPRING2 will use the original input names stored in the archive metadata. For paired-end decompression, if only one file is specified, two output files will be created by suffixing `.1` and `.2`.
+- `-o, --output arg`: Output file name. If omitted, SPRING2 will use the original input name(s) (e.g., swapping extensions to `.sp` during compression). For paired-end decompression, if only one file is specified, two output files will be created by suffixing `.1` and `.2`.
 
 ### Performance and Resources
 
@@ -64,7 +65,7 @@ To view the metadata and notes of an archive without decompressing it:
 
 ### Paired-End Gzipped FASTQ
 
-SPRING2 automatically detects gzipped inputs and decompresses them on the fly using internal `rapidgzip` (if available) or `zlib`.
+SPRING2 automatically detects gzipped inputs and decompresses them on the fly using internal `rapidgzip` (if available) or `zlib`. Detailed gzip metadata (profile, block size, original internal filename) is stored in the archive for high-fidelity restoration.
 
 ```bash
 ./spring2 -c -i file_1.fastq.gz file_2.fastq.gz -o file.sp
@@ -76,12 +77,20 @@ SPRING2 automatically detects gzipped inputs and decompresses them on the fly us
 ./spring2 -c -i file_1.fastq file_2.fastq -s oi -q qvz 1.0 -o file.sp
 ```
 
-### Decompress to Gzip
+### Decompression with Gzipped Output
 
-SPRING2 infers output formatting from the extension.
+SPRING2 infers output formatting from the extension. If you specify an output filename ending in `.gz`, the output will be gzipped using the compression parameters (or defaults) stored in the archive.
 
 ```bash
 ./spring2 -d -i file.sp -o file_1.fastq.gz file_2.fastq.gz
+```
+
+### Force Uncompressed Output
+
+If the original input was gzipped, SPRING2 will default to producing gzipped output during decompression (to maintain symmetry). Use the `-u` flag to force uncompressed output:
+
+```bash
+./spring2 -d -u -i file.sp
 ```
 
 ## Archive Format

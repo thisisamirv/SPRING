@@ -39,6 +39,7 @@ void preview(const std::string &archive_path) {
     if (cp.paired_end) {
       std::cout << "Original Input 2:  " << cp.input_filename_2 << "\n";
     }
+    uint64_t archive_size = std::filesystem::file_size(archive_path);
     if (!cp.note.empty()) {
       std::cout << "Note:              " << cp.note << "\n";
     }
@@ -48,6 +49,19 @@ void preview(const std::string &archive_path) {
     if (cp.paired_end) {
       std::cout << "  (Input 1: " << cp.num_reads_clean[0]
                 << ", Input 2: " << cp.num_reads_clean[1] << ")\n";
+    }
+
+    uint64_t total_orig_compressed_size = cp.input_1_gzip_compressed_size;
+    if (cp.paired_end) {
+      total_orig_compressed_size += cp.input_2_gzip_compressed_size;
+    }
+    if (total_orig_compressed_size > 0) {
+      double to_mb_factor = 1024.0 * 1024.0;
+      double overall_ratio = (double)total_orig_compressed_size / archive_size;
+      std::cout << "Compression Ratio: " << std::fixed << std::setprecision(2)
+                << overall_ratio << "x ("
+                << (uint64_t)(total_orig_compressed_size / to_mb_factor) << " / "
+                << (uint64_t)(archive_size / to_mb_factor) << " MB)\n";
     }
     std::cout << "Max Read Length:   " << cp.max_readlen << " (using "
               << (cp.long_flag ? "long" : "short") << "-read encoder)\n";
@@ -72,11 +86,16 @@ void preview(const std::string &archive_path) {
     std::cout << "Compression Level: " << cp.compression_level << "\n";
     std::cout << "Use CRLF:          " << (cp.use_crlf ? "Yes" : "No") << "\n";
 
-    auto print_gzip_info = [](int idx, bool was_gzipped, uint8_t flg,
-                              uint32_t mtime, uint8_t xfl, uint8_t os,
-                              const std::string &name, bool is_bgzf,
-                              uint16_t bgzf_bsiz, uint64_t uncomp_sz,
-                              uint64_t comp_sz, uint32_t members) {
+    auto to_mb = [](uint64_t bytes) {
+      return (double)bytes / (1024.0 * 1024.0);
+    };
+
+    auto print_gzip_info = [&](int idx, bool was_gzipped, uint8_t flg,
+                               uint32_t mtime, uint8_t xfl, uint8_t os,
+                               const std::string &name,
+                               const std::string &suggested_name, bool is_bgzf,
+                               uint16_t bgzf_bsiz, uint64_t uncomp_sz,
+                               uint64_t comp_sz, uint32_t members) {
       if (!was_gzipped)
         return;
 
@@ -98,17 +117,16 @@ void preview(const std::string &archive_path) {
       if (is_bgzf) {
         std::cout << "  Block Size:      " << bgzf_bsiz << "\n";
       }
-      if (!name.empty()) {
-        std::cout << "  Original Name:   " << name << "\n";
-      }
+      std::cout << "  Uncompressed Name: " << (name.empty() ? suggested_name : name)
+                << (name.empty() ? "" : " (from header)") << "\n";
       std::cout << "  Gzip Header:     FLG=0x" << std::hex << (int)flg << std::dec
                 << ", MTIME=" << mtime << ", OS=" << (int)os << "\n";
       std::cout << "  Member Count:    " << members << "\n";
       if (comp_sz > 0) {
         double ratio = (double)uncomp_sz / comp_sz;
-        std::cout << "  Original Ratio:  " << std::fixed
-                  << std::setprecision(2) << ratio << "x (" << uncomp_sz
-                  << " / " << comp_sz << " bytes)\n";
+        std::cout << "  Original Ratio:  " << std::fixed << std::setprecision(2)
+                  << ratio << "x (" << (uint64_t)to_mb(uncomp_sz) << " / "
+                  << (uint64_t)to_mb(comp_sz) << " MB)\n";
       }
 
       std::string origin = "Unknown";
@@ -121,10 +139,17 @@ void preview(const std::string &archive_path) {
       std::cout << "  Likely Origin:   " << origin << "\n";
     };
 
+    auto get_suggested_uncomp_name = [](const std::string &path) {
+      if (path.size() >= 3 && path.substr(path.size() - 3) == ".gz")
+        return path.substr(0, path.size() - 3);
+      return path;
+    };
+
     print_gzip_info(1, cp.input_1_was_gzipped, cp.input_1_gzip_flg,
                     cp.input_1_gzip_mtime, cp.input_1_gzip_xfl,
-                    cp.input_1_gzip_os, cp.input_1_gzip_name, cp.input_1_is_bgzf,
-                    cp.input_1_bgzf_block_size,
+                    cp.input_1_gzip_os, cp.input_1_gzip_name,
+                    get_suggested_uncomp_name(cp.input_filename_1),
+                    cp.input_1_is_bgzf, cp.input_1_bgzf_block_size,
                     cp.input_1_gzip_uncompressed_size,
                     cp.input_1_gzip_compressed_size,
                     cp.input_1_gzip_member_count);
@@ -133,11 +158,13 @@ void preview(const std::string &archive_path) {
       print_gzip_info(2, cp.input_2_was_gzipped, cp.input_2_gzip_flg,
                       cp.input_2_gzip_mtime, cp.input_2_gzip_xfl,
                       cp.input_2_gzip_os, cp.input_2_gzip_name,
+                      get_suggested_uncomp_name(cp.input_filename_2),
                       cp.input_2_is_bgzf, cp.input_2_bgzf_block_size,
                       cp.input_2_gzip_uncompressed_size,
                       cp.input_2_gzip_compressed_size,
                       cp.input_2_gzip_member_count);
     }
+
     std::cout << "--------------------------------\n";
 
   } catch (const std::exception &e) {

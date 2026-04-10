@@ -60,6 +60,7 @@ struct compression_params {
   std::string input_filename_1;
   std::string input_filename_2;
   std::string note;
+  bool fasta_mode;
 
   // Original input compression metadata
   bool input_1_was_gzipped;
@@ -150,10 +151,17 @@ uint32_t read_fastq_block(std::istream *input_stream, std::string *id_array,
                           const uint32_t &num_reads, const bool &fasta_flag);
 
 void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
-                       std::string *read_array, std::string *quality_array,
-                       const uint32_t &num_reads, const bool preserve_quality,
-                       const int &num_thr, const bool &gzip_flag,
-                       const int &compression_level, const bool use_crlf);
+                       std::string *read_array, const std::string *quality_array,
+                       const uint32_t &num_reads, const int &num_thr,
+                       const bool &gzip_flag, const bool &bgzf_flag,
+                       const int &compression_level, const bool use_crlf,
+                       const bool fasta_mode);
+
+void write_bgzf_fastq_block(std::ofstream &output_stream, std::string *id_array,
+                            std::string *read_array,
+                            const std::string *quality_array,
+                            const uint32_t &num_reads, const int &num_thr,
+                            const int &compression_level, const bool use_crlf, const bool fasta_mode);
 
 // ID stream helpers.
 void compress_id_block(const char *output_path, std::string *id_array,

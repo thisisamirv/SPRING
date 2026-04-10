@@ -48,6 +48,7 @@ struct command_line_options {
   int compression_level = spring::DEFAULT_COMPRESSION_LEVEL;
   std::string note;
   bool verbose_flag = false;
+  bool unzip_flag = false;
 };
 
 std::string temp_dir_global;
@@ -110,13 +111,18 @@ std::string build_options_description() {
       << "  -h [ --help ]                   produce help message\n"
       << "  -c [ --compress ]               compress\n"
       << "  -d [ --decompress ]             decompress\n"
+      << "  -u [ --unzip ]                  during decompression, force\n"
+      << "                                  output to be uncompressed (even "
+         "if\n"
+      << "                                  original was .gz)\n"
       << "  -i [ --input ] arg              input file name (two files for "
          "paired end)\n"
       << "  -o [ --output ] arg             output file name\n"
-      << "                                    - in the decompression mode, if "
-         "not specified,\n"
-      << "                                      it uses original input "
-         "filenames from metadata\n"
+      << "                                    - if not specified, it uses "
+         "original input\n"
+      << "                                      filenames (swapping extension "
+         "to .sp during\n"
+      << "                                      compression)\n"
       << "                                    - for paired end decompression, "
          "if only one file\n"
       << "                                      is specified, two output files "
@@ -306,6 +312,8 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
       options.note = strip_quotes(args[index++]);
     } else if (arg == "-v" || arg == "--verbose") {
       options.verbose_flag = true;
+    } else if (arg == "-u" || arg == "--unzip") {
+      options.unzip_flag = true;
     } else {
       throw std::runtime_error(std::string("Unknown option: ") + arg);
     }
@@ -390,7 +398,7 @@ void run_requested_mode(const command_line_options &options,
 
   spring::decompress(temp_dir, options.input_paths, options.output_paths,
                      options.num_threads, options.compression_level,
-                     options.verbose_flag);
+                     options.verbose_flag, options.unzip_flag);
 }
 
 } // namespace

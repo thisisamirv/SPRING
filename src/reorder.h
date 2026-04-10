@@ -423,6 +423,7 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
   std::vector<uint32_t> unmatched_counts(static_cast<size_t>(rg.num_thr));
 #pragma omp parallel
   {
+    bool done = false;
     int thread_id = omp_get_thread_num();
     std::ofstream orientation_output(
         detail::thread_output_path(rg.outfileRC, thread_id), std::ios::binary);
@@ -440,6 +441,19 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
     std::ofstream read_length_output(
         detail::thread_output_path(rg.outfilereadlength, thread_id),
         std::ios::binary);
+    if (!orientation_output.is_open() || !flag_output.is_open() ||
+        !position_output.is_open() || !order_output.is_open() ||
+        !singleton_order_output.is_open() || !read_length_output.is_open()) {
+      std::string error_msg = "Thread " + std::to_string(thread_id) +
+                              ": Failed to open one or more temporary "
+                              "files in reorder. Working directory: " +
+                              rg.basedir;
+#pragma omp critical
+      { std::cerr << error_msg << std::endl; }
+      done = true;
+    }
+
+
 
     unmatched_counts[thread_id] = 0;
     std::bitset<bitset_size> reference_read, reverse_reference_read,
@@ -460,7 +474,6 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
     int64_t bucket_range[2];
     uint64_t bucket_start_index;
     bool found_match = 0;
-    bool done = 0;
     bool previous_read_unmatched = false;
     bool left_search_start = false;
     bool left_search = false;

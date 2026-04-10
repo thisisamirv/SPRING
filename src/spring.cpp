@@ -21,8 +21,8 @@
 #include "decompress.h"
 #include "paired_end_order.h"
 #include "params.h"
-#include "progress.h"
 #include "preprocess.h"
+#include "progress.h"
 #include "reordered_quality_id.h"
 #include "reordered_streams.h"
 #include "spring.h"
@@ -48,8 +48,6 @@ struct decompression_io_config {
   std::string output_path_2;
 };
 
-
-
 struct prepared_compression_inputs {
   std::string input_path_1;
   std::string input_path_2;
@@ -63,11 +61,12 @@ void print_step_summary(const char *step_name,
                         const clock_type::time_point &step_start,
                         const clock_type::time_point &step_end) {
   Logger::log_info(std::string(step_name) + " done!");
-  Logger::log_info("Time for this step: " +
-                   std::to_string(std::chrono::duration_cast<std::chrono::seconds>(
-                                      step_end - step_start)
-                                      .count()) +
-                   " s");
+  Logger::log_info(
+      "Time for this step: " +
+      std::to_string(std::chrono::duration_cast<std::chrono::seconds>(
+                         step_end - step_start)
+                         .count()) +
+      " s");
 }
 
 template <typename Func>
@@ -165,8 +164,9 @@ std::string build_rapidgzip_command(const std::string &input_path,
                                     const int num_thr) {
   const int decoder_parallelism = num_thr > 0 ? num_thr : 0;
   return shell_quote(shell_path(kRapidgzipExecutable)) +
-         " --decompress --force --output " + shell_quote(shell_path(output_path)) +
-         " --decoder-parallelism " + std::to_string(decoder_parallelism) + " " +
+         " --decompress --force --output " +
+         shell_quote(shell_path(output_path)) + " --decoder-parallelism " +
+         std::to_string(decoder_parallelism) + " " +
          shell_quote(shell_path(input_path));
 }
 
@@ -371,9 +371,28 @@ compression_io_config resolve_compression_io(const string_list &input_paths,
     throw std::runtime_error("Too many (>2) input files specified");
   }
 
-  if (output_paths.size() != 1)
+  if (output_paths.empty()) {
+    std::filesystem::path p(input_paths[0]);
+    bool changed = true;
+    while (changed) {
+      changed = false;
+      std::string ext = p.extension().string();
+      for (const std::string &v : {".gz", ".fastq", ".fq", ".fasta", ".fa",
+                                   ".FASTQ", ".FQ", ".FASTA", ".FA"}) {
+        if (ext == v) {
+          p.replace_extension("");
+          changed = true;
+          break;
+        }
+      }
+    }
+    p.replace_extension(".sp");
+    io_config.archive_path = p.string();
+  } else if (output_paths.size() == 1) {
+    io_config.archive_path = output_paths[0];
+  } else {
     throw std::runtime_error("Number of output files not equal to 1");
-  io_config.archive_path = output_paths[0];
+  }
   return io_config;
 }
 
@@ -513,8 +532,6 @@ resolve_decompression_io(const string_list &input_paths,
   return io_config;
 }
 
-
-
 } // namespace
 
 void compress(const std::string &temp_dir,
@@ -556,10 +573,9 @@ void compress(const std::string &temp_dir,
   const bool preserve_quality = !no_quality_flag && !fasta_input;
 
   bool use_crlf = false;
-  const uint32_t max_read_length =
-      detect_max_read_length(prepared_inputs.input_path_1,
-                             prepared_inputs.input_path_2, io_config.paired_end,
-                             fasta_input, use_crlf);
+  const uint32_t max_read_length = detect_max_read_length(
+      prepared_inputs.input_path_1, prepared_inputs.input_path_2,
+      io_config.paired_end, fasta_input, use_crlf);
   const bool long_flag = max_read_length > MAX_READ_LEN;
 
   if (long_flag) {
@@ -580,9 +596,12 @@ void compress(const std::string &temp_dir,
   cp.num_thr = num_thr;
   cp.compression_level = compression_level;
   cp.note = note;
-  cp.input_filename_1 = std::filesystem::path(io_config.input_path_1).filename().string();
+  cp.fasta_mode = fasta_input;
+  cp.input_filename_1 =
+      std::filesystem::path(io_config.input_path_1).filename().string();
   if (io_config.paired_end) {
-    cp.input_filename_2 = std::filesystem::path(io_config.input_path_2).filename().string();
+    cp.input_filename_2 =
+        std::filesystem::path(io_config.input_path_2).filename().string();
   }
 
   // Extract detailed gzip metadata for input 1
@@ -606,9 +625,11 @@ void compress(const std::string &temp_dir,
   if (preserve_quality)
     configure_quality_options(cp, quality_options);
 
-  Logger::log_info(std::string("Detected input format: ") + input_format_name(input_format));
+  Logger::log_info(std::string("Detected input format: ") +
+                   input_format_name(input_format));
   if (fasta_input) {
-    Logger::log_info("FASTA input detected; quality values will not be stored.");
+    Logger::log_info(
+        "FASTA input detected; quality values will not be stored.");
   }
 
   if (prepared_inputs.input_1_was_gzipped ||
@@ -704,8 +725,8 @@ void compress(const std::string &temp_dir,
 void decompress(const std::string &temp_dir,
                 const std::vector<std::string> &input_paths,
                 const std::vector<std::string> &output_paths,
-                const int &/*num_thr*/, const int &/*compression_level*/,
-                const bool verbose) {
+                const int & /*num_thr*/, const int & /*compression_level*/,
+                const bool verbose, const bool unzip_flag) {
   Logger::set_verbose(verbose);
   ProgressBar progress(!verbose);
   ProgressBar::SetGlobalInstance(&progress);
@@ -748,83 +769,101 @@ void decompress(const std::string &temp_dir,
       std::cout << "Note: " << cp.note << "\n";
     }
 
-    auto log_gzip_metadata = [](int input_idx, bool was_gzipped, uint8_t flg,
-                                uint32_t mtime, uint8_t xfl, uint8_t os,
-                                const std::string &name, bool is_bgzf,
-                                uint16_t bgzf_bsiz, uint64_t uncomp_sz,
-                                uint64_t comp_sz, uint32_t members) {
-      if (!was_gzipped)
-        return;
+    auto log_gzip_metadata =
+        [](int input_idx, bool was_gzipped, uint8_t flg, uint32_t mtime,
+           uint8_t xfl, uint8_t os, const std::string &name,
+           const std::string &suggested_name, bool is_bgzf, uint16_t bgzf_bsiz,
+           uint64_t uncomp_sz, uint64_t comp_sz, uint32_t members) {
+          if (!was_gzipped)
+            return;
 
-      std::cout << "  Input " << input_idx << " compression metadata:\n";
-      std::string profile = "UNKNOWN";
-      if (is_bgzf)
-        profile = "BGZF (Default)";
-      else if (xfl == 2)
-        profile = "MAX (Slowest)";
-      else if (xfl == 4)
-        profile = "FAST (Fastest)";
-      else
-        profile = "DEFAULT/OTHER";
+          std::cout << "  Input " << input_idx << " compression metadata:\n";
+          std::string profile = "UNKNOWN";
+          if (is_bgzf)
+            profile = "BGZF (Default)";
+          else if (xfl == 2)
+            profile = "MAX (Slowest)";
+          else if (xfl == 4)
+            profile = "FAST (Fastest)";
+          else
+            profile = "DEFAULT/OTHER";
 
-      std::cout << "    Profile:      " << profile << "\n";
-      if (is_bgzf) {
-        std::cout << "    Format:       BGZF (Block Gzip)\n";
-        std::cout << "    Block Size:   " << bgzf_bsiz << "\n";
-      } else {
-        std::cout << "    Format:       Standard Gzip\n";
-      }
+          std::cout << "    Profile:      " << profile << "\n";
+          if (is_bgzf) {
+            std::cout << "    Format:       BGZF (Block Gzip)\n";
+            std::cout << "    BGZF BlockSz: " << bgzf_bsiz << "\n";
+          } else {
+            std::cout << "    Format:       Standard Gzip\n";
+          }
 
-      std::cout << "    Flags (FLG):  0x" << std::hex << (int)flg << std::dec
-                << "\n";
-      std::cout << "    MTIME:        " << mtime << "\n";
-      std::cout << "    OS:           " << (int)os << " ("
-                << (os == 3 ? "Unix" : (os == 0 ? "Windows/FAT" : "Unknown"))
-                << ")\n";
+          std::cout << "    Flags (FLG):  0x" << std::hex << (int)flg
+                    << std::dec << "\n";
+          std::string os_str = "Unknown";
+          if (os == 3)
+            os_str = "Unix";
+          else if (os == 0)
+            os_str = "Windows/FAT";
+          std::cout << "    Gzip Header:  FLG=0x" << std::hex << (int)flg
+                    << std::dec << ", MTIME=" << mtime << ", OS=" << (int)os
+                    << " (" << os_str << ")\n";
 
-      if (!name.empty()) {
-        std::cout << "    Orig Name:    " << name << "\n";
-      }
+          std::cout << "    Uncomp Name:  "
+                    << (name.empty() ? suggested_name : name)
+                    << (name.empty() ? "" : " (from header)") << "\n";
 
-      std::cout << "    Members:      " << members << "\n";
-      if (comp_sz > 0) {
-        double ratio = (double)uncomp_sz / comp_sz;
-        std::cout << "    Uncomp Size:  " << uncomp_sz << " bytes\n";
-        std::cout << "    Comp Size:    " << comp_sz << " bytes\n";
-        std::cout << "    Orig Ratio:   " << std::fixed << std::setprecision(2)
-                  << ratio << "x\n";
-      }
+          std::cout << "    Members:      " << members << "\n";
+          if (comp_sz > 0) {
+            double ratio = (double)uncomp_sz / comp_sz;
+            std::cout << "    Uncomp Size:  " << uncomp_sz << " bytes\n";
+            std::cout << "    Comp Size:    " << comp_sz << " bytes\n";
+            std::cout << "    Orig Ratio:   " << std::fixed
+                      << std::setprecision(2) << ratio << "x\n";
+          }
 
-      // Likely origin heuristic
-      std::string origin = "Unknown";
-      if (is_bgzf)
-        origin = "htslib/samtools/clib";
-      else if (mtime == 0 && os == 255)
-        origin = "Modern pipeline/programmatic";
-      else if (!(flg & 0x08))
-        origin = "Programmatic (No filename)";
+          // Likely origin heuristic
+          std::string origin = "Unknown";
+          if (is_bgzf)
+            origin = "htslib/samtools/clib";
+          else if (mtime == 0 && os == 255)
+            origin = "Modern pipeline/programmatic";
+          else if (!(flg & 0x08))
+            origin = "Programmatic (No filename)";
 
-      std::cout << "    Likely origin: " << origin << "\n";
+          std::cout << "    Likely origin: " << origin << "\n";
+        };
+
+    auto get_suggested_uncomp_name = [](const std::string &path) {
+      if (path.size() >= 3 && path.substr(path.size() - 3) == ".gz")
+        return path.substr(0, path.size() - 3);
+      return path;
     };
 
-    log_gzip_metadata(1, cp.input_1_was_gzipped, cp.input_1_gzip_flg,
-                      cp.input_1_gzip_mtime, cp.input_1_gzip_xfl,
-                      cp.input_1_gzip_os, cp.input_1_gzip_name,
-                      cp.input_1_is_bgzf, cp.input_1_bgzf_block_size,
-                      cp.input_1_gzip_uncompressed_size,
-                      cp.input_1_gzip_compressed_size,
-                      cp.input_1_gzip_member_count);
+    log_gzip_metadata(
+        1, cp.input_1_was_gzipped, cp.input_1_gzip_flg, cp.input_1_gzip_mtime,
+        cp.input_1_gzip_xfl, cp.input_1_gzip_os, cp.input_1_gzip_name,
+        get_suggested_uncomp_name(cp.input_filename_1), cp.input_1_is_bgzf,
+        cp.input_1_bgzf_block_size, cp.input_1_gzip_uncompressed_size,
+        cp.input_1_gzip_compressed_size, cp.input_1_gzip_member_count);
 
     if (cp.paired_end) {
-      log_gzip_metadata(2, cp.input_2_was_gzipped, cp.input_2_gzip_flg,
-                        cp.input_2_gzip_mtime, cp.input_2_gzip_xfl,
-                        cp.input_2_gzip_os, cp.input_2_gzip_name,
-                        cp.input_2_is_bgzf, cp.input_2_bgzf_block_size,
-                        cp.input_2_gzip_uncompressed_size,
-                        cp.input_2_gzip_compressed_size,
-                        cp.input_2_gzip_member_count);
+      log_gzip_metadata(
+          2, cp.input_2_was_gzipped, cp.input_2_gzip_flg, cp.input_2_gzip_mtime,
+          cp.input_2_gzip_xfl, cp.input_2_gzip_os, cp.input_2_gzip_name,
+          get_suggested_uncomp_name(cp.input_filename_2), cp.input_2_is_bgzf,
+          cp.input_2_bgzf_block_size, cp.input_2_gzip_uncompressed_size,
+          cp.input_2_gzip_compressed_size, cp.input_2_gzip_member_count);
     }
   }
+
+  auto has_compressed_suffix = [](const std::string &path) {
+    return path.size() >= 3 && path.substr(path.size() - 3) == ".gz";
+  };
+
+  auto strip_compressed_suffix = [](const std::string &path) {
+    if (path.size() >= 3 && path.substr(path.size() - 3) == ".gz")
+      return path.substr(0, path.size() - 3);
+    return path;
+  };
 
   std::vector<std::string> resolved_output_paths = output_paths;
   if (resolved_output_paths.empty()) {
@@ -834,22 +873,56 @@ void decompress(const std::string &temp_dir,
     }
   }
 
+  bool should_gzip[2] = {false, false};
+  bool should_bgzf[2] = {false, false};
+
+  auto determine_restoration = [&](int idx, std::string &path, bool was_gzipped,
+                                   bool is_bgzf, uint8_t xfl) {
+    bool has_suffix = has_compressed_suffix(path);
+    if (unzip_flag) {
+      if (was_gzipped || has_suffix) {
+        path = strip_compressed_suffix(path);
+      } else {
+        std::cout << "Warning: Original input " << idx
+                  << " was already not compressed. Ignoring --unzip.\n";
+      }
+      return;
+    }
+
+    if (was_gzipped || has_suffix) {
+      should_gzip[idx - 1] = true;
+      should_bgzf[idx - 1] = is_bgzf;
+      // Map XFL to compression level for restoration
+      if (xfl == 2)
+        cp.compression_level = 9;
+      else if (xfl == 4)
+        cp.compression_level = 1;
+      // else keep default or user-provided level
+    }
+  };
+
+  determine_restoration(1, resolved_output_paths[0], cp.input_1_was_gzipped,
+                        cp.input_1_is_bgzf, cp.input_1_gzip_xfl);
+  if (cp.paired_end && resolved_output_paths.size() >= 2) {
+    determine_restoration(2, resolved_output_paths[1], cp.input_2_was_gzipped,
+                          cp.input_2_is_bgzf, cp.input_2_gzip_xfl);
+  }
+
   bool paired_end = cp.paired_end;
   const decompression_io_config io_config =
       resolve_decompression_io(input_paths, resolved_output_paths, paired_end);
-
-
-
 
   // Long-read and short-read archives diverge only at the reconstruction step.
   run_timed_step("Decompressing ...", "Decompressing", [&] {
     progress.set_stage("Decompressing", 0.10F, 1.0F);
     if (cp.long_flag) {
-      decompress_long(temp_dir, io_config.output_path_1, io_config.output_path_2,
-                      cp, cp.use_crlf);
+      decompress_long(temp_dir, io_config.output_path_1,
+                      io_config.output_path_2, cp, cp.use_crlf, should_gzip,
+                      should_bgzf);
     } else {
       decompress_short(temp_dir, io_config.output_path_1,
-                       io_config.output_path_2, cp, cp.use_crlf);
+                       io_config.output_path_2, cp, cp.use_crlf, should_gzip,
+                       should_bgzf);
     }
   });
 

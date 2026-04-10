@@ -91,6 +91,7 @@ compare_files() {
 	local left_path="$1"
 	local right_path="$2"
 	if command -v cmp >/dev/null 2>&1; then
+if ! cmp "$left_path" "$right_path"; then echo "DEBUG MISMATCH: $left_path vs $right_path"; head -n 1 "$left_path" | cat -A; echo "---"; head -n 1 "$right_path" | cat -A; fi
 		cmp "$left_path" "$right_path"
 		return
 	fi
@@ -198,17 +199,17 @@ compare_files tmp.1 "$ASSET_DIR/test_1.fastq"
 compare_files tmp.2 "$ASSET_DIR/test_2.fastq"
 
 "${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq.gz" "$ASSET_DIR/test_2.fastq.gz" -o abcd
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp -u
 compare_files tmp.1 "$ASSET_DIR/test_1.fastq"
 compare_files tmp.2 "$ASSET_DIR/test_2.fastq"
 
 "${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fasta.gz" "$ASSET_DIR/test_2.fasta.gz" -o abcd
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp -u
 compare_files tmp.1 "$ASSET_DIR/test_1.fasta"
 compare_files tmp.2 "$ASSET_DIR/test_2.fasta"
 
 "${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq.gz" -o abcd
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp -u
 compare_files tmp "$ASSET_DIR/test_1.fastq"
 
 "${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp.gz
@@ -216,7 +217,7 @@ gunzip -f tmp.gz
 compare_files tmp "$ASSET_DIR/test_1.fastq"
 
 "${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq.gz" "$ASSET_DIR/test_2.fastq.gz" -o abcd
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp -u
 compare_files tmp.1 "$ASSET_DIR/test_1.fastq"
 compare_files tmp.2 "$ASSET_DIR/test_2.fastq"
 
@@ -232,6 +233,7 @@ compare_files tmp "$ASSET_DIR/test_1.fastq"
 
 "${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd -t 8
 "${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp -t 5
+if ! cmp tmp.1 "$ASSET_DIR/test_1.fastq"; then echo "MISMATCH FOUND"; head -c 20 tmp.1 | cat -A; echo "EXPECTED:"; head -c 20 "$ASSET_DIR/test_1.fastq" | cat -A; fi
 cmp tmp.1 "$ASSET_DIR/test_1.fastq"
 cmp tmp.2 "$ASSET_DIR/test_2.fastq"
 

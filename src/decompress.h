@@ -13,13 +13,15 @@ struct compression_params;
 // Short-read archives reconstruct aligned and unaligned records separately.
 void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
                       const std::string &outfile_2, compression_params &cp,
-                      const bool use_crlf);
+                      const bool use_crlf, const bool (&should_gzip)[2],
+                      const bool (&should_bgzf)[2]);
 
 // Long-read archives store read streams directly, without reference-based
 // reconstruction.
 void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
                      const std::string &outfile_2, compression_params &cp,
-                     const bool use_crlf);
+                     const bool use_crlf, const bool (&should_gzip)[2],
+                     const bool (&should_bgzf)[2]);
 
 // Packed reference chunks are decoded once, then concatenated by callers.
 void decompress_unpack_seq(const std::string &packed_seq_base_path,
