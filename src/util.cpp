@@ -1129,6 +1129,30 @@ void write_compression_params(std::ostream &out, const compression_params &cp) {
   write_string(out, cp.input_filename_1);
   write_string(out, cp.input_filename_2);
   write_string(out, cp.note);
+
+  // Serialize enhanced gzip/BGZF metadata
+  write_bool(out, cp.input_1_was_gzipped);
+  write_bool(out, cp.input_2_was_gzipped);
+  out.write(byte_ptr(&cp.input_1_gzip_flg), sizeof(uint8_t));
+  out.write(byte_ptr(&cp.input_2_gzip_flg), sizeof(uint8_t));
+  out.write(byte_ptr(&cp.input_1_gzip_mtime), sizeof(uint32_t));
+  out.write(byte_ptr(&cp.input_2_gzip_mtime), sizeof(uint32_t));
+  out.write(byte_ptr(&cp.input_1_gzip_xfl), sizeof(uint8_t));
+  out.write(byte_ptr(&cp.input_2_gzip_xfl), sizeof(uint8_t));
+  out.write(byte_ptr(&cp.input_1_gzip_os), sizeof(uint8_t));
+  out.write(byte_ptr(&cp.input_2_gzip_os), sizeof(uint8_t));
+  write_string(out, cp.input_1_gzip_name);
+  write_string(out, cp.input_2_gzip_name);
+  write_bool(out, cp.input_1_is_bgzf);
+  write_bool(out, cp.input_2_is_bgzf);
+  out.write(byte_ptr(&cp.input_1_bgzf_block_size), sizeof(uint16_t));
+  out.write(byte_ptr(&cp.input_2_bgzf_block_size), sizeof(uint16_t));
+  out.write(byte_ptr(&cp.input_1_gzip_uncompressed_size), sizeof(uint64_t));
+  out.write(byte_ptr(&cp.input_2_gzip_uncompressed_size), sizeof(uint64_t));
+  out.write(byte_ptr(&cp.input_1_gzip_compressed_size), sizeof(uint64_t));
+  out.write(byte_ptr(&cp.input_2_gzip_compressed_size), sizeof(uint64_t));
+  out.write(byte_ptr(&cp.input_1_gzip_member_count), sizeof(uint32_t));
+  out.write(byte_ptr(&cp.input_2_gzip_member_count), sizeof(uint32_t));
 }
 
 void read_compression_params(std::istream &in, compression_params &cp) {
@@ -1162,6 +1186,166 @@ void read_compression_params(std::istream &in, compression_params &cp) {
   cp.input_filename_1 = read_string(in);
   cp.input_filename_2 = read_string(in);
   cp.note = read_string(in);
+
+  // Deserialize enhanced gzip/BGZF metadata
+  cp.input_1_was_gzipped = read_bool(in);
+  cp.input_2_was_gzipped = read_bool(in);
+  in.read(byte_ptr(&cp.input_1_gzip_flg), sizeof(uint8_t));
+  in.read(byte_ptr(&cp.input_2_gzip_flg), sizeof(uint8_t));
+  in.read(byte_ptr(&cp.input_1_gzip_mtime), sizeof(uint32_t));
+  in.read(byte_ptr(&cp.input_2_gzip_mtime), sizeof(uint32_t));
+  in.read(byte_ptr(&cp.input_1_gzip_xfl), sizeof(uint8_t));
+  in.read(byte_ptr(&cp.input_2_gzip_xfl), sizeof(uint8_t));
+  in.read(byte_ptr(&cp.input_1_gzip_os), sizeof(uint8_t));
+  in.read(byte_ptr(&cp.input_2_gzip_os), sizeof(uint8_t));
+  cp.input_1_gzip_name = read_string(in);
+  cp.input_2_gzip_name = read_string(in);
+  cp.input_1_is_bgzf = read_bool(in);
+  cp.input_2_is_bgzf = read_bool(in);
+  in.read(byte_ptr(&cp.input_1_bgzf_block_size), sizeof(uint16_t));
+  in.read(byte_ptr(&cp.input_2_bgzf_block_size), sizeof(uint16_t));
+  in.read(byte_ptr(&cp.input_1_gzip_uncompressed_size), sizeof(uint64_t));
+  in.read(byte_ptr(&cp.input_2_gzip_uncompressed_size), sizeof(uint64_t));
+  in.read(byte_ptr(&cp.input_1_gzip_compressed_size), sizeof(uint64_t));
+  in.read(byte_ptr(&cp.input_2_gzip_compressed_size), sizeof(uint64_t));
+  in.read(byte_ptr(&cp.input_1_gzip_member_count), sizeof(uint32_t));
+  in.read(byte_ptr(&cp.input_2_gzip_member_count), sizeof(uint32_t));
+}
+
+void extract_gzip_detailed_info(const std::string &path, bool &is_gzipped,
+                                uint8_t &flg, uint32_t &mtime, uint8_t &xfl,
+                                uint8_t &os, std::string &name, bool &is_bgzf,
+                                uint16_t &bgzf_block_size,
+                                uint64_t &uncompressed_size,
+                                uint64_t &compressed_size,
+                                uint32_t &member_count) {
+  is_gzipped = false;
+  is_bgzf = false;
+  flg = 0;
+  mtime = 0;
+  xfl = 0;
+  os = 0;
+  name.clear();
+  bgzf_block_size = 0;
+  uncompressed_size = 0;
+  compressed_size = 0;
+  member_count = 0;
+
+  std::ifstream fin(path, std::ios::binary);
+  if (!fin)
+    return;
+
+  fin.seekg(0, std::ios::end);
+  compressed_size = fin.tellg();
+  fin.seekg(0, std::ios::beg);
+
+  while (true) {
+    const std::streampos member_start = fin.tellg();
+    unsigned char header[10];
+    if (!fin.read(reinterpret_cast<char *>(header), 10))
+      break;
+
+    if (header[0] != 0x1f || header[1] != 0x8b) {
+      if (member_count == 0)
+        return;
+      break;
+    }
+
+    if (member_count == 0) {
+      is_gzipped = true;
+      flg = header[3];
+      std::memcpy(&mtime, &header[4], 4);
+      xfl = header[8];
+      os = header[9];
+    }
+
+    member_count++;
+    const uint8_t current_flg = header[3];
+    bool current_is_bgzf = false;
+    uint16_t current_bsiz = 0;
+
+    // FEXTRA
+    if (current_flg & 0x04) {
+      uint16_t xlen;
+      fin.read(reinterpret_cast<char *>(&xlen), 2);
+      const std::streampos extra_start = fin.tellg();
+      while (fin.tellg() - extra_start < xlen) {
+        char si1, si2;
+        uint16_t slen;
+        fin.read(&si1, 1);
+        fin.read(&si2, 1);
+        fin.read(reinterpret_cast<char *>(&slen), 2);
+        if (si1 == 'B' && si2 == 'C' && slen == 2) {
+          fin.read(reinterpret_cast<char *>(&current_bsiz), 2);
+          current_is_bgzf = true;
+          if (member_count == 1) {
+            is_bgzf = true;
+            bgzf_block_size = current_bsiz + 1;
+          }
+        } else {
+          fin.seekg(slen, std::ios::cur);
+        }
+      }
+    }
+
+    // FNAME
+    if (current_flg & 0x08) {
+      std::string current_name;
+      char c;
+      while (fin.read(&c, 1) && c != '\0') {
+        current_name += c;
+      }
+      if (member_count == 1)
+        name = current_name;
+    }
+
+    // FCOMMENT
+    if (current_flg & 0x10) {
+      char c;
+      while (fin.read(&c, 1) && c != '\0')
+        ;
+    }
+
+    // FHCRC
+    if (current_flg & 0x02) {
+      fin.seekg(2, std::ios::cur);
+    }
+
+    if (current_is_bgzf) {
+      // BGZF allows us to skip fast!
+      // Block size including header and footer is BSIZ + 1
+      fin.seekg(member_start + static_cast<std::streamoff>(current_bsiz - 7),
+                std::ios::beg);
+    } else {
+      // Non-BGZF: We can't easily find the next member without decompressing.
+      // For now, we'll try to get the footer of the last member if possible,
+      // or just assume it's a single-member file if we can't skip.
+      // Let's at least try to read the footer of the FIRST member if it's the only one.
+      // But for multi-member non-BGZF, this is hard with just std::ifstream.
+      // We'll skip to the end of the file and read the last 8 bytes for uncompressed size.
+      // This is what `gzip -l` does for single members.
+      break;
+    }
+
+    // Read CRC32 and ISIZE (8 bytes)
+    uint32_t isize;
+    fin.seekg(4, std::ios::cur); // skip CRC32
+    fin.read(reinterpret_cast<char *>(&isize), 4);
+    uncompressed_size += isize;
+
+    // Check if there is more data
+    if (fin.peek() == EOF)
+      break;
+  }
+
+  if (uncompressed_size == 0 && member_count > 0) {
+    // Fallback for single-member non-BGZF
+    fin.clear();
+    fin.seekg(-4, std::ios::end);
+    uint32_t isize;
+    fin.read(reinterpret_cast<char *>(&isize), 4);
+    uncompressed_size = isize;
+  }
 }
 
 std::string shell_quote(const std::string &value) {

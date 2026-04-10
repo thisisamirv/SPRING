@@ -60,6 +60,30 @@ struct compression_params {
   std::string input_filename_1;
   std::string input_filename_2;
   std::string note;
+
+  // Original input compression metadata
+  bool input_1_was_gzipped;
+  bool input_2_was_gzipped;
+  uint8_t input_1_gzip_flg;
+  uint8_t input_2_gzip_flg;
+  uint32_t input_1_gzip_mtime;
+  uint32_t input_2_gzip_mtime;
+  uint8_t input_1_gzip_xfl;
+  uint8_t input_2_gzip_xfl;
+  uint8_t input_1_gzip_os;
+  uint8_t input_2_gzip_os;
+  std::string input_1_gzip_name;
+  std::string input_2_gzip_name;
+  bool input_1_is_bgzf;
+  bool input_2_is_bgzf;
+  uint16_t input_1_bgzf_block_size;
+  uint16_t input_2_bgzf_block_size;
+  uint64_t input_1_gzip_uncompressed_size;
+  uint64_t input_2_gzip_uncompressed_size;
+  uint64_t input_1_gzip_compressed_size;
+  uint64_t input_2_gzip_compressed_size;
+  uint32_t input_1_gzip_member_count;
+  uint32_t input_2_gzip_member_count;
 };
 
 class gzip_istreambuf : public std::streambuf {
@@ -196,6 +220,14 @@ void write_string(std::ostream &out, const std::string &s);
 std::string read_string(std::istream &in);
 void write_compression_params(std::ostream &out, const compression_params &cp);
 void read_compression_params(std::istream &in, compression_params &cp);
+
+void extract_gzip_detailed_info(const std::string &path, bool &is_gzipped,
+                                uint8_t &flg, uint32_t &mtime, uint8_t &xfl,
+                                uint8_t &os, std::string &name, bool &is_bgzf,
+                                uint16_t &bgzf_block_size,
+                                uint64_t &uncompressed_size,
+                                uint64_t &compressed_size,
+                                uint32_t &member_count);
 
 // Shell and filesystem helpers.
 std::string shell_quote(const std::string &value);

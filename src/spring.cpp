@@ -585,6 +585,24 @@ void compress(const std::string &temp_dir,
     cp.input_filename_2 = std::filesystem::path(io_config.input_path_2).filename().string();
   }
 
+  // Extract detailed gzip metadata for input 1
+  extract_gzip_detailed_info(
+      io_config.input_path_1, cp.input_1_was_gzipped, cp.input_1_gzip_flg,
+      cp.input_1_gzip_mtime, cp.input_1_gzip_xfl, cp.input_1_gzip_os,
+      cp.input_1_gzip_name, cp.input_1_is_bgzf, cp.input_1_bgzf_block_size,
+      cp.input_1_gzip_uncompressed_size, cp.input_1_gzip_compressed_size,
+      cp.input_1_gzip_member_count);
+
+  // Extract detailed gzip metadata for input 2 (if paired-end)
+  if (io_config.paired_end) {
+    extract_gzip_detailed_info(
+        io_config.input_path_2, cp.input_2_was_gzipped, cp.input_2_gzip_flg,
+        cp.input_2_gzip_mtime, cp.input_2_gzip_xfl, cp.input_2_gzip_os,
+        cp.input_2_gzip_name, cp.input_2_is_bgzf, cp.input_2_bgzf_block_size,
+        cp.input_2_gzip_uncompressed_size, cp.input_2_gzip_compressed_size,
+        cp.input_2_gzip_member_count);
+  }
+
   if (preserve_quality)
     configure_quality_options(cp, quality_options);
 
@@ -728,6 +746,83 @@ void decompress(const std::string &temp_dir,
 
     if (!cp.note.empty()) {
       std::cout << "Note: " << cp.note << "\n";
+    }
+
+    auto log_gzip_metadata = [](int input_idx, bool was_gzipped, uint8_t flg,
+                                uint32_t mtime, uint8_t xfl, uint8_t os,
+                                const std::string &name, bool is_bgzf,
+                                uint16_t bgzf_bsiz, uint64_t uncomp_sz,
+                                uint64_t comp_sz, uint32_t members) {
+      if (!was_gzipped)
+        return;
+
+      std::cout << "  Input " << input_idx << " compression metadata:\n";
+      std::string profile = "UNKNOWN";
+      if (is_bgzf)
+        profile = "BGZF (Default)";
+      else if (xfl == 2)
+        profile = "MAX (Slowest)";
+      else if (xfl == 4)
+        profile = "FAST (Fastest)";
+      else
+        profile = "DEFAULT/OTHER";
+
+      std::cout << "    Profile:      " << profile << "\n";
+      if (is_bgzf) {
+        std::cout << "    Format:       BGZF (Block Gzip)\n";
+        std::cout << "    Block Size:   " << bgzf_bsiz << "\n";
+      } else {
+        std::cout << "    Format:       Standard Gzip\n";
+      }
+
+      std::cout << "    Flags (FLG):  0x" << std::hex << (int)flg << std::dec
+                << "\n";
+      std::cout << "    MTIME:        " << mtime << "\n";
+      std::cout << "    OS:           " << (int)os << " ("
+                << (os == 3 ? "Unix" : (os == 0 ? "Windows/FAT" : "Unknown"))
+                << ")\n";
+
+      if (!name.empty()) {
+        std::cout << "    Orig Name:    " << name << "\n";
+      }
+
+      std::cout << "    Members:      " << members << "\n";
+      if (comp_sz > 0) {
+        double ratio = (double)uncomp_sz / comp_sz;
+        std::cout << "    Uncomp Size:  " << uncomp_sz << " bytes\n";
+        std::cout << "    Comp Size:    " << comp_sz << " bytes\n";
+        std::cout << "    Orig Ratio:   " << std::fixed << std::setprecision(2)
+                  << ratio << "x\n";
+      }
+
+      // Likely origin heuristic
+      std::string origin = "Unknown";
+      if (is_bgzf)
+        origin = "htslib/samtools/clib";
+      else if (mtime == 0 && os == 255)
+        origin = "Modern pipeline/programmatic";
+      else if (!(flg & 0x08))
+        origin = "Programmatic (No filename)";
+
+      std::cout << "    Likely origin: " << origin << "\n";
+    };
+
+    log_gzip_metadata(1, cp.input_1_was_gzipped, cp.input_1_gzip_flg,
+                      cp.input_1_gzip_mtime, cp.input_1_gzip_xfl,
+                      cp.input_1_gzip_os, cp.input_1_gzip_name,
+                      cp.input_1_is_bgzf, cp.input_1_bgzf_block_size,
+                      cp.input_1_gzip_uncompressed_size,
+                      cp.input_1_gzip_compressed_size,
+                      cp.input_1_gzip_member_count);
+
+    if (cp.paired_end) {
+      log_gzip_metadata(2, cp.input_2_was_gzipped, cp.input_2_gzip_flg,
+                        cp.input_2_gzip_mtime, cp.input_2_gzip_xfl,
+                        cp.input_2_gzip_os, cp.input_2_gzip_name,
+                        cp.input_2_is_bgzf, cp.input_2_bgzf_block_size,
+                        cp.input_2_gzip_uncompressed_size,
+                        cp.input_2_gzip_compressed_size,
+                        cp.input_2_gzip_member_count);
     }
   }
 
