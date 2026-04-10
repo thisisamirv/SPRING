@@ -303,8 +303,13 @@ function(add_dev_script_target target_name script_name)
     )
 endfunction()
 
-add_executable (spring2 ${source_dir}/main.cpp ${core_source_files})
-add_executable (spring2-preview ${source_dir}/preview_main.cpp ${core_source_files})
+set(win_resources "")
+if (WIN32)
+    set(win_resources ${source_dir}/spring2.rc)
+endif()
+
+add_executable (spring2 ${source_dir}/main.cpp ${core_source_files} ${win_resources})
+add_executable (spring2-preview ${source_dir}/preview_main.cpp ${core_source_files} ${win_resources})
 
 # Spring headers live in src/, while vendor/ exposes bundled libraries such
 # as BBHash, libbsc, id_compression, qvz, and the vendored libdeflate sources.
