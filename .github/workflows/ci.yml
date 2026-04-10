@@ -131,7 +131,11 @@ jobs:
       - name: Build on Windows
         if: runner.os == 'Windows'
         shell: powershell
-        run: cmake --build build --parallel
+        run: |
+          magick dev/logo.png `
+            -define icon:auto-resize=16,32,48,64,128,256 `
+            src/spring2.ico
+          cmake --build build --parallel
 
       - name: Smoke test on Linux and macOS
         if: runner.os != 'Windows'
@@ -258,6 +262,14 @@ jobs:
       - name: Build for analysis on Linux and macOS
         if: runner.os != 'Windows'
         run: cmake --build build --parallel
+
+      - name: Generate Icon on Windows
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          magick dev/logo.png `
+            -define icon:auto-resize=16,32,48,64,128,256 `
+            src/spring2.ico
 
       - name: Build for analysis on Windows
         if: runner.os == 'Windows'

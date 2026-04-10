@@ -305,7 +305,11 @@ endfunction()
 
 set(win_resources "")
 if (WIN32)
-    set(win_resources ${source_dir}/spring2.rc)
+    if (EXISTS "${source_dir}/spring2.ico")
+        set(win_resources ${source_dir}/spring2.rc)
+    else()
+        message(STATUS "spring2.ico not found, skipping Windows icon resource")
+    endif()
 endif()
 
 add_executable (spring2 ${source_dir}/main.cpp ${core_source_files} ${win_resources})
