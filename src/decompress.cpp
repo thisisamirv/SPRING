@@ -3,6 +3,7 @@
 
 #include "decompress.h"
 #include "libbsc/bsc.h"
+#include "progress.h"
 #include "util.h"
 #include <cerrno>
 #include <cstdint>
@@ -31,8 +32,6 @@ struct thread_range {
   uint64_t begin;
   uint64_t end;
 };
-
-
 
 struct reference_chunk {
   uint64_t start_offset;
@@ -254,14 +253,12 @@ uint32_t compute_thread_read_count(const uint32_t step_read_count,
          thread_id * num_reads_per_block;
 }
 
-
-
 void write_step_output(std::ofstream &output_stream, std::string *id_buffer,
-                        std::string *read_buffer, std::string *quality_buffer,
-                        const uint32_t output_read_count,
-                        const bool preserve_quality, const int num_thr,
-                        const bool gzip_output, const int compression_level,
-                        const bool use_crlf) {
+                       std::string *read_buffer, std::string *quality_buffer,
+                       const uint32_t output_read_count,
+                       const bool preserve_quality, const int num_thr,
+                       const bool gzip_output, const int compression_level,
+                       const bool use_crlf) {
   write_fastq_block(output_stream, id_buffer, read_buffer, quality_buffer,
                     output_read_count, preserve_quality, num_thr, gzip_output,
                     compression_level, use_crlf);
@@ -326,7 +323,7 @@ bool is_gzip_output_path(const std::string &output_path) {
 void open_output_files(std::ofstream (&output_streams)[2],
                        const std::string (&output_paths)[2],
                        const bool paired_end,
-                       const bool (&/*gzip_outputs*/)[2]) {
+                       const bool (& /*gzip_outputs*/)[2]) {
   for (int stream_index = 0; stream_index < 2; stream_index++) {
     if (stream_index == 1 && !paired_end)
       continue;
@@ -490,8 +487,7 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
 
   // Rebuild the packed reference sequence once before block processing.
   int encoding_thread_count = cp.num_thr;
-  reference_sequence_store seq(file_seq, encoding_thread_count, cp.num_thr,
-                               cp);
+  reference_sequence_store seq(file_seq, encoding_thread_count, cp.num_thr, cp);
 
   bool done = false;
   uint32_t num_blocks_done = 0;
@@ -740,6 +736,9 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
                         cp.compression_level, use_crlf);
     }
     num_reads_done += num_reads_cur_step;
+    if (auto *progress = ProgressBar::GlobalInstance()) {
+      progress->update(static_cast<float>(num_reads_done) / num_reads);
+    }
     num_blocks_done += cp.num_thr;
   }
 
@@ -874,6 +873,9 @@ void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
                         cp.compression_level, use_crlf);
     }
     num_reads_done += num_reads_cur_step;
+    if (auto *progress = ProgressBar::GlobalInstance()) {
+      progress->update(static_cast<float>(num_reads_done) / num_reads);
+    }
     num_blocks_done += cp.num_thr;
   }
   delete[] read_buffer;
@@ -901,7 +903,7 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
   }
 
   if (std::cmp_greater(encoding_thread_count,
-                      compression_params::kFileLenThrSize)) {
+                       compression_params::kFileLenThrSize)) {
     throw std::runtime_error(
         std::string("Archive indicates too many sequence chunks "
                     "(encoding_thread_count=") +

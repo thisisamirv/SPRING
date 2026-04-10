@@ -6,6 +6,7 @@
 
 #include "bitset_dictionary.h"
 #include "params.h"
+#include "progress.h"
 #include "util.h"
 #include <algorithm>
 #include <array>
@@ -275,7 +276,7 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
   generatemasks<bitset_size>(length_masks, eg.max_readlen, 3);
   generatemasks<bitset_size>(length_masks, eg.max_readlen, 3);
 
-  std::cout << "Encoding reads" << std::endl;
+  Logger::log_info("Encoding reads");
 #pragma omp parallel
   {
     int thread_id = omp_get_thread_num();
@@ -326,6 +327,8 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
     uint32_t read_order, contig_read_count = 0;
     std::array<std::list<uint32_t>, NUM_DICT_ENCODER> deleted_rids;
     bool done = false;
+
+    static std::atomic<uint32_t> total_reads_encoded{0};
     while (!done) {
       if (!flag_stream.get(read_flag)) {
         done = true;
@@ -349,8 +352,15 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
               "Failed to read order from stream at read count " +
               std::to_string(contig_read_count));
         }
-        if (!read_length_stream.read(byte_ptr(&read_length),
+        if (read_length_stream.read(byte_ptr(&read_length),
                                      sizeof(uint16_t))) {
+          uint32_t total = ++total_reads_encoded;
+          if (total % 100000 == 0) {
+            if (auto *progress = ProgressBar::GlobalInstance()) {
+              progress->update(static_cast<float>(total) / eg.numreads);
+            }
+          }
+        } else {
           throw std::runtime_error(
               "Failed to read length from stream at read count " +
               std::to_string(contig_read_count));
@@ -698,21 +708,22 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
       new std::bitset<bitset_size>[singleton_pool_size];
   uint32_t *order_s = new uint32_t[singleton_pool_size];
   uint16_t *read_lengths_s = new uint16_t[singleton_pool_size];
-  std::cout << "Reading singletons..." << std::endl;
+  Logger::log_info("Reading singletons...");
   readsingletons<bitset_size>(read, order_s, read_lengths_s, eg, egb);
   remove(eg.infile_N.c_str());
-  std::cout << "Correcting order..." << std::endl;
+  Logger::log_info("Correcting order...");
   correct_order(order_s, eg);
 
   std::array<bbhashdict, NUM_DICT_ENCODER> dict;
   initialize_encoder_dict_ranges(dict, eg.max_readlen);
   if (singleton_pool_size > 0) {
-    std::cout << "Building encoder dictionary for " << singleton_pool_size << " singletons..." << std::endl;
+    Logger::log_info("Building encoder dictionary for " +
+                     std::to_string(singleton_pool_size) + " singletons...");
     constructdictionary<bitset_size>(read, dict.data(), read_lengths_s,
                                      eg.numdict_s, singleton_pool_size, 3,
                                      eg.basedir, eg.num_thr);
   }
-  std::cout << "Starting main encoding loop..." << std::endl;
+  Logger::log_info("Starting main encoding loop...");
 
   std::vector<uint16_t> all_read_lengths;
   {

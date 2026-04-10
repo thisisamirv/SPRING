@@ -87,6 +87,7 @@ Allowed options:
                                   (.gz) formatting (passed to gzip unchanged
                                   and scaled to Zstd 1-22 internally)
   -n [ --note ] arg               add a custom note to the archive
+  -v [ --verbose ]                enable extensive logging (default: progress bar)
 ```
 
 ### Previewing Archives

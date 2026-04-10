@@ -6,6 +6,7 @@
 
 #include "bitset_dictionary.h"
 #include "params.h"
+#include "progress.h"
 #include "util.h"
 #include <algorithm>
 #include <array>
@@ -412,11 +413,13 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
   generatemasks<bitset_size>(length_masks, rg.max_readlen, 2);
   std::bitset<bitset_size> *index_masks =
       new std::bitset<bitset_size>[rg.numdict];
+  Logger::log_info("Constructing dictionaries");
   generateindexmasks<bitset_size>(index_masks, dict, rg.numdict, 2);
   bool *remaining_reads = new bool[rg.numreads];
   std::fill(remaining_reads, remaining_reads + rg.numreads, 1);
 
   uint32_t first_read = 0;
+  Logger::log_info("Reordering reads");
   std::vector<uint32_t> unmatched_counts(static_cast<size_t>(rg.num_thr));
 #pragma omp parallel
   {
@@ -495,7 +498,14 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
       previous_read_id = current_read_id;
     }
     while (!done) {
-      if (thread_read_count % 1000000 == 0) {
+      if (thread_read_count % 100000 == 0) {
+        if (thread_id == 0) {
+          if (auto *progress = ProgressBar::GlobalInstance()) {
+            // Estimate progress based on current scan position
+            // This is a rough estimate but avoids atomic overhead in the hot loop
+            progress->update(1.0f - (float)remaining_read_scan / rg.numreads);
+          }
+        }
         if (unmatched_reads_in_window > STOP_CRITERIA_REORDER * 1000000) {
           stop_searching = true;
         }
@@ -726,10 +736,10 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
   delete[] dict_locks;
   delete[] read_locks;
   delete[] remaining_read_lock;
-  std::cout << "Reordering done, "
-            << std::accumulate(unmatched_counts.begin(), unmatched_counts.end(),
-                               0)
-            << " were unmatched\n";
+  Logger::log_info("Reordering done, " +
+                   std::to_string(std::accumulate(unmatched_counts.begin(),
+                                                  unmatched_counts.end(), 0)) +
+                   " were unmatched");
   for (int read_length_index = 0; read_length_index < rg.max_readlen;
        read_length_index++)
     delete[] length_masks[read_length_index];
@@ -850,22 +860,22 @@ void reorder_main(const std::string &temp_dir, const compression_params &cp) {
   setglobalarrays(rg);
   std::bitset<bitset_size> *read = new std::bitset<bitset_size>[rg.numreads];
   uint16_t *read_lengths = new uint16_t[rg.numreads];
-  std::cout << "Reading file\n";
+  Logger::log_info("Reading file");
   readDnaFile<bitset_size>(read, read_lengths, rg);
 
   if (rg.numreads > 0) {
-    std::cout << "Constructing dictionaries\n";
+    Logger::log_info("Constructing dictionaries");
     constructdictionary<bitset_size>(read, dict.data(), read_lengths,
                                      rg.numdict, rg.numreads, 2, rg.basedir,
                                      rg.num_thr);
   }
-  std::cout << "Reordering reads\n";
+  Logger::log_info("Reordering reads");
   reorder<bitset_size>(read, dict.data(), read_lengths, rg);
-  std::cout << "Writing to file\n";
+  Logger::log_info("Writing to file");
   writetofile<bitset_size>(read, read_lengths, rg);
   delete[] read;
   delete[] read_lengths;
-  std::cout << "Done!\n";
+  Logger::log_info("Done!");
 }
 
 } // namespace spring

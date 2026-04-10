@@ -301,10 +301,11 @@ void getDataParams(encoder_global &eg, const compression_params &cp) {
   eg.numreads = clean_read_count - eg.numreads_s;
   eg.numreads_N = total_read_count - clean_read_count;
 
-  std::cout << "Maximum Read length: " << eg.max_readlen << std::endl;
-  std::cout << "Number of non-singleton reads: " << eg.numreads << std::endl;
-  std::cout << "Number of singleton reads: " << eg.numreads_s << std::endl;
-  std::cout << "Number of reads with N: " << eg.numreads_N << std::endl;
+  Logger::log_info("Maximum Read length: " + std::to_string(eg.max_readlen));
+  Logger::log_info("Number of non-singleton reads: " +
+                   std::to_string(eg.numreads));
+  Logger::log_info("Number of singleton reads: " + std::to_string(eg.numreads_s));
+  Logger::log_info("Number of reads with N: " + std::to_string(eg.numreads_N));
 }
 
 void correct_order(uint32_t *order_s, const encoder_global &eg) {

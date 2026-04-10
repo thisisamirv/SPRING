@@ -9,12 +9,13 @@
 
 namespace spring {
 
+class ProgressBar;
 struct compression_params;
 
 // Normalize input reads into Spring's temporary block files and side streams.
 void preprocess(const std::string &infile_1, const std::string &infile_2,
                 const std::string &temp_dir, compression_params &cp,
-                const bool &fasta_input);
+                const bool &fasta_input, ProgressBar *progress = nullptr);
 
 // Quick pre-scan to determine the maximum read length across input files.
 uint32_t detect_max_read_length(const std::string &infile_1,

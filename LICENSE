@@ -1,0 +1,19 @@
+# LICENSE
+
+## SPRING2 Research Use License
+
+SPRING2 is a derivative work of SPRING. This software and the associated patent rights are licensed only for **non-profit research, educational, personal, and individual use** under the terms of the "Non-Exclusive Research Use Software and Patent License Agreement" from the University of Illinois.
+
+**Commercial use, sublicensing, assignment, transfer, or other unlicensed making-available to third parties is NOT authorized absent a separate license from the University of Illinois.**
+
+The full text of the upstream SPRING license can be found at:
+[LICENSES/SPRING-upstream-license.pdf](LICENSES/SPRING-upstream-license.pdf)
+
+## Derivative Work Notice
+
+In compliance with the original license terms, this project is formally renamed to **SPRING2** and is a substantial modernization of the original SPRING codebase.
+
+## Vendored Third-Party Components
+
+This repository also includes several vendored third-party components which are subject to their own respective licenses (e.g., zlib, Apache 2.0, MIT, GPLv3, BSD 3-Clause). For a complete list of these components and their licenses, please see:
+[LICENSES/README.md](LICENSES/README.md)

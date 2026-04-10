@@ -20,6 +20,7 @@
 * Added storage of the original input filenames within the compressed archive metadata.
 * Added the `spring2-preview` utility for inspecting archive metadata, read counts, and settings without full decompression.
 * Added the `-n, --note` flag to store custom text notes within the archive.
+* Added a specialized `-v, --verbose` flag to toggle between a real-time progress bar (default) and detailed informational logging.
 
 ### Changed
 

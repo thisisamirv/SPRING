@@ -37,6 +37,7 @@ spring2 [mode] [options] -i <input_files> -o <output_file>
   - *Example*: `--strip io` to drop both identifiers and original order.
 - `-l, --level arg`: Compression level (1-9). This controls the compression level for `.gz` file formatting and is scaled to Zstd (1-22) internally for other streams. Default is `6`.
 - `-n, --note arg`: Attach a custom text note to the archive. This note is stored in the metadata and can be viewed during decompression or using the preview tool.
+- `-v, --verbose`: Enable extensive logging. By default, SPRING2 displays a concise, stage-based progress bar. Enabling verbose mode disables the progress bar and prints detailed step-by-step logs, including data statistics and execution times.
 
 ### Quality Modes (`-q, --qmod`)
 

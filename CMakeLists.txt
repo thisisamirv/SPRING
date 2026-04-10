@@ -290,6 +290,7 @@ set(core_source_files
     ${source_dir}/reordered_quality_id.cpp
     ${source_dir}/decompress.cpp
     ${source_dir}/template_dispatch.cpp
+    ${source_dir}/progress.cpp
 )
 
 

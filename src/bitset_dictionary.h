@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "single_phf.hpp"
+#include "progress.h"
 #include "util.h"
 #include "utils/bucketers.hpp"
 #include "utils/encoders.hpp"
@@ -297,26 +298,26 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
     current_dict.numkeys = detail::sort_and_deduplicate_keys(
         dictionary_keys_data, current_dict.dict_numreads);
 
-    std::cout << "Dictionary " << (dict_index + 1) << " of " << numdict
-              << ": Building MPHF for " << current_dict.numkeys << " keys...\n";
+    Logger::log_info(std::string("Dictionary ") + std::to_string(dict_index + 1) + " of " + std::to_string(numdict)
+              + ": Building MPHF for " + std::to_string(current_dict.numkeys) + " keys...");
     pthash::build_configuration config;
     config.num_threads = 1;
     config.minimal = false;
     config.verbose = false;
     current_dict.bphf = new boophf_t();
-    std::cout << "  Building MPHF... " << std::flush;
+    Logger::log_info("  Building MPHF... ");
     current_dict.bphf->build_in_internal_memory(dictionary_keys_data,
-                                                current_dict.numkeys, config);
+                                                 current_dict.numkeys, config);
     current_dict.numkeys = current_dict.bphf->table_size();
-    std::cout << "Done. (T=" << current_dict.numkeys << ")\n" << std::flush;
+    Logger::log_info(std::string("Done. (T=") + std::to_string(current_dict.numkeys) + ")");
 
     // Re-read the stored keys and materialize their hash buckets.
-    std::cout << "  Writing hash chunks... " << std::flush;
+    Logger::log_info("  Writing hash chunks... ");
     detail::write_hash_chunks(current_dict, basedir, dict_index);
-    std::cout << "Done.\n" << std::flush;
+    Logger::log_info("Done.");
   }
 
-  std::cout << "  Finalizing dictionaries (sequentially)..." << std::endl;
+  Logger::log_info("  Finalizing dictionaries (sequentially)...");
   for (int dict_index = 0; dict_index < numdict; dict_index++) {
     bbhashdict &current_dict = dict[dict_index];
     current_dict.startpos = new uint32_t[current_dict.numkeys + 1]();
@@ -326,7 +327,7 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
                                      dict_index, numreads, num_thr);
     detail::restore_bucket_starts(current_dict);
   }
-  std::cout << "  Done finalization." << std::endl;
+  Logger::log_info("  Done finalization.");
   return;
 }
 

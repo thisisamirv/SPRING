@@ -21,6 +21,7 @@
 #include "decompress.h"
 #include "paired_end_order.h"
 #include "params.h"
+#include "progress.h"
 #include "preprocess.h"
 #include "reordered_quality_id.h"
 #include "reordered_streams.h"
@@ -61,18 +62,18 @@ enum class input_record_format : uint8_t { fastq, fasta };
 void print_step_summary(const char *step_name,
                         const clock_type::time_point &step_start,
                         const clock_type::time_point &step_end) {
-  std::cout << step_name << " done!\n";
-  std::cout << "Time for this step: "
-            << std::chrono::duration_cast<std::chrono::seconds>(step_end -
-                                                                step_start)
-                   .count()
-            << " s\n";
+  Logger::log_info(std::string(step_name) + " done!");
+  Logger::log_info("Time for this step: " +
+                   std::to_string(std::chrono::duration_cast<std::chrono::seconds>(
+                                      step_end - step_start)
+                                      .count()) +
+                   " s");
 }
 
 template <typename Func>
 void run_timed_step(const char *start_message, const char *step_name,
                     Func &&step) {
-  std::cout << start_message << "\n";
+  Logger::log_info(start_message);
   const auto step_start = clock_type::now();
   std::forward<Func>(step)();
   const auto step_end = clock_type::now();
@@ -440,7 +441,8 @@ void configure_quality_options(compression_params &compression_params,
 
 void print_temp_dir_size(const std::string &temp_dir,
                          const char *label = "Temporary directory size") {
-  std::cout << label << ": " << get_directory_size(temp_dir) << "\n";
+  Logger::log_info(std::string(label) + ": " +
+                   std::to_string(get_directory_size(temp_dir)));
 }
 
 void print_compressed_stream_sizes(const std::string &temp_dir) {
@@ -466,11 +468,11 @@ void print_compressed_stream_sizes(const std::string &temp_dir) {
     }
   }
 
-  std::cout << "\n";
-  std::cout << "Sizes of streams after compression: \n";
-  std::cout << "Reads:      " << std::setw(12) << size_read << " bytes\n";
-  std::cout << "Quality:    " << std::setw(12) << size_quality << " bytes\n";
-  std::cout << "ID:         " << std::setw(12) << size_id << " bytes\n";
+  Logger::log_info("");
+  Logger::log_info("Sizes of streams after compression: ");
+  Logger::log_info("Reads:      " + std::to_string(size_read) + " bytes");
+  Logger::log_info("Quality:    " + std::to_string(size_quality) + " bytes");
+  Logger::log_info("ID:         " + std::to_string(size_id) + " bytes");
 }
 
 decompression_io_config
@@ -496,8 +498,8 @@ resolve_decompression_io(const string_list &input_paths,
     break;
   case 2:
     if (!paired_end) {
-      std::cerr << "WARNING: Two output files provided for single end data. "
-                   "Output will be written to the first file provided.";
+      Logger::log_warning("Two output files provided for single end data. "
+                          "Output will be written to the first file provided.");
       io_config.output_path_1 = output_paths[0];
     } else {
       io_config.output_path_1 = output_paths[0];
@@ -521,10 +523,14 @@ void compress(const std::string &temp_dir,
               const bool &pairing_only_flag, const bool &no_quality_flag,
               const bool &no_ids_flag,
               const std::vector<std::string> &quality_options,
-              const int &compression_level, const std::string &note) {
+              const int &compression_level, const std::string &note,
+              const bool verbose) {
+  Logger::set_verbose(verbose);
+  ProgressBar progress(!verbose);
+  ProgressBar::SetGlobalInstance(&progress);
   omp_set_dynamic(0);
 
-  std::cout << "Starting compression...\n";
+  Logger::log_info("Starting compression...");
   const auto compression_start = clock_type::now();
 
   const compression_io_config io_config =
@@ -557,10 +563,9 @@ void compress(const std::string &temp_dir,
   const bool long_flag = max_read_length > MAX_READ_LEN;
 
   if (long_flag) {
-    std::cout << "Auto-detected long-read mode (max read length: "
-              << max_read_length << ").\n";
+    Logger::log_info("Auto-detected long-read mode.");
   } else {
-    std::cout << "Auto-detected short-read mode.\n";
+    Logger::log_info("Auto-detected short-read mode.");
   }
 
   compression_params cp{};
@@ -583,33 +588,37 @@ void compress(const std::string &temp_dir,
   if (preserve_quality)
     configure_quality_options(cp, quality_options);
 
-  std::cout << "Detected input format: " << input_format_name(input_format)
-            << "\n";
+  Logger::log_info(std::string("Detected input format: ") + input_format_name(input_format));
   if (fasta_input) {
-    std::cout << "FASTA input detected; quality values will not be stored.\n";
+    Logger::log_info("FASTA input detected; quality values will not be stored.");
   }
 
   if (prepared_inputs.input_1_was_gzipped ||
       prepared_inputs.input_2_was_gzipped) {
-    std::cout << "Detected gzipped input; decompressing to temporary input "
-                 "files before compression.\n";
+    Logger::log_info("Detected gzipped input; decompressing to temporary input "
+                     "files before compression.");
   }
 
   run_timed_step("Preprocessing ...", "Preprocessing", [&] {
+    progress.set_stage("Preprocessing", 0.0F, 0.25F);
     preprocess(prepared_inputs.input_path_1, prepared_inputs.input_path_2,
-               temp_dir, cp, fasta_input);
+               temp_dir, cp, fasta_input, &progress);
   });
   cleanup_prepared_compression_inputs(prepared_inputs);
   print_temp_dir_size(temp_dir);
 
   if (!long_flag) {
-    run_timed_step("Reordering ...", "Reordering",
-                   [&] { call_reorder(temp_dir, cp); });
+    run_timed_step("Reordering ...", "Reordering", [&] {
+      progress.set_stage("Reordering", 0.25F, 0.50F);
+      call_reorder(temp_dir, cp);
+    });
 
     print_temp_dir_size(temp_dir, "temp_dir size");
 
-    run_timed_step("Encoding ...", "Encoding",
-                   [&] { call_encoder(temp_dir, cp); });
+    run_timed_step("Encoding ...", "Encoding", [&] {
+      progress.set_stage("Encoding", 0.50F, 0.85F);
+      call_encoder(temp_dir, cp);
+    });
     print_temp_dir_size(temp_dir);
 
     if (!preserve_order && (preserve_quality || preserve_id)) {
@@ -627,8 +636,10 @@ void compress(const std::string &temp_dir,
     }
 
     run_timed_step("Reordering and compressing streams ...",
-                   "Reordering and compressing streams",
-                   [&] { reorder_compress_streams(temp_dir, cp); });
+                   "Reordering and compressing streams", [&] {
+                     progress.set_stage("Compressing streams", 0.85F, 0.95F);
+                     reorder_compress_streams(temp_dir, cp);
+                   });
     print_temp_dir_size(temp_dir);
   }
 
@@ -641,6 +652,7 @@ void compress(const std::string &temp_dir,
   print_compressed_stream_sizes(temp_dir);
 
   run_timed_step("Creating tar archive ...", "Tar archive", [&] {
+    progress.set_stage("Creating archive", 0.95F, 1.0F);
     const std::string tar_command =
         "tar -cf " + shell_quote(shell_path(io_config.archive_path)) + " -C " +
         shell_quote(shell_path(temp_dir)) + " .";
@@ -649,29 +661,39 @@ void compress(const std::string &temp_dir,
   });
 
   const auto compression_end = clock_type::now();
-  std::cout << "Compression done!\n";
-  std::cout << "Total time for compression: "
-            << std::chrono::duration_cast<std::chrono::seconds>(
-                   compression_end - compression_start)
-                   .count()
-            << " s\n";
+  if (verbose) {
+    std::cout << "Compression done!\n";
+    std::cout << "Total time for compression: "
+              << std::chrono::duration_cast<std::chrono::seconds>(
+                     compression_end - compression_start)
+                     .count()
+              << " s\n";
+  } else {
+    progress.finalize();
+  }
 
-  namespace fs = std::filesystem;
-  fs::path archive_file_path{io_config.archive_path};
-  std::cout << "\n";
-  std::cout << "Total size: " << std::setw(12)
-            << fs::file_size(archive_file_path) << " bytes\n";
+  if (verbose) {
+    namespace fs = std::filesystem;
+    fs::path archive_file_path{io_config.archive_path};
+    std::cout << "\n";
+    std::cout << "Total size: " << std::setw(12)
+              << fs::file_size(archive_file_path) << " bytes\n";
+  }
+  ProgressBar::SetGlobalInstance(nullptr);
   return;
 }
 
 void decompress(const std::string &temp_dir,
                 const std::vector<std::string> &input_paths,
                 const std::vector<std::string> &output_paths,
-                const int &/*num_thr*/,
-                const int &/*compression_level*/) {
+                const int &/*num_thr*/, const int &/*compression_level*/,
+                const bool verbose) {
+  Logger::set_verbose(verbose);
+  ProgressBar progress(!verbose);
+  ProgressBar::SetGlobalInstance(&progress);
   omp_set_dynamic(0);
 
-  std::cout << "Starting decompression...\n";
+  Logger::log_info("Starting decompression...");
   const auto decompression_start = clock_type::now();
   compression_params cp{};
 
@@ -679,6 +701,7 @@ void decompress(const std::string &temp_dir,
     throw std::runtime_error("Number of input files not equal to 1");
 
   run_timed_step("Untarring tar archive ...", "Untarring archive", [&] {
+    progress.set_stage("Untarring", 0.0F, 0.10F);
     const std::string untar_command =
         "tar -xf " + shell_quote(shell_path(input_paths[0])) + " -C " +
         shell_quote(shell_path(temp_dir));
@@ -696,14 +719,16 @@ void decompress(const std::string &temp_dir,
     throw std::runtime_error("Can't read compression parameters.");
   compression_params_input.close();
 
-  std::cout << "Original filenames detected in archive:\n";
-  std::cout << "  Input 1: " << cp.input_filename_1 << "\n";
-  if (cp.paired_end) {
-    std::cout << "  Input 2: " << cp.input_filename_2 << "\n";
-  }
+  if (verbose) {
+    std::cout << "Original filenames detected in archive:\n";
+    std::cout << "  Input 1: " << cp.input_filename_1 << "\n";
+    if (cp.paired_end) {
+      std::cout << "  Input 2: " << cp.input_filename_2 << "\n";
+    }
 
-  if (!cp.note.empty()) {
-    std::cout << "Note: " << cp.note << "\n";
+    if (!cp.note.empty()) {
+      std::cout << "Note: " << cp.note << "\n";
+    }
   }
 
   std::vector<std::string> resolved_output_paths = output_paths;
@@ -723,6 +748,7 @@ void decompress(const std::string &temp_dir,
 
   // Long-read and short-read archives diverge only at the reconstruction step.
   run_timed_step("Decompressing ...", "Decompressing", [&] {
+    progress.set_stage("Decompressing", 0.10F, 1.0F);
     if (cp.long_flag) {
       decompress_long(temp_dir, io_config.output_path_1, io_config.output_path_2,
                       cp, cp.use_crlf);
@@ -733,11 +759,16 @@ void decompress(const std::string &temp_dir,
   });
 
   const auto decompression_end = clock_type::now();
-  std::cout << "Total time for decompression: "
-            << std::chrono::duration_cast<std::chrono::seconds>(
-                   decompression_end - decompression_start)
-                   .count()
-            << " s\n";
+  if (verbose) {
+    std::cout << "Total time for decompression: "
+              << std::chrono::duration_cast<std::chrono::seconds>(
+                     decompression_end - decompression_start)
+                     .count()
+              << " s\n";
+  } else {
+    progress.finalize();
+  }
+  ProgressBar::SetGlobalInstance(nullptr);
 }
 
 std::string random_string(size_t length) {

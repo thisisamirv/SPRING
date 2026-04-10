@@ -13,6 +13,8 @@
 
 #include "libbsc/bsc.h"
 #include "reordered_quality_id.h"
+#include "progress.h"
+#include "reordered_streams.h"
 #include "util.h"
 
 namespace spring {
@@ -335,7 +337,7 @@ void reorder_compress_quality_id(const std::string &temp_dir,
   // Bound the working set so this stage stays within the reorder memory budget.
 
   if (preserve_quality) {
-    std::cout << "Compressing qualities\n";
+    Logger::log_info("Compressing qualities");
     for (int stream_index = 0; stream_index < 2; stream_index++) {
       if (!should_process_stream(stream_index, paired_end, false))
         continue;
@@ -347,7 +349,7 @@ void reorder_compress_quality_id(const std::string &temp_dir,
     }
   }
   if (preserve_id) {
-    std::cout << "Compressing ids\n";
+    Logger::log_info("Compressing ids");
     for (int stream_index = 0; stream_index < 2; stream_index++) {
       if (!should_process_stream(stream_index, paired_end, paired_id_match))
         continue;

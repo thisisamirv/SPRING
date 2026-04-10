@@ -3,6 +3,7 @@
 
 #include "params.h"
 #include "spring.h"
+#include "progress.h"
 #include <algorithm>
 #include <cmath>
 #include <csignal>
@@ -46,6 +47,7 @@ struct command_line_options {
   double memory_cap_gb = 0.0;
   int compression_level = spring::DEFAULT_COMPRESSION_LEVEL;
   std::string note;
+  bool verbose_flag = false;
 };
 
 std::string temp_dir_global;
@@ -57,7 +59,7 @@ void delete_temp_dir_if_present() {
   if (!temp_dir_flag_global)
     return;
 
-  std::cout << "Deleting temporary directory: " << temp_dir_global << "\n";
+  spring::Logger::log_info(std::string("Deleting temporary directory: ") + temp_dir_global);
   std::filesystem::path p(temp_dir_global);
   // remove_all can fail on Windows if path has trailing slash.
   // Converting to path object and using that is more robust.
@@ -77,7 +79,7 @@ void delete_working_dir_if_present() {
   std::error_code error;
   if (std::filesystem::is_directory(working_dir_global, error) &&
       std::filesystem::is_empty(working_dir_global, error)) {
-    std::cout << "Deleting working directory...\n";
+    spring::Logger::log_info("Deleting working directory...");
     std::filesystem::remove(working_dir_global, error);
   }
   remove_working_dir_flag_global = false;
@@ -153,7 +155,9 @@ std::string build_options_description() {
          "Passed to gzip\n"
       << "                                  unchanged and scaled to Zstd "
          "(1-22).\n"
-      << "  -n [ --note ] arg               add a custom note to the archive";
+      << "  -n [ --note ] arg               add a custom note to the archive\n"
+      << "  -v [ --verbose ]                enable extensive logging (default: "
+         "progress bar only)";
   return options.str();
 }
 
@@ -199,7 +203,7 @@ uint64_t parse_uint64_or_throw(const std::string &value,
   }
 }
 
-std::string strip_quotes(std::string value) {
+std::string strip_quotes(const std::string &value) {
   if (value.size() >= 2) {
     if ((value.front() == '"' && value.back() == '"') ||
         (value.front() == '\'' && value.back() == '\'')) {
@@ -299,6 +303,8 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
     } else if (arg == "-n" || arg == "--note") {
       require_value(args, index, "--note");
       options.note = strip_quotes(args[index++]);
+    } else if (arg == "-v" || arg == "--verbose") {
+      options.verbose_flag = true;
     } else {
       throw std::runtime_error(std::string("Unknown option: ") + arg);
     }
@@ -336,7 +342,7 @@ std::string create_and_register_temp_dir(const std::string &working_dir) {
   remove_working_dir_flag_global = !working_dir_exists;
 
   const std::string temp_dir = create_temp_dir(working_dir);
-  std::cout << "Temporary directory: " << temp_dir << "\n";
+  spring::Logger::log_info("Temporary directory: " + temp_dir);
   temp_dir_global = temp_dir;
   temp_dir_flag_global = true;
   return temp_dir;
@@ -377,12 +383,13 @@ void run_requested_mode(const command_line_options &options,
                      options.num_threads, options.pairing_only_flag,
                      options.no_quality_flag, options.no_ids_flag,
                      options.quality_options, options.compression_level,
-                     options.note);
+                     options.note, options.verbose_flag);
     return;
   }
 
   spring::decompress(temp_dir, options.input_paths, options.output_paths,
-                     options.num_threads, options.compression_level);
+                     options.num_threads, options.compression_level,
+                     options.verbose_flag);
 }
 
 } // namespace
@@ -391,7 +398,7 @@ void signalHandler(int signum) {
   std::cout << "Interrupt signal (" << signum << ") received.\n";
   std::cout << "Program terminated unexpectedly\n";
   if (temp_dir_flag_global) {
-    std::cout << "Deleting temporary directory: " << temp_dir_global << "\n";
+    spring::Logger::log_info(std::string("Deleting temporary directory: ") + temp_dir_global);
     std::error_code ec;
     std::filesystem::remove_all(std::filesystem::path(temp_dir_global), ec);
     temp_dir_flag_global = false;
@@ -407,6 +414,7 @@ int main(int argc, char **argv) {
 
   try {
     parse_command_line(argc, argv, options);
+    spring::Logger::set_verbose(options.verbose_flag);
   } catch (const std::runtime_error &e) {
     std::cout << e.what() << "\n";
     std::cout << options_description << "\n";

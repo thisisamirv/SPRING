@@ -2,10 +2,12 @@
 // side streams before reordering, encoding, and archive assembly.
 
 #include "preprocess.h"
+#include "progress.h"
 #include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <omp.h>
@@ -298,7 +300,7 @@ uint32_t detect_max_read_length(const std::string &infile_1,
                                 const std::string &infile_2,
                                 const bool paired_end, const bool fasta_input,
                                 bool &use_crlf) {
-  std::cout << "Auto-detecting read lengths and line endings ...\n";
+  Logger::log_info("Auto-detecting read lengths and line endings ...");
   use_crlf = false;
   uint32_t max_len_1 =
       detect_max_read_length_in_file(infile_1, fasta_input, use_crlf);
@@ -311,7 +313,7 @@ uint32_t detect_max_read_length(const std::string &infile_1,
 
 void preprocess(const std::string &infile_1, const std::string &infile_2,
                 const std::string &temp_dir, compression_params &cp,
-                const bool &fasta_input) {
+                const bool &fasta_input, ProgressBar *progress) {
   const preprocess_paths paths =
       build_preprocess_paths(infile_1, infile_2, temp_dir);
   std::array<std::ifstream, 2> input_files;
@@ -326,6 +328,16 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   open_preprocess_streams(input_files, clean_outputs, n_read_outputs,
                           n_read_order_outputs, id_outputs, quality_outputs,
                           input_streams, gzip_streams, paths, cp, false);
+
+  uint64_t total_input_bytes = 0;
+  total_input_bytes += std::filesystem::exists(infile_1)
+                           ? std::filesystem::file_size(infile_1)
+                           : 0;
+  if (cp.paired_end) {
+    total_input_bytes += std::filesystem::exists(infile_2)
+                             ? std::filesystem::file_size(infile_2)
+                             : 0;
+  }
 
   uint32_t max_readlen = 0;
   std::array<uint64_t, 2> num_reads = {0, 0};
@@ -548,6 +560,15 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
     if (done[0] && done[1])
       break;
     num_blocks_done += cp.num_thr;
+    if (progress && total_input_bytes > 0) {
+      uint64_t bytes_read = 0;
+      for (int i = 0; i < 2; i++) {
+        if (input_streams[i]) {
+          bytes_read += static_cast<uint64_t>(input_streams[i]->tellg());
+        }
+      }
+      progress->update(static_cast<float>(bytes_read) / total_input_bytes);
+    }
   }
 
   delete[] quality_binning_table;
@@ -572,14 +593,15 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   cp.num_reads_clean[1] = num_reads_clean[1];
   cp.max_readlen = max_readlen;
 
-  std::cout << "Max Read length: " << cp.max_readlen << "\n";
-  std::cout << "Total number of reads: " << cp.num_reads << "\n";
-
-  if (!cp.long_flag)
-    std::cout << "Total number of reads without N: "
-              << cp.num_reads_clean[0] + cp.num_reads_clean[1] << "\n";
-  if (cp.preserve_id && cp.paired_end)
-    std::cout << "Paired id match code: " << (int)cp.paired_id_code << "\n";
+  Logger::log_info("Max Read length: " + std::to_string(cp.max_readlen));
+  Logger::log_info("Total number of reads: " + std::to_string(cp.num_reads));
+  if (cp.paired_end) {
+    Logger::log_info(
+        "Total number of reads without N: " +
+        std::to_string(cp.num_reads_clean[0] + cp.num_reads_clean[1]));
+    Logger::log_info("Paired id match code: " +
+                     std::to_string((int)cp.paired_id_code));
+  }
 }
 
 } // namespace spring

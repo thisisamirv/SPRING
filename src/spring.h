@@ -19,11 +19,12 @@ void compress(const std::string &temp_dir, const string_list &input_paths,
               const string_list &output_paths, const int &num_thr,
               const bool &pairing_only_flag, const bool &no_quality_flag,
               const bool &no_ids_flag, const string_list &quality_options,
-              const int &compression_level, const std::string &note);
+              const int &compression_level, const std::string &note,
+              const bool verbose = true);
 
 void decompress(const std::string &temp_dir, const string_list &input_paths,
                 const string_list &output_paths, const int &num_thr,
-                const int &compression_level);
+                const int &compression_level, const bool verbose = true);
 
 std::string random_string(size_t length);
 
