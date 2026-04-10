@@ -278,11 +278,8 @@ if (TARGET rapidgzip)
     endif()
 endif ()
 
-# The Spring executable is built from the core pipeline plus bundled
-# third-party compression libraries.
-list(APPEND source_files
-    # spring
-    ${source_dir}/main.cpp
+# Core source files shared between spring2 and spring2-preview.
+set(core_source_files
     ${source_dir}/spring.cpp
     ${source_dir}/util.cpp
     ${source_dir}/bitset_dictionary.cpp
@@ -293,7 +290,6 @@ list(APPEND source_files
     ${source_dir}/reordered_quality_id.cpp
     ${source_dir}/decompress.cpp
     ${source_dir}/template_dispatch.cpp
-
 )
 
 
@@ -306,18 +302,25 @@ function(add_dev_script_target target_name script_name)
     )
 endfunction()
 
-add_executable (spring2 ${source_files})
+add_executable (spring2 ${source_dir}/main.cpp ${core_source_files})
+add_executable (spring2-preview ${source_dir}/preview_main.cpp ${core_source_files})
 
 # Spring headers live in src/, while vendor/ exposes bundled libraries such
 # as BBHash, libbsc, id_compression, qvz, and the vendored libdeflate sources.
 target_include_directories(spring2 PRIVATE ${include_dir})
+target_include_directories(spring2-preview PRIVATE ${include_dir})
+
 if (WIN32)
     target_include_directories(spring2 PRIVATE ${CMAKE_SOURCE_DIR}/src)
+    target_include_directories(spring2-preview PRIVATE ${CMAKE_SOURCE_DIR}/src)
 endif ()
+
 if (SPRING_OPENMP_INCLUDE_DIRS)
     target_include_directories(spring2 SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
+    target_include_directories(spring2-preview SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
 endif ()
-target_link_libraries(spring2 PUBLIC
+
+set(spring_libs
     libdeflate::libdeflate_static
     libzstd_static
     ZLIB::ZLIB
@@ -325,20 +328,28 @@ target_link_libraries(spring2 PUBLIC
     qvz
     pthash
 )
+
+target_link_libraries(spring2 PUBLIC ${spring_libs})
+target_link_libraries(spring2-preview PUBLIC ${spring_libs})
 if (TARGET OpenMP::OpenMP_CXX)
     target_link_libraries(spring2 PUBLIC OpenMP::OpenMP_CXX)
 endif ()
 
 if (WIN32)
     target_link_libraries(spring2 PRIVATE ws2_32 psapi)
+    target_link_libraries(spring2-preview PRIVATE ws2_32 psapi)
 endif ()
 
 target_compile_definitions(spring2 PRIVATE SPRING_RAPIDGZIP_EXECUTABLE=\"$<TARGET_FILE:rapidgzip>\")
+target_compile_definitions(spring2-preview PRIVATE SPRING_RAPIDGZIP_EXECUTABLE=\"$<TARGET_FILE:rapidgzip>\")
+
 if (WIN32)
     target_compile_definitions(spring2 PRIVATE IDOFILE_PATH_ROOT=\".spring-idtmp/idoFile.\")
+    target_compile_definitions(spring2-preview PRIVATE IDOFILE_PATH_ROOT=\".spring-idtmp/idoFile.\")
 endif ()
 
 add_dependencies(spring2 rapidgzip)
+add_dependencies(spring2-preview rapidgzip)
 
 # On Windows with GNU toolchain: support static linking of GCC runtimes
 if (WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")

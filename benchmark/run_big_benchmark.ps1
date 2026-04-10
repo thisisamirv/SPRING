@@ -171,7 +171,7 @@ Write-Host "  input:   $INPUT_ABS"
 Write-Host "  output:  $OUTPUT_FILE"
 Write-Host "  threads: $THREADS"
 
-$compArgs = "-c -i `"$INPUT_ABS`" -o `"$OUTPUT_FILE`" -w `"$WORK_DIR`" -t $THREADS -q lossless"
+$compArgs = "-c -i `"$INPUT_ABS`" -o `"$OUTPUT_FILE`" -w `"$WORK_DIR`" -t $THREADS -q lossless -n 'Big Benchmark'"
 $compResults = Invoke-ResourceLoggedProcess $SPRING_BIN $compArgs
 
 # --- Decompression ---

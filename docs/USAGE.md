@@ -20,7 +20,7 @@ spring2 [mode] [options] -i <input_files> -o <output_file>
 ### Input and Output
 
 - `-i, --input arg`: Input file name. Specify two files for paired-end data.
-- `-o, --output arg`: Output file name. For paired-end decompression, if only one file is specified, two output files will be created by suffixing `.1` and `.2`.
+- `-o, --output arg`: Output file name. If omitted during decompression, SPRING2 will use the original input names stored in the archive metadata. For paired-end decompression, if only one file is specified, two output files will be created by suffixing `.1` and `.2`.
 
 ### Performance and Resources
 
@@ -36,6 +36,7 @@ spring2 [mode] [options] -i <input_files> -o <output_file>
   - `q`: Quality scores
   - *Example*: `--strip io` to drop both identifiers and original order.
 - `-l, --level arg`: Compression level (1-9). This controls the compression level for `.gz` file formatting and is scaled to Zstd (1-22) internally for other streams. Default is `6`.
+- `-n, --note arg`: Attach a custom text note to the archive. This note is stored in the metadata and can be viewed during decompression or using the preview tool.
 
 ### Quality Modes (`-q, --qmod`)
 
@@ -49,7 +50,15 @@ spring2 [mode] [options] -i <input_files> -o <output_file>
 ### Paired-End FASTQ (Lossless)
 
 ```bash
-./spring2 -c -i file_1.fastq file_2.fastq -o file.sp
+./spring2 -c -i file_1.fastq file_2.fastq -o file.sp -n "Batch 01 - Control"
+```
+
+### Inspected with Preview Tool
+
+To view the metadata and notes of an archive without decompressing it:
+
+```bash
+./spring2-preview file.sp
 ```
 
 ### Paired-End Gzipped FASTQ

@@ -218,6 +218,7 @@ spring_args=(
 	-w "$WORK_DIR"
 	-t "$THREADS"
 	-q lossless
+	-n "Big Benchmark"
 )
 
 run_with_resource_log "$COMPRESS_RESOURCE_LOG" "$SPRING_BIN" "${spring_args[@]}"

@@ -57,6 +57,9 @@ struct compression_params {
   uint64_t file_len_seq_thr[kFileLenThrSize];
   uint64_t file_len_id_thr[kFileLenThrSize];
   bool use_crlf;
+  std::string input_filename_1;
+  std::string input_filename_2;
+  std::string note;
 };
 
 class gzip_istreambuf : public std::streambuf {
@@ -185,6 +188,18 @@ std::string reverse_complement(const std::string &input_bases,
 void remove_CR_from_end(std::string &str);
 
 size_t get_directory_size(const std::string &temp_dir);
+
+// Metadata serialization helpers.
+void write_bool(std::ostream &out, bool value);
+bool read_bool(std::istream &in);
+void write_string(std::ostream &out, const std::string &s);
+std::string read_string(std::istream &in);
+void write_compression_params(std::ostream &out, const compression_params &cp);
+void read_compression_params(std::istream &in, compression_params &cp);
+
+// Shell and filesystem helpers.
+std::string shell_quote(const std::string &value);
+std::string shell_path(const std::string &value);
 
 // Temporary integer stream helpers.
 void write_var_int64(const int64_t value, std::ofstream &output_stream);

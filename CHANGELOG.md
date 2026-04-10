@@ -16,6 +16,10 @@
 * Added vendored `rapidgzip` support for gzipped compression inputs through the pruned `indexed_bzip2` payload.
 * Added a dedicated `dev/` tooling directory for repository maintenance, including linting, cppcheck, cbindgen validation, Valgrind smoke checks, shared helpers, and suppressions.
 * Added configure-time `.clangd` generation so editor diagnostics inherit the active compiler's include paths and OpenMP configuration.
+* Added extensive documentations.
+* Added storage of the original input filenames within the compressed archive metadata.
+* Added the `spring2-preview` utility for inspecting archive metadata, read counts, and settings without full decompression.
+* Added the `-n, --note` flag to store custom text notes within the archive.
 
 ### Changed
 

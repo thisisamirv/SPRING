@@ -45,6 +45,7 @@ struct command_line_options {
   bool num_threads_was_explicit = false;
   double memory_cap_gb = 0.0;
   int compression_level = spring::DEFAULT_COMPRESSION_LEVEL;
+  std::string note;
 };
 
 std::string temp_dir_global;
@@ -151,7 +152,8 @@ std::string build_options_description() {
       << "                                  and output (.gz) formatting. "
          "Passed to gzip\n"
       << "                                  unchanged and scaled to Zstd "
-         "(1-22).";
+         "(1-22).\n"
+      << "  -n [ --note ] arg               add a custom note to the archive";
   return options.str();
 }
 
@@ -195,6 +197,16 @@ uint64_t parse_uint64_or_throw(const std::string &value,
   } catch (const std::exception &) {
     throw std::runtime_error(error_message);
   }
+}
+
+std::string strip_quotes(std::string value) {
+  if (value.size() >= 2) {
+    if ((value.front() == '"' && value.back() == '"') ||
+        (value.front() == '\'' && value.back() == '\'')) {
+      return value.substr(1, value.size() - 2);
+    }
+  }
+  return value;
 }
 
 void require_value(const std::vector<std::string> &args, size_t index,
@@ -284,6 +296,9 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
       options.quality_options = collect_option_values(args, index);
       if (options.quality_options.empty())
         throw std::runtime_error("--qmod requires at least 1 value.");
+    } else if (arg == "-n" || arg == "--note") {
+      require_value(args, index, "--note");
+      options.note = strip_quotes(args[index++]);
     } else {
       throw std::runtime_error(std::string("Unknown option: ") + arg);
     }
@@ -361,7 +376,8 @@ void run_requested_mode(const command_line_options &options,
     spring::compress(temp_dir, options.input_paths, options.output_paths,
                      options.num_threads, options.pairing_only_flag,
                      options.no_quality_flag, options.no_ids_flag,
-                     options.quality_options, options.compression_level);
+                     options.quality_options, options.compression_level,
+                     options.note);
     return;
   }
 

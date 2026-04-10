@@ -30,77 +30,6 @@
 
 namespace spring {
 
-void write_bool(std::ostream &out, bool value) {
-  uint8_t byte = value ? 1 : 0;
-  out.write(byte_ptr(&byte), sizeof(uint8_t));
-}
-
-bool read_bool(std::istream &in) {
-  uint8_t byte = 0;
-  in.read(byte_ptr(&byte), sizeof(uint8_t));
-  return byte != 0;
-}
-
-void write_compression_params(std::ostream &out, const compression_params &cp) {
-  write_bool(out, cp.paired_end);
-  write_bool(out, cp.preserve_order);
-  write_bool(out, cp.preserve_quality);
-  write_bool(out, cp.preserve_id);
-  write_bool(out, cp.long_flag);
-  write_bool(out, cp.qvz_flag);
-  write_bool(out, cp.ill_bin_flag);
-  write_bool(out, cp.bin_thr_flag);
-  out.write(byte_ptr(&cp.qvz_ratio), sizeof(double));
-  out.write(byte_ptr(&cp.bin_thr_thr), sizeof(unsigned int));
-  out.write(byte_ptr(&cp.bin_thr_high), sizeof(unsigned int));
-  out.write(byte_ptr(&cp.bin_thr_low), sizeof(unsigned int));
-  out.write(byte_ptr(&cp.num_reads), sizeof(uint32_t));
-  out.write(byte_ptr(&cp.num_reads_clean[0]), sizeof(uint32_t));
-  out.write(byte_ptr(&cp.num_reads_clean[1]), sizeof(uint32_t));
-  out.write(byte_ptr(&cp.max_readlen), sizeof(uint32_t));
-  out.write(byte_ptr(&cp.paired_id_code), sizeof(uint8_t));
-  write_bool(out, cp.paired_id_match);
-  out.write(byte_ptr(&cp.num_reads_per_block), sizeof(int));
-  out.write(byte_ptr(&cp.num_reads_per_block_long), sizeof(int));
-  out.write(byte_ptr(&cp.num_thr), sizeof(int));
-  out.write(byte_ptr(&cp.compression_level), sizeof(int));
-  out.write(reinterpret_cast<const char *>(cp.file_len_seq_thr),
-            sizeof(uint64_t) * compression_params::kFileLenThrSize);
-  out.write(reinterpret_cast<const char *>(cp.file_len_id_thr),
-            sizeof(uint64_t) * compression_params::kFileLenThrSize);
-  write_bool(out, cp.use_crlf);
-}
-
-void read_compression_params(std::istream &in, compression_params &cp) {
-  cp.paired_end = read_bool(in);
-  cp.preserve_order = read_bool(in);
-  cp.preserve_quality = read_bool(in);
-  cp.preserve_id = read_bool(in);
-  cp.long_flag = read_bool(in);
-  cp.qvz_flag = read_bool(in);
-  cp.ill_bin_flag = read_bool(in);
-  cp.bin_thr_flag = read_bool(in);
-  in.read(byte_ptr(&cp.qvz_ratio), sizeof(double));
-  in.read(byte_ptr(&cp.bin_thr_thr), sizeof(unsigned int));
-  in.read(byte_ptr(&cp.bin_thr_high), sizeof(unsigned int));
-  in.read(byte_ptr(&cp.bin_thr_low), sizeof(unsigned int));
-  in.read(byte_ptr(&cp.num_reads), sizeof(uint32_t));
-  in.read(byte_ptr(&cp.num_reads_clean[0]), sizeof(uint32_t));
-  in.read(byte_ptr(&cp.num_reads_clean[1]), sizeof(uint32_t));
-  in.read(byte_ptr(&cp.max_readlen), sizeof(uint32_t));
-  in.read(byte_ptr(&cp.paired_id_code), sizeof(uint8_t));
-  cp.paired_id_match = read_bool(in);
-  in.read(byte_ptr(&cp.num_reads_per_block), sizeof(int));
-  in.read(byte_ptr(&cp.num_reads_per_block_long), sizeof(int));
-  in.read(byte_ptr(&cp.num_thr), sizeof(int));
-  in.read(byte_ptr(&cp.compression_level), sizeof(int));
-  in.read(reinterpret_cast<char *>(cp.file_len_seq_thr),
-          sizeof(uint64_t) * compression_params::kFileLenThrSize);
-  in.read(reinterpret_cast<char *>(cp.file_len_id_thr),
-          sizeof(uint64_t) * compression_params::kFileLenThrSize);
-  cp.use_crlf = read_bool(in);
-}
-
 namespace {
 
 using clock_type = std::chrono::steady_clock;
@@ -201,38 +130,6 @@ std::string to_ascii_lowercase(std::string value) {
         static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
   }
   return value;
-}
-
-std::string shell_quote(const std::string &value) {
-#ifdef _WIN32
-  // On Windows, use generic_string() (forward slashes) for relative/absolute
-  // paths passed to system(). cmd.exe and Windows APIs usually handle them.
-  std::string quoted = "\"";
-  for (const char character : value) {
-    if (character == '"') {
-      quoted += "\\\"";
-    } else {
-      quoted += character;
-    }
-  }
-  quoted += '"';
-  return quoted;
-#else
-  std::string quoted = "'";
-  for (const char character : value) {
-    if (character == '\'') {
-      quoted += "'\"'\"'";
-    } else {
-      quoted += character;
-    }
-  }
-  quoted += "'";
-  return quoted;
-#endif
-}
-
-std::string shell_path(const std::string &value) {
-  return std::filesystem::path(value).generic_string();
 }
 
 bool is_gzip_input_path(const std::string &input_path) {
@@ -624,7 +521,7 @@ void compress(const std::string &temp_dir,
               const bool &pairing_only_flag, const bool &no_quality_flag,
               const bool &no_ids_flag,
               const std::vector<std::string> &quality_options,
-              const int &compression_level) {
+              const int &compression_level, const std::string &note) {
   omp_set_dynamic(0);
 
   std::cout << "Starting compression...\n";
@@ -677,6 +574,11 @@ void compress(const std::string &temp_dir,
   cp.num_reads_per_block_long = NUM_READS_PER_BLOCK_LONG;
   cp.num_thr = num_thr;
   cp.compression_level = compression_level;
+  cp.note = note;
+  cp.input_filename_1 = std::filesystem::path(io_config.input_path_1).filename().string();
+  if (io_config.paired_end) {
+    cp.input_filename_2 = std::filesystem::path(io_config.input_path_2).filename().string();
+  }
 
   if (preserve_quality)
     configure_quality_options(cp, quality_options);
@@ -794,9 +696,27 @@ void decompress(const std::string &temp_dir,
     throw std::runtime_error("Can't read compression parameters.");
   compression_params_input.close();
 
+  std::cout << "Original filenames detected in archive:\n";
+  std::cout << "  Input 1: " << cp.input_filename_1 << "\n";
+  if (cp.paired_end) {
+    std::cout << "  Input 2: " << cp.input_filename_2 << "\n";
+  }
+
+  if (!cp.note.empty()) {
+    std::cout << "Note: " << cp.note << "\n";
+  }
+
+  std::vector<std::string> resolved_output_paths = output_paths;
+  if (resolved_output_paths.empty()) {
+    resolved_output_paths.push_back(cp.input_filename_1);
+    if (cp.paired_end) {
+      resolved_output_paths.push_back(cp.input_filename_2);
+    }
+  }
+
   bool paired_end = cp.paired_end;
   const decompression_io_config io_config =
-      resolve_decompression_io(input_paths, output_paths, paired_end);
+      resolve_decompression_io(input_paths, resolved_output_paths, paired_end);
 
 
 

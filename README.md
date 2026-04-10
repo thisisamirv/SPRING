@@ -59,10 +59,12 @@ Allowed options:
   -c [ --compress ]               compress
   -d [ --decompress ]             decompress
   -i [ --input ] arg              input file name (two files for paired end)
-  -o [ --output ] arg             output file name (for paired end
-                                  decompression, if only one file is specified,
-                                  two output files will be created by suffixing
-                                  .1 and .2.)
+  -o [ --output ] arg             output file name
+                                    - in the decompression mode, if not specified,
+                                      it uses original input filenames from metadata
+                                    - for paired end decompression, if only one file
+                                      is specified, two output files will be created
+                                      by suffixing .1 and .2
   -w [ --tmp-dir ] arg (=.)       directory to create temporary files (default
                                   current directory)
   -t [ --threads ] arg            number of threads (default:
@@ -75,15 +77,42 @@ Allowed options:
   -q [ --qmod ] arg               quality mode: possible modes are
                                     1. -q lossless (default)
                                     2. -q qvz qv_ratio (QVZ lossy compression,
-                                    parameter qv_ratio roughly corresponds to
-                                    bits used per quality value)
+                                      parameter qv_ratio roughly corresponds to
+                                      bits used per quality value)
                                     3. -q ill_bin (Illumina 8-level binning)
                                     4. -q binary thr high low (binary (2-level)
-                                    thresholding, quality binned to high if >=
-                                    thr and to low if < thr)
+                                      thresholding, quality binned to high if >=
+                                      thr and to low if < thr)
   -l [ --level ] arg (=6)         compression level (1-9) to use for output
                                   (.gz) formatting (passed to gzip unchanged
                                   and scaled to Zstd 1-22 internally)
+  -n [ --note ] arg               add a custom note to the archive
+```
+
+### Previewing Archives
+
+You can use the `spring2-preview` tool to quickly inspect archive metadata, original filenames, and custom notes without performing a full decompression:
+
+```bash
+spring2-preview archive.sp
+```
+
+Example:
+
+```text
+--------------------------------
+Original Input 1:  file.fastq.gz
+Note:              My Note
+Mode:              Single-end
+Reads Processed:   321055
+Max Read Length:   301 (using short-read encoder)
+Preserve Order:    Yes
+Preserve IDs:      Yes
+Preserve Quality:  Yes
+Quality Mode:      Lossless
+Compression Level: 6
+Use CRLF:          No
+--------------------------------
 ```
 
 For a comprehensive list of all options, quality modes, and multi-threaded examples, see the **[Usage Guide](docs/USAGE.md)**.

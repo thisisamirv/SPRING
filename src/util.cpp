@@ -1068,4 +1068,132 @@ void safe_bsc_str_array_decompress(const std::string &input_path,
   }
 }
 
+void write_bool(std::ostream &out, bool value) {
+  uint8_t byte = value ? 1 : 0;
+  out.write(byte_ptr(&byte), sizeof(uint8_t));
+}
+
+bool read_bool(std::istream &in) {
+  uint8_t byte = 0;
+  in.read(byte_ptr(&byte), sizeof(uint8_t));
+  return byte != 0;
+}
+
+void write_string(std::ostream &out, const std::string &s) {
+  uint32_t len = static_cast<uint32_t>(s.length());
+  out.write(byte_ptr(&len), sizeof(uint32_t));
+  if (len > 0) {
+    out.write(s.data(), len);
+  }
+}
+
+std::string read_string(std::istream &in) {
+  uint32_t len = 0;
+  in.read(byte_ptr(&len), sizeof(uint32_t));
+  if (len == 0) {
+    return std::string();
+  }
+  std::string s(len, '\0');
+  in.read(&s[0], len);
+  return s;
+}
+
+void write_compression_params(std::ostream &out, const compression_params &cp) {
+  write_bool(out, cp.paired_end);
+  write_bool(out, cp.preserve_order);
+  write_bool(out, cp.preserve_quality);
+  write_bool(out, cp.preserve_id);
+  write_bool(out, cp.long_flag);
+  write_bool(out, cp.qvz_flag);
+  write_bool(out, cp.ill_bin_flag);
+  write_bool(out, cp.bin_thr_flag);
+  out.write(byte_ptr(&cp.qvz_ratio), sizeof(double));
+  out.write(byte_ptr(&cp.bin_thr_thr), sizeof(unsigned int));
+  out.write(byte_ptr(&cp.bin_thr_high), sizeof(unsigned int));
+  out.write(byte_ptr(&cp.bin_thr_low), sizeof(unsigned int));
+  out.write(byte_ptr(&cp.num_reads), sizeof(uint32_t));
+  out.write(byte_ptr(&cp.num_reads_clean[0]), sizeof(uint32_t));
+  out.write(byte_ptr(&cp.num_reads_clean[1]), sizeof(uint32_t));
+  out.write(byte_ptr(&cp.max_readlen), sizeof(uint32_t));
+  out.write(byte_ptr(&cp.paired_id_code), sizeof(uint8_t));
+  write_bool(out, cp.paired_id_match);
+  out.write(byte_ptr(&cp.num_reads_per_block), sizeof(int));
+  out.write(byte_ptr(&cp.num_reads_per_block_long), sizeof(int));
+  out.write(byte_ptr(&cp.num_thr), sizeof(int));
+  out.write(byte_ptr(&cp.compression_level), sizeof(int));
+  out.write(reinterpret_cast<const char *>(cp.file_len_seq_thr),
+            sizeof(uint64_t) * compression_params::kFileLenThrSize);
+  out.write(reinterpret_cast<const char *>(cp.file_len_id_thr),
+            sizeof(uint64_t) * compression_params::kFileLenThrSize);
+  write_bool(out, cp.use_crlf);
+  write_string(out, cp.input_filename_1);
+  write_string(out, cp.input_filename_2);
+  write_string(out, cp.note);
+}
+
+void read_compression_params(std::istream &in, compression_params &cp) {
+  cp.paired_end = read_bool(in);
+  cp.preserve_order = read_bool(in);
+  cp.preserve_quality = read_bool(in);
+  cp.preserve_id = read_bool(in);
+  cp.long_flag = read_bool(in);
+  cp.qvz_flag = read_bool(in);
+  cp.ill_bin_flag = read_bool(in);
+  cp.bin_thr_flag = read_bool(in);
+  in.read(byte_ptr(&cp.qvz_ratio), sizeof(double));
+  in.read(byte_ptr(&cp.bin_thr_thr), sizeof(unsigned int));
+  in.read(byte_ptr(&cp.bin_thr_high), sizeof(unsigned int));
+  in.read(byte_ptr(&cp.bin_thr_low), sizeof(unsigned int));
+  in.read(byte_ptr(&cp.num_reads), sizeof(uint32_t));
+  in.read(byte_ptr(&cp.num_reads_clean[0]), sizeof(uint32_t));
+  in.read(byte_ptr(&cp.num_reads_clean[1]), sizeof(uint32_t));
+  in.read(byte_ptr(&cp.max_readlen), sizeof(uint32_t));
+  in.read(byte_ptr(&cp.paired_id_code), sizeof(uint8_t));
+  cp.paired_id_match = read_bool(in);
+  in.read(byte_ptr(&cp.num_reads_per_block), sizeof(int));
+  in.read(byte_ptr(&cp.num_reads_per_block_long), sizeof(int));
+  in.read(byte_ptr(&cp.num_thr), sizeof(int));
+  in.read(byte_ptr(&cp.compression_level), sizeof(int));
+  in.read(reinterpret_cast<char *>(cp.file_len_seq_thr),
+          sizeof(uint64_t) * compression_params::kFileLenThrSize);
+  in.read(reinterpret_cast<char *>(cp.file_len_id_thr),
+          sizeof(uint64_t) * compression_params::kFileLenThrSize);
+  cp.use_crlf = read_bool(in);
+  cp.input_filename_1 = read_string(in);
+  cp.input_filename_2 = read_string(in);
+  cp.note = read_string(in);
+}
+
+std::string shell_quote(const std::string &value) {
+#ifdef _WIN32
+  // On Windows, use generic_string() (forward slashes) for relative/absolute
+  // paths passed to system(). cmd.exe and Windows APIs usually handle them.
+  std::string quoted = "\"";
+  for (const char character : value) {
+    if (character == '"') {
+      quoted += "\\\"";
+    } else {
+      quoted += character;
+    }
+  }
+  quoted += '"';
+  return quoted;
+#else
+  std::string quoted = "'";
+  for (const char character : value) {
+    if (character == '\'') {
+      quoted += "'\"'\"'";
+    } else {
+      quoted += character;
+    }
+  }
+  quoted += "'";
+  return quoted;
+#endif
+}
+
+std::string shell_path(const std::string &value) {
+  return std::filesystem::path(value).generic_string();
+}
+
 } // namespace spring
