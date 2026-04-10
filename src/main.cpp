@@ -2,8 +2,8 @@
 // temporary-directory management, and dispatch to compress/decompress modes.
 
 #include "params.h"
-#include "spring.h"
 #include "progress.h"
+#include "spring.h"
 #include <algorithm>
 #include <cmath>
 #include <csignal>
@@ -59,7 +59,8 @@ void delete_temp_dir_if_present() {
   if (!temp_dir_flag_global)
     return;
 
-  spring::Logger::log_info(std::string("Deleting temporary directory: ") + temp_dir_global);
+  spring::Logger::log_info(std::string("Deleting temporary directory: ") +
+                           temp_dir_global);
   std::filesystem::path p(temp_dir_global);
   // remove_all can fail on Windows if path has trailing slash.
   // Converting to path object and using that is more robust.
@@ -106,30 +107,31 @@ int print_invalid_mode_and_exit(const std::string &options_description) {
 std::string build_options_description() {
   std::ostringstream options;
   options
-      << "Allowed options:\n"
       << "  -h [ --help ]                   produce help message\n"
       << "  -c [ --compress ]               compress\n"
       << "  -d [ --decompress ]             decompress\n"
       << "  -i [ --input ] arg              input file name (two files for "
          "paired end)\n"
-      << "  -o [ --output ] arg             output file name (for paired end\n"
-      << "                                  decompression, if only one file is "
-         "specified,\n"
-      << "                                  two output files will be created "
-         "by suffixing\n"
-      << "                                  .1 and .2.)\n"
+      << "  -o [ --output ] arg             output file name\n"
+      << "                                    - in the decompression mode, if "
+         "not specified,\n"
+      << "                                      it uses original input "
+         "filenames from metadata\n"
+      << "                                    - for paired end decompression, "
+         "if only one file\n"
+      << "                                      is specified, two output files "
+         "will be created\n"
+      << "                                      by suffixing .1 and .2\n"
       << "  -w [ --tmp-dir ] arg (=.)       directory to create temporary "
          "files (default\n"
       << "                                  current directory)\n"
-      << "  -t [ --threads ] arg (=" << default_num_threads()
-      << ")       number of threads\n"
-      << "                                  (default: min(max(1, hw_threads - "
-         "1), 16))\n"
-      << "  -m [ --memory ] arg (=0)        approximate memory budget in GB;\n"
-      << "                                  reduces effective thread count "
-         "using\n"
-      << "                                  about 1 GB per worker thread (0 "
-         "disables)\n"
+      << "  -t [ --threads ] arg            number of threads (default:\n"
+      << "                                  min(max(1, hw_threads - 1), 16))\n"
+      << "  -m [ --memory ] arg (=0)        approximate memory budget in GB; "
+         "reduces\n"
+      << "                                  effective thread count using about "
+         "1 GB per\n"
+      << "                                  worker thread (0 disables)\n"
       << "  -s [ --strip ] arg              discard data: i (ids), o (order), "
          "q (quality)\n"
       << "                                  Example: --strip io to drop ids "
@@ -138,26 +140,25 @@ std::string build_options_description() {
       << "                                    1. -q lossless (default)\n"
       << "                                    2. -q qvz qv_ratio (QVZ lossy "
          "compression,\n"
-      << "                                    parameter qv_ratio roughly "
+      << "                                      parameter qv_ratio roughly "
          "corresponds to\n"
-      << "                                    bits used per quality value)\n"
+      << "                                      bits used per quality value)\n"
       << "                                    3. -q ill_bin (Illumina 8-level "
          "binning)\n"
       << "                                    4. -q binary thr high low "
-         "(binary "
-         "(2-level)\n"
-      << "                                    thresholding, quality binned to "
-         "high if >=\n"
-      << "                                    thr and to low if < thr)\n"
-      << "  -l [ --level ] arg (=6)         Compression level (1-9) for "
-         "identifiers\n"
-      << "                                  and output (.gz) formatting. "
-         "Passed to gzip\n"
-      << "                                  unchanged and scaled to Zstd "
-         "(1-22).\n"
+         "(binary (2-level)\n"
+      << "                                      thresholding, quality binned "
+         "to high if >=\n"
+      << "                                      thr and to low if < thr)\n"
+      << "  -l [ --level ] arg (=6)         compression level (1-9) to use for "
+         "output\n"
+      << "                                  (.gz) formatting (passed to gzip "
+         "unchanged\n"
+      << "                                  and scaled to Zstd 1-22 "
+         "internally)\n"
       << "  -n [ --note ] arg               add a custom note to the archive\n"
       << "  -v [ --verbose ]                enable extensive logging (default: "
-         "progress bar only)";
+         "progress bar)";
   return options.str();
 }
 
@@ -398,7 +399,8 @@ void signalHandler(int signum) {
   std::cout << "Interrupt signal (" << signum << ") received.\n";
   std::cout << "Program terminated unexpectedly\n";
   if (temp_dir_flag_global) {
-    spring::Logger::log_info(std::string("Deleting temporary directory: ") + temp_dir_global);
+    spring::Logger::log_info(std::string("Deleting temporary directory: ") +
+                             temp_dir_global);
     std::error_code ec;
     std::filesystem::remove_all(std::filesystem::path(temp_dir_global), ec);
     temp_dir_flag_global = false;

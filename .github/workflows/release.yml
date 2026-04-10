@@ -86,20 +86,20 @@ jobs:
             URL=\"\${URL}linuxdeploy-\$ARCH_SUFFIX.AppImage\" && \
             wget \"\$URL\" -O linuxdeploy && \
             chmod +x linuxdeploy && \
-            echo '[Desktop Entry]' > spring2.desktop && \
-            echo 'Type=Application' >> spring2.desktop && \
-            echo 'Name=SPRING2' >> spring2.desktop && \
-            echo 'Exec=spring2' >> spring2.desktop && \
-            echo 'Icon=spring2' >> spring2.desktop && \
-            echo 'Categories=Science;Biology;' >> spring2.desktop && \
-            echo 'Terminal=true' >> spring2.desktop && \
+            echo '[Desktop Entry]' > logo.desktop && \
+            echo 'Type=Application' >> logo.desktop && \
+            echo 'Name=SPRING2' >> logo.desktop && \
+            echo 'Exec=spring2' >> logo.desktop && \
+            echo 'Icon=logo' >> logo.desktop && \
+            echo 'Categories=Science;Biology;' >> logo.desktop && \
+            echo 'Terminal=true' >> logo.desktop && \
             export EXTRA_QT_PLUGINS= && \
-            cp dev/logo.png spring2.png && \
+            cp dev/logo.png logo.png && \
             ./linuxdeploy --appimage-extract-and-run \
               --appdir AppDir \
               --executable build/spring2 \
-              --desktop-file spring2.desktop \
-              --icon-file spring2.png \
+              --desktop-file logo.desktop \
+              --icon-file logo.png \
               --output appimage \
               --verbosity=2 && \
             mv SPRING2-*.AppImage spring2-linux-${{ matrix.arch }}.AppImage
