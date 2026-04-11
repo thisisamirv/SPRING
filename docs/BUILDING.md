@@ -28,7 +28,7 @@ git clone https://github.com/thisisamirv/SPRING.git
 cd SPRING
 ```
 
-CI builds use `-Dspring_optimize_for_native=OFF -Dspring_optimize_for_portability=ON` for portability. For local builds on a single machine, the default native-tuned build is fine. If you need a more portable binary, pass the same portability flags used in CI.
+By default, the build system uses `-Dspring_optimize_for_native=OFF -Dspring_optimize_for_portability=ON` to produce binaries that are compatible across a wide range of architectures (requiring only SSE4.1 on x86_64). For a build specifically tuned to your local machine, you can pass `-Dspring_optimize_for_native=ON -Dspring_optimize_for_portability=OFF`.
 
 ### Linux
 
@@ -46,10 +46,7 @@ python -m pip install "cmake==4.2.0"
 Configure and build:
 
 ```bash
-cmake -S . -B build \
-  -G Ninja \
-  -Dspring_optimize_for_native=OFF \
-  -Dspring_optimize_for_portability=ON
+cmake -S . -B build -G Ninja
 cmake --build build --parallel
 ```
 
@@ -76,19 +73,7 @@ Configure and build with Apple Clang and Homebrew `libomp`:
 
 ```bash
 MACOS_LIBOMP_PREFIX="$(brew --prefix libomp)"
-
-CC=clang CXX=clang++ \
-cmake -S . -B build \
-  -G Ninja \
-  -DOpenMP_ROOT="$MACOS_LIBOMP_PREFIX" \
-  -DOpenMP_C_FLAGS="-Xpreprocessor -fopenmp" \
-  -DOpenMP_CXX_FLAGS="-Xpreprocessor -fopenmp" \
-  -DOpenMP_C_LIB_NAMES="omp" \
-  -DOpenMP_CXX_LIB_NAMES="omp" \
-  -DOpenMP_omp_LIBRARY="$MACOS_LIBOMP_PREFIX/lib/libomp.dylib" \
-  -Dspring_optimize_for_native=OFF \
-  -Dspring_optimize_for_portability=ON
-
+CC=clang CXX=clang++ cmake -S . -B build -G Ninja
 cmake --build build --parallel
 ```
 
@@ -120,7 +105,14 @@ $env:CXX="g++"
 Configure & build (native cmd) from the repo root:
 
 ```powershell
-cmake -S . -B build -G Ninja -DSPRING_STATIC_RUNTIMES=OFF -Dspring_optimize_for_native=OFF -Dspring_optimize_for_portability=ON
+cmake -S . -B build -G Ninja
 cmake --build build --parallel
-cmake --build build --target copy_runtime_dlls
+```
+
+## Build Options (`DEV_MODE`)
+
+By default, the project is configured for **Clean Build Mode** (`DEV_MODE=OFF`), which cleans up intermediate build artifacts after a successful build. To build with intermediate artifacts (for development purposes), use `DEV_MODE=ON`:
+
+```bash
+cmake -S . -B build -G Ninja -DEV_MODE=ON
 ```

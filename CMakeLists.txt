@@ -3,6 +3,27 @@
 
 cmake_minimum_required (VERSION 4.2)
 project (SPRING2)
+
+# Compatibility shim for common typo: -DEV_MODE instead of -DDEV_MODE
+if (DEFINED EV_MODE)
+    message(STATUS "Mapping typo EV_MODE=${EV_MODE} to DEV_MODE")
+    set(DEV_MODE ${EV_MODE} CACHE BOOL "Enable development mode" FORCE)
+endif()
+
+option(DEV_MODE "Enable development mode (prevents aggressive post-build cleanup)" OFF)
+
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  message(STATUS "Setting build type to 'Release' as none was specified.")
+  set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
+endif()
+
+option(LIBRAPIDARCHIVE_WITH_ISAL "Build rapidgzip with Intel ISA-L support" ON)
+if (APPLE)
+    # ISA-L support is generally omitted on macOS to ensure build success across architectures.
+    set(LIBRAPIDARCHIVE_WITH_ISAL OFF CACHE BOOL "" FORCE)
+endif()
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -94,8 +115,8 @@ endif ()
 
 # Native tuning is the default; portability mode restricts x86-family code
 # generation to SSE4.1-compatible instructions.
-option(spring_optimize_for_native "Build spoa with -march=native" ON)
-option(spring_optimize_for_portability "Build spoa with -msse4.1" OFF)
+option(spring_optimize_for_native "Build with -march=native" OFF)
+option(spring_optimize_for_portability "Build with -msse4.1 (Maximum portability)" ON)
 
 set(SPRING_X86_FAMILY FALSE)
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i[3-6]86)$")
@@ -125,6 +146,28 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAGS}")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${FLAGS}")
 
 # OpenMP is required across Spring and several bundled compression components.
+if (APPLE)
+    # Automatically locate Homebrew libomp if not already specified
+    if (NOT OpenMP_FOUND AND NOT DEFINED OpenMP_ROOT)
+        set(BREW_LIBOMP_DIR "")
+        if (EXISTS "/opt/homebrew/opt/libomp")
+            set(BREW_LIBOMP_DIR "/opt/homebrew/opt/libomp")
+        elseif (EXISTS "/usr/local/opt/libomp")
+            set(BREW_LIBOMP_DIR "/usr/local/opt/libomp")
+        endif()
+
+        if (BREW_LIBOMP_DIR)
+            message(STATUS "Found Homebrew libomp at ${BREW_LIBOMP_DIR}, configuring OpenMP automatically")
+            set(OpenMP_ROOT "${BREW_LIBOMP_DIR}" CACHE PATH "Path to OpenMP root")
+            set(OpenMP_C_FLAGS "-Xpreprocessor -fopenmp" CACHE STRING "C flags for OpenMP")
+            set(OpenMP_CXX_FLAGS "-Xpreprocessor -fopenmp" CACHE STRING "CXX flags for OpenMP")
+            set(OpenMP_C_LIB_NAMES "omp" CACHE STRING "C library names for OpenMP")
+            set(OpenMP_CXX_LIB_NAMES "omp" CACHE STRING "CXX library names for OpenMP")
+            set(OpenMP_omp_LIBRARY "${BREW_LIBOMP_DIR}/lib/libomp.dylib" CACHE FILEPATH "Path to omp library")
+        endif()
+    endif()
+endif()
+
 FIND_PACKAGE( OpenMP REQUIRED)
 message(STATUS "OPENMP FOUND")
 set(OpenMP_DEFINITIONS "-DLIBBSC_OPENMP_SUPPORT -DLIBSAIS_OPENMP")
@@ -400,8 +443,9 @@ if (WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         endforeach()
 
         # Convenience target to explicitly copy runtime DLLs (useful for installers)
-        add_custom_target(copy_runtime_dlls
-            COMMENT "Copy GCC runtime DLLs next to spring2 executable"
+        # Marked as ALL so it runs automatically during 'cmake --build build'
+        add_custom_target(copy_runtime_dlls ALL
+            COMMENT "Copying GCC runtime DLLs next to spring2 executable"
         )
         add_dependencies(copy_runtime_dlls spring2)
         foreach(_dll IN LISTS SPRING_RUNTIME_DLLS)
@@ -413,6 +457,35 @@ if (WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
             endif()
         endforeach()
     endif()
+endif()
+
+# Target to clean up all redundant build artifacts for a "clean" release footprint.
+add_custom_target(clean-artifacts
+    COMMAND ${CMAKE_COMMAND} -E rm -rf 
+        "${CMAKE_BINARY_DIR}/isa-l.h" 
+        "${CMAKE_BINARY_DIR}/libisal.pc" 
+        "${CMAKE_BINARY_DIR}/ISALConfig.cmake" 
+        "${CMAKE_BINARY_DIR}/ISALConfigVersion.cmake"
+        "${CMAKE_BINARY_DIR}/vendor"
+        "${CMAKE_BINARY_DIR}/_deps"
+        "${CMAKE_BINARY_DIR}/zstd-build"
+        "${CMAKE_BINARY_DIR}/libbsc-build"
+        "${CMAKE_BINARY_DIR}/libdeflate-build"
+        "${CMAKE_BINARY_DIR}/pthash-build"
+        "${CMAKE_BINARY_DIR}/qvz-build"
+        "${CMAKE_BINARY_DIR}/indexed_bzip2-build"
+        "${CMAKE_BINARY_DIR}/cloudflare_zlib-build"
+    COMMENT "Wiping all intermediate build state and vendor sources"
+)
+
+# Automated Final Hand-off
+# If NOT DEV_MODE, run the cleanup automatically after ALL binaries logic is finished.
+if (NOT DEV_MODE)
+    add_custom_target(auto-finalize-cleanup ALL
+        DEPENDS spring2 spring2-preview rapidgzip copy_runtime_dlls
+        COMMAND ${CMAKE_COMMAND} --build . --target clean-artifacts
+        COMMENT "Build successful. Running automated post-build cleanup..."
+    )
 endif()
 
 add_dev_script_target(dev-lint lint.sh)

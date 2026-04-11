@@ -37,15 +37,11 @@ if ($null -eq $targets -or $targets.Count -eq 0) {
 # Run cppcheck
 Write-Host "Running cppcheck on $($targets.Count) targets..." -ForegroundColor Cyan
 
-# Prepare suppressions (using forward slashes for the BooPHF path to ensure cross-tool compatibility)
-$BOOPHF_PATTERN = (Join-Path $ROOT_DIR "src/BooPHF.h").Replace('\', '/')
-
 $cppcheckArgs = @(
     "--error-exitcode=1",
     "--enable=warning,performance,portability",
     "--suppress=missingInclude",
-    "--suppress=missingIncludeSystem",
-    "--suppress=*:$BOOPHF_PATTERN"
+    "--suppress=missingIncludeSystem"
 )
 
 $cppcheckArgs += $INCLUDE_ARGS

@@ -254,14 +254,15 @@ uint32_t compute_thread_read_count(const uint32_t step_read_count,
 }
 
 void write_step_output(std::ofstream &output_stream, std::string *id_buffer,
-                       std::string *read_buffer, const std::string *quality_array,
+                       std::string *read_buffer,
+                       const std::string *quality_array,
                        const uint32_t output_read_count, const int num_thr,
                        const bool gzip_output, const bool bgzf_output,
                        const int compression_level, const bool use_crlf,
                        const bool fasta_mode) {
   write_fastq_block(output_stream, id_buffer, read_buffer, quality_array,
-                    output_read_count, num_thr, gzip_output,
-                    bgzf_output, compression_level, use_crlf, fasta_mode);
+                    output_read_count, num_thr, gzip_output, bgzf_output,
+                    compression_level, use_crlf, fasta_mode);
 }
 
 void decode_packed_sequence_chunk(const std::string &packed_seq_base_path,

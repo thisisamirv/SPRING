@@ -60,7 +60,7 @@ struct prepared_compression_inputs {
 
 void decompress_gzip_input_file(const std::string &input_path,
                                 const std::string &output_path,
-                                const int num_thr);
+                                int num_thr);
 
 enum class input_record_format : uint8_t { fastq, fasta };
 

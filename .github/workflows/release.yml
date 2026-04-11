@@ -73,8 +73,7 @@ jobs:
             . .cmake-venv/bin/activate && \
             python3.9 -m pip install 'cmake==4.2.0' && \
             cmake -S . -B build -G Ninja \
-              -Dspring_optimize_for_native=OFF \
-              -Dspring_optimize_for_portability=ON \
+              -DDEV_MODE=OFF \
               -DLIBRAPIDARCHIVE_WITH_ISAL=OFF \
               \$CMAKE_EXTRA_FLAGS && \
             cmake --build build --parallel && \
@@ -94,7 +93,7 @@ jobs:
             echo 'Categories=Science;Biology;' >> logo.desktop && \
             echo 'Terminal=true' >> logo.desktop && \
             export EXTRA_QT_PLUGINS= && \
-            cp dev/logo.png logo.png && \
+            cp assets/icons/logo.png logo.png && \
             ./linuxdeploy --appimage-extract-and-run \
               --appdir AppDir \
               --executable build/spring2 \
@@ -141,17 +140,7 @@ jobs:
       - name: Configure (macOS)
         if: matrix.name == 'macos'
         run: |
-          cmake -S . -B build \
-            -G Ninja \
-            -DOpenMP_ROOT="$MACOS_LIBOMP_PREFIX" \
-            -DOpenMP_C_FLAGS="-Xpreprocessor -fopenmp" \
-            -DOpenMP_CXX_FLAGS="-Xpreprocessor -fopenmp" \
-            -DOpenMP_C_LIB_NAMES="omp" \
-            -DOpenMP_CXX_LIB_NAMES="omp" \
-            -DOpenMP_omp_LIBRARY="$MACOS_LIBOMP_PREFIX/lib/libomp.dylib" \
-            -DLIBRAPIDARCHIVE_WITH_ISAL=OFF \
-            -Dspring_optimize_for_native=OFF \
-            -Dspring_optimize_for_portability=ON
+          cmake -S . -B build -G Ninja -DDEV_MODE=OFF
 
       - name: Build and Strip (macOS)
         if: matrix.name == 'macos'
@@ -179,17 +168,16 @@ jobs:
         run: |
           cmake -S . -B build `
             -G Ninja `
-            -Dspring_optimize_for_native=OFF `
-            -Dspring_optimize_for_portability=ON `
+            -DDEV_MODE=OFF `
             -DSPRING_STATIC_RUNTIMES=ON
 
       - name: Build (Windows)
         if: matrix.name == 'windows'
         shell: powershell
         run: |
-          magick dev/logo.png `
+          magick assets/icons/logo.png `
             -define icon:auto-resize=16,32,48,64,128,256 `
-            src/spring2.ico
+            assets/icons/logo.ico
           cmake --build build --parallel
 
       - name: Strip Binaries (Windows)
@@ -259,18 +247,18 @@ jobs:
       - name: Generate macOS Icon
         run: |
           mkdir spring2.iconset
-          sips -z 16 16     dev/logo.png --out spring2.iconset/icon_16x16.png
-          sips -z 32 32     dev/logo.png --out spring2.iconset/icon_16x16@2x.png
-          sips -z 32 32     dev/logo.png --out spring2.iconset/icon_32x32.png
-          sips -z 64 64     dev/logo.png --out spring2.iconset/icon_32x32@2x.png
-          sips -z 128 128   dev/logo.png --out spring2.iconset/icon_128x128.png
-          sips -z 256 256   dev/logo.png \
+          sips -z 16 16     assets/icons/logo.png --out spring2.iconset/icon_16x16.png
+          sips -z 32 32     assets/icons/logo.png --out spring2.iconset/icon_16x16@2x.png
+          sips -z 32 32     assets/icons/logo.png --out spring2.iconset/icon_32x32.png
+          sips -z 64 64     assets/icons/logo.png --out spring2.iconset/icon_32x32@2x.png
+          sips -z 128 128   assets/icons/logo.png --out spring2.iconset/icon_128x128.png
+          sips -z 256 256   assets/icons/logo.png \
             --out spring2.iconset/icon_128x128@2x.png
-          sips -z 256 256   dev/logo.png --out spring2.iconset/icon_256x256.png
-          sips -z 512 512   dev/logo.png \
+          sips -z 256 256   assets/icons/logo.png --out spring2.iconset/icon_256x256.png
+          sips -z 512 512   assets/icons/logo.png \
             --out spring2.iconset/icon_256x256@2x.png
-          sips -z 512 512   dev/logo.png --out spring2.iconset/icon_512x512.png
-          cp dev/logo.png spring2.iconset/icon_512x512@2x.png
+          sips -z 512 512   assets/icons/logo.png --out spring2.iconset/icon_512x512.png
+          cp assets/icons/logo.png spring2.iconset/icon_512x512@2x.png
           iconutil -c icns spring2.iconset
           rm -rf spring2.iconset
 

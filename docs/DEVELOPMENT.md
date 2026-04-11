@@ -18,6 +18,14 @@ SPRING2 uses a modular CMake build system. Each vendor dependency in the `vendor
 - Each major dependency (e.g., `libbsc`, `qvz`, `cloudflare_zlib`) has its own internal `CMakeLists.txt` managing its build logic.
 - All internal libraries are built with `POSITION_INDEPENDENT_CODE ON` to ensure compatibility with enterprise Linux (PIE) requirements.
 
+### Build Options (`DEV_MODE`)
+
+By default, the project is configured for **Clean Build Mode** (`DEV_MODE=OFF`), which cleans up intermediate build artifacts after a successful build. To build with intermediate artifacts, use `DEV_MODE=ON`:
+
+```bash
+cmake -S . -B build -G Ninja -DEV_MODE=ON
+```
+
 ### Adding or Updating a Dependency
 
 1. Extract the existing tarball in `vendor/`.
@@ -40,7 +48,7 @@ We use `clang-format` and several custom lint scripts. You can run the convenien
 A basic round-trip validation script is provided:
 
 ```bash
-./tests/test_script.sh
+./tests/smoke_test.sh
 ```
 
 ## Release Pipeline
