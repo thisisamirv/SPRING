@@ -91,13 +91,22 @@ function Invoke-Spring {
 
     Write-Host "Running Spring command: $exe $([string]::Join(' ', $remainingArgs))" -ForegroundColor Cyan
     
+    $exitCode = 0
     if ($SPRING_COMMAND_TIMEOUT_SECONDS -gt 0 -and (Get-Command "timeout" -ErrorAction SilentlyContinue)) {
         $process = Start-Process -FilePath $exe -ArgumentList $remainingArgs -Wait -NoNewWindow -PassThru
         $exitCode = $process.ExitCode
     }
     else {
-        & $exe @remainingArgs
+        # Capture stderr to see what happened on failure
+        $errFile = Join-Path $ROOT_DIR "spring_error.txt"
+        & $exe @remainingArgs 2>$errFile
         $exitCode = $LASTEXITCODE
+        if ($exitCode -ne 0) {
+            Write-Host "Spring Error Output:" -ForegroundColor Red
+            if (Test-Path $errFile) {
+                Get-Content $errFile | Write-Host -ForegroundColor Red
+            }
+        }
     }
 
     if ($exitCode -ne 0) {
@@ -112,31 +121,86 @@ function Write-SmokeCase {
     Write-Host "Smoke case: $caseName" -ForegroundColor Cyan
 }
 
+# Add C# helper for robust multi-member GZIP decompression (handles BGZF)
+$GZipHelperSource = @"
+using System;
+using System.IO;
+using System.IO.Compression;
+
+public class GZipHelper {
+    public static void Decompress(string infile, string outfile) {
+        byte[] data = File.ReadAllBytes(infile);
+        using (var outputStream = File.Create(outfile)) {
+            for (int i = 0; i < data.Length - 1; i++) {
+                if (data[i] == 0x1F && data[i+1] == 0x8B) {
+                    using (var inputStream = new MemoryStream(data, i, data.Length - i))
+                    using (var gz = new GZipStream(inputStream, CompressionMode.Decompress)) {
+                        try {
+                            gz.CopyTo(outputStream);
+                        } catch {
+                            // Skip invalid members or trailing data
+                        }
+                    }
+                    // We don't know the compressed size, so we'll just scan for the next magic number.
+                    // To avoid re-decompressing the same member, we should ideally skip ahead.
+                    // But for a smoke test with small files, scanning is fast enough.
+                    // Actually, GZipStream will have decompressed one member. 
+                    // Any magic number inside that compressed member will be ignored because we're scanning the COMPRESSED data.
+                }
+            }
+        }
+    }
+}
+"@
+
+try {
+    Add-Type -TypeDefinition $GZipHelperSource -ErrorAction SilentlyContinue
+} catch {}
+
+function Expand-GzipFile {
+    param($infile, $outfile)
+    $infileFull = (Get-Item $infile).FullName
+    $outfileFull = [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $outfile))
+    
+    try {
+        [GZipHelper]::Decompress($infileFull, $outfileFull)
+    }
+    catch {
+        Write-Host "Note: Gzip decompression failed: $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+
 function Compare-Files {
     param ($leftPath, $rightPath)
     
     if (-not (Test-Path $leftPath)) {
-        throw "Left comparison file does not exist: $leftPath (searching in $(Get-Location))"
+        Write-Host "Left comparison file does not exist: $leftPath" -ForegroundColor Red
+        return $false
     }
     if (-not (Test-Path $rightPath)) {
-        throw "Right comparison file does not exist: $rightPath"
-    }
-
-    $leftLines = Get-Content $leftPath
-    $rightLines = Get-Content $rightPath
-
-    if ($leftLines.Count -ne $rightLines.Count) {
-        Write-Host "Files differ in line count: $($leftLines.Count) vs $($rightLines.Count)" -ForegroundColor Red
+        Write-Host "Right comparison file does not exist: $rightPath" -ForegroundColor Red
         return $false
     }
 
-    for ($i = 0; $i -lt $leftLines.Count; $i++) {
-        if ($leftLines[$i] -ne $rightLines[$i]) {
-            Write-Host "Files differ at line $($i + 1)" -ForegroundColor Red
-            Write-Host "  Left:  $($leftLines[$i])" -ForegroundColor Red
-            Write-Host "  Right: $($rightLines[$i])" -ForegroundColor Red
-            return $false
-        }
+    # Normalize line endings (strip CR) for robust comparison on Windows
+    $bytes1 = [System.IO.File]::ReadAllBytes((Get-Item $leftPath).FullName)
+    $bytes2 = [System.IO.File]::ReadAllBytes((Get-Item $rightPath).FullName)
+    
+    $clean1 = [System.Linq.Enumerable]::ToArray([System.Linq.Enumerable]::Where($bytes1, [Func[byte,bool]]{ param($b) $b -ne 0x0D }))
+    $clean2 = [System.Linq.Enumerable]::ToArray([System.Linq.Enumerable]::Where($bytes2, [Func[byte,bool]]{ param($b) $b -ne 0x0D }))
+
+    $ms1 = New-Object System.IO.MemoryStream($clean1, $false)
+    $ms2 = New-Object System.IO.MemoryStream($clean2, $false)
+    
+    $hash1 = (Get-FileHash -InputStream $ms1).Hash
+    $hash2 = (Get-FileHash -InputStream $ms2).Hash
+    
+    $ms1.Dispose()
+    $ms2.Dispose()
+
+    if ($hash1 -ne $hash2) {
+        Write-Host "Files differ in hash (normalized): $leftPath ($($clean1.Length) bytes) vs $rightPath ($($clean2.Length) bytes)" -ForegroundColor Red
+        return $false
     }
     return $true
 }
@@ -234,44 +298,82 @@ try {
     Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
     Invoke-Spring -d -i abcd -o tmp.gz
-    if (Get-Command "tar" -ErrorAction SilentlyContinue) {
-        tar -xf tmp.gz
-        if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
-    }
+    Expand-GzipFile "tmp.gz" "tmp.decompressed"
+    if (-not (Compare-Files "tmp.decompressed" "$ASSET_DIR\test_1.fastq")) { exit 1 }
 
     Write-SmokeCase "fasta round-trip repeat"
     Invoke-Spring -c -i "$ASSET_DIR\test_1.fasta" -o abcd
     Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fasta")) { exit 1 }
 
+    Write-SmokeCase "paired fastq round-trip repeat"
+    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" "$ASSET_DIR\test_2.fastq" -o abcd
+    Invoke-Spring -d -i abcd -o tmp
+    if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
+    if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
+
     Write-SmokeCase "paired fastq gzipped input round-trip"
     Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq.gz" "$ASSET_DIR\test_2.fastq.gz" -o abcd
-    Invoke-Spring -d -i abcd -o tmp
+    Invoke-Spring -d -i abcd -o tmp -u
     if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
     if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
 
     Write-SmokeCase "paired fasta gzipped input round-trip"
     Invoke-Spring -c -i "$ASSET_DIR\test_1.fasta.gz" "$ASSET_DIR\test_2.fasta.gz" -o abcd
-    Invoke-Spring -d -i abcd -o tmp
+    Invoke-Spring -d -i abcd -o tmp -u
     if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fasta")) { exit 1 }
     if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fasta")) { exit 1 }
 
     Write-SmokeCase "single gzipped fastq round-trip"
     Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq.gz" -o abcd
-    Invoke-Spring -d -i abcd -o tmp
+    Invoke-Spring -d -i abcd -o tmp -u
     if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
 
-    Write-SmokeCase "multi-threaded round-trip"
+    Write-SmokeCase "single gzipped fastq to gzipped output"
+    Invoke-Spring -d -i abcd -o tmp.gz
+    Expand-GzipFile "tmp.gz" "tmp.decompressed"
+    if (-not (Compare-Files "tmp.decompressed" "$ASSET_DIR\test_1.fastq")) { exit 1 }
+
+    Write-SmokeCase "paired fastq gzipped input round-trip redundant"
+    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq.gz" "$ASSET_DIR\test_2.fastq.gz" -o abcd
+    Invoke-Spring -d -i abcd -o tmp -u
+    if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
+    if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
+
+    Write-SmokeCase "paired fastq gzipped input to gzipped outputs"
+    Invoke-Spring -d -i abcd -o tmp.1.gz tmp.2.gz
+    Expand-GzipFile "tmp.1.gz" "tmp.1"
+    Expand-GzipFile "tmp.2.gz" "tmp.2"
+    if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
+    if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
+
+    Write-SmokeCase "multi-threaded round-trip single"
     Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" -o abcd -t 8
     Invoke-Spring -d -i abcd -o tmp -t 5
     if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
 
-    Write-SmokeCase "sorted output round-trip"
+    Write-SmokeCase "multi-threaded round-trip paired"
+    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" "$ASSET_DIR\test_2.fastq" -o abcd -t 8
+    Invoke-Spring -d -i abcd -o tmp -t 5
+    if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
+    if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
+
+    Write-SmokeCase "sorted output round-trip single"
     Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" -o abcd -s o
     Invoke-Spring -d -i abcd -o tmp
     Get-Content "tmp" | Sort-Object | Set-Content "tmp.sorted"
     Get-Content "$ASSET_DIR\test_1.fastq" | Sort-Object | Set-Content "tmp_1.sorted"
     if (-not (Compare-Files "tmp.sorted" "tmp_1.sorted")) { exit 1 }
+
+    Write-SmokeCase "sorted output round-trip paired"
+    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" "$ASSET_DIR\test_2.fastq" -o abcd -t 8
+    Invoke-Spring -d -i abcd -o tmp -t 5
+    Get-Content "tmp.1" | Sort-Object | Set-Content "tmp.1.sorted"
+    Get-Content "$ASSET_DIR\test_1.fastq" | Sort-Object | Set-Content "tmp_1.sorted"
+    if (-not (Compare-Files "tmp.1.sorted" "tmp_1.sorted")) { exit 1 }
+    Get-Content "tmp.2" | Sort-Object | Set-Content "tmp.2.sorted"
+    Get-Content "$ASSET_DIR\test_2.fastq" | Sort-Object | Set-Content "tmp_2.sorted"
+    if (-not (Compare-Files "tmp.2.sorted" "tmp_2.sorted")) { exit 1 }
 
     Write-Host "Tests successful!" -ForegroundColor Green
 

@@ -1,5 +1,56 @@
-# benchmark/run_big_benchmark.ps1 - Stress test and performance metrics for SPRING2 on Windows
 $ErrorActionPreference = 'Stop'
+
+# Helper: GZip decompression for multi-member files (.gz/BGZF)
+# Built-in .NET GZipStream in PowerShell 5.1 stops after the first member.
+Add-Type -TypeDefinition @"
+using System;
+using System.IO;
+using System.IO.Compression;
+
+public class GZipHelper {
+    public static void Decompress(string inputPath, string outputPath) {
+        using (FileStream output = File.Create(outputPath)) {
+            using (FileStream input = File.OpenRead(inputPath)) {
+                byte[] data = new byte[input.Length];
+                input.Read(data, 0, (int)input.Length);
+                MemoryStream result = new MemoryStream();
+                
+                for (int i = 0; i < data.Length - 10; i++) {
+                    if (data[i] == 0x1f && data[i+1] == 0x8b && data[i+2] == 0x08) {
+                        try {
+                            using (MemoryStream memberMs = new MemoryStream(data, i, data.Length - i)) {
+                                using (GZipStream decompressor = new GZipStream(memberMs, CompressionMode.Decompress)) {
+                                    decompressor.CopyTo(result);
+                                }
+                            }
+                        } catch { } // Skip junk
+                    }
+                }
+                result.Position = 0;
+                result.CopyTo(output);
+            }
+        }
+    }
+
+    public static Stream GetDecompressedStream(string path) {
+        MemoryStream result = new MemoryStream();
+        byte[] data = File.ReadAllBytes(path);
+        for (int i = 0; i < data.Length - 10; i++) {
+            if (data[i] == 0x1f && data[i+1] == 0x8b && data[i+2] == 0x08) {
+                try {
+                    using (MemoryStream ms = new MemoryStream(data, i, data.Length - i)) {
+                        using (GZipStream decompressor = new GZipStream(ms, CompressionMode.Decompress)) {
+                            decompressor.CopyTo(result);
+                        }
+                    }
+                } catch { }
+            }
+        }
+        result.Position = 0;
+        return result;
+    }
+}
+"@
 
 # Initial paths
 $SCRIPT_DIR = $PSScriptRoot
@@ -27,28 +78,26 @@ function Get-MaxReadLength($path) {
     $maxLen = 0
     $lineCount = 0
     
-    # Use native .NET GZipStream for high performance without gzip.exe dependency
-    $fileStream = [System.IO.File]::OpenRead($path)
+    # Use robust GZip streaming for multi-member files
     $stream = if ($path.EndsWith(".gz")) {
-        $gzipStream = New-Object System.IO.Compression.GZipStream($fileStream, [System.IO.Compression.CompressionMode]::Decompress)
-        New-Object System.IO.StreamReader($gzipStream)
-    } else {
-        New-Object System.IO.StreamReader($fileStream)
+        $decompStream = [GZipHelper]::GetDecompressedStream($path)
+        New-Object System.IO.StreamReader($decompStream)
+    }
+    else {
+        New-Object System.IO.StreamReader([System.IO.File]::OpenRead($path))
     }
 
     try {
-        $buffer = New-Object byte[] 65536
-        while (($line = $stream.ReadLine()) -ne $null) {
+        while ($null -ne ($line = $stream.ReadLine())) {
             $lineCount++
             # FASTQ read line is always (4n + 2)
             if ($lineCount % 4 -eq 2) {
                 if ($line.Length -gt $maxLen) { $maxLen = $line.Length }
             }
         }
-    } finally {
+    }
+    finally {
         $stream.Dispose()
-        if ($gzipStream) { $gzipStream.Dispose() }
-        $fileStream.Dispose()
     }
     
     return $maxLen
@@ -72,7 +121,8 @@ function Invoke-ResourceLoggedProcess($binary, $arguments) {
         try {
             $currentRss = $process.PeakWorkingSet64
             if ($currentRss -gt $peakRss) { $peakRss = $currentRss }
-        } catch {}
+        }
+        catch {}
         Start-Sleep -Milliseconds 100
     }
     
@@ -103,14 +153,51 @@ function Initialize-BenchmarkEnv {
             Write-Error "Requested INPUT_FASTQ does not exist: $INPUT_FASTQ"
             exit 1
         }
-        return
     }
-
-    if (-not (Test-Path $DEFAULT_INPUT_FASTQ)) {
+    elseif (-not (Test-Path $DEFAULT_INPUT_FASTQ)) {
         Write-Host "Benchmark input not found: $DEFAULT_INPUT_FASTQ" -ForegroundColor Red
         Write-Host "Please download it from: $DOWNLOAD_URL"
         Write-Host "Or specify INPUT_FASTQ environment variable."
         exit 1
+    }
+
+    # SETUP PATHS
+    $global:INPUT_ABS = (Get-Item $INPUT_FASTQ).FullName
+    $global:INPUT_STEM = [System.IO.Path]::GetFileNameWithoutExtension([System.IO.Path]::GetFileNameWithoutExtension($INPUT_ABS))
+    $global:OUTPUT_FILE = (Join-Path $TMP_OUTPUT_DIR "$INPUT_STEM.sp").Replace("/", "\")
+    $global:DECOMP_FILE = (Join-Path $TMP_OUTPUT_DIR "$INPUT_STEM.roundtrip.fastq").Replace("/", "\")
+
+    # Decompress to temporary file for analysis and integrity check
+    # This avoids .NET GZipStream limitations in PowerShell 5.1
+    $global:INPUT_RAW = Join-Path $TMP_INPUT_DIR "input_raw.fastq"
+    if ($INPUT_FASTQ.EndsWith(".gz")) {
+        if (-not (Test-Path $global:INPUT_RAW)) {
+            Write-Host "Decompressing input for analysis..." -ForegroundColor Gray
+            try {
+                [GZipHelper]::Decompress($INPUT_FASTQ, $global:INPUT_RAW)
+            } catch {
+                Write-Error "Failed to decompress input file: $_"
+                exit 1
+            }
+        }
+    }
+    else {
+        $global:INPUT_RAW = $INPUT_FASTQ
+    }
+
+    # Setup unique work directory to avoid "file in use" errors from previous runs
+    $workDirBase = Join-Path $TMP_WORK_DIR "$INPUT_STEM.work"
+    $global:WORK_DIR = $workDirBase
+    $retry = 0
+    while (Test-Path $global:WORK_DIR) {
+        try {
+            Remove-Item $global:WORK_DIR -Recurse -Force -ErrorAction Stop
+            break
+        } catch {
+            $retry++
+            $global:WORK_DIR = "$workDirBase.$retry"
+            if ($retry -gt 10) { break }
+        }
     }
 }
 
@@ -150,68 +237,61 @@ function Ensure-SpringBinary {
 Initialize-BenchmarkEnv
 Ensure-SpringBinary
 
-$INPUT_ABS = (Get-Item $INPUT_FASTQ).FullName
-$INPUT_STEM = [System.IO.Path]::GetFileNameWithoutExtension([System.IO.Path]::GetFileNameWithoutExtension($INPUT_ABS))
-$WORK_DIR = (Join-Path $TMP_WORK_DIR "$INPUT_STEM.work").Replace("/", "\")
-$OUTPUT_FILE = (Join-Path $TMP_OUTPUT_DIR "$INPUT_STEM.sp").Replace("/", "\")
-$DECOMP_FILE = (Join-Path $TMP_OUTPUT_DIR "$INPUT_STEM.roundtrip.fastq").Replace("/", "\")
-
 Write-Host "Analyzing FASTQ..." -ForegroundColor Gray
-$maxReadLen = Get-MaxReadLength $INPUT_ABS
+$maxReadLen = Get-MaxReadLength $global:INPUT_RAW
 
-# Cleanup previous
-if (Test-Path $WORK_DIR) { Remove-Item $WORK_DIR -Recurse -Force }
-New-Item -ItemType Directory -Path $WORK_DIR -Force | Out-Null
-if (Test-Path $OUTPUT_FILE) { Remove-Item $OUTPUT_FILE -Force }
-if (Test-Path $DECOMP_FILE) { Remove-Item $DECOMP_FILE -Force }
+# Cleanup previous (WORK_DIR already handled in Initialize-BenchmarkEnv)
+if (Test-Path $global:OUTPUT_FILE) { Remove-Item $global:OUTPUT_FILE -Force }
+if (Test-Path $global:DECOMP_FILE) { Remove-Item $global:DECOMP_FILE -Force }
 
 # --- Compression ---
 Write-Host "Running Spring lossless compression" -ForegroundColor Cyan
-Write-Host "  input:   $INPUT_ABS"
-Write-Host "  output:  $OUTPUT_FILE"
+Write-Host "  input:   $global:INPUT_ABS"
+Write-Host "  output:  $global:OUTPUT_FILE"
 Write-Host "  threads: $THREADS"
 
-$compArgs = "-c -i `"$INPUT_ABS`" -o `"$OUTPUT_FILE`" -w `"$WORK_DIR`" -t $THREADS -q lossless -n 'Big Benchmark'"
+$compArgs = "-c -i `"$global:INPUT_ABS`" -o `"$global:OUTPUT_FILE`" -w `"$global:WORK_DIR`" -t $THREADS -q lossless -n `"Big Benchmark`""
 $compResults = Invoke-ResourceLoggedProcess $SPRING_BIN $compArgs
 
 # --- Decompression ---
 Write-Host "`nRunning Spring decompression" -ForegroundColor Cyan
-Write-Host "  input:   $OUTPUT_FILE"
-Write-Host "  output:  $DECOMP_FILE"
+Write-Host "  input:   $global:OUTPUT_FILE"
+Write-Host "  output:  $global:DECOMP_FILE"
 
-$decompArgs = "-d -i `"$OUTPUT_FILE`" -o `"$DECOMP_FILE`""
+$decompArgs = "-d -i `"$global:OUTPUT_FILE`" -o `"$global:DECOMP_FILE`""
 $decompResults = Invoke-ResourceLoggedProcess $SPRING_BIN $decompArgs
 
 # --- Results ---
-$inputSize = (Get-Item $INPUT_ABS).Length
-$outputSize = (Get-Item $OUTPUT_FILE).Length
-$decompSize = (Get-Item $DECOMP_FILE).Length
+$inputSize = (Get-Item $global:INPUT_ABS).Length
+$outputSize = (Get-Item $global:OUTPUT_FILE).Length
+$decompSize = (Get-Item $global:DECOMP_FILE).Length
 
 $reduction = if ($inputSize -gt 0) { ($inputSize - $outputSize) * 100 / $inputSize } else { 0 }
 $ratio = if ($outputSize -gt 0) { $inputSize / $outputSize } else { 0 }
 
-# Integrity Check
+# Integrity Check (Normalized for GZIP)
 Write-Host "`nVerifying integrity..." -ForegroundColor Gray
+$integrity_method = "SHA-256 binary hash"
 $originalHash = if ($INPUT_ABS.EndsWith(".gz")) {
-    Write-Host "  Hashing original (decompressed) content..." -ForegroundColor Gray
-    $fs = [System.IO.File]::OpenRead($INPUT_ABS)
-    $gs = New-Object System.IO.Compression.GZipStream($fs, [System.IO.Compression.CompressionMode]::Decompress)
+    Write-Host "  Hashing original (decompressed) input content..." -ForegroundColor Gray
+    $ds = [GZipHelper]::GetDecompressedStream($INPUT_ABS)
     $hasher = [System.Security.Cryptography.SHA256]::Create()
-    $hashBytes = $hasher.ComputeHash($gs)
-    $gs.Dispose(); $fs.Dispose()
+    $hashBytes = $hasher.ComputeHash($ds)
+    $ds.Dispose()
     [System.BitConverter]::ToString($hashBytes).Replace("-", "").ToLower()
-} else {
+}
+else {
     (Get-FileHash -Path $INPUT_ABS -Algorithm SHA256).Hash.ToLower()
 }
 
 $decompHash = (Get-FileHash -Path $DECOMP_FILE -Algorithm SHA256).Hash.ToLower()
 $checksumStatus = if ($originalHash -eq $decompHash) { "match" } else { "mismatch" }
 
-# Reporting
+# Reporting (Aligned with run_big_benchmark.sh)
 Write-Output "`nBenchmark result"
-Write-Output ("  original bytes:   {0:N0}" -f $inputSize)
-Write-Output ("  compressed bytes: {0:N0}" -f $outputSize)
-Write-Output ("  decompressed bytes: {0:N0}" -f $decompSize)
+Write-Output ("  original bytes:   {0}" -f $inputSize)
+Write-Output ("  compressed bytes: {0}" -f $outputSize)
+Write-Output ("  decompressed bytes: {0}" -f $decompSize)
 Write-Output ("  size reduction:   {0:N2}%" -f $reduction)
 Write-Output ("  compression ratio {0:N3}x" -f $ratio)
 
@@ -220,17 +300,18 @@ Write-Output ("  elapsed time:     {0:N3}s" -f $compResults.elapsed_seconds)
 Write-Output ("  cpu usage:        {0}" -f $compResults.cpu_percent)
 Write-Output ("  cpu time:         user {0:N3}s, system {1:N3}s" -f $compResults.user_seconds, $compResults.system_seconds)
 Write-Output ("  avg core usage:   {0:N2} cores" -f (($compResults.user_seconds + $compResults.system_seconds) / $compResults.elapsed_seconds))
-Write-Output ("  peak memory:      {0:N0} KB ({1:N2} MB RSS)" -f $compResults.max_rss_kb, ($compResults.max_rss_kb/1024))
+Write-Output ("  peak memory:      {0} KB ({1:N2} MB RSS)" -f $compResults.max_rss_kb, ($compResults.max_rss_kb / 1024))
 
 Write-Output "`nDecompression resources"
 Write-Output ("  elapsed time:     {0:N3}s" -f $decompResults.elapsed_seconds)
 Write-Output ("  cpu usage:        {0}" -f $decompResults.cpu_percent)
 Write-Output ("  cpu time:         user {0:N3}s, system {1:N3}s" -f $decompResults.user_seconds, $decompResults.system_seconds)
 Write-Output ("  avg core usage:   {0:N2} cores" -f (($decompResults.user_seconds + $decompResults.system_seconds) / $decompResults.elapsed_seconds))
-Write-Output ("  peak memory:      {0:N0} KB ({1:N2} MB RSS)" -f $decompResults.max_rss_kb, ($decompResults.max_rss_kb/1024))
+Write-Output ("  peak memory:      {0} KB ({1:N2} MB RSS)" -f $decompResults.max_rss_kb, ($decompResults.max_rss_kb / 1024))
 
 Write-Output "`nRound-trip check"
-Write-Output "  original hash:    $originalHash"
-Write-Output "  decompressed hash:$decompHash"
-Write-Output "  checksum status:  $checksumStatus"
-Write-Output "  decompressed file matches input: $(if ($checksumStatus -eq 'match') { 'identical' } else { 'different' })"
+Write-Output ("  integrity method: {0}" -f $integrity_method)
+Write-Output ("  original checksum: {0}" -f $originalHash)
+Write-Output ("  output checksum:   {0}" -f $decompHash)
+Write-Output ("  checksum status:  {0}" -f $checksumStatus)
+Write-Output ("  decompressed file matches input: {0}" -f $(if ($checksumStatus -eq 'match') { "identical" } else { "different" }))

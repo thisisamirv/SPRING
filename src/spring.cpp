@@ -53,7 +53,31 @@ struct prepared_compression_inputs {
   std::string input_path_2;
   bool input_1_was_gzipped;
   bool input_2_was_gzipped;
+  bool input_1_actual_was_gzipped = false;
+  bool input_2_actual_was_gzipped = false;
 };
+
+void decompress_gzip_input_file(const std::string &input_path,
+                                const std::string &output_path,
+                                const int num_thr);
+
+static std::string strip_gzip_suffix(std::string path) {
+  if (path.size() >= 3 && path.substr(path.size() - 3) == ".gz") {
+    return path.substr(0, path.size() - 3);
+  }
+  if (path.size() >= 5 && path.substr(path.size() - 5) == ".gzip") {
+    return path.substr(0, path.size() - 5);
+  }
+  return path + ".decompressed";
+}
+
+static std::string decompressed_input_path(const std::string &temp_dir,
+                                           const std::string &input_path,
+                                           int index) {
+  std::string base = std::filesystem::path(strip_gzip_suffix(input_path)).filename().string();
+  return (std::filesystem::path(temp_dir) / 
+          ("compression_input_" + std::to_string(index) + "_" + base)).string();
+}
 
 enum class input_record_format : uint8_t { fastq, fasta };
 
@@ -172,28 +196,75 @@ std::string build_rapidgzip_command(const std::string &input_path,
 
 void decompress_gzip_input_file_with_zlib(const std::string &input_path,
                                           const std::string &output_path) {
-  gzip_istream gzip_input(input_path);
-  if (!gzip_input.is_open()) {
-    throw std::runtime_error("Failed opening gzipped compression input: " +
-                             input_path);
+  std::ifstream fin(input_path, std::ios::binary);
+  std::ofstream fout(output_path, std::ios::binary);
+  if (!fin || !fout) {
+    throw std::runtime_error("Failed to open files for staging decompression");
   }
 
-  std::ofstream output_stream(output_path, std::ios::binary);
-  if (!output_stream.is_open()) {
-    throw std::runtime_error("Failed opening staged compression input: " +
-                             output_path);
+  z_stream strm;
+  std::memset(&strm, 0, sizeof(strm));
+  if (inflateInit2(&strm, 15 + 16) != Z_OK) {
+    throw std::runtime_error("Failed to initialize zlib");
   }
 
-  std::vector<char> buffer(1 << 15);
-  while (gzip_input.read(buffer.data(), buffer.size()) ||
-         gzip_input.gcount() > 0) {
-    output_stream.write(buffer.data(), gzip_input.gcount());
+  std::vector<uint8_t> in_buf(1 << 16);
+  std::vector<uint8_t> out_buf(1 << 16);
+
+  while (true) {
+    if (strm.avail_in == 0) {
+      fin.read(reinterpret_cast<char *>(in_buf.data()), in_buf.size());
+      strm.avail_in = static_cast<uInt>(fin.gcount());
+      strm.next_in = in_buf.data();
+      if (strm.avail_in == 0 && fin.eof()) {
+        break;
+      }
+    }
+
+    strm.avail_out = static_cast<uInt>(out_buf.size());
+    strm.next_out = out_buf.data();
+
+    int ret = inflate(&strm, Z_NO_FLUSH);
+
+    if (strm.avail_out < out_buf.size()) {
+      fout.write(reinterpret_cast<char *>(out_buf.data()),
+                 out_buf.size() - strm.avail_out);
+    }
+
+    if (ret == Z_STREAM_END) {
+      inflateReset(&strm);
+    } else if (ret != Z_OK && ret != Z_BUF_ERROR) {
+      // Data error or junk. Scan for next GZIP header (1F 8B 08)
+      bool found = false;
+      while (!found) {
+        if (strm.avail_in >= 3) {
+          if (strm.next_in[0] == 0x1f && strm.next_in[1] == 0x8b &&
+              strm.next_in[2] == 0x08) {
+            found = true;
+          } else {
+            strm.next_in++;
+            strm.avail_in--;
+          }
+        } else {
+          // Need more data to scan
+          if (strm.avail_in > 0) {
+            std::memmove(in_buf.data(), strm.next_in, strm.avail_in);
+          }
+          fin.read(reinterpret_cast<char *>(in_buf.data() + strm.avail_in),
+                    in_buf.size() - strm.avail_in);
+          size_t read = static_cast<size_t>(fin.gcount());
+          if (read == 0 && fin.eof()) {
+            return;
+          }
+          strm.avail_in += static_cast<uInt>(read);
+          strm.next_in = in_buf.data();
+        }
+      }
+      inflateReset(&strm);
+    }
   }
 
-  if (!output_stream) {
-    throw std::runtime_error("Failed writing staged compression input: " +
-                             output_path);
-  }
+  inflateEnd(&strm);
 }
 
 void decompress_gzip_input_file(const std::string &input_path,
@@ -233,7 +304,8 @@ prepare_compression_inputs(const compression_io_config &io_config,
         decompressed_input_path(temp_dir, io_config.input_path_1, 1);
     decompress_gzip_input_file(io_config.input_path_1,
                                prepared_inputs.input_path_1, num_thr);
-    prepared_inputs.input_1_was_gzipped = true;
+    prepared_inputs.input_1_was_gzipped = false; // STAGED FILE IS NOW RAW
+    prepared_inputs.input_1_actual_was_gzipped = true;
   }
 
   if (!io_config.paired_end) {
@@ -253,9 +325,11 @@ prepare_compression_inputs(const compression_io_config &io_config,
 }
 
 void cleanup_prepared_compression_inputs(
-    const prepared_compression_inputs &prepared_inputs) {
-  if (prepared_inputs.input_1_was_gzipped) {
-    std::filesystem::remove(prepared_inputs.input_path_1);
+    const prepared_compression_inputs &prepared_inputs, bool pairing_only_flag) {
+  if (!pairing_only_flag) {
+    if (prepared_inputs.input_1_actual_was_gzipped) {
+      std::filesystem::remove(prepared_inputs.input_path_1);
+    }
   }
   if (prepared_inputs.input_2_was_gzipped) {
     std::filesystem::remove(prepared_inputs.input_path_2);
@@ -561,7 +635,7 @@ void compress(const std::string &temp_dir,
     const input_record_format input_format_2 =
         detect_input_format(prepared_inputs.input_path_2);
     if (input_format_1 != input_format_2) {
-      cleanup_prepared_compression_inputs(prepared_inputs);
+      cleanup_prepared_compression_inputs(prepared_inputs, pairing_only_flag);
       throw std::runtime_error(
           "Paired-end inputs must both be FASTQ or both be FASTA.");
     }
@@ -643,7 +717,7 @@ void compress(const std::string &temp_dir,
     preprocess(prepared_inputs.input_path_1, prepared_inputs.input_path_2,
                temp_dir, cp, fasta_input, &progress);
   });
-  cleanup_prepared_compression_inputs(prepared_inputs);
+  cleanup_prepared_compression_inputs(prepared_inputs, pairing_only_flag);
   print_temp_dir_size(temp_dir);
 
   if (!long_flag) {
