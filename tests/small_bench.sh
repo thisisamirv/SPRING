@@ -4,10 +4,11 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
-INPUT_DIR="$SCRIPT_DIR/input"
-LOG_DIR="$SCRIPT_DIR/logs"
-OUTPUT_DIR="$SCRIPT_DIR/output"
-WORK_ROOT_DIR="$SCRIPT_DIR/work"
+INPUT_DIR="$ROOT_DIR/assets/sample-data"
+OUTPUT_BASE="$SCRIPT_DIR/output"
+LOG_DIR="$OUTPUT_BASE/logs"
+OUTPUT_DIR="$OUTPUT_BASE/runs"
+WORK_ROOT_DIR="$OUTPUT_BASE/work"
 SPRING_BIN=${SPRING_BIN:-"$ROOT_DIR/build/spring2"}
 INPUT_FASTQ=${1:-"$INPUT_DIR/sample.fastq"}
 THREADS=${THREADS:-8}

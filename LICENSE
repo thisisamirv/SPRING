@@ -1,19 +1,86 @@
-# LICENSE
+# Licensing
 
-## SPRING2 Research Use License
+**SPRING2** is a substantial modernization and renamed derivative of the original SPRING codebase. Under the terms of the "Non-Exclusive Research Use Software and Patent License Agreement" from the University of Illinois, this software and associated patent rights are licensed strictly for **non-profit research, educational, personal, and individual use**.
 
-SPRING2 is a derivative work of SPRING. This software and the associated patent rights are licensed only for **non-profit research, educational, personal, and individual use** under the terms of the "Non-Exclusive Research Use Software and Patent License Agreement" from the University of Illinois.
+**Commercial use, sublicensing, assignment, or unauthorized distribution to third parties is strictly prohibited without a separate license from the University of Illinois.**
 
-**Commercial use, sublicensing, assignment, transfer, or other unlicensed making-available to third parties is NOT authorized absent a separate license from the University of Illinois.**
+## Repository Structure and Vendored Code
 
-The full text of the upstream SPRING license can be found at:
-[LICENSES/SPRING-upstream-license.pdf](LICENSES/SPRING-upstream-license.pdf)
+The primary source code resides in `src/`. This project also incorporates several vendored third-party components which have been integrated as follows:
 
-## Derivative Work Notice
+*   **Optimized Distribution:** Certain components have been reduced to include only the files required for operation and build, ensuring repository efficiency while maintaining all original license notices and attribution requirements.
+*   **Built-in Compatibility:** Build scripts and configuration files may contain limited modifications to ensure seamless integration with the SPRING2 toolchain and packaging model. 
 
-In compliance with the original license terms, this project is formally renamed to **SPRING2** and is a substantial modernization of the original SPRING codebase.
+Except where modified for integration purposes, all vendored components remain subject to their respective upstream license terms.
 
-## Vendored Third-Party Components
+## Vendored third-party code
 
-This repository also includes several vendored third-party components which are subject to their own respective licenses (e.g., zlib, Apache 2.0, MIT, GPLv3, BSD 3-Clause). For a complete list of these components and their licenses, please see:
-[LICENSES/README.md](LICENSES/README.md)
+- `vendor/cloudflare_zlib.tar.xz` — zlib License
+- `vendor/indexed_bzip2.tar.xz` — Apache License 2.0 or the MIT License
+- `vendor/libbsc.tar.xz` — Apache License 2.0
+- `vendor/libdeflate.tar.xz` — MIT License
+- `vendor/PTHash.tar.xz` — MIT License
+- `vendor/qvz.tar.xz` — GNU General Public License v3.0
+- `vendor/zstd.tar.xz` — BSD 3-Clause License or GPLv2 License
+
+---
+
+## SPRING Upstream License Text
+
+NON-EXCLUSIVE RESEARCH USE SOFTWARE AND PATENT LICENSE AGREEMENT FOR SPRING SOFTWARE
+The Software and Patent Rights (as defined below) will only be licensed to You (as defined below) upon the condition that You accept all of the terms and conditions contained in this license agreement (“License”). Please read this License carefully. By downloading and using the Software, You accept the terms and conditions of this License.
+
+1. Definitions. The following capitalized terms are used in this License with the following meanings:
+1.1. “Commercial Use” means sale, lease, license, distribution or otherwise making the Software and Patent Rights available to a third party and includes any use in research which is sponsored by a for-profit entity or which is subject to any licensing or other rights of a for-profit entity.
+1.2. “Research Use” means use of the Software and Patent Rights for Your non-profit research, development, educational or personal and individual use, and expressly excludes Commercial Use.
+1.3. “Software” means the SPRING software source code and object code co-owned with the Stanford University. The SPRING software is a data compressor algorithm for FASTQ (a data format of the output of New Generation Sequencing (NGS) technologies) that is capable of perfectly lossless mode or information-preserving mode. It was disclosed to Illinois under Technology No. 2018-073, “A Next-Generation Compressor for Raw Sequencing (i.e. FASTQ) Data”. Illinois is the co-owner of the copyrights in Software as recognized under United States law and international treaties, together with Stanford University.
+1.4. “Patent Rights” means (a) all of the Illinois’s rights in the patents and patent applications listed below, and (b) all of the Illinois’s rights in all divisions, continuations, reissues, renewals, re-examinations, foreign counterparts, substitutions or extensions thereof: Application number 62/719,957, filed 8/20/2018, titled “A Next-Generation Compressor for Raw Sequencing (i.e. FASTQ) Data”.
+
+2. License Grant and Restrictions.
+2.1. Grant: Subject to Your compliance with the terms and conditions of this License, The Board of Trustees of the University of Illinois (“Illinois”), on behalf of the Institute of Genomic Biology and the Department of Electrical and Computer Engineering, hereby grants You a non-assignable, non-exclusive, non-transferable, non-sublicensable royalty-free restricted license to:
+2.1.1. Use the Software and Patent Rights for Research Use; and to
+2.1.2. Create Derivative Works of the Software for Research Use.
+2.2. Restrictions:
+2.2.1. You shall not make Commercial Use of the Software and Patent Rights without having executed an appropriate license with Illinois. Should You wish to make Commercial Use of the Software and Patent Rights, You shall contact Illinois at otm@illinois.edu.
+2.2.2. Illinois retains all of its right, title, and interest in and to the Software and Patent Rights.
+2.2.3. Nothing in this License shall be construed as conferring a commercial license under any of Illinois’ or any third party’s intellectual property rights in Software or the Patent Rights, whether by estoppel, implication, or otherwise.
+2.3. Acknowledgment:
+2.3.1. You shall clearly mark and rename all Derivative Works of the Software to notify users that it is a modified version of the Software.
+2.3.2. For any reports or published results obtained using the Software or Derivative Works of the Software and Patent Rights, You shall acknowledge use of the Software by the following citation: “The SPRING software, used by [insert name], was developed at the University of Illinois at Urbana-Champaign and Stanford University.”
+2.4. You must supply one copy of each such report or publication to Illinois through otm@illinois.edu.
+
+3. Confidential Information.
+3.1. You acknowledge that the Software and Patent Rights are proprietary to Illinois and Stanford. You agree to protect the Software from unauthorized disclosure, use, or release; to treat the Software with at least the same level of care as You use to protect Your own proprietary computer programs and/or confidential information, but in no event less than a reasonable standard of care.
+3.2. If You become aware of any unauthorized licensing, copying or use of the Software and Patent Rights, You shall promptly notify Illinois in writing at otm@illinois.edu.
+3.3. You agree to use the Software and Patent Rights only in the manner and for the specific uses authorized in this License.
+
+4. Limitation of Warranties.
+4.1. EXCEPT AS EXPRESSLY SET FORTH IN THIS LICENSE, TO THE FULLEST EXTENT ALLOWED BY APPLICABLE LAW, THE SOFTWARE AND PATENT RIGHTS ARE PROVIDED “AS IS,” AND ILLINOIS DISCLAIMS ALL EXPRESS OR IMPLIED CONDITIONS, REPRESENTATIONS AND WARRANTIES, INCLUDING WITHOUT LIMITATION ANY IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, OR NON-INFRINGEMENT OF ANY PATENT, COPYRIGHT, TRADEMARK OR OTHER RIGHTS OF THIRD PARTIES IN CONNECTION WITH THE PRACTICE OF THE PATENT RIGHTS.
+4.2. THIS LIMITATION OF WARRANTY IS AN ESSENTIAL PART OF THIS AGREEMENT. NO USE OF THE SOFTWARE AND PATENT RIGHTS IS AUTHORIZED HEREUNDER EXCEPT UNDER THIS DISCLAIMER.
+4.3. ANY MATERIAL DOWNLOADED IS AT YOUR OWN DISCRETION AND RISK, AND YOU ARE SOLELY RESPONSIBLE FOR ANY DAMAGE TO YOUR COMPUTER SYSTEM OR LOSS OF DATA THAT RESULTS FROM THE DOWNLOAD OF SUCH MATERIAL, INCLUDING ANY DAMAGES RESULTING FROM COMPUTER VIRUSES.
+
+5. Indemnification. You shall indemnify and hold harmless Illinois (including its trustees, fellows, officers, employees, students, and agents) against any and all claims, losses, damages, injuries, and/or liability, as well as costs and expenses (including legal expenses and reasonable attorneys’ fees) arising out of or related to Your use, or inability to use, the Software or Derivative Works of the Software and Patent Rights, regardless of theory of liability, whether for breach or in tort (including negligence).
+
+6. Limitation of Liability.
+6.1. You assume the entire risk as to the use, quality, results, performance, and/or non-performance of the Software and Derivative Works of the Software and Patent Rights. You shall have the sole responsibility to adequately protect and backup Your data or equipment used in connection with the Software and Derivative Works of the Software and Patent Rights. Should the Software or Derivative Works of the Software prove defective in any manner, You assume the entire cost of any necessary, servicing, repair or correction.
+6.2. In no event shall Illinois (including its trustees, fellows, officers, employees, students, and agents) be responsible or liable for any direct, indirect, special, incidental, punitive, consequential or other damages whatsoever (including lost profits, business, revenue, use, data, or other economic advantage) in connection with, or arising out of, or related to this License, regardless of the theory of liability, whether for breach or in tort (including negligence), even if Illinois may have been previously advised of the possibility of such damage.
+6.3. Liability for damages shall be limited and excluded as set forth in this Section 6, even if any remedy provided for in this License fails of its essential purpose.
+
+7. Termination.
+7.1. This License is effective until terminated, as provided herein, or until all intellectual property rights in the Software and Patent Rights expire.
+7.2. You may terminate this License at any time by destroying all copies of the Software and Derivative Works of the Software and immediately cease practicing the Patent Rights. You shall give written notice of termination to Illinois.
+7.3. This License, and the rights granted hereunder, will terminate automatically, and without any further notice from or action by Illinois, if You fail to comply with any obligation of this License.
+7.4. Upon termination, You must immediately cease use of and destroy all copies of the Software and Derivative Works of the Software and verify such destruction in writing.
+7.5. The provisions set forth in Sections 3, 4, 5, 6, 8, and 9 shall survive termination or expiration of this License.
+
+8. Laws. The Software delivered under this License and Derivative Works of the Software, and Patent Rights may be subject to U.S. export control laws and may be subject to export or import regulations in other countries. You agree to comply strictly with all such laws and regulations and acknowledge that You have the responsibility, at Your own expense, to obtain such licenses to export, re-export, or import as may be required.
+
+9. Miscellaneous.
+9.1. Governing Law. This License shall be governed by the laws of the State of Illinois, without regard to any conflict of laws provisions.
+9.2. Severability. If any provision of this License is held to be invalid or unenforceable by a court of competent jurisdiction, such invalidity or unenforceability shall not in any way affect the validity or enforceability of the remaining provisions.
+9.3. Assignment. You may not assign or otherwise transfer any of Your rights or obligations under this License, without the prior written consent of Illinois.
+9.4. Entire License. This License represents the parties’ entire agreement relating to the Software and Patent Rights. Except as otherwise provided herein, no modification of this License is binding unless in writing and signed by an authorized representative of each party.
+9.5. Waiver. The failure of either party to enforce any provision of this License shall not constitute a waiver of that right or future enforcement of that or any other provision.
+
+OTM approved KAH 5/2017
+

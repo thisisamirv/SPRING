@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iomanip> // std::setw
@@ -60,24 +61,6 @@ struct prepared_compression_inputs {
 void decompress_gzip_input_file(const std::string &input_path,
                                 const std::string &output_path,
                                 const int num_thr);
-
-static std::string strip_gzip_suffix(std::string path) {
-  if (path.size() >= 3 && path.substr(path.size() - 3) == ".gz") {
-    return path.substr(0, path.size() - 3);
-  }
-  if (path.size() >= 5 && path.substr(path.size() - 5) == ".gzip") {
-    return path.substr(0, path.size() - 5);
-  }
-  return path + ".decompressed";
-}
-
-static std::string decompressed_input_path(const std::string &temp_dir,
-                                           const std::string &input_path,
-                                           int index) {
-  std::string base = std::filesystem::path(strip_gzip_suffix(input_path)).filename().string();
-  return (std::filesystem::path(temp_dir) / 
-          ("compression_input_" + std::to_string(index) + "_" + base)).string();
-}
 
 enum class input_record_format : uint8_t { fastq, fasta };
 
@@ -446,7 +429,7 @@ compression_io_config resolve_compression_io(const string_list &input_paths,
   }
 
   if (output_paths.empty()) {
-    std::filesystem::path p(input_paths[0]);
+    std::filesystem::path p = std::filesystem::path(input_paths[0]).filename();
     bool changed = true;
     while (changed) {
       changed = false;

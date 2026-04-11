@@ -10,10 +10,10 @@ $SPRING_BIN_DEFAULT = Join-Path $BUILD_DIR $SPRING_BIN_NAME
 $SPRING_BIN = if ($env:SPRING_BIN) { $env:SPRING_BIN } else { $SPRING_BIN_DEFAULT }
 $THREADS = if ($env:THREADS) { $env:THREADS } else { 8 }
 
-$TMP_DIR = Join-Path $SCRIPT_DIR "tmp"
+$TMP_DIR = Join-Path $SCRIPT_DIR "output"
 $TMP_INPUT_DIR = Join-Path $TMP_DIR "input"
 $TMP_LOG_DIR = Join-Path $TMP_DIR "logs"
-$TMP_OUTPUT_DIR = Join-Path $TMP_DIR "output"
+$TMP_OUTPUT_DIR = Join-Path $TMP_DIR "runs"
 $TMP_WORK_DIR = Join-Path $TMP_DIR "work"
 
 $DOWNLOAD_URL = "https://figshare.com/ndownloader/files/38965664"
@@ -38,7 +38,7 @@ function Get-MaxReadLength($path) {
     }
 
     try {
-        while (($line = $stream.ReadLine()) -ne $null) {
+        while ($null -ne ($line = $stream.ReadLine())) {
             $lineCount++
             if ($lineCount % 4 -eq 2) {
                 if ($line.Length -gt $maxLen) { $maxLen = $line.Length }
@@ -85,7 +85,7 @@ function Invoke-ResourceLoggedProcess($binary, $arguments) {
     }
 }
 
-function Ensure-SpringBinary {
+function Initialize-SpringBinary {
     if (Test-Path $SPRING_BIN) { return }
     
     Write-Host "Spring binary not found; building with proven configuration..." -ForegroundColor Yellow
@@ -258,7 +258,7 @@ if (-not (Test-Path $INPUT_FASTQ)) {
     exit 1
 }
 
-Ensure-SpringBinary
+Initialize-SpringBinary
 $mambaBin = Get-SpringV1Runner
 
 $INPUT_ABS = (Get-Item $INPUT_FASTQ).FullName

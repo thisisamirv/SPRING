@@ -4,14 +4,15 @@ set -e
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
-ASSET_DIR="$SCRIPT_DIR/assets"
+ASSET_DIR="$ROOT_DIR/assets/sample-data"
 BUILD_DIR="$ROOT_DIR/build"
 SPRING_BIN="$BUILD_DIR/spring2"
 SPRING_BIN_CMD=()
 SPRING_TEST_ARGS_CMD=()
 SPRING_SMOKE_MODE="${SPRING_SMOKE_MODE:-full}"
 SPRING_COMMAND_TIMEOUT_SECONDS="${SPRING_COMMAND_TIMEOUT_SECONDS:-0}"
-WORK_DIR=$(mktemp -d "$BUILD_DIR/smoke-test.XXXXXX")
+mkdir -p "$ROOT_DIR/tests/output"
+WORK_DIR=$(mktemp -d "$ROOT_DIR/tests/output/smoke-test.XXXXXX")
 CURRENT_SMOKE_CASE=""
 
 dump_debug_state() {

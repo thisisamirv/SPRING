@@ -160,13 +160,19 @@ set(SPRING_CLANGD_FLAGS "\"-fopenmp\", \"-I${include_dir}\", \"-I${vendor_dir}\"
 foreach(openmp_include_dir IN LISTS SPRING_OPENMP_INCLUDE_DIRS)
     string(APPEND SPRING_CLANGD_FLAGS ", \"-I${openmp_include_dir}\"")
 endforeach ()
-file(WRITE "${CMAKE_SOURCE_DIR}/.clangd" "CompileFlags:\n  Add: [${SPRING_CLANGD_FLAGS}]\n")
+set(CLANGD_CONTENT "CompileFlags:\n  Add: [${SPRING_CLANGD_FLAGS}]\n")
+if (EXISTS "${CMAKE_SOURCE_DIR}/.clangd")
+    file(READ "${CMAKE_SOURCE_DIR}/.clangd" EXISTING_CLANGD_CONTENT)
+endif ()
+if (NOT CLANGD_CONTENT STREQUAL EXISTING_CLANGD_CONTENT)
+    file(WRITE "${CMAKE_SOURCE_DIR}/.clangd" "${CLANGD_CONTENT}")
+endif ()
 if (WIN32)
     # On Windows creating symbolic links often requires elevated privileges.
     # Instead of creating a symbolic link during configure, add a build
     # target that copies compile_commands.json from the build directory
     # into the source tree after it is generated.
-    add_custom_target(copy_compile_commands ALL
+    add_custom_target(copy_compile_commands
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_BINARY_DIR}/compile_commands.json" "${CMAKE_SOURCE_DIR}/compile_commands.json"
         COMMENT "Copying compile_commands.json into source tree"
     )
@@ -174,8 +180,8 @@ else()
     file(CREATE_LINK "${CMAKE_BINARY_DIR}/compile_commands.json" "${CMAKE_SOURCE_DIR}/compile_commands.json" SYMBOLIC)
 endif()
 
-message(STATUS "** CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
-message(STATUS "** CMAKE_C_FLAGS: ${CMAKE_C_FLAGS}")
+# message(STATUS "** CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
+# message(STATUS "** CMAKE_C_FLAGS: ${CMAKE_C_FLAGS}")
 
 # Option to statically link common GCC runtimes so the executable can run
 # on Windows `cmd.exe` without shipping DLLs next to the binary.
@@ -306,10 +312,10 @@ endfunction()
 
 set(win_resources "")
 if (WIN32)
-    if (EXISTS "${source_dir}/spring2.ico")
+    if (EXISTS "${CMAKE_SOURCE_DIR}/assets/icons/logo.ico")
         set(win_resources ${source_dir}/spring2.rc)
     else()
-        message(STATUS "spring2.ico not found, skipping Windows icon resource")
+        message(STATUS "logo.ico not found in assets/icons, skipping Windows icon resource")
     endif()
 endif()
 

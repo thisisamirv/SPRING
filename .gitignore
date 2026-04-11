@@ -60,10 +60,9 @@ ehthumbs.db
 Thumbs.db
 
 # Project-specific
-benchmark/tmp/*
-benchmark/output/
 .tmp/
 **/__pycache__/
 *.pyc
 *.patch
 *.diff
+tests/output/

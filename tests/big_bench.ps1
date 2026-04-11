@@ -61,10 +61,10 @@ $SPRING_BIN_DEFAULT = Join-Path $BUILD_DIR $SPRING_BIN_NAME
 $SPRING_BIN = if ($env:SPRING_BIN) { $env:SPRING_BIN } else { $SPRING_BIN_DEFAULT }
 $THREADS = if ($env:THREADS) { $env:THREADS } else { 8 }
 
-$TMP_DIR = Join-Path $SCRIPT_DIR "tmp"
+$TMP_DIR = Join-Path $SCRIPT_DIR "output"
 $TMP_INPUT_DIR = Join-Path $TMP_DIR "input"
 $TMP_LOG_DIR = Join-Path $TMP_DIR "logs"
-$TMP_OUTPUT_DIR = Join-Path $TMP_DIR "output"
+$TMP_OUTPUT_DIR = Join-Path $TMP_DIR "runs"
 $TMP_WORK_DIR = Join-Path $TMP_DIR "work"
 
 $DOWNLOAD_URL = "https://figshare.com/ndownloader/files/38965664"
@@ -175,7 +175,8 @@ function Initialize-BenchmarkEnv {
             Write-Host "Decompressing input for analysis..." -ForegroundColor Gray
             try {
                 [GZipHelper]::Decompress($INPUT_FASTQ, $global:INPUT_RAW)
-            } catch {
+            }
+            catch {
                 Write-Error "Failed to decompress input file: $_"
                 exit 1
             }
@@ -193,7 +194,8 @@ function Initialize-BenchmarkEnv {
         try {
             Remove-Item $global:WORK_DIR -Recurse -Force -ErrorAction Stop
             break
-        } catch {
+        }
+        catch {
             $retry++
             $global:WORK_DIR = "$workDirBase.$retry"
             if ($retry -gt 10) { break }
@@ -201,7 +203,7 @@ function Initialize-BenchmarkEnv {
     }
 }
 
-function Ensure-SpringBinary {
+function Initialize-SpringBinary {
     if (Test-Path $SPRING_BIN) { return }
     
     Write-Host "Spring binary not found; building..." -ForegroundColor Yellow
@@ -235,7 +237,7 @@ function Ensure-SpringBinary {
 # --- Main Logic ---
 
 Initialize-BenchmarkEnv
-Ensure-SpringBinary
+Initialize-SpringBinary
 
 Write-Host "Analyzing FASTQ..." -ForegroundColor Gray
 $maxReadLen = Get-MaxReadLength $global:INPUT_RAW

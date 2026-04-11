@@ -10,10 +10,11 @@ $SPRING_BIN_DEFAULT = Join-Path $BUILD_DIR $SPRING_BIN_NAME
 $SPRING_BIN = if ($env:SPRING_BIN) { $env:SPRING_BIN } else { $SPRING_BIN_DEFAULT }
 $THREADS = if ($env:THREADS) { [int]$env:THREADS } else { 8 }
 
-$INPUT_DIR = Join-Path $SCRIPT_DIR "input"
-$LOG_DIR = Join-Path $SCRIPT_DIR "logs"
-$OUTPUT_DIR = Join-Path $SCRIPT_DIR "output"
-$WORK_ROOT_DIR = Join-Path $SCRIPT_DIR "work"
+$INPUT_DIR = Join-Path $ROOT_DIR "assets\sample-data"
+$OUTPUT_BASE = Join-Path $SCRIPT_DIR "output"
+$LOG_DIR = Join-Path $OUTPUT_BASE "logs"
+$OUTPUT_DIR = Join-Path $OUTPUT_BASE "runs"
+$WORK_ROOT_DIR = Join-Path $OUTPUT_BASE "work"
 
 $DEFAULT_INPUT_FASTQ = Join-Path $INPUT_DIR "sample.fastq"
 $INPUT_FILE_ARG = if ($args.Count -gt 0) { $args[0] } else { $DEFAULT_INPUT_FASTQ }
@@ -30,19 +31,21 @@ function Get-MaxReadLength($path) {
     $stream = if ($path.EndsWith(".gz")) {
         $gzipStream = New-Object System.IO.Compression.GZipStream($fileStream, [System.IO.Compression.CompressionMode]::Decompress)
         New-Object System.IO.StreamReader($gzipStream)
-    } else {
+    }
+    else {
         New-Object System.IO.StreamReader($fileStream)
     }
 
     try {
-        while (($line = $stream.ReadLine()) -ne $null) {
+        while ($null -ne ($line = $stream.ReadLine())) {
             $lineCount++
             # FASTQ read line is always (4n + 2)
             if ($lineCount % 4 -eq 2) {
                 if ($line.Length -gt $maxLen) { $maxLen = $line.Length }
             }
         }
-    } finally {
+    }
+    finally {
         $stream.Close()
         $fileStream.Close()
     }
@@ -68,7 +71,8 @@ function Invoke-ResourceLoggedProcess($binary, $arguments) {
         try {
             $currentRss = $process.PeakWorkingSet64
             if ($currentRss -gt $peakRss) { $peakRss = $currentRss }
-        } catch {}
+        }
+        catch {}
         Start-Sleep -Milliseconds 100
     }
     
@@ -98,7 +102,7 @@ function Initialize-Environment {
     }
 }
 
-function Ensure-SpringBinary {
+function Initialize-SpringBinary {
     if (Test-Path $SPRING_BIN) { return }
     
     Write-Host "Spring binary not found; building..." -ForegroundColor Yellow
@@ -141,7 +145,7 @@ function Ensure-SpringBinary {
 # --- Main Logic ---
 
 Initialize-Environment
-Ensure-SpringBinary
+Initialize-SpringBinary
 
 $INPUT_ABS = (Get-Item $INPUT_FILE_ARG).FullName
 $INPUT_BASENAME = [System.IO.Path]::GetFileName($INPUT_ABS)
@@ -217,14 +221,14 @@ Write-Output ("  elapsed time:     {0:N3}s" -f $compResults.elapsed_seconds)
 Write-Output ("  cpu usage:        {0}" -f $compResults.cpu_percent)
 Write-Output ("  cpu time:         user {0:N3}s, system {1:N3}s" -f $compResults.user_seconds, $compResults.system_seconds)
 Write-Output ("  avg core usage:   {0:N2} cores" -f (($compResults.user_seconds + $compResults.system_seconds) / $compResults.elapsed_seconds))
-Write-Output ("  peak memory:      {0:N0} KB ({1:N2} MB RSS)" -f $compResults.max_rss_kb, ($compResults.max_rss_kb/1024))
+Write-Output ("  peak memory:      {0:N0} KB ({1:N2} MB RSS)" -f $compResults.max_rss_kb, ($compResults.max_rss_kb / 1024))
 
 Write-Output "`nDecompression resources"
 Write-Output ("  elapsed time:     {0:N3}s" -f $decompResults.elapsed_seconds)
 Write-Output ("  cpu usage:        {0}" -f $decompResults.cpu_percent)
 Write-Output ("  cpu time:         user {0:N3}s, system {1:N3}s" -f $decompResults.user_seconds, $decompResults.system_seconds)
 Write-Output ("  avg core usage:   {0:N2} cores" -f (($decompResults.user_seconds + $decompResults.system_seconds) / $decompResults.elapsed_seconds))
-Write-Output ("  peak memory:      {0:N0} KB ({1:N2} MB RSS)" -f $decompResults.max_rss_kb, ($decompResults.max_rss_kb/1024))
+Write-Output ("  peak memory:      {0:N0} KB ({1:N2} MB RSS)" -f $decompResults.max_rss_kb, ($decompResults.max_rss_kb / 1024))
 
 Write-Output "`nRound-trip check"
 Write-Output "  original hash:    $($originalHash.Hash)"

@@ -132,14 +132,14 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          magick dev/logo.png `
+          magick assets/icons/logo.png `
             -define icon:auto-resize=16,32,48,64,128,256 `
-            src/spring2.ico
+            assets/icons/logo.ico
           cmake --build build --parallel
 
       - name: Smoke test on Linux and macOS
         if: runner.os != 'Windows'
-        run: tests/test_script.sh
+        run: tests/smoke_test.sh
 
       - name: Smoke test on Windows
         if: runner.os == 'Windows'
@@ -147,7 +147,7 @@ jobs:
         env:
           SPRING_TEST_ARGS: -t 1 --memory 1
           SPRING_SMOKE_MODE: windows-quick
-        run: .\tests\test_script.ps1
+        run: .\tests\smoke_test.ps1
 
   static-analysis:
     name: Analysis / ${{ matrix.name }}
@@ -267,9 +267,9 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          magick dev/logo.png `
+          magick assets/icons/logo.png `
             -define icon:auto-resize=16,32,48,64,128,256 `
-            src/spring2.ico
+            assets/icons/logo.ico
 
       - name: Build for analysis on Windows
         if: runner.os == 'Windows'

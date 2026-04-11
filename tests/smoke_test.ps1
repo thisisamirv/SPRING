@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $SCRIPT_DIR = $PSScriptRoot
 $ROOT_DIR = (Get-Item "$SCRIPT_DIR\..").FullName
-$ASSET_DIR = Join-Path $SCRIPT_DIR "assets"
+$ASSET_DIR = Join-Path $ROOT_DIR "assets\sample-data"
 $BUILD_DIR = Join-Path $ROOT_DIR "build"
 $SPRING_BIN = Join-Path $BUILD_DIR "spring2.exe"
 
@@ -12,8 +12,8 @@ if (-not $SPRING_SMOKE_MODE) { $SPRING_SMOKE_MODE = "full" }
 $SPRING_COMMAND_TIMEOUT_SECONDS = $env:SPRING_COMMAND_TIMEOUT_SECONDS
 if (-not $SPRING_COMMAND_TIMEOUT_SECONDS) { $SPRING_COMMAND_TIMEOUT_SECONDS = 0 }
 
-# Create a temporary working directory
-$tempBase = Join-Path $BUILD_DIR "smoke-test."
+# Create a temporary working directory inside tests/output
+$tempBase = Join-Path $ROOT_DIR "tests\output\smoke-test."
 $uniqueId = [System.Guid]::NewGuid().ToString().Substring(0, 8)
 $WORK_DIR = $tempBase + $uniqueId
 New-Item -ItemType Directory -Path $WORK_DIR -Force | Out-Null
