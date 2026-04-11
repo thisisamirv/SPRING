@@ -184,7 +184,7 @@ Write-Host "`nRunning Spring decompression" -ForegroundColor Cyan
 Write-Host "  input:   $OUTPUT_FILE"
 Write-Host "  output:  $DECOMP_FILE"
 
-$decompArgs = "-d -i `"$OUTPUT_FILE`" -o `"$DECOMP_FILE`""
+$decompArgs = "-d -i `"$OUTPUT_FILE`" -o `"$DECOMP_FILE`" -w `"$WORK_DIR`""
 $decompResults = Invoke-ResourceLoggedProcess $SPRING_BIN $decompArgs
 
 # Cleanup work dir

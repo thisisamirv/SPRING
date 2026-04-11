@@ -1,8 +1,8 @@
 $ErrorActionPreference = 'Stop'
 
 # Helper: GZip decompression for multi-member files (.gz/BGZF)
-# Built-in .NET GZipStream in PowerShell 5.1 stops after the first member.
-Add-Type -TypeDefinition @"
+if (-not ("GZipHelper" -as [type])) {
+    Add-Type -TypeDefinition @"
 using System;
 using System.IO;
 using System.IO.Compression;
@@ -51,6 +51,7 @@ public class GZipHelper {
     }
 }
 "@
+}
 
 # Initial paths
 $SCRIPT_DIR = $PSScriptRoot
@@ -67,46 +68,41 @@ $TMP_LOG_DIR = Join-Path $TMP_DIR "logs"
 $TMP_OUTPUT_DIR = Join-Path $TMP_DIR "runs"
 $TMP_WORK_DIR = Join-Path $TMP_DIR "work"
 
-$DOWNLOAD_URL = "https://figshare.com/ndownloader/files/38965664"
-$DEFAULT_INPUT_FASTQ = Join-Path $TMP_INPUT_DIR "04-CC002-659-M_S4_L001_R2_001.fastq.gz"
-$INPUT_FASTQ = if ($env:INPUT_FASTQ) { $env:INPUT_FASTQ } else { $DEFAULT_INPUT_FASTQ }
+# Dataset: SRR2990433 (EBI FTP)
+$URL_R1 = "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR818/009/SRR8185389/SRR8185389_1.fastq.gz"
+$URL_R2 = "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR818/009/SRR8185389/SRR8185389_2.fastq.gz"
 
-# Helper: Fast FASTQ read length detection
-function Get-MaxReadLength($path) {
-    if (-not (Test-Path $path)) { return 0 }
-    
-    $maxLen = 0
-    $lineCount = 0
-    
-    # Use robust GZip streaming for multi-member files
-    $stream = if ($path.EndsWith(".gz")) {
-        $decompStream = [GZipHelper]::GetDecompressedStream($path)
-        New-Object System.IO.StreamReader($decompStream)
-    }
-    else {
-        New-Object System.IO.StreamReader([System.IO.File]::OpenRead($path))
-    }
+$PATH_R1 = Join-Path $TMP_INPUT_DIR "SRR8185389_1.fastq.gz"
+$PATH_R2 = Join-Path $TMP_INPUT_DIR "SRR8185389_2.fastq.gz"
 
-    try {
-        while ($null -ne ($line = $stream.ReadLine())) {
-            $lineCount++
-            # FASTQ read line is always (4n + 2)
-            if ($lineCount % 4 -eq 2) {
-                if ($line.Length -gt $maxLen) { $maxLen = $line.Length }
-            }
+# Helper: Robust FTP/HTTP download with Progress Bar (using native curl for thread safety)
+function Download-BenchmarkData {
+    param($url, $path)
+    if (Test-Path $path) { 
+        # If file is smaller than 10MB, it's likely a corrupted/truncated previous attempt
+        if ((Get-Item $path).Length -gt 10MB) {
+            Write-Host "Using existing file: $(Split-Path $path -Leaf)" -ForegroundColor Gray
+            return 
         }
-    }
-    finally {
-        $stream.Dispose()
+        Write-Host "Existing file $(Split-Path $path -Leaf) is too small, re-downloading..." -ForegroundColor Yellow
+        Remove-Item $path -Force
     }
     
-    return $maxLen
+    Write-Host "Downloading $(Split-Path $path -Leaf)..." -ForegroundColor Cyan
+    Write-Host "From: $url" -ForegroundColor Gray
+    
+    # Use native curl.exe which is available on modern Windows and handles progress perfectly
+    & curl.exe -L -# -o $path $url
+    
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Download failed for $url"
+        exit 1
+    }
 }
 
 # Helper: Resource tracking invocation
 function Invoke-ResourceLoggedProcess($binary, $arguments) {
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
-    
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $binary
     $psi.Arguments = $arguments
@@ -116,31 +112,24 @@ function Invoke-ResourceLoggedProcess($binary, $arguments) {
     
     $process = [System.Diagnostics.Process]::Start($psi)
     $peakRss = 0
-    
     while (-not $process.HasExited) {
         try {
             $currentRss = $process.PeakWorkingSet64
             if ($currentRss -gt $peakRss) { $peakRss = $currentRss }
         }
         catch {}
-        Start-Sleep -Milliseconds 100
+        Start-Sleep -Milliseconds 500
     }
-    
     $sw.Stop()
-    
     if ($process.ExitCode -ne 0) {
-        $msg = "Process failed with exit code $($process.ExitCode): $binary $arguments"
-        Write-Host "`nERROR: $msg" -ForegroundColor Red
-        throw $msg
+        throw "Process failed with exit code $($process.ExitCode): $binary $arguments"
     }
-
     $result = @{}
     $result.elapsed_seconds = $sw.Elapsed.TotalSeconds
     $result.user_seconds = $process.UserProcessorTime.TotalSeconds
     $result.system_seconds = $process.PrivilegedProcessorTime.TotalSeconds
     $result.max_rss_kb = [Math]::Round($peakRss / 1024)
     $result.cpu_percent = "{0:P0}" -f (($result.user_seconds + $result.system_seconds) / $result.elapsed_seconds)
-    
     return $result
 }
 
@@ -148,172 +137,104 @@ function Invoke-ResourceLoggedProcess($binary, $arguments) {
 function Initialize-BenchmarkEnv {
     New-Item -ItemType Directory -Path $TMP_INPUT_DIR, $TMP_LOG_DIR, $TMP_OUTPUT_DIR, $TMP_WORK_DIR -Force | Out-Null
     
-    if ($INPUT_FASTQ -ne $DEFAULT_INPUT_FASTQ) {
-        if (-not (Test-Path $INPUT_FASTQ)) {
-            Write-Error "Requested INPUT_FASTQ does not exist: $INPUT_FASTQ"
-            exit 1
-        }
-    }
-    elseif (-not (Test-Path $DEFAULT_INPUT_FASTQ)) {
-        Write-Host "Benchmark input not found: $DEFAULT_INPUT_FASTQ" -ForegroundColor Red
-        Write-Host "Please download it from: $DOWNLOAD_URL"
-        Write-Host "Or specify INPUT_FASTQ environment variable."
-        exit 1
-    }
+    Download-BenchmarkData $URL_R1 $PATH_R1
+    Download-BenchmarkData $URL_R2 $PATH_R2
 
     # SETUP PATHS
-    $global:INPUT_ABS = (Get-Item $INPUT_FASTQ).FullName
-    $global:INPUT_STEM = [System.IO.Path]::GetFileNameWithoutExtension([System.IO.Path]::GetFileNameWithoutExtension($INPUT_ABS))
+    $global:INPUT_STEM = "SRR8185389_pe"
     $global:OUTPUT_FILE = (Join-Path $TMP_OUTPUT_DIR "$INPUT_STEM.sp").Replace("/", "\")
-    $global:DECOMP_FILE = (Join-Path $TMP_OUTPUT_DIR "$INPUT_STEM.roundtrip.fastq").Replace("/", "\")
+    $global:DECOMP_BASE = (Join-Path $TMP_OUTPUT_DIR "$INPUT_STEM.roundtrip.fastq").Replace("/", "\")
+    
+    $global:DECOMP_FILE_1 = "$global:DECOMP_BASE.1"
+    $global:DECOMP_FILE_2 = "$global:DECOMP_BASE.2"
 
-    # Decompress to temporary file for analysis and integrity check
-    # This avoids .NET GZipStream limitations in PowerShell 5.1
-    $global:INPUT_RAW = Join-Path $TMP_INPUT_DIR "input_raw.fastq"
-    if ($INPUT_FASTQ.EndsWith(".gz")) {
-        if (-not (Test-Path $global:INPUT_RAW)) {
-            Write-Host "Decompressing input for analysis..." -ForegroundColor Gray
-            try {
-                [GZipHelper]::Decompress($INPUT_FASTQ, $global:INPUT_RAW)
-            }
-            catch {
-                Write-Error "Failed to decompress input file: $_"
-                exit 1
-            }
-        }
-    }
-    else {
-        $global:INPUT_RAW = $INPUT_FASTQ
-    }
-
-    # Setup unique work directory to avoid "file in use" errors from previous runs
-    $workDirBase = Join-Path $TMP_WORK_DIR "$INPUT_STEM.work"
-    $global:WORK_DIR = $workDirBase
-    $retry = 0
-    while (Test-Path $global:WORK_DIR) {
-        try {
-            Remove-Item $global:WORK_DIR -Recurse -Force -ErrorAction Stop
-            break
-        }
-        catch {
-            $retry++
-            $global:WORK_DIR = "$workDirBase.$retry"
-            if ($retry -gt 10) { break }
-        }
-    }
+    # Setup unique work directory
+    $global:WORK_DIR = Join-Path $TMP_WORK_DIR "$INPUT_STEM.work"
+    if (Test-Path $global:WORK_DIR) { Remove-Item $global:WORK_DIR -Recurse -Force }
+    New-Item -ItemType Directory -Path $global:WORK_DIR -Force | Out-Null
 }
 
 function Initialize-SpringBinary {
     if (Test-Path $SPRING_BIN) { return }
-    
     Write-Host "Spring binary not found; building..." -ForegroundColor Yellow
     $buildLog = Join-Path $TMP_LOG_DIR "build.log"
-
-    # Set environment variables for MinGW as specified by user
-    $env:CC = "gcc"
-    $env:CXX = "g++"
-
-    $cmakeConfigArgs = @(
-        "-S", "$ROOT_DIR", 
-        "-B", "$BUILD_DIR", 
-        "-G", "Ninja", 
-        "-DSPRING_STATIC_RUNTIMES=OFF", 
-        "-Dspring_optimize_for_native=OFF", 
-        "-Dspring_optimize_for_portability=ON"
-    )
-
-    Write-Host "Running CMake configure (Ninja)..." -ForegroundColor Gray
+    $env:CC = "gcc"; $env:CXX = "g++"
+    $cmakeConfigArgs = @("-S", "$ROOT_DIR", "-B", "$BUILD_DIR", "-G", "Ninja", "-DSPRING_STATIC_RUNTIMES=OFF")
     & cmake @cmakeConfigArgs 2>&1 | Set-Content $buildLog
-    if ($LASTEXITCODE -ne 0) { throw "CMake configure failed. See $buildLog" }
-    
-    Write-Host "Running CMake build..." -ForegroundColor Gray
     & cmake --build "$BUILD_DIR" --parallel 2>&1 | Add-Content $buildLog
-    if ($LASTEXITCODE -ne 0) { throw "CMake build failed. See $buildLog" }
-
-    Write-Host "Copying runtime DLLs..." -ForegroundColor Gray
-    & cmake --build "$BUILD_DIR" --target copy_runtime_dlls 2>&1 | Add-Content $buildLog
+    if ($IsWindows) { & cmake --build "$BUILD_DIR" --target copy_runtime_dlls 2>&1 | Add-Content $buildLog }
 }
 
 # --- Main Logic ---
-
 Initialize-BenchmarkEnv
 Initialize-SpringBinary
 
-Write-Host "Analyzing FASTQ..." -ForegroundColor Gray
-$maxReadLen = Get-MaxReadLength $global:INPUT_RAW
-
-# Cleanup previous (WORK_DIR already handled in Initialize-BenchmarkEnv)
-if (Test-Path $global:OUTPUT_FILE) { Remove-Item $global:OUTPUT_FILE -Force }
-if (Test-Path $global:DECOMP_FILE) { Remove-Item $global:DECOMP_FILE -Force }
+# Cleanup previous
+foreach ($f in @($global:OUTPUT_FILE, $global:DECOMP_FILE_1, $global:DECOMP_FILE_2)) {
+    if (Test-Path $f) { Remove-Item $f -Force }
+}
 
 # --- Compression ---
-Write-Host "Running Spring lossless compression" -ForegroundColor Cyan
-Write-Host "  input:   $global:INPUT_ABS"
-Write-Host "  output:  $global:OUTPUT_FILE"
+Write-Host "Running Spring paired-end compression (SRR2990433)" -ForegroundColor Cyan
+Write-Host "  R1:      $PATH_R1"
+Write-Host "  R2:      $PATH_R2"
 Write-Host "  threads: $THREADS"
 
-$compArgs = "-c -i `"$global:INPUT_ABS`" -o `"$global:OUTPUT_FILE`" -w `"$global:WORK_DIR`" -t $THREADS -q lossless -n `"Big Benchmark`""
+$compArgs = "-c -i `"$PATH_R1`" `"$PATH_R2`" -o `"$global:OUTPUT_FILE`" -w `"$global:WORK_DIR`" -t $THREADS -q lossless -n `"Big Benchmark SRR2990433`""
 $compResults = Invoke-ResourceLoggedProcess $SPRING_BIN $compArgs
 
 # --- Decompression ---
 Write-Host "`nRunning Spring decompression" -ForegroundColor Cyan
-Write-Host "  input:   $global:OUTPUT_FILE"
-Write-Host "  output:  $global:DECOMP_FILE"
-
-$decompArgs = "-d -i `"$global:OUTPUT_FILE`" -o `"$global:DECOMP_FILE`""
+$decompArgs = "-d -i `"$global:OUTPUT_FILE`" -o `"$global:DECOMP_BASE`" -w `"$global:WORK_DIR`""
 $decompResults = Invoke-ResourceLoggedProcess $SPRING_BIN $decompArgs
 
 # --- Results ---
-$inputSize = (Get-Item $global:INPUT_ABS).Length
+$inputSize = (Get-Item $PATH_R1).Length + (Get-Item $PATH_R2).Length
 $outputSize = (Get-Item $global:OUTPUT_FILE).Length
-$decompSize = (Get-Item $global:DECOMP_FILE).Length
+$decompSize = (Get-Item $global:DECOMP_FILE_1).Length + (Get-Item $global:DECOMP_FILE_2).Length
 
 $reduction = if ($inputSize -gt 0) { ($inputSize - $outputSize) * 100 / $inputSize } else { 0 }
 $ratio = if ($outputSize -gt 0) { $inputSize / $outputSize } else { 0 }
 
-# Integrity Check (Normalized for GZIP)
+# Integrity Check
 Write-Host "`nVerifying integrity..." -ForegroundColor Gray
-$integrity_method = "SHA-256 binary hash"
-$originalHash = if ($INPUT_ABS.EndsWith(".gz")) {
-    Write-Host "  Hashing original (decompressed) input content..." -ForegroundColor Gray
-    $ds = [GZipHelper]::GetDecompressedStream($INPUT_ABS)
-    $hasher = [System.Security.Cryptography.SHA256]::Create()
-    $hashBytes = $hasher.ComputeHash($ds)
-    $ds.Dispose()
-    [System.BitConverter]::ToString($hashBytes).Replace("-", "").ToLower()
-}
-else {
-    (Get-FileHash -Path $INPUT_ABS -Algorithm SHA256).Hash.ToLower()
+function Get-DecompHash($path) {
+    if ($path.EndsWith(".gz")) {
+        $ds = [GZipHelper]::GetDecompressedStream($path)
+        $hasher = [System.Security.Cryptography.SHA256]::Create()
+        $hashBytes = $hasher.ComputeHash($ds)
+        $ds.Dispose()
+    }
+    else {
+        $hasher = [System.Security.Cryptography.SHA256]::Create()
+        $fs = [System.IO.File]::OpenRead($path)
+        $hashBytes = $hasher.ComputeHash($fs)
+        $fs.Dispose()
+    }
+    return [System.BitConverter]::ToString($hashBytes).Replace("-", "").ToLower()
 }
 
-$decompHash = (Get-FileHash -Path $DECOMP_FILE -Algorithm SHA256).Hash.ToLower()
-$checksumStatus = if ($originalHash -eq $decompHash) { "match" } else { "mismatch" }
+$hash_orig_1 = Get-DecompHash $PATH_R1
+$hash_orig_2 = Get-DecompHash $PATH_R2
+$hash_decomp_1 = Get-DecompHash $global:DECOMP_FILE_1
+$hash_decomp_2 = Get-DecompHash $global:DECOMP_FILE_2
 
-# Reporting (Aligned with run_big_benchmark.sh)
-Write-Output "`nBenchmark result"
-Write-Output ("  original bytes:   {0}" -f $inputSize)
-Write-Output ("  compressed bytes: {0}" -f $outputSize)
-Write-Output ("  decompressed bytes: {0}" -f $decompSize)
+$status1 = if ($hash_orig_1 -eq $hash_decomp_1) { "match" } else { "mismatch" }
+$status2 = if ($hash_orig_2 -eq $hash_decomp_2) { "match" } else { "mismatch" }
+
+# Reporting
+Write-Output "`nBenchmark result (Paired-End combined)"
+Write-Output ("  original bytes:   {0:N0}" -f $inputSize)
+Write-Output ("  compressed bytes: {0:N0}" -f $outputSize)
+Write-Output ("  decompressed bytes: {0:N0}" -f $decompSize)
 Write-Output ("  size reduction:   {0:N2}%" -f $reduction)
 Write-Output ("  compression ratio {0:N3}x" -f $ratio)
 
 Write-Output "`nCompression resources"
 Write-Output ("  elapsed time:     {0:N3}s" -f $compResults.elapsed_seconds)
-Write-Output ("  cpu usage:        {0}" -f $compResults.cpu_percent)
-Write-Output ("  cpu time:         user {0:N3}s, system {1:N3}s" -f $compResults.user_seconds, $compResults.system_seconds)
-Write-Output ("  avg core usage:   {0:N2} cores" -f (($compResults.user_seconds + $compResults.system_seconds) / $compResults.elapsed_seconds))
 Write-Output ("  peak memory:      {0} KB ({1:N2} MB RSS)" -f $compResults.max_rss_kb, ($compResults.max_rss_kb / 1024))
 
-Write-Output "`nDecompression resources"
-Write-Output ("  elapsed time:     {0:N3}s" -f $decompResults.elapsed_seconds)
-Write-Output ("  cpu usage:        {0}" -f $decompResults.cpu_percent)
-Write-Output ("  cpu time:         user {0:N3}s, system {1:N3}s" -f $decompResults.user_seconds, $decompResults.system_seconds)
-Write-Output ("  avg core usage:   {0:N2} cores" -f (($decompResults.user_seconds + $decompResults.system_seconds) / $decompResults.elapsed_seconds))
-Write-Output ("  peak memory:      {0} KB ({1:N2} MB RSS)" -f $decompResults.max_rss_kb, ($decompResults.max_rss_kb / 1024))
-
 Write-Output "`nRound-trip check"
-Write-Output ("  integrity method: {0}" -f $integrity_method)
-Write-Output ("  original checksum: {0}" -f $originalHash)
-Write-Output ("  output checksum:   {0}" -f $decompHash)
-Write-Output ("  checksum status:  {0}" -f $checksumStatus)
-Write-Output ("  decompressed file matches input: {0}" -f $(if ($checksumStatus -eq 'match') { "identical" } else { "different" }))
+Write-Output "  Read 1 status: $status1"
+Write-Output "  Read 2 status: $status2"
+Write-Output "  Overall status: $(if ($status1 -eq 'match' -and $status2 -eq 'match') { 'PASSED' } else { 'FAILED' })"

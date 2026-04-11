@@ -175,7 +175,8 @@ echo "  output:  $DECOMPRESSED_OUTPUT_FILE"
 decompress_args=(
 	-d
 	-i "$OUTPUT_FILE"
-	-o "$DECOMPRESSED_OUTPUT_FILE"
+	-o "$DECOMPRESSED_OUTPUT_FILE" \
+	-w "$WORK_DIR"
 )
 
 run_with_resource_log "$DECOMPRESS_RESOURCE_LOG" "$SPRING_BIN" "${decompress_args[@]}"

@@ -247,28 +247,68 @@ bool should_process_stream(const int stream_index, const bool paired_end,
   return true;
 }
 
-void generate_order_pe(const std::string &read_order_path,
+// Builds a quality-slot permutation for paired-end mode.
+// reordered_positions[raw_R1_pos] = corrected_original_R1_index.
+// The sequence stream uses corrected original indices for block assignment
+// (see reorder_compress_streams), so quality blocks must use the same
+// index space.  Corrected index = raw_pos + number of N-reads inserted before
+// raw_pos, which we recover from the n_read_order_path file.
+void generate_order_pe(const std::string &base_dir,
                        std::vector<uint32_t> &reordered_positions,
                        const uint32_t num_reads) {
-  std::ifstream order_input(read_order_path, std::ios::binary);
-  uint32_t current_order;
-  uint32_t next_reordered_position = 0;
-  const uint32_t half_read_count = num_reads / 2;
-  for (uint32_t read_index = 0; read_index < num_reads; read_index++) {
-    order_input.read(byte_ptr(&current_order), sizeof(uint32_t));
-    if (current_order < half_read_count)
-      reordered_positions[current_order] = next_reordered_position++;
+  const uint32_t spot_count = num_reads / 2; // = num_R1_reads
+
+  // Read the N-read order file (original positions of reads containing 'N').
+  // These positions are in the full R1+R2 space; we only care about R1 (< spot_count).
+  const std::string n_order_path = base_dir + "/read_order_N.bin";
+  std::vector<bool> is_n_read(spot_count, false);
+  {
+    std::ifstream n_input(n_order_path, std::ios::binary);
+    uint32_t n_pos;
+    while (n_input.read(byte_ptr(&n_pos), sizeof(uint32_t))) {
+      if (n_pos < spot_count)
+        is_n_read[n_pos] = true;
+    }
+  }
+
+  // Build: reordered_positions[raw_pos] = corrected_index
+  // Corrected index skips over N-reads: it counts only clean reads up to raw_pos.
+  uint32_t corrected = 0;
+  for (uint32_t raw = 0; raw < spot_count; raw++) {
+    if (!is_n_read[raw]) {
+      reordered_positions[raw] = corrected++;
+    }
+  }
+  // N-reads get indices at the end (after all clean reads), in document order.
+  for (uint32_t raw = 0; raw < spot_count; raw++) {
+    if (is_n_read[raw]) {
+      reordered_positions[raw] = corrected++;
+    }
   }
 }
 
-void generate_order_se(const std::string &read_order_path,
+void generate_order_se(const std::string &base_dir,
                        std::vector<uint32_t> &reordered_positions,
                        const uint32_t num_reads) {
-  std::ifstream order_input(read_order_path, std::ios::binary);
-  uint32_t current_order;
-  for (uint32_t read_index = 0; read_index < num_reads; read_index++) {
-    order_input.read(byte_ptr(&current_order), sizeof(uint32_t));
-    reordered_positions[current_order] = read_index;
+  const std::string n_order_path = base_dir + "/read_order_N.bin";
+  std::vector<bool> is_n_read(num_reads, false);
+  {
+    std::ifstream n_input(n_order_path, std::ios::binary);
+    uint32_t n_pos;
+    while (n_input.read(byte_ptr(&n_pos), sizeof(uint32_t))) {
+      if (n_pos < num_reads)
+        is_n_read[n_pos] = true;
+    }
+  }
+
+  uint32_t corrected = 0;
+  for (uint32_t raw = 0; raw < num_reads; raw++) {
+    if (!is_n_read[raw])
+      reordered_positions[raw] = corrected++;
+  }
+  for (uint32_t raw = 0; raw < num_reads; raw++) {
+    if (is_n_read[raw])
+      reordered_positions[raw] = corrected++;
   }
 }
 
@@ -323,10 +363,10 @@ void reorder_compress_quality_id(const std::string &temp_dir,
   std::vector<uint32_t> reordered_positions;
   if (paired_end) {
     reordered_positions.resize(num_reads / 2);
-    generate_order_pe(read_order_path, reordered_positions, num_reads);
+    generate_order_pe(base_dir, reordered_positions, num_reads);
   } else {
     reordered_positions.resize(num_reads);
-    generate_order_se(read_order_path, reordered_positions, num_reads);
+    generate_order_se(base_dir, reordered_positions, num_reads);
   }
 
   omp_set_num_threads(num_thr);

@@ -723,6 +723,7 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   uint16_t *read_lengths_s = new uint16_t[singleton_pool_size];
   Logger::log_info("Reading singletons...");
   readsingletons<bitset_size>(read, order_s, read_lengths_s, eg, egb);
+
   remove(eg.infile_N.c_str());
   Logger::log_info("Correcting order...");
   correct_order(order_s, eg);

@@ -279,7 +279,9 @@ prepare_compression_inputs(const compression_io_config &io_config,
       .input_path_1 = io_config.input_path_1,
       .input_path_2 = io_config.input_path_2,
       .input_1_was_gzipped = false,
-      .input_2_was_gzipped = false};
+      .input_2_was_gzipped = false,
+      .input_1_actual_was_gzipped = false,
+      .input_2_actual_was_gzipped = false};
 
   const bool input_1_is_gzipped = is_gzip_input_path(io_config.input_path_1);
   if (input_1_is_gzipped) {
@@ -287,21 +289,18 @@ prepare_compression_inputs(const compression_io_config &io_config,
         decompressed_input_path(temp_dir, io_config.input_path_1, 1);
     decompress_gzip_input_file(io_config.input_path_1,
                                prepared_inputs.input_path_1, num_thr);
-    prepared_inputs.input_1_was_gzipped = false; // STAGED FILE IS NOW RAW
     prepared_inputs.input_1_actual_was_gzipped = true;
   }
 
-  if (!io_config.paired_end) {
-    return prepared_inputs;
-  }
-
-  const bool input_2_is_gzipped = is_gzip_input_path(io_config.input_path_2);
-  if (input_2_is_gzipped) {
-    prepared_inputs.input_path_2 =
-        decompressed_input_path(temp_dir, io_config.input_path_2, 2);
-    decompress_gzip_input_file(io_config.input_path_2,
-                               prepared_inputs.input_path_2, num_thr);
-    prepared_inputs.input_2_was_gzipped = true;
+  if (io_config.paired_end) {
+    const bool input_2_is_gzipped = is_gzip_input_path(io_config.input_path_2);
+    if (input_2_is_gzipped) {
+      prepared_inputs.input_path_2 =
+          decompressed_input_path(temp_dir, io_config.input_path_2, 2);
+      decompress_gzip_input_file(io_config.input_path_2,
+                                 prepared_inputs.input_path_2, num_thr);
+      prepared_inputs.input_2_actual_was_gzipped = true;
+    }
   }
 
   return prepared_inputs;
@@ -313,9 +312,9 @@ void cleanup_prepared_compression_inputs(
     if (prepared_inputs.input_1_actual_was_gzipped) {
       std::filesystem::remove(prepared_inputs.input_path_1);
     }
-  }
-  if (prepared_inputs.input_2_was_gzipped) {
-    std::filesystem::remove(prepared_inputs.input_path_2);
+    if (prepared_inputs.input_2_actual_was_gzipped) {
+      std::filesystem::remove(prepared_inputs.input_path_2);
+    }
   }
 }
 
@@ -668,6 +667,7 @@ void compress(const std::string &temp_dir,
       cp.input_1_gzip_name, cp.input_1_is_bgzf, cp.input_1_bgzf_block_size,
       cp.input_1_gzip_uncompressed_size, cp.input_1_gzip_compressed_size,
       cp.input_1_gzip_member_count);
+  Logger::log_info("[GZIP-DIAG] R1 detection: was_gzipped=" + std::to_string(cp.input_1_was_gzipped) + " is_bgzf=" + std::to_string(cp.input_1_is_bgzf));
 
   // Extract detailed gzip metadata for input 2 (if paired-end)
   if (io_config.paired_end) {
@@ -677,6 +677,7 @@ void compress(const std::string &temp_dir,
         cp.input_2_gzip_name, cp.input_2_is_bgzf, cp.input_2_bgzf_block_size,
         cp.input_2_gzip_uncompressed_size, cp.input_2_gzip_compressed_size,
         cp.input_2_gzip_member_count);
+    Logger::log_info("[GZIP-DIAG] R2 detection: was_gzipped=" + std::to_string(cp.input_2_was_gzipped) + " is_bgzf=" + std::to_string(cp.input_2_is_bgzf));
   }
 
   if (preserve_quality)
@@ -689,8 +690,8 @@ void compress(const std::string &temp_dir,
         "FASTA input detected; quality values will not be stored.");
   }
 
-  if (prepared_inputs.input_1_was_gzipped ||
-      prepared_inputs.input_2_was_gzipped) {
+  if (prepared_inputs.input_1_actual_was_gzipped ||
+      prepared_inputs.input_2_actual_was_gzipped) {
     Logger::log_info("Detected gzipped input; decompressing to temporary input "
                      "files before compression.");
   }
@@ -715,6 +716,9 @@ void compress(const std::string &temp_dir,
       progress.set_stage("Encoding", 0.50F, 0.85F);
       call_encoder(temp_dir, cp);
     });
+
+
+
     print_temp_dir_size(temp_dir);
 
     if (!preserve_order && (preserve_quality || preserve_id)) {
@@ -782,7 +786,7 @@ void compress(const std::string &temp_dir,
 void decompress(const std::string &temp_dir,
                 const std::vector<std::string> &input_paths,
                 const std::vector<std::string> &output_paths,
-                const int & /*num_thr*/, const int & /*compression_level*/,
+                const int &num_thr, const int & /*compression_level*/,
                 const bool verbose, const bool unzip_flag) {
   Logger::set_verbose(verbose);
   ProgressBar progress(!verbose);
@@ -825,91 +829,6 @@ void decompress(const std::string &temp_dir,
     if (!cp.note.empty()) {
       std::cout << "Note: " << cp.note << "\n";
     }
-
-    auto log_gzip_metadata =
-        [](int input_idx, bool was_gzipped, uint8_t flg, uint32_t mtime,
-           uint8_t xfl, uint8_t os, const std::string &name,
-           const std::string &suggested_name, bool is_bgzf, uint16_t bgzf_bsiz,
-           uint64_t uncomp_sz, uint64_t comp_sz, uint32_t members) {
-          if (!was_gzipped)
-            return;
-
-          std::cout << "  Input " << input_idx << " compression metadata:\n";
-          std::string profile = "UNKNOWN";
-          if (is_bgzf)
-            profile = "BGZF (Default)";
-          else if (xfl == 2)
-            profile = "MAX (Slowest)";
-          else if (xfl == 4)
-            profile = "FAST (Fastest)";
-          else
-            profile = "DEFAULT/OTHER";
-
-          std::cout << "    Profile:      " << profile << "\n";
-          if (is_bgzf) {
-            std::cout << "    Format:       BGZF (Block Gzip)\n";
-            std::cout << "    BGZF BlockSz: " << bgzf_bsiz << "\n";
-          } else {
-            std::cout << "    Format:       Standard Gzip\n";
-          }
-
-          std::cout << "    Flags (FLG):  0x" << std::hex << (int)flg
-                    << std::dec << "\n";
-          std::string os_str = "Unknown";
-          if (os == 3)
-            os_str = "Unix";
-          else if (os == 0)
-            os_str = "Windows/FAT";
-          std::cout << "    Gzip Header:  FLG=0x" << std::hex << (int)flg
-                    << std::dec << ", MTIME=" << mtime << ", OS=" << (int)os
-                    << " (" << os_str << ")\n";
-
-          std::cout << "    Uncomp Name:  "
-                    << (name.empty() ? suggested_name : name)
-                    << (name.empty() ? "" : " (from header)") << "\n";
-
-          std::cout << "    Members:      " << members << "\n";
-          if (comp_sz > 0) {
-            double ratio = (double)uncomp_sz / comp_sz;
-            std::cout << "    Uncomp Size:  " << uncomp_sz << " bytes\n";
-            std::cout << "    Comp Size:    " << comp_sz << " bytes\n";
-            std::cout << "    Orig Ratio:   " << std::fixed
-                      << std::setprecision(2) << ratio << "x\n";
-          }
-
-          // Likely origin heuristic
-          std::string origin = "Unknown";
-          if (is_bgzf)
-            origin = "htslib/samtools/clib";
-          else if (mtime == 0 && os == 255)
-            origin = "Modern pipeline/programmatic";
-          else if (!(flg & 0x08))
-            origin = "Programmatic (No filename)";
-
-          std::cout << "    Likely origin: " << origin << "\n";
-        };
-
-    auto get_suggested_uncomp_name = [](const std::string &path) {
-      if (path.size() >= 3 && path.substr(path.size() - 3) == ".gz")
-        return path.substr(0, path.size() - 3);
-      return path;
-    };
-
-    log_gzip_metadata(
-        1, cp.input_1_was_gzipped, cp.input_1_gzip_flg, cp.input_1_gzip_mtime,
-        cp.input_1_gzip_xfl, cp.input_1_gzip_os, cp.input_1_gzip_name,
-        get_suggested_uncomp_name(cp.input_filename_1), cp.input_1_is_bgzf,
-        cp.input_1_bgzf_block_size, cp.input_1_gzip_uncompressed_size,
-        cp.input_1_gzip_compressed_size, cp.input_1_gzip_member_count);
-
-    if (cp.paired_end) {
-      log_gzip_metadata(
-          2, cp.input_2_was_gzipped, cp.input_2_gzip_flg, cp.input_2_gzip_mtime,
-          cp.input_2_gzip_xfl, cp.input_2_gzip_os, cp.input_2_gzip_name,
-          get_suggested_uncomp_name(cp.input_filename_2), cp.input_2_is_bgzf,
-          cp.input_2_bgzf_block_size, cp.input_2_gzip_uncompressed_size,
-          cp.input_2_gzip_compressed_size, cp.input_2_gzip_member_count);
-    }
   }
 
   auto has_compressed_suffix = [](const std::string &path) {
@@ -946,7 +865,7 @@ void decompress(const std::string &temp_dir,
       return;
     }
 
-    if (was_gzipped || has_suffix) {
+    if (has_suffix) {
       should_gzip[idx - 1] = true;
       should_bgzf[idx - 1] = is_bgzf;
       // Map XFL to compression level for restoration
@@ -960,16 +879,19 @@ void decompress(const std::string &temp_dir,
 
   determine_restoration(1, resolved_output_paths[0], cp.input_1_was_gzipped,
                         cp.input_1_is_bgzf, cp.input_1_gzip_xfl);
-  if (cp.paired_end && resolved_output_paths.size() >= 2) {
-    determine_restoration(2, resolved_output_paths[1], cp.input_2_was_gzipped,
+  if (cp.paired_end) {
+    std::string dummy_path2 = (resolved_output_paths.size() >= 2) ? resolved_output_paths[1] : resolved_output_paths[0];
+    determine_restoration(2, dummy_path2, cp.input_2_was_gzipped,
                           cp.input_2_is_bgzf, cp.input_2_gzip_xfl);
+    if (resolved_output_paths.size() >= 2) {
+      resolved_output_paths[1] = dummy_path2;
+    }
   }
 
   bool paired_end = cp.paired_end;
   const decompression_io_config io_config =
       resolve_decompression_io(input_paths, resolved_output_paths, paired_end);
 
-  // Long-read and short-read archives diverge only at the reconstruction step.
   run_timed_step("Decompressing ...", "Decompressing", [&] {
     progress.set_stage("Decompressing", 0.10F, 1.0F);
     if (cp.long_flag) {

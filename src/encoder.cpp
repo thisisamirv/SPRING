@@ -172,9 +172,13 @@ void rewrite_thread_order_file(
   uint32_t read_position;
 
   while (order_input.read(byte_ptr(&read_position), sizeof(uint32_t))) {
-    read_position += cumulative_n_reads[read_position];
+    if (read_position < cumulative_n_reads.size()) {
+        read_position += cumulative_n_reads[read_position];
+    }
     order_output.write(byte_ptr(&read_position), sizeof(uint32_t));
   }
+  order_input.close();
+  order_output.close();
 
   remove(order_path.c_str());
   rename(order_tmp_path.c_str(), order_path.c_str());
@@ -301,11 +305,7 @@ void getDataParams(encoder_global &eg, const compression_params &cp) {
   eg.numreads = clean_read_count - eg.numreads_s;
   eg.numreads_N = total_read_count - clean_read_count;
 
-  Logger::log_info("Maximum Read length: " + std::to_string(eg.max_readlen));
-  Logger::log_info("Number of non-singleton reads: " +
-                   std::to_string(eg.numreads));
-  Logger::log_info("Number of singleton reads: " + std::to_string(eg.numreads_s));
-  Logger::log_info("Number of reads with N: " + std::to_string(eg.numreads_N));
+
 }
 
 void correct_order(uint32_t *order_s, const encoder_global &eg) {

@@ -67,10 +67,11 @@ void persist_reordered_positions(const std::string &read_order_path,
     order_output.write(byte_ptr(&reordered_positions[read_index]),
                        sizeof(uint32_t));
   }
-
+  order_output.close();
   remove(read_order_path.c_str());
   rename(temporary_output_path.c_str(), read_order_path.c_str());
 }
+
 
 } // namespace
 
@@ -87,6 +88,7 @@ void pe_encode(const std::string &temp_dir, const compression_params &cp) {
   // File 1 keeps its reordered traversal; file 2 follows its mate positions.
   reorder_first_mates(reordered_positions, mate_count);
   reorder_second_mates(reordered_positions, read_index_by_order, mate_count);
+
   persist_reordered_positions(read_order_path, reordered_positions);
 }
 

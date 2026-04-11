@@ -295,12 +295,17 @@ void reorder_compress_streams(const std::string &temp_dir,
                 &unaligned_read[0], unaligned_read.size());
     next_unaligned_offset += unaligned_read.size();
   }
+
   unaligned_input.close();
+
+  // Both aligned and unaligned lengths live sequentially in read_length_input
+  // (write_unaligned_range appends to the same file). Read them all in order.
   uint64_t current_unaligned_offset = 0;
   for (uint32_t read_index = 0; read_index < unaligned_read_count;
        read_index++) {
-    if (paired_end || preserve_order)
+    if (paired_end || preserve_order) {
       order_input.read(byte_ptr(&read_order), sizeof(uint32_t));
+    }
     read_length_input.read(byte_ptr(&read_length), sizeof(uint16_t));
     read_lengths_by_read[read_order] = read_length;
     position_by_read[read_order] = current_unaligned_offset;

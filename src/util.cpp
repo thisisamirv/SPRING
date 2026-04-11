@@ -19,6 +19,8 @@
 #include <zstd.h>
 
 #include "omp.h"
+#include "progress.h"
+#include "params.h"
 #include "qvz/include/qvz.h"
 
 namespace spring {
@@ -1323,8 +1325,9 @@ void extract_gzip_detailed_info(const std::string &path, bool &is_gzipped,
   member_count = 0;
 
   std::ifstream fin(path, std::ios::binary);
-  if (!fin)
+  if (!fin) {
     return;
+  }
 
   fin.seekg(0, std::ios::end);
   compressed_size = fin.tellg();
