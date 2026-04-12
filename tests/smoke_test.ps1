@@ -90,7 +90,7 @@ function Invoke-Spring {
         $cmdArgs = @($fullCmd[1..($fullCmd.Count - 1)]) + $cmdArgs
     }
 
-    if ($env:SPRING_TEST_ARGS) {
+    if ($env:SPRING_TEST_ARGS -and ($exe -notmatch "preview")) {
         $cmdArgs = @($env:SPRING_TEST_ARGS.Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries)) + $cmdArgs
     }
 
