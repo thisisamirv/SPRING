@@ -177,8 +177,8 @@ function Compare-Lines {
     if (-not (Test-Path $leftPath)) { return $false }
     if (-not (Test-Path $rightPath)) { return $false }
 
-    $l1 = (Get-Content $leftPath | Measure-Object -Line).Lines
-    $l2 = (Get-Content $rightPath | Measure-Object -Line).Lines
+    $l1 = (Get-Content $leftPath).Count
+    $l2 = (Get-Content $rightPath).Count
 
     if ($l1 -ne $l2) {
         Write-Host "Line count differ: $leftPath ($l1) vs $rightPath ($l2)" -ForegroundColor Red
