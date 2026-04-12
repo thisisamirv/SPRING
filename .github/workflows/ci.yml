@@ -90,7 +90,7 @@ jobs:
           CC: gcc
           CXX: g++
         run: |
-          cmake -S . -B build -G Ninja -DDEV_MODE=OFF
+          cmake -S . -B build -G Ninja
 
       - name: Configure on macOS
         if: runner.os == 'macOS'
@@ -99,7 +99,7 @@ jobs:
           CC: clang
           CXX: clang++
         run: |
-          cmake -S . -B build -G Ninja -DDEV_MODE=OFF
+          cmake -S . -B build -G Ninja
 
       - name: Configure on Windows
         if: runner.os == 'Windows'
@@ -108,11 +108,13 @@ jobs:
           CC: gcc
           CXX: g++
         run: |
-          cmake -S . -B build -G Ninja -DDEV_MODE=OFF
+          cmake -S . -B build -G Ninja
 
       - name: Build on Linux and macOS
         if: runner.os != 'Windows'
-        run: cmake --build build --parallel
+        run: |
+          cmake --build build --parallel
+          cmake --install build --prefix spring2
 
       - name: Build on Windows
         if: runner.os == 'Windows'
@@ -122,15 +124,18 @@ jobs:
             -define icon:auto-resize=16,32,48,64,128,256 `
             assets/icons/logo.ico
           cmake --build build --parallel
+          cmake --install build --prefix spring2
 
       - name: Smoke test on Linux and macOS
-        if: runner.os != 'Windows'
+        env:
+          SPRING_BIN: ./spring2/bin/spring2
+          SPRING_PREVIEW_BIN: ./spring2/bin/spring2-preview
         run: tests/smoke_test.sh
 
       - name: Smoke test on Windows
-        if: runner.os == 'Windows'
-        shell: powershell
         env:
+          SPRING_BIN: ./spring2/bin/spring2.exe
+          SPRING_PREVIEW_BIN: ./spring2/bin/spring2-preview.exe
           SPRING_TEST_ARGS: -t 1 --memory 1
           SPRING_SMOKE_MODE: windows-quick
         run: .\tests\smoke_test.ps1
@@ -210,7 +215,7 @@ jobs:
           CC: gcc
           CXX: g++
         run: |
-          cmake -S . -B build -G Ninja -DDEV_MODE=ON
+          cmake -S . -B build -G Ninja
 
       - name: Configure on macOS
         if: runner.os == 'macOS'
@@ -219,7 +224,7 @@ jobs:
           CC: clang
           CXX: clang++
         run: |
-          cmake -S . -B build -G Ninja -DDEV_MODE=ON
+          cmake -S . -B build -G Ninja
 
       - name: Configure on Windows
         if: runner.os == 'Windows'
@@ -228,7 +233,7 @@ jobs:
           CC: gcc
           CXX: g++
         run: |
-          cmake -S . -B build -G Ninja -DDEV_MODE=ON
+          cmake -S . -B build -G Ninja
 
       - name: Build for analysis on Linux and macOS
         if: runner.os != 'Windows'

@@ -4,10 +4,11 @@ $SCRIPT_DIR = $PSScriptRoot
 $ROOT_DIR = (Get-Item "$SCRIPT_DIR\..").FullName
 $ASSET_DIR = Join-Path $ROOT_DIR "assets\sample-data"
 $BUILD_DIR = Join-Path $ROOT_DIR "build"
-$SPRING_BIN = Join-Path $BUILD_DIR "spring2.exe"
-$SPRING_PREVIEW_BIN = Join-Path $BUILD_DIR "spring2-preview.exe"
+$SPRING_BIN = $env:SPRING_BIN
+if (-not $SPRING_BIN) { $SPRING_BIN = Join-Path $BUILD_DIR "spring2.exe" }
 
-$SPRING_SMOKE_MODE = $env:SPRING_SMOKE_MODE
+$SPRING_PREVIEW_BIN = $env:SPRING_PREVIEW_BIN
+if (-not $SPRING_PREVIEW_BIN) { $SPRING_PREVIEW_BIN = Join-Path $BUILD_DIR "spring2-preview.exe" }
 if (-not $SPRING_SMOKE_MODE) { $SPRING_SMOKE_MODE = "full" }
 
 $SPRING_COMMAND_TIMEOUT_SECONDS = $env:SPRING_COMMAND_TIMEOUT_SECONDS

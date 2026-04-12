@@ -48,6 +48,7 @@ Configure and build:
 ```bash
 cmake -S . -B build -G Ninja
 cmake --build build --parallel
+cmake --install build --prefix spring2
 ```
 
 ### macOS
@@ -75,6 +76,7 @@ Configure and build with Apple Clang and Homebrew `libomp`:
 MACOS_LIBOMP_PREFIX="$(brew --prefix libomp)"
 CC=clang CXX=clang++ cmake -S . -B build -G Ninja
 cmake --build build --parallel
+cmake --install build --prefix spring2
 ```
 
 ### Windows (native MinGW-w64)
@@ -107,12 +109,5 @@ Configure & build (native cmd) from the repo root:
 ```powershell
 cmake -S . -B build -G Ninja
 cmake --build build --parallel
-```
-
-## Build Options (`DEV_MODE`)
-
-By default, the project is configured for **Clean Build Mode** (`DEV_MODE=OFF`), which cleans up intermediate build artifacts after a successful build. To build with intermediate artifacts (for development purposes), use `DEV_MODE=ON`:
-
-```bash
-cmake -S . -B build -G Ninja -DEV_MODE=ON
+cmake --install build --prefix spring2
 ```

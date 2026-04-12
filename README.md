@@ -56,7 +56,7 @@ Current command-line help:
 ```text
 Allowed options:
 
-General Options:
+* General Options:
   -h [ --help ]                   produce help message
   -i [ --input ] arg              input file name (two files for paired end)
   -o [ --output ] arg             output file name
@@ -75,7 +75,7 @@ General Options:
                                   worker thread (0 disables)
   -v [ --verbose ]                enable extensive logging (default: progress bar)
 --------------------------------------------------------------------------------
-Compression Options:
+* Compression Options:
   -c [ --compress ]               compress
   -l [ --level ] arg (=6)         compression level (1-9) to use for output
                                   (.gz) formatting (passed to gzip unchanged
@@ -93,7 +93,7 @@ Compression Options:
                                       thr and to low if < thr)
   -n [ --note ] arg               add a custom note to the archive
 --------------------------------------------------------------------------------
-Decompression Options:
+* Decompression Options:
   -d [ --decompress ]             decompress
   -u [ --unzip ]                  during decompression, force output to be
                                   uncompressed (even if original was .gz)

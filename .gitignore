@@ -66,3 +66,4 @@ Thumbs.db
 *.patch
 *.diff
 tests/output/
+spring2/

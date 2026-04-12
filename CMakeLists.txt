@@ -4,13 +4,7 @@
 cmake_minimum_required (VERSION 4.2)
 project (SPRING2)
 
-# Compatibility shim for common typo: -DEV_MODE instead of -DDEV_MODE
-if (DEFINED EV_MODE)
-    message(STATUS "Mapping typo EV_MODE=${EV_MODE} to DEV_MODE")
-    set(DEV_MODE ${EV_MODE} CACHE BOOL "Enable development mode" FORCE)
-endif()
-
-option(DEV_MODE "Enable development mode (prevents aggressive post-build cleanup)" OFF)
+# The project is validated against GCC and Clang toolchains.
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   message(STATUS "Setting build type to 'Release' as none was specified.")
@@ -466,37 +460,23 @@ if (WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     endif()
 endif()
 
-# Target to clean up all redundant build artifacts for a "clean" release footprint.
-add_custom_target(clean-artifacts
-    COMMAND ${CMAKE_COMMAND} -E rm -rf 
-        "${CMAKE_BINARY_DIR}/isa-l.h" 
-        "${CMAKE_BINARY_DIR}/libisal.pc" 
-        "${CMAKE_BINARY_DIR}/ISALConfig.cmake" 
-        "${CMAKE_BINARY_DIR}/ISALConfigVersion.cmake"
-        "${CMAKE_BINARY_DIR}/vendor"
-        "${CMAKE_BINARY_DIR}/_deps"
-        "${CMAKE_BINARY_DIR}/zstd-build"
-        "${CMAKE_BINARY_DIR}/libbsc-build"
-        "${CMAKE_BINARY_DIR}/libdeflate-build"
-        "${CMAKE_BINARY_DIR}/pthash-build"
-        "${CMAKE_BINARY_DIR}/qvz-build"
-        "${CMAKE_BINARY_DIR}/indexed_bzip2-build"
-        "${CMAKE_BINARY_DIR}/cloudflare_zlib-build"
-    COMMENT "Wiping all intermediate build state and vendor sources"
+
+# Installation logic for a clean release footprint
+set(INSTALL_TARGETS spring2 spring2-preview rapidgzip)
+install(TARGETS ${INSTALL_TARGETS}
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
 )
 
-# Automated Final Hand-off
-# If NOT DEV_MODE, run the cleanup automatically after ALL binaries logic is finished.
-if (NOT DEV_MODE)
-    set(AUTO_FINALIZE_DEPS spring2 spring2-preview rapidgzip)
-    if (TARGET copy_runtime_dlls)
-        list(APPEND AUTO_FINALIZE_DEPS copy_runtime_dlls)
-    endif()
-    add_custom_target(auto-finalize-cleanup ALL
-        DEPENDS ${AUTO_FINALIZE_DEPS}
-        COMMAND ${CMAKE_COMMAND} --build . --target clean-artifacts
-        COMMENT "Build successful. Running automated post-build cleanup..."
-    )
+if (WIN32 AND NOT SPRING_STATIC_RUNTIMES)
+    get_filename_component(SPRING_GCC_BIN_DIR "${CMAKE_C_COMPILER}" DIRECTORY)
+    foreach(_dll IN LISTS SPRING_RUNTIME_DLLS)
+        set(_src "${SPRING_GCC_BIN_DIR}/${_dll}")
+        if (EXISTS "${_src}")
+            install(FILES "${_src}" DESTINATION bin)
+        endif()
+    endforeach()
 endif()
 
 add_dev_script_target(dev-lint lint.sh)

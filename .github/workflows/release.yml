@@ -73,12 +73,12 @@ jobs:
             . .cmake-venv/bin/activate && \
             python3.9 -m pip install 'cmake==4.2.0' && \
             cmake -S . -B build -G Ninja \
-              -DDEV_MODE=OFF \
               -DLIBRAPIDARCHIVE_WITH_ISAL=OFF \
               \$CMAKE_EXTRA_FLAGS && \
             cmake --build build --parallel && \
-            file build/spring2 && \
-            ldd build/spring2 && \
+            cmake --install build --prefix spring2 && \
+            file spring2/bin/spring2 && \
+            ldd spring2/bin/spring2 && \
             export LINUXDEPLOY_DEBUG=1 && \
             URL='https://github.com/linuxdeploy/linuxdeploy/' && \
             URL=\"\${URL}releases/download/continuous/\" && \
@@ -96,7 +96,7 @@ jobs:
             cp assets/icons/logo.png logo.png && \
             ./linuxdeploy --appimage-extract-and-run \
               --appdir AppDir \
-              --executable build/spring2 \
+              --executable spring2/bin/spring2 \
               --desktop-file logo.desktop \
               --icon-file logo.png \
               --output appimage \
@@ -140,14 +140,15 @@ jobs:
       - name: Configure (macOS)
         if: matrix.name == 'macos'
         run: |
-          cmake -S . -B build -G Ninja -DDEV_MODE=OFF
+          cmake -S . -B build -G Ninja
 
       - name: Build and Strip (macOS)
         if: matrix.name == 'macos'
         run: |
           cmake --build build --parallel
-          strip build/spring2
-          strip build/spring2-preview
+          cmake --install build --prefix spring2
+          strip spring2/bin/spring2
+          strip spring2/bin/spring2-preview
 
       - name: Prepare Artifacts (Linux/macOS)
         if: matrix.name != 'windows'
@@ -156,7 +157,7 @@ jobs:
           if [ "${{ matrix.name }}" == "linux" ]; then
             cp spring2-linux-${{ matrix.arch }}.AppImage release/
           else
-            cp build/spring2 "release/${{ matrix.artifact_name }}"
+            cp spring2/bin/spring2 "release/${{ matrix.artifact_name }}"
           fi
 
       - name: Configure (Windows)
@@ -168,7 +169,6 @@ jobs:
         run: |
           cmake -S . -B build `
             -G Ninja `
-            -DDEV_MODE=OFF `
             -DSPRING_STATIC_RUNTIMES=ON
 
       - name: Build (Windows)
@@ -179,11 +179,8 @@ jobs:
             -define icon:auto-resize=16,32,48,64,128,256 `
             assets/icons/logo.ico
           cmake --build build --parallel
-
-      - name: Strip Binaries (Windows)
-        if: matrix.name == 'windows'
-        shell: powershell
-        run: strip build/spring2.exe
+          cmake --install build --prefix spring2
+          strip spring2/bin/spring2.exe
 
       - name: Prepare Artifact (Windows)
         if: matrix.name == 'windows'
@@ -192,7 +189,7 @@ jobs:
           if (!(Test-Path release)) {
             New-Item -ItemType Directory -Path release
           }
-          Copy-Item build/spring2.exe "release/${{ matrix.artifact_name }}"
+          Copy-Item spring2/bin/spring2.exe "release/${{ matrix.artifact_name }}"
 
       - name: Upload binary for universalizing
         if: matrix.name == 'macos'
@@ -200,8 +197,8 @@ jobs:
         with:
           name: ${{ matrix.artifact_name }}
           path: |
-            build/spring2
-            build/spring2-preview
+            spring2/bin/spring2
+            spring2/bin/spring2-preview
           retention-days: 1
 
       - name: Upload Artifact to Release
