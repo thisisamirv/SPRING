@@ -481,8 +481,12 @@ add_custom_target(clean-artifacts
 # Automated Final Hand-off
 # If NOT DEV_MODE, run the cleanup automatically after ALL binaries logic is finished.
 if (NOT DEV_MODE)
+    set(AUTO_FINALIZE_DEPS spring2 spring2-preview rapidgzip)
+    if (TARGET copy_runtime_dlls)
+        list(APPEND AUTO_FINALIZE_DEPS copy_runtime_dlls)
+    endif()
     add_custom_target(auto-finalize-cleanup ALL
-        DEPENDS spring2 spring2-preview rapidgzip copy_runtime_dlls
+        DEPENDS ${AUTO_FINALIZE_DEPS}
         COMMAND ${CMAKE_COMMAND} --build . --target clean-artifacts
         COMMENT "Build successful. Running automated post-build cleanup..."
     )

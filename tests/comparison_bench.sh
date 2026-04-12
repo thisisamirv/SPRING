@@ -451,9 +451,24 @@ run_benchmark() {
 
 	run_with_resource_log "$decompress_resource_log" "$runner" "${decompress_args[@]}"
 
-	input_size=$(stat -c%s "$INPUT_ABS")
+	input_size=$(stat -c%s "$INPUT_ABS_1")
+	if [[ -n "$INPUT_ABS_2" ]]; then
+		((input_size += $(stat -c%s "$INPUT_ABS_2")))
+	fi
 	output_size=$(stat -c%s "$output_file")
-	decompressed_size=$(stat -c%s "$decompressed_output_file")
+	
+	if [[ -f "$decompressed_output_file" ]]; then
+		decompressed_size=$(stat -c%s "$decompressed_output_file")
+	else
+		# Handle paired-end decompression output .1 and .2
+		decompressed_size=0
+		if [[ -f "$decompressed_output_file.1" ]]; then
+			((decompressed_size += $(stat -c%s "$decompressed_output_file.1")))
+		fi
+		if [[ -f "$decompressed_output_file.2" ]]; then
+			((decompressed_size += $(stat -c%s "$decompressed_output_file.2")))
+		fi
+	fi
 
 	populate_resource_vars "${label}_compress" "$compress_resource_log"
 	populate_resource_vars "${label}_decompress" "$decompress_resource_log"
@@ -482,8 +497,13 @@ run_benchmark() {
 
 	if [[ -n "$(type -P sha256sum)" || -n "$(type -P shasum)" ]]; then
 		integrity_method="SHA-256 + byte comparison"
-		original_checksum=$(compute_normalized_input_checksum "$INPUT_ABS")
-		decompressed_checksum=$(compute_checksum "$decompressed_output_file")
+		original_checksum=$(compute_normalized_input_checksum "$INPUT_ABS_1")
+		if [[ -f "$decompressed_output_file" ]]; then
+			decompressed_checksum=$(compute_checksum "$decompressed_output_file")
+		elif [[ -f "$decompressed_output_file.1" ]]; then
+			decompressed_checksum=$(compute_checksum "$decompressed_output_file.1")
+		fi
+
 		if [[ "$original_checksum" == "$decompressed_checksum" ]]; then
 			checksum_status="match"
 		else
@@ -491,8 +511,14 @@ run_benchmark() {
 		fi
 	fi
 
-	if cmp -s <(stream_input_bytes "$INPUT_ABS") "$decompressed_output_file"; then
-		roundtrip_status="identical"
+	if [[ -f "$decompressed_output_file" ]]; then
+		if cmp -s <(stream_input_bytes "$INPUT_ABS_1") "$decompressed_output_file"; then
+			roundtrip_status="identical"
+		fi
+	elif [[ -f "$decompressed_output_file.1" ]]; then
+		if cmp -s <(stream_input_bytes "$INPUT_ABS_1") "$decompressed_output_file.1"; then
+			roundtrip_status="identical (read 1)"
+		fi
 	fi
 
 	print_benchmark_summary \
@@ -621,6 +647,7 @@ INPUT_ABS_2=""
 if [[ -n "$INPUT_FASTQ_2" ]] && [[ -f "$INPUT_FASTQ_2" ]]; then
 	INPUT_ABS_2=$(realpath -m -- "$INPUT_FASTQ_2")
 fi
+INPUT_ABS="$INPUT_ABS_1"
 
 INPUT_BASENAME=$(basename -- "$INPUT_ABS_1")
 INPUT_STEM=${INPUT_BASENAME%.*}
