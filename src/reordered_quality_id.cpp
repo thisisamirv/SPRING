@@ -56,7 +56,7 @@ uint32_t reads_per_file(const uint32_t num_reads,
 
 uint32_t compute_batch_size(const uint32_t num_reads,
                            const uint32_t num_reads_per_block) {
-  return (1 + (num_reads / 4 - 1) / num_reads_per_block) * num_reads_per_block;
+  return (1 + (num_reads - 1) / num_reads_per_block) * num_reads_per_block;
 }
 
 batch_range batch_read_range(const uint32_t batch_index,
@@ -130,6 +130,7 @@ void partition_reordered_batches(
   for (uint32_t read_index = 0; read_index < reordered_positions.size();
        read_index++) {
     std::getline(input_stream, current_string);
+    remove_CR_from_end(current_string);
 
     const uint32_t reordered_position = reordered_positions[read_index];
     const uint32_t batch_index = reordered_position / batch_size;
@@ -256,33 +257,38 @@ bool should_process_stream(const int stream_index, const bool paired_end,
 void generate_order_pe(const std::string &base_dir,
                        std::vector<uint32_t> &reordered_positions,
                        const uint32_t num_reads) {
-  const uint32_t spot_count = num_reads / 2; // = num_R1_reads
-
-  // Read the N-read order file (original positions of reads containing 'N').
-  // These positions are in the full R1+R2 space; we only care about R1 (< spot_count).
-  const std::string n_order_path = base_dir + "/read_order_N.bin";
-  std::vector<bool> is_n_read(spot_count, false);
-  {
-    std::ifstream n_input(n_order_path, std::ios::binary);
-    uint32_t n_pos;
-    while (n_input.read(byte_ptr(&n_pos), sizeof(uint32_t))) {
-      if (n_pos < spot_count)
-        is_n_read[n_pos] = true;
-    }
-  }
-
-  // Build: reordered_positions[raw_pos] = corrected_index
-  // Corrected index skips over N-reads: it counts only clean reads up to raw_pos.
+  const uint32_t spot_count = num_reads / 2;
   uint32_t corrected = 0;
-  for (uint32_t raw = 0; raw < spot_count; raw++) {
-    if (!is_n_read[raw]) {
-      reordered_positions[raw] = corrected++;
+  uint32_t orig_spot;
+
+  // 1. Aligned spots
+  std::ifstream aligned_input(base_dir + "/read_order.bin", std::ios::binary);
+  if (aligned_input.is_open()) {
+    while (aligned_input.read(reinterpret_cast<char *>(&orig_spot),
+                              sizeof(uint32_t))) {
+      if (orig_spot < spot_count)
+        reordered_positions[orig_spot] = corrected++;
     }
   }
-  // N-reads get indices at the end (after all clean reads), in document order.
-  for (uint32_t raw = 0; raw < spot_count; raw++) {
-    if (is_n_read[raw]) {
-      reordered_positions[raw] = corrected++;
+
+  // 2. Clean unaligned spots (singletons)
+  std::ifstream singleton_input(base_dir + "/read_order.bin.singleton",
+                                std::ios::binary);
+  if (singleton_input.is_open()) {
+    while (singleton_input.read(reinterpret_cast<char *>(&orig_spot),
+                                sizeof(uint32_t))) {
+      if (orig_spot < spot_count)
+        reordered_positions[orig_spot] = corrected++;
+    }
+  }
+
+  // 3. N-read spots
+  std::ifstream n_input(base_dir + "/read_order_N.bin", std::ios::binary);
+  if (n_input.is_open()) {
+    while (n_input.read(reinterpret_cast<char *>(&orig_spot),
+                        sizeof(uint32_t))) {
+      if (orig_spot < spot_count)
+        reordered_positions[orig_spot] = corrected++;
     }
   }
 }
@@ -290,25 +296,37 @@ void generate_order_pe(const std::string &base_dir,
 void generate_order_se(const std::string &base_dir,
                        std::vector<uint32_t> &reordered_positions,
                        const uint32_t num_reads) {
-  const std::string n_order_path = base_dir + "/read_order_N.bin";
-  std::vector<bool> is_n_read(num_reads, false);
-  {
-    std::ifstream n_input(n_order_path, std::ios::binary);
-    uint32_t n_pos;
-    while (n_input.read(byte_ptr(&n_pos), sizeof(uint32_t))) {
-      if (n_pos < num_reads)
-        is_n_read[n_pos] = true;
+  uint32_t corrected = 0;
+  uint32_t orig_pos;
+
+  // 1. Aligned reads: order defined by the reorderer
+  std::ifstream aligned_input(base_dir + "/read_order.bin", std::ios::binary);
+  if (aligned_input.is_open()) {
+    while (aligned_input.read(reinterpret_cast<char *>(&orig_pos),
+                              sizeof(uint32_t))) {
+      if (orig_pos < num_reads)
+        reordered_positions[orig_pos] = corrected++;
     }
   }
 
-  uint32_t corrected = 0;
-  for (uint32_t raw = 0; raw < num_reads; raw++) {
-    if (!is_n_read[raw])
-      reordered_positions[raw] = corrected++;
+  // 2. Clean unaligned reads (singletons)
+  std::ifstream singleton_input(base_dir + "/read_order.bin.singleton",
+                                std::ios::binary);
+  if (singleton_input.is_open()) {
+    while (singleton_input.read(reinterpret_cast<char *>(&orig_pos),
+                                sizeof(uint32_t))) {
+      if (orig_pos < num_reads)
+        reordered_positions[orig_pos] = corrected++;
+    }
   }
-  for (uint32_t raw = 0; raw < num_reads; raw++) {
-    if (is_n_read[raw])
-      reordered_positions[raw] = corrected++;
+
+  // 3. N-reads
+  std::ifstream n_input(base_dir + "/read_order_N.bin", std::ios::binary);
+  if (n_input.is_open()) {
+    while (n_input.read(reinterpret_cast<char *>(&orig_pos), sizeof(uint32_t))) {
+      if (orig_pos < num_reads)
+        reordered_positions[orig_pos] = corrected++;
+    }
   }
 }
 
@@ -352,7 +370,6 @@ void reorder_compress_quality_id(const std::string &temp_dir,
 
   const std::string base_dir = temp_dir;
 
-  const std::string read_order_path = base_dir + "/read_order.bin";
   std::string id_paths[2];
   std::string quality_paths[2];
   id_paths[0] = base_dir + "/id_1";

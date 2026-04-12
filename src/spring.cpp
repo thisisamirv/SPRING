@@ -786,7 +786,7 @@ void compress(const std::string &temp_dir,
 void decompress(const std::string &temp_dir,
                 const std::vector<std::string> &input_paths,
                 const std::vector<std::string> &output_paths,
-                const int &num_thr, const int & /*compression_level*/,
+                const int & /*num_thr*/, const int & /*compression_level*/,
                 const bool verbose, const bool unzip_flag) {
   Logger::set_verbose(verbose);
   ProgressBar progress(!verbose);
@@ -851,40 +851,34 @@ void decompress(const std::string &temp_dir,
 
   bool should_gzip[2] = {false, false};
   bool should_bgzf[2] = {false, false};
+  for (int i = 0; i < (cp.paired_end ? 2 : 1); i++) {
+    const std::string &path =
+        (i < output_paths.size()) ? output_paths[i] : output_paths[0];
+    bool is_bgzf = (i == 0) ? cp.input_1_is_bgzf : cp.input_2_is_bgzf;
+    uint8_t xfl = (i == 0) ? cp.input_1_gzip_xfl : cp.input_2_gzip_xfl;
 
-  auto determine_restoration = [&](int idx, std::string &path, bool was_gzipped,
-                                   bool is_bgzf, uint8_t xfl) {
-    bool has_suffix = has_compressed_suffix(path);
-    if (unzip_flag) {
-      if (was_gzipped || has_suffix) {
-        path = strip_compressed_suffix(path);
-      } else {
-        std::cout << "Warning: Original input " << idx
-                  << " was already not compressed. Ignoring --unzip.\n";
-      }
-      return;
-    }
+    if (unzip_flag) continue;
 
-    if (has_suffix) {
-      should_gzip[idx - 1] = true;
-      should_bgzf[idx - 1] = is_bgzf;
-      // Map XFL to compression level for restoration
+    if (has_compressed_suffix(path)) {
+      should_gzip[i] = true;
+      should_bgzf[i] = is_bgzf;
       if (xfl == 2)
         cp.compression_level = 9;
       else if (xfl == 4)
         cp.compression_level = 1;
-      // else keep default or user-provided level
     }
-  };
+  }
 
-  determine_restoration(1, resolved_output_paths[0], cp.input_1_was_gzipped,
-                        cp.input_1_is_bgzf, cp.input_1_gzip_xfl);
-  if (cp.paired_end) {
-    std::string dummy_path2 = (resolved_output_paths.size() >= 2) ? resolved_output_paths[1] : resolved_output_paths[0];
-    determine_restoration(2, dummy_path2, cp.input_2_was_gzipped,
-                          cp.input_2_is_bgzf, cp.input_2_gzip_xfl);
-    if (resolved_output_paths.size() >= 2) {
-      resolved_output_paths[1] = dummy_path2;
+  if (resolved_output_paths.empty()) {
+    resolved_output_paths.push_back(cp.input_filename_1);
+    if (cp.paired_end)
+      resolved_output_paths.push_back(cp.input_filename_2);
+  }
+
+  for (std::string &path : resolved_output_paths) {
+    if (unzip_flag || has_compressed_suffix(path)) {
+      if (has_compressed_suffix(path))
+        path = strip_compressed_suffix(path);
     }
   }
 

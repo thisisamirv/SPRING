@@ -12,9 +12,12 @@ TMP_INPUT_DIR="$TMP_DIR/input"
 TMP_LOG_DIR="$TMP_DIR/logs"
 TMP_OUTPUT_DIR="$TMP_DIR/runs"
 TMP_WORK_DIR="$TMP_DIR/work"
-DOWNLOAD_URL="https://figshare.com/ndownloader/files/38965664"
-DEFAULT_INPUT_FASTQ="$TMP_INPUT_DIR/04-CC002-659-M_S4_L001_R2_001.fastq.gz"
-INPUT_FASTQ=${INPUT_FASTQ:-"$DEFAULT_INPUT_FASTQ"}
+URL_R1="ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR818/009/SRR8185389/SRR8185389_1.fastq.gz"
+URL_R2="ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR818/009/SRR8185389/SRR8185389_2.fastq.gz"
+DEFAULT_PATH_R1="$TMP_INPUT_DIR/SRR8185389_1.fastq.gz"
+DEFAULT_PATH_R2="$TMP_INPUT_DIR/SRR8185389_2.fastq.gz"
+INPUT_FASTQ_1=${INPUT_FASTQ_1:-"$DEFAULT_PATH_R1"}
+INPUT_FASTQ_2=${INPUT_FASTQ_2:-"$DEFAULT_PATH_R2"}
 BUILD_LOG="$TMP_LOG_DIR/build.log"
 SPRING_V1_ENV_NAME="spring_v1"
 
@@ -77,35 +80,35 @@ compute_normalized_input_checksum() {
 	fi
 }
 
+download_file() {
+	local url="$1"
+	local dest="$2"
+	if [[ -f "$dest" ]]; then return; fi
+	echo "Downloading $(basename "$dest")..."
+	if type curl >/dev/null 2>&1; then
+		curl -L -# -o "$dest" "$url"
+	elif type wget >/dev/null 2>&1; then
+		wget --progress=bar:force -O "$dest" "$url"
+	else
+		echo "Error: Neither curl nor wget found." >&2
+		exit 1
+	fi
+}
+
 ensure_benchmark_input() {
 	mkdir -p "$TMP_INPUT_DIR" "$TMP_LOG_DIR" "$TMP_OUTPUT_DIR" "$TMP_WORK_DIR"
 
-	if [[ "$INPUT_FASTQ" != "$DEFAULT_INPUT_FASTQ" ]]; then
-		if [[ ! -f "$INPUT_FASTQ" ]]; then
-			echo "Requested INPUT_FASTQ does not exist: $INPUT_FASTQ" >&2
-			exit 1
-		fi
-		return
+	if [[ "$INPUT_FASTQ_1" == "$DEFAULT_PATH_R1" ]]; then
+		download_file "$URL_R1" "$DEFAULT_PATH_R1"
+	fi
+	if [[ "$INPUT_FASTQ_2" == "$DEFAULT_PATH_R2" ]]; then
+		download_file "$URL_R2" "$DEFAULT_PATH_R2"
 	fi
 
-	if [[ -f "$DEFAULT_INPUT_FASTQ" ]]; then
-		return
+	if [[ ! -f "$INPUT_FASTQ_1" ]]; then
+		echo "Primary INPUT_FASTQ_1 does not exist: $INPUT_FASTQ_1" >&2
+		exit 1
 	fi
-
-	cat >&2 <<EOF
-Benchmark input not found:
-  $DEFAULT_INPUT_FASTQ
-
-Create benchmark/tmp/input/ and download this file from:
-  $DOWNLOAD_URL
-
-Save it as:
-  $DEFAULT_INPUT_FASTQ
-
-Or run the script with a local override:
-  INPUT_FASTQ=/path/to/04-CC002-659-M_S4_L001_R2_001.fastq.gz ./benchmark/run_comparison_benchmark.sh
-EOF
-	exit 1
 }
 
 ensure_spring_binary() {
@@ -416,7 +419,12 @@ run_benchmark() {
 
 	local spring_args=(
 		-c
-		-i "$INPUT_ABS"
+		-i "$INPUT_ABS_1"
+	)
+	if [[ -n "$INPUT_ABS_2" ]]; then
+		spring_args+=("$INPUT_ABS_2")
+	fi
+	spring_args+=(
 		-o "$output_file"
 		-w "$work_dir"
 		-t "$THREADS"
@@ -425,7 +433,7 @@ run_benchmark() {
 	if ((${MAX_READ_LENGTH} > ${MAX_SHORT_READ_LENGTH})) && [[ "$label" == "spring_v1" ]]; then
 		spring_args+=(-l)
 	fi
-	if [[ "$INPUT_ABS" == *.gz ]] && spring_supports_gzip_flag "$runner"; then
+	if [[ "$INPUT_ABS_1" == *.gz ]] && spring_supports_gzip_flag "$runner"; then
 		spring_args=(-g "${spring_args[@]}")
 	fi
 
@@ -608,12 +616,16 @@ ensure_benchmark_input
 ensure_spring_binary
 ensure_spring_v1_runner
 
-INPUT_ABS=$(realpath -m -- "$INPUT_FASTQ")
-INPUT_BASENAME=$(basename -- "$INPUT_ABS")
+INPUT_ABS_1=$(realpath -m -- "$INPUT_FASTQ_1")
+INPUT_ABS_2=""
+if [[ -n "$INPUT_FASTQ_2" ]] && [[ -f "$INPUT_FASTQ_2" ]]; then
+	INPUT_ABS_2=$(realpath -m -- "$INPUT_FASTQ_2")
+fi
+
+INPUT_BASENAME=$(basename -- "$INPUT_ABS_1")
 INPUT_STEM=${INPUT_BASENAME%.*}
 MAX_SHORT_READ_LENGTH=511
-MAX_READ_LENGTH=$(stream_input_bytes "$INPUT_ABS" | awk 'NR % 4 == 2 { if (length($0) > max_len) max_len = length($0) } END { print max_len + 0 }')
-
+MAX_READ_LENGTH=$(stream_input_bytes "$INPUT_ABS_1" | awk 'NR % 4 == 2 { if (length($0) > max_len) max_len = length($0) } END { print max_len + 0 }')
 
 run_benchmark "current" "Current Spring" "$SPRING_BIN"
 run_benchmark "spring_v1" "Spring v1" "$SPRING_V1_RUNNER"

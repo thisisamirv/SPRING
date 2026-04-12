@@ -457,6 +457,11 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
   bool preserve_order = cp.preserve_order;
 
   std::string output_paths[2] = {outfile_1, outfile_2};
+  for (int i = 0; i < 2; i++) {
+    if (should_gzip[i]) {
+      output_paths[i] += ".gz";
+    }
+  }
   std::ofstream output_streams[2];
 
   open_output_files(output_streams, output_paths, paired_end, should_gzip);
@@ -786,10 +791,15 @@ void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
   bool preserve_id = cp.preserve_id;
   bool preserve_quality = cp.preserve_quality;
 
-  std::string output_paths[2] = {outfile_1, outfile_2};
+  std::string output_paths_local[2] = {outfile_1, outfile_2};
+  for (int i = 0; i < 2; i++) {
+    if (should_gzip[i]) {
+      output_paths_local[i] += ".gz";
+    }
+  }
   std::ofstream output_streams[2];
 
-  open_output_files(output_streams, output_paths, paired_end, should_gzip);
+  open_output_files(output_streams, output_paths_local, paired_end, should_gzip);
   validate_output_files(output_streams, paired_end);
 
   const uint64_t num_reads_per_step = compute_num_reads_per_step(

@@ -1,13 +1,13 @@
 $ErrorActionPreference = 'Stop'
 
 # Helper: GZip decompression for multi-member files (.gz/BGZF)
-if (-not ("GZipHelper" -as [type])) {
+if (-not ("BigBencher" -as [type])) {
     Add-Type -TypeDefinition @"
 using System;
 using System.IO;
 using System.IO.Compression;
 
-public class GZipHelper {
+public class BigBencher {
     public static void Decompress(string inputPath, string outputPath) {
         using (FileStream output = File.Create(outputPath)) {
             using (FileStream input = File.OpenRead(inputPath)) {
@@ -200,7 +200,7 @@ $ratio = if ($outputSize -gt 0) { $inputSize / $outputSize } else { 0 }
 Write-Host "`nVerifying integrity..." -ForegroundColor Gray
 function Get-DecompHash($path) {
     if ($path.EndsWith(".gz")) {
-        $ds = [GZipHelper]::GetDecompressedStream($path)
+        $ds = [BigBencher]::GetDecompressedStream($path)
         $hasher = [System.Security.Cryptography.SHA256]::Create()
         $hashBytes = $hasher.ComputeHash($ds)
         $ds.Dispose()
@@ -233,6 +233,10 @@ Write-Output ("  compression ratio {0:N3}x" -f $ratio)
 Write-Output "`nCompression resources"
 Write-Output ("  elapsed time:     {0:N3}s" -f $compResults.elapsed_seconds)
 Write-Output ("  peak memory:      {0} KB ({1:N2} MB RSS)" -f $compResults.max_rss_kb, ($compResults.max_rss_kb / 1024))
+
+Write-Output "`nDecompression resources"
+Write-Output ("  elapsed time:     {0:N3}s" -f $decompResults.elapsed_seconds)
+Write-Output ("  peak memory:      {0} KB ({1:N2} MB RSS)" -f $decompResults.max_rss_kb, ($decompResults.max_rss_kb / 1024))
 
 Write-Output "`nRound-trip check"
 Write-Output "  Read 1 status: $status1"

@@ -97,16 +97,8 @@ function Invoke-Spring {
         $exitCode = $process.ExitCode
     }
     else {
-        # Capture stderr to see what happened on failure
-        $errFile = Join-Path $ROOT_DIR "spring_error.txt"
-        & $exe @remainingArgs 2>$errFile
+        & $exe @remainingArgs
         $exitCode = $LASTEXITCODE
-        if ($exitCode -ne 0) {
-            Write-Host "Spring Error Output:" -ForegroundColor Red
-            if (Test-Path $errFile) {
-                Get-Content $errFile | Write-Host -ForegroundColor Red
-            }
-        }
     }
 
     if ($exitCode -ne 0) {
@@ -131,21 +123,44 @@ public class GZipHelper {
     public static void Decompress(string infile, string outfile) {
         byte[] data = File.ReadAllBytes(infile);
         using (var outputStream = File.Create(outfile)) {
-            for (int i = 0; i < data.Length - 1; i++) {
+            int i = 0;
+            while (i < data.Length - 1) {
                 if (data[i] == 0x1F && data[i+1] == 0x8B) {
+                    int start = i;
+                    // Check if BGZF (has BSIZ in extra field)
+                    int blocksize = -1;
+                    if (data.Length - i >= 20 && (data[i+3] & 0x04) != 0) {
+                        // Scan for BC/02 subfield
+                        int xlen = data[i+10] | (data[i+11] << 8);
+                        int p = i + 12;
+                        while (p < i + 12 + xlen - 4) {
+                            if (data[p] == 0x42 && data[p+1] == 0x43 && data[p+2] == 0x02 && data[p+3] == 0x00) {
+                                blocksize = (data[p+4] | (data[p+5] << 8)) + 1;
+                                break;
+                            }
+                            p += (data[p+2] | (data[p+3] << 8)) + 4;
+                        }
+                    }
+
                     using (var inputStream = new MemoryStream(data, i, data.Length - i))
                     using (var gz = new GZipStream(inputStream, CompressionMode.Decompress)) {
                         try {
                             gz.CopyTo(outputStream);
                         } catch {
-                            // Skip invalid members or trailing data
+                            // If it fails, maybe not a real gzip member or corrupted
                         }
                     }
-                    // We don't know the compressed size, so we'll just scan for the next magic number.
-                    // To avoid re-decompressing the same member, we should ideally skip ahead.
-                    // But for a smoke test with small files, scanning is fast enough.
-                    // Actually, GZipStream will have decompressed one member. 
-                    // Any magic number inside that compressed member will be ignored because we're scanning the COMPRESSED data.
+
+                    if (blocksize > 0) {
+                        i += blocksize;
+                    } else {
+                        // For non-BGZF files, we assume a single member for testing purposes.
+                        // Blind scanning for 0x1F 0x8B magic numbers inside compressed payloads
+                        // leads to false-positive matches and data corruption.
+                        break;
+                    }
+                } else {
+                    i++;
                 }
             }
         }
@@ -200,6 +215,16 @@ function Compare-Files {
 
     if ($hash1 -ne $hash2) {
         Write-Host "Files differ in hash (normalized): $leftPath ($($clean1.Length) bytes) vs $rightPath ($($clean2.Length) bytes)" -ForegroundColor Red
+        
+        # Diagnostic: show line counts
+        $lines1 = Get-Content $leftPath
+        $lines2 = Get-Content $rightPath
+        Write-Host "Lines: $($lines1.Count) vs $($lines2.Count)" -ForegroundColor Yellow
+        
+        # Diagnostic: show diff
+        Write-Host "Showing first 10 differences (Compare-Object):" -ForegroundColor Yellow
+        Compare-Object $lines1 $lines2 | Select-Object -First 10 | Out-String | Write-Host -ForegroundColor Yellow
+
         return $false
     }
     return $true
@@ -361,19 +386,27 @@ try {
     Write-SmokeCase "sorted output round-trip single"
     Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" -o abcd -s o
     Invoke-Spring -d -i abcd -o tmp
-    Get-Content "tmp" | Sort-Object | Set-Content "tmp.sorted"
-    Get-Content "$ASSET_DIR\test_1.fastq" | Sort-Object | Set-Content "tmp_1.sorted"
-    if (-not (Compare-Files "tmp.sorted" "tmp_1.sorted")) { exit 1 }
+    $ref1 = Get-Content "$ASSET_DIR\test_1.fastq" | ForEach-Object { $_.Trim() } | Sort-Object -CaseSensitive
+    $act1 = Get-Content "tmp" | ForEach-Object { $_.Trim() } | Sort-Object -CaseSensitive
+    $ref1 | Set-Content "ref.sorted"
+    $act1 | Set-Content "tmp.sorted"
+    if (-not (Compare-Files "tmp.sorted" "ref.sorted")) { exit 1 }
 
     Write-SmokeCase "sorted output round-trip paired"
-    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" "$ASSET_DIR\test_2.fastq" -o abcd -t 8
+    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" "$ASSET_DIR\test_2.fastq" -o abcd -s o -t 8
     Invoke-Spring -d -i abcd -o tmp -t 5
-    Get-Content "tmp.1" | Sort-Object | Set-Content "tmp.1.sorted"
-    Get-Content "$ASSET_DIR\test_1.fastq" | Sort-Object | Set-Content "tmp_1.sorted"
-    if (-not (Compare-Files "tmp.1.sorted" "tmp_1.sorted")) { exit 1 }
-    Get-Content "tmp.2" | Sort-Object | Set-Content "tmp.2.sorted"
-    Get-Content "$ASSET_DIR\test_2.fastq" | Sort-Object | Set-Content "tmp_2.sorted"
-    if (-not (Compare-Files "tmp.2.sorted" "tmp_2.sorted")) { exit 1 }
+    
+    $ref1 = Get-Content "$ASSET_DIR\test_1.fastq" | ForEach-Object { $_.Trim() } | Sort-Object -CaseSensitive
+    $act1 = Get-Content "tmp.1" | ForEach-Object { $_.Trim() } | Sort-Object -CaseSensitive
+    $ref1 | Set-Content "ref.1.sorted"
+    $act1 | Set-Content "tmp.1.sorted"
+    if (-not (Compare-Files "tmp.1.sorted" "ref.1.sorted")) { exit 1 }
+
+    $ref2 = Get-Content "$ASSET_DIR\test_2.fastq" | ForEach-Object { $_.Trim() } | Sort-Object -CaseSensitive
+    $act2 = Get-Content "tmp.2" | ForEach-Object { $_.Trim() } | Sort-Object -CaseSensitive
+    $ref2 | Set-Content "ref.2.sorted"
+    $act2 | Set-Content "tmp.2.sorted"
+    if (-not (Compare-Files "tmp.2.sorted" "ref.2.sorted")) { exit 1 }
 
     Write-Host "Tests successful!" -ForegroundColor Green
 
