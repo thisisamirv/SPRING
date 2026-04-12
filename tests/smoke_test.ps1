@@ -66,9 +66,7 @@ function Remove-SmokeWorkDir {
 
 function Invoke-Spring {
     param(
-        [string]$BinaryPath = $global:SPRING_BIN,
-        [Parameter(ValueFromRemainingArguments=$true)]
-        $RemainingArgs
+        [string]$BinaryPath = $global:SPRING_BIN
     )
     $fullArgs = @()
     if ($env:SPRING_BIN_WRAPPER) {
@@ -81,8 +79,8 @@ function Invoke-Spring {
         $fullArgs += $env:SPRING_TEST_ARGS.Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries)
     }
 
-    if ($RemainingArgs) {
-        $fullArgs += $RemainingArgs
+    if ($args) {
+        $fullArgs += $args
     }
 
     if ($fullArgs.Count -eq 0) { return }
