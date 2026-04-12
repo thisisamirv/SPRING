@@ -5,6 +5,7 @@ $ROOT_DIR = (Get-Item "$SCRIPT_DIR\..").FullName
 $ASSET_DIR = Join-Path $ROOT_DIR "assets\sample-data"
 $BUILD_DIR = Join-Path $ROOT_DIR "build"
 $SPRING_BIN = Join-Path $BUILD_DIR "spring2.exe"
+$SPRING_PREVIEW_BIN = Join-Path $BUILD_DIR "spring2-preview.exe"
 
 $SPRING_SMOKE_MODE = $env:SPRING_SMOKE_MODE
 if (-not $SPRING_SMOKE_MODE) { $SPRING_SMOKE_MODE = "full" }
@@ -24,7 +25,7 @@ function Write-SmokeDebug {
     param ($exitCode)
     Write-Host "Smoke debug: case=$($global:CURRENT_SMOKE_CASE) exit_code=$exitCode" -ForegroundColor Yellow
     Write-Host "Smoke debug: pwd=$(Get-Location)" -ForegroundColor Yellow
-    
+
     if (Test-Path ".") {
         Write-Host "Smoke debug: Directory listing:" -ForegroundColor Yellow
         Get-ChildItem -File | Select-Object Name, Length, LastWriteTime | ForEach-Object {
@@ -48,7 +49,8 @@ function Write-SmokeDebug {
                 Write-Host "Smoke debug: tar contents for $archive" -ForegroundColor Yellow
                 try {
                     tar -tf $archive 2>&1 | Out-String | Write-Host -ForegroundColor Yellow
-                } catch {
+                }
+                catch {
                     # Ignore tar errors
                 }
             }
@@ -63,41 +65,40 @@ function Remove-SmokeWorkDir {
 }
 
 function Invoke-Spring {
+    param(
+        [string]$BinaryPath = $global:SPRING_BIN,
+        [Parameter(ValueFromRemainingArguments=$true)]
+        $RemainingArgs
+    )
     $fullArgs = @()
     if ($env:SPRING_BIN_WRAPPER) {
         $fullArgs += $env:SPRING_BIN_WRAPPER.Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries)
     }
-    
-    $fullArgs += $SPRING_BIN
-    
+
+    $fullArgs += $BinaryPath
+
     if ($env:SPRING_TEST_ARGS) {
         $fullArgs += $env:SPRING_TEST_ARGS.Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries)
     }
-    
-    # Unroll arguments if they were passed as an array subexpression (e.g., Invoke-Spring @(...))
-    # which causes them to be nested in $args[0].
-    foreach ($arg in $args) {
-        if ($arg -is [array]) {
-            $fullArgs += $arg
-        } else {
-            $fullArgs += $arg
-        }
+
+    if ($RemainingArgs) {
+        $fullArgs += $RemainingArgs
     }
 
     if ($fullArgs.Count -eq 0) { return }
 
     $exe = $fullArgs[0]
-    [string[]]$remainingArgs = $fullArgs[1..($fullArgs.Count - 1)]
+    [string[]]$cmdArgs = $fullArgs[1..($fullArgs.Count - 1)]
 
-    Write-Host "Running Spring command: $exe $([string]::Join(' ', $remainingArgs))" -ForegroundColor Cyan
-    
+    Write-Host "Running Spring command: $exe $([string]::Join(' ', $cmdArgs))" -ForegroundColor Cyan
+
     $exitCode = 0
     if ($SPRING_COMMAND_TIMEOUT_SECONDS -gt 0 -and (Get-Command "timeout" -ErrorAction SilentlyContinue)) {
-        $process = Start-Process -FilePath $exe -ArgumentList $remainingArgs -Wait -NoNewWindow -PassThru
+        $process = Start-Process -FilePath $exe -ArgumentList $cmdArgs -Wait -NoNewWindow -PassThru
         $exitCode = $process.ExitCode
     }
     else {
-        & $exe @remainingArgs
+        & $exe @cmdArgs
         $exitCode = $LASTEXITCODE
     }
 
@@ -170,13 +171,14 @@ public class GZipHelper {
 
 try {
     Add-Type -TypeDefinition $GZipHelperSource -ErrorAction SilentlyContinue
-} catch {}
+}
+catch {}
 
 function Expand-GzipFile {
     param($infile, $outfile)
     $infileFull = (Get-Item $infile).FullName
     $outfileFull = [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $outfile))
-    
+
     try {
         [GZipHelper]::Decompress($infileFull, $outfileFull)
     }
@@ -187,7 +189,7 @@ function Expand-GzipFile {
 
 function Compare-Files {
     param ($leftPath, $rightPath)
-    
+
     if (-not (Test-Path $leftPath)) {
         Write-Host "Left comparison file does not exist: $leftPath" -ForegroundColor Red
         return $false
@@ -200,31 +202,46 @@ function Compare-Files {
     # Normalize line endings (strip CR) for robust comparison on Windows
     $bytes1 = [System.IO.File]::ReadAllBytes((Get-Item $leftPath).FullName)
     $bytes2 = [System.IO.File]::ReadAllBytes((Get-Item $rightPath).FullName)
-    
-    $clean1 = [System.Linq.Enumerable]::ToArray([System.Linq.Enumerable]::Where($bytes1, [Func[byte,bool]]{ param($b) $b -ne 0x0D }))
-    $clean2 = [System.Linq.Enumerable]::ToArray([System.Linq.Enumerable]::Where($bytes2, [Func[byte,bool]]{ param($b) $b -ne 0x0D }))
+
+    $clean1 = [System.Linq.Enumerable]::ToArray([System.Linq.Enumerable]::Where($bytes1, [Func[byte, bool]] { param($b) $b -ne 0x0D }))
+    $clean2 = [System.Linq.Enumerable]::ToArray([System.Linq.Enumerable]::Where($bytes2, [Func[byte, bool]] { param($b) $b -ne 0x0D }))
 
     $ms1 = New-Object System.IO.MemoryStream($clean1, $false)
     $ms2 = New-Object System.IO.MemoryStream($clean2, $false)
-    
+
     $hash1 = (Get-FileHash -InputStream $ms1).Hash
     $hash2 = (Get-FileHash -InputStream $ms2).Hash
-    
+
     $ms1.Dispose()
     $ms2.Dispose()
 
     if ($hash1 -ne $hash2) {
         Write-Host "Files differ in hash (normalized): $leftPath ($($clean1.Length) bytes) vs $rightPath ($($clean2.Length) bytes)" -ForegroundColor Red
-        
+
         # Diagnostic: show line counts
         $lines1 = Get-Content $leftPath
         $lines2 = Get-Content $rightPath
         Write-Host "Lines: $($lines1.Count) vs $($lines2.Count)" -ForegroundColor Yellow
-        
+
         # Diagnostic: show diff
         Write-Host "Showing first 10 differences (Compare-Object):" -ForegroundColor Yellow
         Compare-Object $lines1 $lines2 | Select-Object -First 10 | Out-String | Write-Host -ForegroundColor Yellow
 
+        return $false
+    }
+    return $true
+}
+
+function Compare-Lines {
+    param ($leftPath, $rightPath)
+    if (-not (Test-Path $leftPath)) { return $false }
+    if (-not (Test-Path $rightPath)) { return $false }
+
+    $l1 = (Get-Content $leftPath | Measure-Object -Line).Lines
+    $l2 = (Get-Content $rightPath | Measure-Object -Line).Lines
+
+    if ($l1 -ne $l2) {
+        Write-Host "Line count differ: $leftPath ($l1) vs $rightPath ($l2)" -ForegroundColor Red
         return $false
     }
     return $true
@@ -395,7 +412,7 @@ try {
     Write-SmokeCase "sorted output round-trip paired"
     Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" "$ASSET_DIR\test_2.fastq" -o abcd -s o -t 8
     Invoke-Spring -d -i abcd -o tmp -t 5
-    
+
     $ref1 = Get-Content "$ASSET_DIR\test_1.fastq" | ForEach-Object { $_.Trim() } | Sort-Object -CaseSensitive
     $act1 = Get-Content "tmp.1" | ForEach-Object { $_.Trim() } | Sort-Object -CaseSensitive
     $ref1 | Set-Content "ref.1.sorted"
@@ -407,6 +424,61 @@ try {
     $ref2 | Set-Content "ref.2.sorted"
     $act2 | Set-Content "tmp.2.sorted"
     if (-not (Compare-Files "tmp.2.sorted" "ref.2.sorted")) { exit 1 }
+
+    # Long-read mode test
+    Write-SmokeCase "long-read mode round-trip"
+    Invoke-Spring -c -i "$ASSET_DIR\sample.fastq" -o abcd
+    Invoke-Spring -d -i abcd -o tmp
+    if (-not (Compare-Files "tmp" "$ASSET_DIR\sample.fastq")) { exit 1 }
+
+    # Memory capping test
+    Write-SmokeCase "memory capping test"
+    Invoke-Spring -m 0.1 -c -i "$ASSET_DIR\test_1.fastq" -o abcd
+    Invoke-Spring -m 0.1 -d -i abcd -o tmp
+    if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
+
+    # Archive Notes & Previewer Test
+    Write-SmokeCase "archive notes & previewer validation"
+    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" -n "SMOKE_TEST_NOTE" -o abcd
+    $previewOut = "preview.out"
+    Invoke-Spring -BinaryPath $SPRING_PREVIEW_BIN abcd | Out-File $previewOut
+    $previewContent = Get-Content $previewOut -Raw
+    if ($previewContent -notmatch "SMOKE_TEST_NOTE") {
+        Write-Error "Failed to find custom note in preview tool output"
+    }
+    if ($previewContent -notmatch "test_1\.fastq") {
+        Write-Error "Failed to find original filename in preview tool output"
+    }
+
+    # Lossy quality mode: ill_bin
+    Write-SmokeCase "lossy mode: ill_bin"
+    Invoke-Spring -c -q ill_bin -i "$ASSET_DIR\test_1.fastq" -o abcd
+    Invoke-Spring -d -i abcd -o tmp
+    if (-not (Compare-Lines "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
+
+    # Lossy quality mode: qvz
+    Write-SmokeCase "lossy mode: qvz"
+    Invoke-Spring -c -q qvz 1 -i "$ASSET_DIR\test_1.fastq" -o abcd
+    Invoke-Spring -d -i abcd -o tmp
+    if (-not (Compare-Lines "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
+
+    # Lossy quality mode: binary thresholding
+    Write-SmokeCase "lossy mode: binary"
+    Invoke-Spring -c -q binary 30 40 10 -i "$ASSET_DIR\test_1.fastq" -o abcd
+    Invoke-Spring -d -i abcd -o tmp
+    if (-not (Compare-Lines "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
+
+    # Data Stripping: IDs
+    Write-SmokeCase "stripping: ids"
+    Invoke-Spring -c -s i -i "$ASSET_DIR\test_1.fastq" -o abcd
+    Invoke-Spring -d -i abcd -o tmp
+    if (-not (Compare-Lines "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
+
+    # Data Stripping: Quality
+    Write-SmokeCase "stripping: quality"
+    Invoke-Spring -c -s q -i "$ASSET_DIR\test_1.fastq" -o abcd
+    Invoke-Spring -d -i abcd -o tmp
+    if (-not (Compare-Lines "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
 
     Write-Host "Tests successful!" -ForegroundColor Green
 
