@@ -203,19 +203,25 @@ bool matches_paired_id_code(const std::string &id_1, const std::string &id_2,
   case 2:
     return id_1 == id_2;
   case 3: {
-    size_t index = 0;
-    while (index < len && id_1[index] == id_2[index]) {
-      if (id_1[index] == ' ') {
-        if (index + 1 < len && id_1[index + 1] == '1' &&
-            id_2[index + 1] == '2') {
-          ++index;
-        } else {
-          return false;
+    // Look for any space that is followed by '1' in id_1 and '2' in id_2,
+    // with everything else being identical.
+    for (size_t i = 0; i + 1 < len; ++i) {
+      if (id_1[i] == ' ' && id_1[i + 1] == '1' && id_2[i + 1] == '2') {
+        // Check if all other characters match
+        bool mismatch = false;
+        for (size_t j = 0; j < len; ++j) {
+          if (j == i + 1)
+            continue;
+          if (id_1[j] != id_2[j]) {
+            mismatch = true;
+            break;
+          }
         }
+        if (!mismatch)
+          return true;
       }
-      ++index;
     }
-    return index == len;
+    return false;
   }
   default:
     return false;
@@ -998,17 +1004,22 @@ bool check_id_pattern(const std::string &id_1, const std::string &id_2,
 }
 
 void modify_id(std::string &id, const uint8_t paired_id_code) {
+  if (id.empty())
+    return;
   if (paired_id_code == 2)
     return;
   else if (paired_id_code == 1) {
-    id.back() = '2';
+    if (id.back() == '1')
+      id.back() = '2';
     return;
   } else if (paired_id_code == 3) {
-    int i = 0;
-    while (id[i] != ' ')
-      i++;
-    id[i + 1] = '2';
-    return;
+    // Find the space followed by '1' and change it to '2'
+    for (size_t i = 0; i + 1 < id.size(); ++i) {
+      if (id[i] == ' ' && id[i + 1] == '1') {
+        id[i + 1] = '2';
+        return;
+      }
+    }
   }
 }
 

@@ -9,7 +9,6 @@ if (-not $SPRING_BIN) { $SPRING_BIN = Join-Path $BUILD_DIR "spring2.exe" }
 
 $SPRING_PREVIEW_BIN = $env:SPRING_PREVIEW_BIN
 if (-not $SPRING_PREVIEW_BIN) { $SPRING_PREVIEW_BIN = Join-Path $BUILD_DIR "spring2-preview.exe" }
-if (-not $SPRING_SMOKE_MODE) { $SPRING_SMOKE_MODE = "full" }
 
 $SPRING_COMMAND_TIMEOUT_SECONDS = $env:SPRING_COMMAND_TIMEOUT_SECONDS
 if (-not $SPRING_COMMAND_TIMEOUT_SECONDS) { $SPRING_COMMAND_TIMEOUT_SECONDS = 0 }
@@ -177,8 +176,8 @@ function Compare-Lines {
     if (-not (Test-Path $leftPath)) { return $false }
     if (-not (Test-Path $rightPath)) { return $false }
 
-    $l1 = (Get-Content $leftPath).Count
-    $l2 = (Get-Content $rightPath).Count
+    $l1 = [System.IO.File]::ReadAllLines((Get-Item $leftPath).FullName).Count
+    $l2 = [System.IO.File]::ReadAllLines((Get-Item $rightPath).FullName).Count
 
     if ($l1 -ne $l2) {
         Write-Host "Line count differ: $leftPath ($l1) vs $rightPath ($l2)" -ForegroundColor Red
@@ -199,60 +198,9 @@ try {
         exit 1
     }
 
+
     Push-Location $WORK_DIR
 
-    if ($SPRING_SMOKE_MODE -eq "quick") {
-        Write-SmokeCase "single fastq round-trip"
-        Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" -o abcd
-        Invoke-Spring -d -i abcd -o tmp
-        if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
-
-        Write-SmokeCase "single fasta round-trip"
-        Invoke-Spring -c -i "$ASSET_DIR\test_1.fasta" -o abcd
-        Invoke-Spring -d -i abcd -o tmp
-        if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fasta")) { exit 1 }
-
-        Write-SmokeCase "paired fastq round-trip"
-        Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" "$ASSET_DIR\test_2.fastq" -o abcd
-        Invoke-Spring -d -i abcd -o tmp
-        if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
-        if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
-
-        Write-SmokeCase "gzipped fastq input round-trip"
-        Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq.gz" -o abcd
-        Invoke-Spring -d -i abcd -o tmp
-        if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
-
-        Write-Host "Tests successful!" -ForegroundColor Green
-        exit 0
-    }
-
-    if ($SPRING_SMOKE_MODE -eq "windows-quick") {
-        Write-SmokeCase "single fastq long-mode round-trip"
-        Initialize-SmokeInput "$ASSET_DIR\test_1.fastq" "win-single-input.fastq"
-        Invoke-Spring -c -i win-single-input.fastq -o win-single
-        Invoke-Spring -d -i win-single -o win-single-out
-        if (-not (Compare-Files "win-single-out" "$ASSET_DIR\test_1.fastq")) { exit 1 }
-
-        Write-SmokeCase "paired fastq long-mode round-trip"
-        Initialize-SmokeInput "$ASSET_DIR\test_1.fastq" "win-paired-input-1.fastq"
-        Initialize-SmokeInput "$ASSET_DIR\test_2.fastq" "win-paired-input-2.fastq"
-        Invoke-Spring -c -i win-paired-input-1.fastq win-paired-input-2.fastq -o win-paired
-        Invoke-Spring -d -i win-paired -o win-paired-out
-        if (-not (Compare-Files "win-paired-out.1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
-        if (-not (Compare-Files "win-paired-out.2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
-
-        Write-SmokeCase "gzipped fastq long-mode round-trip"
-        Initialize-SmokeInput "$ASSET_DIR\test_1.fastq.gz" "win-gzip-input.fastq.gz"
-        Invoke-Spring -c -i win-gzip-input.fastq.gz -o win-gzip
-        Invoke-Spring -d -i win-gzip -o win-gzip-out
-        if (-not (Compare-Files "win-gzip-out" "$ASSET_DIR\test_1.fastq")) { exit 1 }
-
-        Write-Host "Tests successful!" -ForegroundColor Green
-        exit 0
-    }
-
-    # Full smoke test mode
     Write-SmokeCase "fastq round-trip"
     Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" -o abcd
     Invoke-Spring -d -i abcd -o tmp
@@ -381,7 +329,7 @@ try {
     Invoke-Spring -c -q qvz 1 -i "$ASSET_DIR\test_1.fastq" -o abcd
     Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Lines "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
-
+        
     # Lossy quality mode: binary thresholding
     Write-SmokeCase "lossy mode: binary"
     Invoke-Spring -c -q binary 30 40 10 -i "$ASSET_DIR\test_1.fastq" -o abcd

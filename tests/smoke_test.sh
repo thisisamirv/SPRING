@@ -11,7 +11,6 @@ SPRING_PREVIEW_BIN="${SPRING_PREVIEW_BIN:-$BUILD_DIR/spring2-preview}"
 SPRING_BIN_CMD=()
 SPRING_PREVIEW_BIN_CMD=()
 SPRING_TEST_ARGS_CMD=()
-SPRING_SMOKE_MODE="${SPRING_SMOKE_MODE:-full}"
 SPRING_COMMAND_TIMEOUT_SECONDS="${SPRING_COMMAND_TIMEOUT_SECONDS:-0}"
 mkdir -p "$ROOT_DIR/tests/output"
 WORK_DIR=$(mktemp -d "$ROOT_DIR/tests/output/smoke-test.XXXXXX")
@@ -139,53 +138,6 @@ prepare_local_input() {
 }
 
 cd "$WORK_DIR"
-
-if [[ "$SPRING_SMOKE_MODE" == "quick" ]]; then
-	announce_case "single fastq round-trip"
-	run_spring -c -i "$ASSET_DIR/test_1.fastq" -o abcd
-	run_spring -d -i abcd -o tmp
-	compare_files tmp "$ASSET_DIR/test_1.fastq"
-
-	announce_case "single fasta round-trip"
-	run_spring -c -i "$ASSET_DIR/test_1.fasta" -o abcd
-	run_spring -d -i abcd -o tmp
-	compare_files tmp "$ASSET_DIR/test_1.fasta"
-
-	announce_case "paired fastq round-trip"
-	run_spring -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd
-	run_spring -d -i abcd -o tmp
-	compare_files tmp.1 "$ASSET_DIR/test_1.fastq"
-	compare_files tmp.2 "$ASSET_DIR/test_2.fastq"
-
-	announce_case "gzipped fastq input round-trip"
-	run_spring -c -i "$ASSET_DIR/test_1.fastq.gz" -o abcd
-	run_spring -d -i abcd -o tmp
-	compare_files tmp "$ASSET_DIR/test_1.fastq"
-
-	echo "Tests successful!"
-	exit 0
-fi
-
-if [[ "$SPRING_SMOKE_MODE" == "windows-quick" ]]; then
-	announce_case "single fastq long-mode round-trip"
-	run_spring -c -i "$ASSET_DIR/sample.fastq" -o abcd
-	run_spring -d -i abcd -o tmp
-	compare_files tmp "$ASSET_DIR/sample.fastq"
-
-	announce_case "paired fastq long-mode round-trip"
-	run_spring -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd
-	run_spring -d -i abcd -o tmp
-	compare_files tmp.1 "$ASSET_DIR/test_1.fastq"
-	compare_files tmp.2 "$ASSET_DIR/test_2.fastq"
-
-	announce_case "gzipped fastq long-mode round-trip"
-	run_spring -c -i "$ASSET_DIR/test_1.fastq.gz" -o abcd
-	run_spring -d -i abcd -o tmp
-	compare_files tmp "$ASSET_DIR/test_1.fastq"
-
-	echo "Tests successful!"
-	exit 0
-fi
 
 announce_case "fastq round-trip"
 run_spring -c -i "$ASSET_DIR/test_1.fastq" -o abcd

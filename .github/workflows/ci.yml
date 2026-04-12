@@ -140,7 +140,6 @@ jobs:
           SPRING_BIN: ${{ github.workspace }}/spring2/bin/spring2.exe
           SPRING_PREVIEW_BIN: ${{ github.workspace }}/spring2/bin/spring2-preview.exe
           SPRING_TEST_ARGS: -t 1 --memory 1
-          SPRING_SMOKE_MODE: windows-quick
         run: ./tests/smoke_test.ps1
 
   static-analysis:
