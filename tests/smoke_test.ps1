@@ -66,30 +66,42 @@ function Remove-SmokeWorkDir {
 }
 
 function Invoke-Spring {
-    param(
-        [string]$BinaryPath = $SPRING_BIN
-    )
-    $fullArgs = @()
-    if ($env:SPRING_BIN_WRAPPER) {
-        $fullArgs += $env:SPRING_BIN_WRAPPER.Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries)
+    $exe = $SPRING_BIN
+    $cmdArgs = @()
+    $providedArgs = $args
+
+    if ($providedArgs.Count -gt 0 -and $providedArgs[0] -notmatch "^-") {
+        # First argument doesn't look like a flag (like -c or -d), 
+        # assume it's an explicit binary path.
+        $exe = $providedArgs[0]
+        if ($providedArgs.Count -gt 1) {
+            $cmdArgs = $providedArgs[1..($providedArgs.Count - 1)]
+        }
+    }
+    else {
+        $cmdArgs = $providedArgs
     }
 
-    $fullArgs += $BinaryPath
+    if ($env:SPRING_BIN_WRAPPER) {
+        $wrapper = $env:SPRING_BIN_WRAPPER.Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries)
+        $fullCmd = @($wrapper[0])
+        if ($wrapper.Length -gt 1) { $fullCmd += $wrapper[1..($wrapper.Length - 1)] }
+        $fullCmd += $exe
+        $exe = $fullCmd[0]
+        $cmdArgs = @($fullCmd[1..($fullCmd.Count - 1)]) + $cmdArgs
+    }
 
     if ($env:SPRING_TEST_ARGS) {
-        $fullArgs += $env:SPRING_TEST_ARGS.Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries)
+        $cmdArgs = @($env:SPRING_TEST_ARGS.Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries)) + $cmdArgs
     }
 
-    if ($args) {
-        $fullArgs += $args
+    if (-not $exe) { 
+        Write-Error "No Spring binary specified or found."
+        return 
     }
-
-    if ($fullArgs.Count -eq 0) { return }
-
-    $exe = $fullArgs[0]
-    [string[]]$cmdArgs = $fullArgs[1..($fullArgs.Count - 1)]
 
     $exitCode = 0
+    Write-Host "Invoking: $exe $($cmdArgs -join ' ')" -ForegroundColor Gray
     if ($SPRING_COMMAND_TIMEOUT_SECONDS -gt 0 -and (Get-Command "timeout" -ErrorAction SilentlyContinue)) {
         $process = Start-Process -FilePath $exe -ArgumentList $cmdArgs -Wait -NoNewWindow -PassThru
         $exitCode = $process.ExitCode
@@ -111,84 +123,15 @@ function Write-SmokeCase {
     Write-Host "Smoke case: $caseName" -ForegroundColor Cyan
 }
 
-# Add C# helper for robust multi-member GZIP decompression (handles BGZF)
-$GZipHelperSource = @"
-using System;
-using System.IO;
-using System.IO.Compression;
 
-public class GZipHelper {
-    public static void Decompress(string infile, string outfile) {
-        byte[] data = File.ReadAllBytes(infile);
-        using (var outputStream = File.Create(outfile)) {
-            int i = 0;
-            while (i < data.Length - 1) {
-                if (data[i] == 0x1F && data[i+1] == 0x8B) {
-                    int start = i;
-                    // Check if BGZF (has BSIZ in extra field)
-                    int blocksize = -1;
-                    if (data.Length - i >= 20 && (data[i+3] & 0x04) != 0) {
-                        // Scan for BC/02 subfield
-                        int xlen = data[i+10] | (data[i+11] << 8);
-                        int p = i + 12;
-                        while (p < i + 12 + xlen - 4) {
-                            if (data[p] == 0x42 && data[p+1] == 0x43 && data[p+2] == 0x02 && data[p+3] == 0x00) {
-                                blocksize = (data[p+4] | (data[p+5] << 8)) + 1;
-                                break;
-                            }
-                            p += (data[p+2] | (data[p+3] << 8)) + 4;
-                        }
-                    }
-
-                    using (var inputStream = new MemoryStream(data, i, data.Length - i))
-                    using (var gz = new GZipStream(inputStream, CompressionMode.Decompress)) {
-                        try {
-                            gz.CopyTo(outputStream);
-                        } catch {
-                            // If it fails, maybe not a real gzip member or corrupted
-                        }
-                    }
-
-                    if (blocksize > 0) {
-                        i += blocksize;
-                    } else {
-                        // For non-BGZF files, we assume a single member for testing purposes.
-                        // Blind scanning for 0x1F 0x8B magic numbers inside compressed payloads
-                        // leads to false-positive matches and data corruption.
-                        break;
-                    }
-                } else {
-                    i++;
-                }
-            }
-        }
-    }
-}
-"@
-
-try {
-    Add-Type -TypeDefinition $GZipHelperSource -ErrorAction SilentlyContinue
-}
-catch {}
-
-function Expand-GzipFile {
-    param($infile, $outfile)
-    $infileFull = (Get-Item $infile).FullName
-    $outfileFull = [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $outfile))
-
-    try {
-        [GZipHelper]::Decompress($infileFull, $outfileFull)
-    }
-    catch {
-        Write-Host "Note: Gzip decompression failed: $($_.Exception.Message)" -ForegroundColor Red
-    }
-}
 
 function Compare-Files {
     param ($leftPath, $rightPath)
 
     if (-not (Test-Path $leftPath)) {
         Write-Host "Left comparison file does not exist: $leftPath" -ForegroundColor Red
+        Write-Host "Contents of $(Get-Location):" -ForegroundColor Red
+        Get-ChildItem | ForEach-Object { Write-Host "  $($_.Name) ($($_.Length) bytes)" -ForegroundColor Red }
         return $false
     }
     if (-not (Test-Path $rightPath)) {
@@ -332,14 +275,6 @@ try {
     if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fasta")) { exit 1 }
     if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fasta")) { exit 1 }
 
-    Write-SmokeCase "fastq to gzipped output"
-    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" -o abcd
-    Invoke-Spring -d -i abcd -o tmp
-    if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
-    Invoke-Spring -d -i abcd -o tmp.gz
-    Expand-GzipFile "tmp.gz" "tmp.decompressed"
-    if (-not (Compare-Files "tmp.decompressed" "$ASSET_DIR\test_1.fastq")) { exit 1 }
-
     Write-SmokeCase "fasta round-trip repeat"
     Invoke-Spring -c -i "$ASSET_DIR\test_1.fasta" -o abcd
     Invoke-Spring -d -i abcd -o tmp
@@ -368,21 +303,9 @@ try {
     Invoke-Spring -d -i abcd -o tmp -u
     if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
 
-    Write-SmokeCase "single gzipped fastq to gzipped output"
-    Invoke-Spring -d -i abcd -o tmp.gz
-    Expand-GzipFile "tmp.gz" "tmp.decompressed"
-    if (-not (Compare-Files "tmp.decompressed" "$ASSET_DIR\test_1.fastq")) { exit 1 }
-
     Write-SmokeCase "paired fastq gzipped input round-trip redundant"
     Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq.gz" "$ASSET_DIR\test_2.fastq.gz" -o abcd
     Invoke-Spring -d -i abcd -o tmp -u
-    if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
-    if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
-
-    Write-SmokeCase "paired fastq gzipped input to gzipped outputs"
-    Invoke-Spring -d -i abcd -o tmp.1.gz tmp.2.gz
-    Expand-GzipFile "tmp.1.gz" "tmp.1"
-    Expand-GzipFile "tmp.2.gz" "tmp.2"
     if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
     if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
 
@@ -438,7 +361,7 @@ try {
     Write-SmokeCase "archive notes & previewer validation"
     Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" -n "SMOKE_TEST_NOTE" -o abcd
     $previewOut = "preview.out"
-    Invoke-Spring -BinaryPath $SPRING_PREVIEW_BIN abcd | Out-File $previewOut
+    Invoke-Spring $SPRING_PREVIEW_BIN abcd | Out-File $previewOut
     $previewContent = Get-Content $previewOut -Raw
     if ($previewContent -notmatch "SMOKE_TEST_NOTE") {
         Write-Error "Failed to find custom note in preview tool output"

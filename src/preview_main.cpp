@@ -17,10 +17,17 @@ void preview(const std::string &archive_path) {
   std::filesystem::create_directories(temp_dir);
 
   try {
+    const std::string null_dev =
+#ifdef _WIN32
+        "nul";
+#else
+        "/dev/null";
+#endif
+
     const std::string untar_command =
         "tar -xf " + shell_quote(shell_path(archive_path)) + " -C " +
-        shell_quote(shell_path(temp_dir)) +
-        " --wildcards '*cp.bin' 2>/dev/null || " + "tar -xf " +
+        shell_quote(shell_path(temp_dir)) + " --wildcards '*cp.bin' 2>" +
+        null_dev + " || " + "tar -xf " +
         shell_quote(shell_path(archive_path)) + " -C " +
         shell_quote(shell_path(temp_dir)) + " cp.bin ./cp.bin";
 
