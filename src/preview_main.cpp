@@ -1,3 +1,6 @@
+// Implements the standalone spring2-preview utility for extracting and displaying
+// archive metadata, original filenames, and format notes without decompression.
+
 #include <filesystem>
 #include <fstream>
 #include <iomanip>

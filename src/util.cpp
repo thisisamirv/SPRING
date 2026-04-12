@@ -19,8 +19,6 @@
 #include <zstd.h>
 
 #include "omp.h"
-#include "progress.h"
-#include "params.h"
 #include "qvz/include/qvz.h"
 
 namespace spring {
@@ -111,8 +109,8 @@ const std::array<char, 5> &int_to_dna_n_lookup() {
 
 void write_fastq_record(std::ostream &out, const std::string &id,
                         const std::string &read,
-                        const std::string *quality_or_null,
-                        const bool use_crlf, const bool fasta_mode) {
+                        const std::string *quality_or_null, const bool use_crlf,
+                        const bool fasta_mode) {
   const char *eol = use_crlf ? "\r\n" : "\n";
   out << id << eol;
   out << read << eol;
@@ -159,8 +157,8 @@ void write_gzip_fastq_block(std::ofstream &output_stream, std::string *id_array,
     std::ostringstream plain_output;
     const read_range &range = thread_ranges[static_cast<size_t>(tid)];
     write_fastq_records_range(plain_output, id_array, read_array,
-                              quality_or_null, range.start, range.end,
-                              use_crlf, fasta_mode);
+                              quality_or_null, range.start, range.end, use_crlf,
+                              fasta_mode);
     gzip_compressed[tid] = gzip_compress_string(plain_output.str(), gzip_level);
   }
 
@@ -530,10 +528,10 @@ uint32_t read_fastq_block(std::istream *input_stream, std::string *id_array,
 void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
                        std::string *read_array,
                        const std::string *quality_array,
-                       const uint32_t &num_reads,
-                       const int &num_thr, const bool &gzip_flag,
-                       const bool &bgzf_flag, const int &compression_level,
-                       const bool use_crlf, const bool fasta_mode) {
+                       const uint32_t &num_reads, const int &num_thr,
+                       const bool &gzip_flag, const bool &bgzf_flag,
+                       const int &compression_level, const bool use_crlf,
+                       const bool fasta_mode) {
   const std::string *quality_or_null = quality_array;
   if (!gzip_flag) {
     write_fastq_records_range(output_stream, id_array, read_array,
@@ -556,7 +554,8 @@ void write_bgzf_fastq_block(std::ofstream &output_stream, std::string *id_array,
                             std::string *read_array,
                             const std::string *quality_array,
                             const uint32_t &num_reads, const int &num_thr,
-                            const int &compression_level, const bool use_crlf, const bool fasta_mode) {
+                            const int &compression_level, const bool use_crlf,
+                            const bool fasta_mode) {
   if (num_reads == 0)
     return;
 

@@ -1,3 +1,6 @@
+// Provides cross-platform, console-based progress reporting and ETA estimation
+// during compression and decompression stages.
+
 #include "progress.h"
 #include <cmath>
 #include <iomanip>

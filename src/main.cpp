@@ -108,13 +108,9 @@ int print_invalid_mode_and_exit(const std::string &options_description) {
 std::string build_options_description() {
   std::ostringstream options;
   options
+      << "Allowed options:\n\n"
+      << "General Options:\n"
       << "  -h [ --help ]                   produce help message\n"
-      << "  -c [ --compress ]               compress\n"
-      << "  -d [ --decompress ]             decompress\n"
-      << "  -u [ --unzip ]                  during decompression, force\n"
-      << "                                  output to be uncompressed (even "
-         "if\n"
-      << "                                  original was .gz)\n"
       << "  -i [ --input ] arg              input file name (two files for "
          "paired end)\n"
       << "  -o [ --output ] arg             output file name\n"
@@ -138,6 +134,17 @@ std::string build_options_description() {
       << "                                  effective thread count using about "
          "1 GB per\n"
       << "                                  worker thread (0 disables)\n"
+      << "  -v [ --verbose ]                enable extensive logging (default: "
+         "progress bar)\n"
+      << "--------------------------------------------------------------------------------\n"
+      << "Compression Options:\n"
+      << "  -c [ --compress ]               compress\n"
+      << "  -l [ --level ] arg (=6)         compression level (1-9) to use for "
+         "output\n"
+      << "                                  (.gz) formatting (passed to gzip "
+         "unchanged\n"
+      << "                                  and scaled to Zstd 1-22 "
+         "internally)\n"
       << "  -s [ --strip ] arg              discard data: i (ids), o (order), "
          "q (quality)\n"
       << "                                  Example: --strip io to drop ids "
@@ -156,15 +163,14 @@ std::string build_options_description() {
       << "                                      thresholding, quality binned "
          "to high if >=\n"
       << "                                      thr and to low if < thr)\n"
-      << "  -l [ --level ] arg (=6)         compression level (1-9) to use for "
-         "output\n"
-      << "                                  (.gz) formatting (passed to gzip "
-         "unchanged\n"
-      << "                                  and scaled to Zstd 1-22 "
-         "internally)\n"
       << "  -n [ --note ] arg               add a custom note to the archive\n"
-      << "  -v [ --verbose ]                enable extensive logging (default: "
-         "progress bar)";
+      << "--------------------------------------------------------------------------------\n"
+      << "Decompression Options:\n"
+      << "  -d [ --decompress ]             decompress\n"
+      << "  -u [ --unzip ]                  during decompression, force\n"
+      << "                                  output to be uncompressed (even "
+         "if\n"
+      << "                                  original was .gz)";
   return options.str();
 }
 

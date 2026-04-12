@@ -1,3 +1,6 @@
+// Implements background and multi-threaded BGZF (Block Gzip Format) handling
+// used to read and process gzipped FASTQ inputs efficiently.
+
 #include "bgzf.h"
 #include <algorithm>
 #include <cstring>

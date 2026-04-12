@@ -1,3 +1,6 @@
+// Provides macro fallbacks to support the PTHash dependency under Windows MSVC
+// or MinGW compilers by defining missing POSIX or built-in functions.
+
 #ifndef PTHASH_WINDEFS_H
 #define PTHASH_WINDEFS_H
 

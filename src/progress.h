@@ -1,3 +1,6 @@
+// Declares the progress tracking functionality for terminal output, including
+// formatted bars, logging interfaces, and ETA calculations.
+
 #ifndef SPRING_PROGRESS_H
 #define SPRING_PROGRESS_H
 

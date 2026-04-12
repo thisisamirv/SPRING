@@ -55,11 +55,9 @@ Current command-line help:
 
 ```text
 Allowed options:
+
+General Options:
   -h [ --help ]                   produce help message
-  -c [ --compress ]               compress
-  -d [ --decompress ]             decompress
-  -u [ --unzip ]                  during decompression, force output to be
-                                  uncompressed (even if original was .gz)
   -i [ --input ] arg              input file name (two files for paired end)
   -o [ --output ] arg             output file name
                                     - if not specified, it uses original input
@@ -75,6 +73,13 @@ Allowed options:
   -m [ --memory ] arg (=0)        approximate memory budget in GB; reduces
                                   effective thread count using about 1 GB per
                                   worker thread (0 disables)
+  -v [ --verbose ]                enable extensive logging (default: progress bar)
+--------------------------------------------------------------------------------
+Compression Options:
+  -c [ --compress ]               compress
+  -l [ --level ] arg (=6)         compression level (1-9) to use for output
+                                  (.gz) formatting (passed to gzip unchanged
+                                  and scaled to Zstd 1-22 internally)
   -s [ --strip ] arg              discard data: i (ids), o (order), q (quality)
                                   Example: --strip io to drop ids and order.
   -q [ --qmod ] arg               quality mode: possible modes are
@@ -86,11 +91,12 @@ Allowed options:
                                     4. -q binary thr high low (binary (2-level)
                                       thresholding, quality binned to high if >=
                                       thr and to low if < thr)
-  -l [ --level ] arg (=6)         compression level (1-9) to use for output
-                                  (.gz) formatting (passed to gzip unchanged
-                                  and scaled to Zstd 1-22 internally)
   -n [ --note ] arg               add a custom note to the archive
-  -v [ --verbose ]                enable extensive logging (default: progress bar)
+--------------------------------------------------------------------------------
+Decompression Options:
+  -d [ --decompress ]             decompress
+  -u [ --unzip ]                  during decompression, force output to be
+                                  uncompressed (even if original was .gz)
 ```
 
 ### Previewing Archives
