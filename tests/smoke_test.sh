@@ -84,9 +84,6 @@ fi
 
 run_spring() {
 	local cmd=("${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" "$@")
-	printf 'Running Spring command:'
-	printf ' %q' "${cmd[@]}"
-	printf '\n'
 	if [[ "$SPRING_COMMAND_TIMEOUT_SECONDS" -gt 0 ]] && command -v timeout >/dev/null 2>&1; then
 		timeout "$SPRING_COMMAND_TIMEOUT_SECONDS" "${cmd[@]}"
 	else
@@ -103,7 +100,12 @@ compare_files() {
 	local left_path="$1"
 	local right_path="$2"
 	if command -v cmp >/dev/null 2>&1; then
-if ! cmp "$left_path" "$right_path"; then echo "DEBUG MISMATCH: $left_path vs $right_path"; head -n 1 "$left_path" | cat -A; echo "---"; head -n 1 "$right_path" | cat -A; fi
+		if ! cmp "$left_path" "$right_path"; then
+			echo "DEBUG MISMATCH: $left_path vs $right_path"
+			head -n 1 "$left_path" | cat -A
+			echo "---"
+			head -n 1 "$right_path" | cat -A
+		fi
 		cmp "$left_path" "$right_path"
 		return
 	fi
@@ -166,110 +168,128 @@ fi
 
 if [[ "$SPRING_SMOKE_MODE" == "windows-quick" ]]; then
 	announce_case "single fastq long-mode round-trip"
-	prepare_local_input "$ASSET_DIR/sample.fastq" win-single-input.fastq
-	run_spring -c -i win-single-input.fastq -o win-single
-	run_spring -d -i win-single -o win-single-out
-	compare_files win-single-out "$ASSET_DIR/sample.fastq"
+	run_spring -c -i "$ASSET_DIR/sample.fastq" -o abcd
+	run_spring -d -i abcd -o tmp
+	compare_files tmp "$ASSET_DIR/sample.fastq"
 
 	announce_case "paired fastq long-mode round-trip"
-	prepare_local_input "$ASSET_DIR/test_1.fastq" win-paired-input-1.fastq
-	prepare_local_input "$ASSET_DIR/test_2.fastq" win-paired-input-2.fastq
-	run_spring -c -i win-paired-input-1.fastq win-paired-input-2.fastq -o win-paired
-	run_spring -d -i win-paired -o win-paired-out
-	compare_files win-paired-out.1 "$ASSET_DIR/test_1.fastq"
-	compare_files win-paired-out.2 "$ASSET_DIR/test_2.fastq"
+	run_spring -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd
+	run_spring -d -i abcd -o tmp
+	compare_files tmp.1 "$ASSET_DIR/test_1.fastq"
+	compare_files tmp.2 "$ASSET_DIR/test_2.fastq"
 
 	announce_case "gzipped fastq long-mode round-trip"
-	prepare_local_input "$ASSET_DIR/test_1.fastq.gz" win-gzip-input.fastq.gz
-	run_spring -c -i win-gzip-input.fastq.gz -o win-gzip
-	run_spring -d -i win-gzip -o win-gzip-out
-	compare_files win-gzip-out "$ASSET_DIR/test_1.fastq"
+	run_spring -c -i "$ASSET_DIR/test_1.fastq.gz" -o abcd
+	run_spring -d -i abcd -o tmp
+	compare_files tmp "$ASSET_DIR/test_1.fastq"
 
 	echo "Tests successful!"
 	exit 0
 fi
 
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" -o abcd
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+announce_case "fastq round-trip"
+run_spring -c -i "$ASSET_DIR/test_1.fastq" -o abcd
+run_spring -d -i abcd -o tmp
 compare_files tmp "$ASSET_DIR/test_1.fastq"
 
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fasta" -o abcd
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+announce_case "fasta round-trip"
+run_spring -c -i "$ASSET_DIR/test_1.fasta" -o abcd
+run_spring -d -i abcd -o tmp
 compare_files tmp "$ASSET_DIR/test_1.fasta"
 
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+announce_case "paired fastq round-trip"
+run_spring -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd
+run_spring -d -i abcd -o tmp
 compare_files tmp.1 "$ASSET_DIR/test_1.fastq"
 compare_files tmp.2 "$ASSET_DIR/test_2.fastq"
 
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fasta" "$ASSET_DIR/test_2.fasta" -o abcd
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+announce_case "paired fasta round-trip"
+run_spring -c -i "$ASSET_DIR/test_1.fasta" "$ASSET_DIR/test_2.fasta" -o abcd
+run_spring -d -i abcd -o tmp
 compare_files tmp.1 "$ASSET_DIR/test_1.fasta"
 compare_files tmp.2 "$ASSET_DIR/test_2.fasta"
 
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" -o abcd
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+announce_case "fastq to gzipped output"
+run_spring -c -i "$ASSET_DIR/test_1.fastq" -o abcd
+run_spring -d -i abcd -o tmp
 compare_files tmp "$ASSET_DIR/test_1.fastq"
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp.gz
+run_spring -d -i abcd -o tmp.gz
 gunzip -f tmp.gz
 compare_files tmp "$ASSET_DIR/test_1.fastq"
 
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fasta" -o abcd
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+announce_case "fasta round-trip repeat"
+run_spring -c -i "$ASSET_DIR/test_1.fasta" -o abcd
+run_spring -d -i abcd -o tmp
 compare_files tmp "$ASSET_DIR/test_1.fasta"
 
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+announce_case "paired fastq round-trip repeat"
+run_spring -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd
+run_spring -d -i abcd -o tmp
 compare_files tmp.1 "$ASSET_DIR/test_1.fastq"
 compare_files tmp.2 "$ASSET_DIR/test_2.fastq"
 
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq.gz" "$ASSET_DIR/test_2.fastq.gz" -o abcd
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp -u
+announce_case "paired fastq gzipped input round-trip"
+run_spring -c -i "$ASSET_DIR/test_1.fastq.gz" "$ASSET_DIR/test_2.fastq.gz" -o abcd
+run_spring -d -i abcd -o tmp -u
 compare_files tmp.1 "$ASSET_DIR/test_1.fastq"
 compare_files tmp.2 "$ASSET_DIR/test_2.fastq"
 
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fasta.gz" "$ASSET_DIR/test_2.fasta.gz" -o abcd
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp -u
+announce_case "paired fasta gzipped input round-trip"
+run_spring -c -i "$ASSET_DIR/test_1.fasta.gz" "$ASSET_DIR/test_2.fasta.gz" -o abcd
+run_spring -d -i abcd -o tmp -u
 compare_files tmp.1 "$ASSET_DIR/test_1.fasta"
 compare_files tmp.2 "$ASSET_DIR/test_2.fasta"
 
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq.gz" -o abcd
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp -u
+announce_case "single gzipped fastq round-trip"
+run_spring -c -i "$ASSET_DIR/test_1.fastq.gz" -o abcd
+run_spring -d -i abcd -o tmp -u
 compare_files tmp "$ASSET_DIR/test_1.fastq"
 
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp.gz
+announce_case "single gzipped fastq to gzipped output"
+run_spring -d -i abcd -o tmp.gz
 gunzip -f tmp.gz
 compare_files tmp "$ASSET_DIR/test_1.fastq"
 
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq.gz" "$ASSET_DIR/test_2.fastq.gz" -o abcd
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp -u
+announce_case "paired fastq gzipped input round-trip redundant"
+run_spring -c -i "$ASSET_DIR/test_1.fastq.gz" "$ASSET_DIR/test_2.fastq.gz" -o abcd
+run_spring -d -i abcd -o tmp -u
 compare_files tmp.1 "$ASSET_DIR/test_1.fastq"
 compare_files tmp.2 "$ASSET_DIR/test_2.fastq"
 
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp.1.gz tmp.2.gz
+announce_case "paired fastq gzipped input to gzipped outputs"
+run_spring -d -i abcd -o tmp.1.gz tmp.2.gz
 gunzip -f tmp.1.gz
 gunzip -f tmp.2.gz
 compare_files tmp.1 "$ASSET_DIR/test_1.fastq"
 compare_files tmp.2 "$ASSET_DIR/test_2.fastq"
 
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" -o abcd -t 8
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp -t 5
+announce_case "multi-threaded round-trip single"
+run_spring -c -i "$ASSET_DIR/test_1.fastq" -o abcd -t 8
+run_spring -d -i abcd -o tmp -t 5
 compare_files tmp "$ASSET_DIR/test_1.fastq"
 
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd -t 8
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp -t 5
-if ! cmp tmp.1 "$ASSET_DIR/test_1.fastq"; then echo "MISMATCH FOUND"; head -c 20 tmp.1 | cat -A; echo "EXPECTED:"; head -c 20 "$ASSET_DIR/test_1.fastq" | cat -A; fi
+announce_case "multi-threaded round-trip paired"
+run_spring -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd -t 8
+run_spring -d -i abcd -o tmp -t 5
+if ! cmp tmp.1 "$ASSET_DIR/test_1.fastq"; then
+	echo "MISMATCH FOUND"
+	head -c 20 tmp.1 | cat -A
+	echo "EXPECTED:"
+	head -c 20 "$ASSET_DIR/test_1.fastq" | cat -A
+fi
 cmp tmp.1 "$ASSET_DIR/test_1.fastq"
 cmp tmp.2 "$ASSET_DIR/test_2.fastq"
 
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" -o abcd -s o
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+announce_case "sorted output round-trip single"
+run_spring -c -i "$ASSET_DIR/test_1.fastq" -o abcd -s o
+run_spring -d -i abcd -o tmp
 sort tmp >tmp.sorted
 sort "$ASSET_DIR/test_1.fastq" >tmp_1.sorted
 compare_files tmp.sorted tmp_1.sorted
 
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd -t 8
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp -t 5
+announce_case "sorted output round-trip paired"
+run_spring -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd -t 8
+run_spring -d -i abcd -o tmp -t 5
 sort tmp.1 >tmp.sorted
 sort "$ASSET_DIR/test_1.fastq" >tmp_1.sorted
 compare_files tmp.sorted tmp_1.sorted
@@ -277,18 +297,18 @@ sort tmp.2 >tmp.sorted
 sort "$ASSET_DIR/test_2.fastq" >tmp_1.sorted
 compare_files tmp.sorted tmp_1.sorted
 
-# Long-read mode test
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/sample.fastq" -o abcd
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+announce_case "long-read mode round-trip"
+run_spring -c -i "$ASSET_DIR/sample.fastq" -o abcd
+run_spring -d -i abcd -o tmp
 compare_files tmp "$ASSET_DIR/sample.fastq"
 
-# Memory capping test
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -m 0.1 -c -i "$ASSET_DIR/test_1.fastq" -o abcd
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -m 0.1 -d -i abcd -o tmp
+announce_case "memory capping test"
+run_spring -m 0.1 -c -i "$ASSET_DIR/test_1.fastq" -o abcd
+run_spring -m 0.1 -d -i abcd -o tmp
 compare_files tmp "$ASSET_DIR/test_1.fastq"
 
-# Archive Notes & Previewer Test
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" -n "SMOKE_TEST_NOTE" -o abcd
+announce_case "archive notes & previewer validation"
+run_spring -c -i "$ASSET_DIR/test_1.fastq" -n "SMOKE_TEST_NOTE" -o abcd
 "${SPRING_PREVIEW_BIN_CMD[@]}" abcd > preview.out
 if ! grep -q "SMOKE_TEST_NOTE" preview.out; then
 	echo "Failed to find custom note in preview tool output" >&2
@@ -299,29 +319,29 @@ if ! grep -q "test_1.fastq" preview.out; then
 	exit 1
 fi
 
-# Lossy quality mode: ill_bin
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -q ill_bin -i "$ASSET_DIR/test_1.fastq" -o abcd
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+announce_case "lossy mode: ill_bin"
+run_spring -c -q ill_bin -i "$ASSET_DIR/test_1.fastq" -o abcd
+run_spring -d -i abcd -o tmp
 compare_lines tmp "$ASSET_DIR/test_1.fastq"
 
-# Lossy quality mode: qvz
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -q qvz 1 -i "$ASSET_DIR/test_1.fastq" -o abcd
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+announce_case "lossy mode: qvz"
+run_spring -c -q qvz 1 -i "$ASSET_DIR/test_1.fastq" -o abcd
+run_spring -d -i abcd -o tmp
 compare_lines tmp "$ASSET_DIR/test_1.fastq"
 
-# Lossy quality mode: binary thresholding
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -q binary 30 40 10 -i "$ASSET_DIR/test_1.fastq" -o abcd
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+announce_case "lossy mode: binary"
+run_spring -c -q binary 30 40 10 -i "$ASSET_DIR/test_1.fastq" -o abcd
+run_spring -d -i abcd -o tmp
 compare_lines tmp "$ASSET_DIR/test_1.fastq"
 
-# Data Stripping: IDs
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -s i -i "$ASSET_DIR/test_1.fastq" -o abcd
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+announce_case "stripping: ids"
+run_spring -c -s i -i "$ASSET_DIR/test_1.fastq" -o abcd
+run_spring -d -i abcd -o tmp
 compare_lines tmp "$ASSET_DIR/test_1.fastq"
 
-# Data Stripping: Quality
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -s q -i "$ASSET_DIR/test_1.fastq" -o abcd
-"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+announce_case "stripping: quality"
+run_spring -c -s q -i "$ASSET_DIR/test_1.fastq" -o abcd
+run_spring -d -i abcd -o tmp
 compare_lines tmp "$ASSET_DIR/test_1.fastq"
 
 echo "Tests successful!"

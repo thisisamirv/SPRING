@@ -90,8 +90,6 @@ function Invoke-Spring {
     $exe = $fullArgs[0]
     [string[]]$cmdArgs = $fullArgs[1..($fullArgs.Count - 1)]
 
-    Write-Host "Running Spring command: $exe $([string]::Join(' ', $cmdArgs))" -ForegroundColor Cyan
-
     $exitCode = 0
     if ($SPRING_COMMAND_TIMEOUT_SECONDS -gt 0 -and (Get-Command "timeout" -ErrorAction SilentlyContinue)) {
         $process = Start-Process -FilePath $exe -ArgumentList $cmdArgs -Wait -NoNewWindow -PassThru

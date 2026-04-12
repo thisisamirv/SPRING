@@ -42,6 +42,10 @@
 * Standardized formatting with the repository `.clang-format` configuration.
 * Renamed several core source files to clearer role-based names, including `bitset_dictionary`, `template_dispatch`, `paired_end_order`, `reordered_quality_id`, and `reordered_streams`.
 * Reorganized the internal implementation to reduce duplicated scaffolding across compression, decompression, preprocessing, template dispatch, and other core subsystems while preserving behavior.
+* Accelerated the **QVZ lossy compression mode** by up to 1000x through a series of algorithmic optimizations:
+  * Refactored the distortion matrix calculation from $O(N^2)$ to $O(N)$ using prefix sums.
+  * Integrated a binary search for optimal quantization states and added a short-circuit path for ratio 1.0 targets.
+  * Optimized the core probability propagation loops from $O(N^4)$ to $O(N^3)$ via invariant loop hoisting.
 
 ### Fixed
 
@@ -57,3 +61,5 @@
 * Cleaned up lint and cppcheck findings across the current codebase, including missing initialization, binary I/O casts, signed-shift portability, and exception-safety issues.
 * Tightened targeted lint-path handling and Python-file validation in the developer tooling.
 * Stabilized the Valgrind smoke workflow by focusing failures on actionable leak classes and suppressing known OpenMP and libc startup noise.
+* Fixed a memory corruption hazard in the `qvz` module by standardizing `ALPHABET_SIZE` at 128 to accommodate contemporary high-range Phred scores.
+* Fixed a scope error in the `qvz` custom distortion matrix generator.
