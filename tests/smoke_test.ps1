@@ -23,7 +23,7 @@ $CURRENT_SMOKE_CASE = ""
 
 function Write-SmokeDebug {
     param ($exitCode)
-    Write-Host "Smoke debug: case=$($global:CURRENT_SMOKE_CASE) exit_code=$exitCode" -ForegroundColor Yellow
+    Write-Host "Smoke debug: case=$($CURRENT_SMOKE_CASE) exit_code=$exitCode" -ForegroundColor Yellow
     Write-Host "Smoke debug: pwd=$(Get-Location)" -ForegroundColor Yellow
 
     if (Test-Path ".") {
@@ -66,7 +66,7 @@ function Remove-SmokeWorkDir {
 
 function Invoke-Spring {
     param(
-        [string]$BinaryPath = $global:SPRING_BIN
+        [string]$BinaryPath = $SPRING_BIN
     )
     $fullArgs = @()
     if ($env:SPRING_BIN_WRAPPER) {
@@ -99,14 +99,14 @@ function Invoke-Spring {
     }
 
     if ($exitCode -ne 0) {
-        $global:LAST_SPRING_EXIT_CODE = $exitCode
+        $script:LAST_SPRING_EXIT_CODE = $exitCode
         throw "Spring failed with exit code $exitCode"
     }
 }
 
 function Write-SmokeCase {
     param ($caseName)
-    $global:CURRENT_SMOKE_CASE = $caseName
+    $script:CURRENT_SMOKE_CASE = $caseName
     Write-Host "Smoke case: $caseName" -ForegroundColor Cyan
 }
 
