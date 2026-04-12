@@ -76,7 +76,7 @@ $PATH_R1 = Join-Path $TMP_INPUT_DIR "SRR8185389_1.fastq.gz"
 $PATH_R2 = Join-Path $TMP_INPUT_DIR "SRR8185389_2.fastq.gz"
 
 # Helper: Robust FTP/HTTP download with Progress Bar (using native curl for thread safety)
-function Download-BenchmarkData {
+function Invoke-BenchmarkDataDownload {
     param($url, $path)
     if (Test-Path $path) { 
         # If file is smaller than 10MB, it's likely a corrupted/truncated previous attempt
@@ -137,8 +137,8 @@ function Invoke-ResourceLoggedProcess($binary, $arguments) {
 function Initialize-BenchmarkEnv {
     New-Item -ItemType Directory -Path $TMP_INPUT_DIR, $TMP_LOG_DIR, $TMP_OUTPUT_DIR, $TMP_WORK_DIR -Force | Out-Null
     
-    Download-BenchmarkData $URL_R1 $PATH_R1
-    Download-BenchmarkData $URL_R2 $PATH_R2
+    Invoke-BenchmarkDataDownload $URL_R1 $PATH_R1
+    Invoke-BenchmarkDataDownload $URL_R2 $PATH_R2
 
     # SETUP PATHS
     $global:INPUT_STEM = "SRR8185389_pe"

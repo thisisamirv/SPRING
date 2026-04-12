@@ -7,7 +7,9 @@ ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
 ASSET_DIR="$ROOT_DIR/assets/sample-data"
 BUILD_DIR="$ROOT_DIR/build"
 SPRING_BIN="$BUILD_DIR/spring2"
+SPRING_PREVIEW_BIN="$BUILD_DIR/spring2-preview"
 SPRING_BIN_CMD=()
+SPRING_PREVIEW_BIN_CMD=()
 SPRING_TEST_ARGS_CMD=()
 SPRING_SMOKE_MODE="${SPRING_SMOKE_MODE:-full}"
 SPRING_COMMAND_TIMEOUT_SECONDS="${SPRING_COMMAND_TIMEOUT_SECONDS:-0}"
@@ -56,13 +58,22 @@ if [[ ! -x "$SPRING_BIN" ]]; then
 	exit 1
 fi
 
+if [[ ! -x "$SPRING_PREVIEW_BIN" ]]; then
+	echo "Expected built binary at $SPRING_PREVIEW_BIN"
+	exit 1
+fi
+
 if [[ -n "${SPRING_BIN_WRAPPER:-}" ]]; then
 	# Split a simple wrapper command such as valgrind into argv form.
 	# shellcheck disable=SC2206
 	SPRING_BIN_CMD=(${SPRING_BIN_WRAPPER})
 	SPRING_BIN_CMD+=("$SPRING_BIN")
+	# shellcheck disable=SC2206
+	SPRING_PREVIEW_BIN_CMD=(${SPRING_BIN_WRAPPER})
+	SPRING_PREVIEW_BIN_CMD+=("$SPRING_PREVIEW_BIN")
 else
 	SPRING_BIN_CMD=("$SPRING_BIN")
+	SPRING_PREVIEW_BIN_CMD=("$SPRING_PREVIEW_BIN")
 fi
 
 if [[ -n "${SPRING_TEST_ARGS:-}" ]]; then
@@ -106,6 +117,19 @@ if ! cmp "$left_path" "$right_path"; then echo "DEBUG MISMATCH: $left_path vs $r
 	fi
 }
 
+compare_lines() {
+	local left_path="$1"
+	local right_path="$2"
+	local left_lines
+	local right_lines
+	left_lines=$(wc -l < "$left_path")
+	right_lines=$(wc -l < "$right_path")
+	if [[ "$left_lines" != "$right_lines" ]]; then
+		echo "Line count differ: $left_path ($left_lines) vs $right_path ($right_lines)" >&2
+		return 1
+	fi
+}
+
 prepare_local_input() {
 	local source_path="$1"
 	local target_name="$2"
@@ -142,10 +166,10 @@ fi
 
 if [[ "$SPRING_SMOKE_MODE" == "windows-quick" ]]; then
 	announce_case "single fastq long-mode round-trip"
-	prepare_local_input "$ASSET_DIR/test_1.fastq" win-single-input.fastq
+	prepare_local_input "$ASSET_DIR/sample.fastq" win-single-input.fastq
 	run_spring -c -i win-single-input.fastq -o win-single
 	run_spring -d -i win-single -o win-single-out
-	compare_files win-single-out "$ASSET_DIR/test_1.fastq"
+	compare_files win-single-out "$ASSET_DIR/sample.fastq"
 
 	announce_case "paired fastq long-mode round-trip"
 	prepare_local_input "$ASSET_DIR/test_1.fastq" win-paired-input-1.fastq
@@ -252,5 +276,52 @@ compare_files tmp.sorted tmp_1.sorted
 sort tmp.2 >tmp.sorted
 sort "$ASSET_DIR/test_2.fastq" >tmp_1.sorted
 compare_files tmp.sorted tmp_1.sorted
+
+# Long-read mode test
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/sample.fastq" -o abcd
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+compare_files tmp "$ASSET_DIR/sample.fastq"
+
+# Memory capping test
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -m 0.1 -c -i "$ASSET_DIR/test_1.fastq" -o abcd
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -m 0.1 -d -i abcd -o tmp
+compare_files tmp "$ASSET_DIR/test_1.fastq"
+
+# Archive Notes & Previewer Test
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -i "$ASSET_DIR/test_1.fastq" -n "SMOKE_TEST_NOTE" -o abcd
+"${SPRING_PREVIEW_BIN_CMD[@]}" abcd > preview.out
+if ! grep -q "SMOKE_TEST_NOTE" preview.out; then
+	echo "Failed to find custom note in preview tool output" >&2
+	exit 1
+fi
+if ! grep -q "test_1.fastq" preview.out; then
+	echo "Failed to find original filename in preview tool output" >&2
+	exit 1
+fi
+
+# Lossy quality mode: ill_bin
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -q ill_bin -i "$ASSET_DIR/test_1.fastq" -o abcd
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+compare_lines tmp "$ASSET_DIR/test_1.fastq"
+
+# Lossy quality mode: qvz
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -q qvz 1 -i "$ASSET_DIR/test_1.fastq" -o abcd
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+compare_lines tmp "$ASSET_DIR/test_1.fastq"
+
+# Lossy quality mode: binary thresholding
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -q binary 30 40 10 -i "$ASSET_DIR/test_1.fastq" -o abcd
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+compare_lines tmp "$ASSET_DIR/test_1.fastq"
+
+# Data Stripping: IDs
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -s i -i "$ASSET_DIR/test_1.fastq" -o abcd
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+compare_lines tmp "$ASSET_DIR/test_1.fastq"
+
+# Data Stripping: Quality
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -c -s q -i "$ASSET_DIR/test_1.fastq" -o abcd
+"${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" -d -i abcd -o tmp
+compare_lines tmp "$ASSET_DIR/test_1.fastq"
 
 echo "Tests successful!"
