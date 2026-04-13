@@ -259,6 +259,11 @@ void write_var_int64(const int64_t value, std::ofstream &output_stream);
 
 int64_t read_var_int64(std::ifstream &input_stream);
 
+void create_tar_archive(const std::string &archive_path,
+                        const std::string &source_dir);
+void extract_tar_archive(const std::string &archive_path,
+                         const std::string &target_dir);
+
 } // namespace spring
 
 #endif // SPRING_UTIL_H_

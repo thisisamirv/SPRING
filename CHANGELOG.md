@@ -6,6 +6,7 @@
 ### Added
 
 * Added robust stream error checking in `src/decompress.cpp` to handle corrupt or truncated archives during position and orientation decoding.
+* Replaced system `tar` subprocess calls with the native `libarchive` library, removing a major runtime dependency and improving cross-platform compatibility.
 
 ### Changed
 

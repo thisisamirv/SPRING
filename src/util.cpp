@@ -20,6 +20,13 @@
 
 #include "omp.h"
 #include "qvz/include/qvz.h"
+#include <archive.h>
+#include <archive_entry.h>
+#include <fcntl.h>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+#include <sys/stat.h>
 
 namespace spring {
 
@@ -1557,4 +1564,128 @@ uint64_t parse_uint64_or_throw(const std::string &value,
   }
 }
 
+
+
+void create_tar_archive(const std::string &archive_path,
+                        const std::string &source_dir) {
+  struct archive *a;
+  struct archive_entry *entry;
+  struct stat st;
+  char buff[65536];
+  int len;
+  int fd;
+
+  a = archive_write_new();
+  archive_write_set_format_pax_restricted(a);
+  if (archive_write_open_filename(a, archive_path.c_str()) != ARCHIVE_OK) {
+    throw std::runtime_error("Failed to open archive for writing: " +
+                             std::string(archive_error_string(a)));
+  }
+
+  std::filesystem::path root(source_dir);
+  for (const auto &dir_entry :
+       std::filesystem::recursive_directory_iterator(root)) {
+    if (!dir_entry.is_regular_file())
+      continue;
+
+    const std::string full_path = dir_entry.path().string();
+    const std::string rel_path =
+        std::filesystem::relative(dir_entry.path(), root).string();
+
+    stat(full_path.c_str(), &st);
+    entry = archive_entry_new();
+    archive_entry_set_pathname(entry, rel_path.c_str());
+    archive_entry_set_size(entry, st.st_size);
+    archive_entry_set_filetype(entry, AE_IFREG);
+    archive_entry_set_perm(entry, 0644);
+    archive_write_header(a, entry);
+
+    fd = open(full_path.c_str(), O_RDONLY);
+    if (fd >= 0) {
+      len = read(fd, buff, sizeof(buff));
+      while (len > 0) {
+        archive_write_data(a, buff, len);
+        len = read(fd, buff, sizeof(buff));
+      }
+      close(fd);
+    }
+    archive_entry_free(entry);
+  }
+
+  archive_write_close(a);
+  archive_write_free(a);
+}
+
+void extract_tar_archive(const std::string &archive_path,
+                         const std::string &target_dir) {
+  struct archive *a;
+  struct archive *ext;
+  struct archive_entry *entry;
+  int flags;
+  int r;
+
+  flags = ARCHIVE_EXTRACT_TIME;
+  flags |= ARCHIVE_EXTRACT_PERM;
+  flags |= ARCHIVE_EXTRACT_ACL;
+  flags |= ARCHIVE_EXTRACT_FFLAGS;
+
+  a = archive_read_new();
+  archive_read_support_format_all(a);
+  archive_read_support_filter_all(a);
+  ext = archive_write_disk_new();
+  archive_write_disk_set_options(ext, flags);
+  archive_write_disk_set_standard_lookup(ext);
+
+  if ((r = archive_read_open_filename(a, archive_path.c_str(), 10240))) {
+    throw std::runtime_error("Failed to open archive for reading: " +
+                             std::string(archive_error_string(a)));
+  }
+
+  std::filesystem::create_directories(target_dir);
+
+  for (;;) {
+    r = archive_read_next_header(a, &entry);
+    if (r == ARCHIVE_EOF)
+      break;
+    if (r < ARCHIVE_OK) {
+        // Warning or error
+    }
+    if (r < ARCHIVE_WARN) {
+        throw std::runtime_error("Error reading archive header: " + std::string(archive_error_string(a)));
+    }
+
+    std::filesystem::path dest_path =
+        std::filesystem::path(target_dir) / archive_entry_pathname(entry);
+    archive_entry_set_pathname(entry, dest_path.string().c_str());
+
+    r = archive_write_header(ext, entry);
+    if (r < ARCHIVE_OK) {
+        // Warning or error
+    } else if (archive_entry_size(entry) > 0) {
+      const void *buff;
+      size_t size;
+      la_int64_t offset;
+      while (true) {
+        r = archive_read_data_block(a, &buff, &size, &offset);
+        if (r == ARCHIVE_EOF)
+          break;
+        if (r < ARCHIVE_OK)
+          throw std::runtime_error("Error reading archive data: " + std::string(archive_error_string(a)));
+        r = archive_write_data_block(ext, buff, size, offset);
+        if (r < ARCHIVE_OK)
+          throw std::runtime_error("Error writing disk data: " + std::string(archive_error_string(ext)));
+      }
+    }
+    r = archive_write_finish_entry(ext);
+    if (r < ARCHIVE_OK)
+        throw std::runtime_error("Error finishing disk entry: " + std::string(archive_error_string(ext)));
+  }
+
+  archive_read_close(a);
+  archive_read_free(a);
+  archive_write_close(ext);
+  archive_write_free(ext);
+}
+
 } // namespace spring
+

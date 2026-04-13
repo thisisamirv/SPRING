@@ -8,20 +8,21 @@
 
 The primary source code resides in `src/`. This project also incorporates several vendored third-party components which have been integrated as follows:
 
-*   **Optimized Distribution:** Certain components have been reduced to include only the files required for operation and build, ensuring repository efficiency while maintaining all original license notices and attribution requirements.
-*   **Built-in Compatibility:** Build scripts and configuration files may contain limited modifications to ensure seamless integration with the SPRING2 toolchain and packaging model. 
+* **Optimized Distribution:** Certain components have been reduced to include only the files required for operation and build, ensuring repository efficiency while maintaining all original license notices and attribution requirements.
+* **Built-in Compatibility:** Build scripts and configuration files may contain limited modifications to ensure seamless integration with the SPRING2 toolchain and packaging model.
 
 Except where modified for integration purposes, all vendored components remain subject to their respective upstream license terms.
 
 ## Vendored third-party code
 
-- `vendor/cloudflare_zlib.tar.xz` — zlib License
-- `vendor/indexed_bzip2.tar.xz` — Apache License 2.0 or the MIT License
-- `vendor/libbsc.tar.xz` — Apache License 2.0
-- `vendor/libdeflate.tar.xz` — MIT License
-- `vendor/PTHash.tar.xz` — MIT License
-- `vendor/qvz.tar.xz` — GNU General Public License v3.0
-- `vendor/zstd.tar.xz` — BSD 3-Clause License or GPLv2 License
+* `vendor/cloudflare_zlib.tar.xz` — zlib License
+* `vendor/indexed_bzip2.tar.xz` — Apache License 2.0 or the MIT License
+* `vendor/libbsc.tar.xz` — Apache License 2.0
+* `vendor/libdeflate.tar.xz` — MIT License
+* `vendor/PTHash.tar.xz` — MIT License
+* `vendor/qvz.tar.xz` — GNU General Public License v3.0
+* `vendor/zstd.tar.xz` — BSD 3-Clause License or GPLv2 License
+* `vendor/libarchive.tar.xz` — BSD 2-Clause License (and others, see below)
 
 ---
 
@@ -41,17 +42,17 @@ The Software and Patent Rights (as defined below) will only be licensed to You (
 2.1.1. Use the Software and Patent Rights for Research Use; and to
 2.1.2. Create Derivative Works of the Software for Research Use.
 2.2. Restrictions:
-2.2.1. You shall not make Commercial Use of the Software and Patent Rights without having executed an appropriate license with Illinois. Should You wish to make Commercial Use of the Software and Patent Rights, You shall contact Illinois at otm@illinois.edu.
+2.2.1. You shall not make Commercial Use of the Software and Patent Rights without having executed an appropriate license with Illinois. Should You wish to make Commercial Use of the Software and Patent Rights, You shall contact Illinois at <otm@illinois.edu>.
 2.2.2. Illinois retains all of its right, title, and interest in and to the Software and Patent Rights.
 2.2.3. Nothing in this License shall be construed as conferring a commercial license under any of Illinois’ or any third party’s intellectual property rights in Software or the Patent Rights, whether by estoppel, implication, or otherwise.
 2.3. Acknowledgment:
 2.3.1. You shall clearly mark and rename all Derivative Works of the Software to notify users that it is a modified version of the Software.
 2.3.2. For any reports or published results obtained using the Software or Derivative Works of the Software and Patent Rights, You shall acknowledge use of the Software by the following citation: “The SPRING software, used by [insert name], was developed at the University of Illinois at Urbana-Champaign and Stanford University.”
-2.4. You must supply one copy of each such report or publication to Illinois through otm@illinois.edu.
+2.4. You must supply one copy of each such report or publication to Illinois through <otm@illinois.edu>.
 
 3. Confidential Information.
 3.1. You acknowledge that the Software and Patent Rights are proprietary to Illinois and Stanford. You agree to protect the Software from unauthorized disclosure, use, or release; to treat the Software with at least the same level of care as You use to protect Your own proprietary computer programs and/or confidential information, but in no event less than a reasonable standard of care.
-3.2. If You become aware of any unauthorized licensing, copying or use of the Software and Patent Rights, You shall promptly notify Illinois in writing at otm@illinois.edu.
+3.2. If You become aware of any unauthorized licensing, copying or use of the Software and Patent Rights, You shall promptly notify Illinois in writing at <otm@illinois.edu>.
 3.3. You agree to use the Software and Patent Rights only in the manner and for the specific uses authorized in this License.
 
 4. Limitation of Warranties.
@@ -84,3 +85,72 @@ The Software and Patent Rights (as defined below) will only be licensed to You (
 
 OTM approved KAH 5/2017
 
+---
+
+## LibArchive License Text
+
+The libarchive distribution as a whole is Copyright by Tim Kientzle
+and is subject to the copyright notice reproduced at the bottom of
+this file.
+
+Each individual file in this distribution should have a clear
+copyright/licensing statement at the beginning of the file.  If any do
+not, please let me know and I will rectify it.  The following is
+intended to summarize the copyright status of the individual files;
+the actual statements in the files are controlling.
+
+* Except as listed below, all C sources (including .c and .h files)
+  and documentation files are subject to the copyright notice reproduced
+  at the bottom of this file.
+
+* The following source files are also subject in whole or in part to
+  a 3-clause UC Regents copyright; please read the individual source
+  files for details:
+   libarchive/archive_read_support_filter_compress.c
+   libarchive/archive_write_add_filter_compress.c
+   libarchive/mtree.5
+
+* The following source files are in the public domain:
+   libarchive/archive_parse_date.c
+
+* The following source files are triple-licensed with the ability to choose
+  from CC0 1.0 Universal, OpenSSL or Apache 2.0 licenses:
+   libarchive/archive_blake2.h
+   libarchive/archive_blake2_impl.h
+   libarchive/archive_blake2s_ref.c
+   libarchive/archive_blake2sp_ref.c
+
+* The build files---including Makefiles, configure scripts,
+  and auxiliary scripts used as part of the compile process---have
+  widely varying licensing terms.  Please check individual files before
+  distributing them to see if those restrictions apply to you.
+
+I intend for all new source code to use the license below and hope over
+time to replace code with other licenses with new implementations that
+do use the license below.  The varying licensing of the build scripts
+seems to be an unavoidable mess.
+
+Copyright (c) 2003-2018 <author(s)>
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer
+   in this position and unchanged.
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE AUTHOR(S) ``AS IS'' AND ANY EXPRESS OR
+IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE AUTHOR(S) BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.

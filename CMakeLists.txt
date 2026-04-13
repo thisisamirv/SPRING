@@ -238,6 +238,7 @@ set(INDEXED_BZIP2_DIR ${build_vendor_dir}/indexed_bzip2)
 set(LIBBSC_DIR ${build_vendor_dir}/libbsc)
 set(LIBDEFLATE_DIR ${build_vendor_dir}/libdeflate)
 set(QVZ_DIR ${build_vendor_dir}/qvz)
+set(LIBARCHIVE_DIR ${build_vendor_dir}/libarchive)
 set(include_dir ${CMAKE_SOURCE_DIR}/src)
 
 extract_archive_if_needed(
@@ -303,6 +304,12 @@ extract_archive_if_needed(
     "${INDEXED_BZIP2_DIR}/CMakeLists.txt"
 )
 
+extract_archive_if_needed(
+    "${CMAKE_SOURCE_DIR}/vendor/libarchive.tar.xz"
+    "${build_vendor_dir}"
+    "${LIBARCHIVE_DIR}/CMakeLists.txt"
+)
+
 set(LIBDEFLATE_BUILD_STATIC_LIB ON CACHE BOOL "" FORCE)
 set(LIBDEFLATE_BUILD_SHARED_LIB OFF CACHE BOOL "" FORCE)
 set(LIBDEFLATE_BUILD_GZIP OFF CACHE BOOL "" FORCE)
@@ -327,6 +334,37 @@ if (TARGET rapidgzip)
         target_include_directories(rapidgzip SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
     endif()
 endif ()
+
+# Standard archive support via vendored libarchive.
+set(ENABLE_MBEDTLS OFF CACHE BOOL "" FORCE)
+set(ENABLE_NETTLE OFF CACHE BOOL "" FORCE)
+set(ENABLE_OPENSSL OFF CACHE BOOL "" FORCE)
+set(ENABLE_LIBB2 OFF CACHE BOOL "" FORCE)
+set(ENABLE_LZ4 OFF CACHE BOOL "" FORCE)
+set(ENABLE_LZO OFF CACHE BOOL "" FORCE)
+set(ENABLE_LZMA OFF CACHE BOOL "" FORCE)
+set(ENABLE_ZSTD OFF CACHE BOOL "" FORCE)
+set(ENABLE_ZLIB OFF CACHE BOOL "" FORCE)
+set(ENABLE_BZip2 OFF CACHE BOOL "" FORCE)
+set(ENABLE_LIBXML2 OFF CACHE BOOL "" FORCE)
+set(ENABLE_EXPAT OFF CACHE BOOL "" FORCE)
+set(ENABLE_PCREPOSIX OFF CACHE BOOL "" FORCE)
+set(ENABLE_PCRE2POSIX OFF CACHE BOOL "" FORCE)
+set(ENABLE_ICONV OFF CACHE BOOL "" FORCE)
+set(ENABLE_ACL OFF CACHE BOOL "" FORCE)
+set(ENABLE_XATTR OFF CACHE BOOL "" FORCE)
+set(ENABLE_CNG OFF CACHE BOOL "" FORCE)
+set(ENABLE_TAR OFF CACHE BOOL "" FORCE)
+set(ENABLE_CPIO OFF CACHE BOOL "" FORCE)
+set(ENABLE_CAT OFF CACHE BOOL "" FORCE)
+set(ENABLE_UNZIP OFF CACHE BOOL "" FORCE)
+set(ENABLE_TEST OFF CACHE BOOL "" FORCE)
+set(ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(ENABLE_TEST OFF CACHE BOOL "" FORCE)
+set(ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+add_subdirectory("${LIBARCHIVE_DIR}" "${CMAKE_BINARY_DIR}/libarchive-build" EXCLUDE_FROM_ALL)
 
 # Core source files shared between spring2 and spring2-preview.
 set(core_source_files
@@ -380,6 +418,9 @@ if (SPRING_OPENMP_INCLUDE_DIRS)
     target_include_directories(spring2 SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
     target_include_directories(spring2-preview SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
 endif ()
+ 
+target_include_directories(spring2 PRIVATE ${LIBARCHIVE_DIR}/libarchive)
+target_include_directories(spring2-preview PRIVATE ${LIBARCHIVE_DIR}/libarchive)
 
 set(spring_libs
     libdeflate::libdeflate_static
@@ -388,6 +429,7 @@ set(spring_libs
     libbsc
     qvz
     pthash
+    archive_static
 )
 
 target_link_libraries(spring2 PUBLIC ${spring_libs})

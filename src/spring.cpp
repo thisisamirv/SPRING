@@ -716,11 +716,7 @@ void compress(const std::string &temp_dir,
 
   run_timed_step("Creating tar archive ...", "Tar archive", [&] {
     progress.set_stage("Creating archive", 0.95F, 1.0F);
-    const std::string tar_command =
-        "tar -cf " + shell_quote(shell_path(io_config.archive_path)) + " -C " +
-        shell_quote(shell_path(temp_dir)) + " .";
-    run_system_command_or_throw(
-        tar_command, "Error occurred during tar archive generation.");
+    create_tar_archive(io_config.archive_path, temp_dir);
   });
 
   const auto compression_end = clock_type::now();
@@ -765,11 +761,7 @@ void decompress(const std::string &temp_dir,
 
   run_timed_step("Untarring tar archive ...", "Untarring archive", [&] {
     progress.set_stage("Untarring", 0.0F, 0.10F);
-    const std::string untar_command =
-        "tar -xf " + shell_quote(shell_path(input_paths[0])) + " -C " +
-        shell_quote(shell_path(temp_dir));
-    run_system_command_or_throw(untar_command,
-                                "Error occurred during untarring.");
+    extract_tar_archive(input_paths[0], temp_dir);
   });
 
   std::string compression_params_path = temp_dir + "/cp.bin";
