@@ -274,7 +274,6 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
   for (int i = 0; i <= eg.max_readlen; i++)
     length_masks[i] = new std::bitset<bitset_size>[eg.max_readlen + 1];
   generatemasks<bitset_size>(length_masks, eg.max_readlen, 3);
-  generatemasks<bitset_size>(length_masks, eg.max_readlen, 3);
 
   Logger::log_info("Encoding reads");
 #pragma omp parallel

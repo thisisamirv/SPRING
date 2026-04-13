@@ -8,6 +8,7 @@
 * Removed debug `[GZIP-DIAG]` logs from the compression pipeline that were firing even in non-verbose mode.
 * Consolidated `parse_int_or_throw`, `parse_double_or_throw`, and `parse_uint64_or_throw` into `src/util.h` and `src/util.cpp` to remove duplication and potential ODR hazards.
 * Consolidated `has_suffix` into `src/util.h` and `src/util.cpp`, removing duplicate definitions in `src/spring.cpp` and `src/decompress.cpp`.
+* Removed a redundant duplicate call to `generatemasks` in the encoder initialization.
 
 ## V1.0.0-alpha
 
