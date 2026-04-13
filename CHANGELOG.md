@@ -6,6 +6,7 @@
 ### Fixed
 
 * Removed debug `[GZIP-DIAG]` logs from the compression pipeline that were firing even in non-verbose mode.
+* Consolidated `parse_int_or_throw`, `parse_double_or_throw`, and `parse_uint64_or_throw` into `src/util.h` and `src/util.cpp` to remove duplication and potential ODR hazards.
 
 ## V1.0.0-alpha
 

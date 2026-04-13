@@ -241,6 +241,15 @@ void extract_gzip_detailed_info(const std::string &path, bool &is_gzipped,
 std::string shell_quote(const std::string &value);
 std::string shell_path(const std::string &value);
 
+// Parse helpers.
+int parse_int_or_throw(const std::string &value, const char *error_message);
+
+double parse_double_or_throw(const std::string &value,
+                             const char *error_message);
+
+uint64_t parse_uint64_or_throw(const std::string &value,
+                               const char *error_message);
+
 // Temporary integer stream helpers.
 void write_var_int64(const int64_t value, std::ofstream &output_stream);
 

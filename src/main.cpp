@@ -4,10 +4,10 @@
 #include "params.h"
 #include "progress.h"
 #include "spring.h"
+#include "util.h"
 #include <algorithm>
 #include <cmath>
 #include <csignal>
-#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
@@ -180,44 +180,6 @@ bool is_option_token(const std::string &token) {
   return !token.empty() && token[0] == '-';
 }
 
-int parse_int_or_throw(const std::string &value, const char *error_message) {
-  try {
-    size_t parsed_chars = 0;
-    int parsed_value = std::stoi(value, &parsed_chars);
-    if (parsed_chars != value.size())
-      throw std::invalid_argument("trailing characters");
-    return parsed_value;
-  } catch (const std::exception &) {
-    throw std::runtime_error(error_message);
-  }
-}
-
-double parse_double_or_throw(const std::string &value,
-                             const char *error_message) {
-  try {
-    size_t parsed_chars = 0;
-    double parsed_value = std::stod(value, &parsed_chars);
-    if (parsed_chars != value.size())
-      throw std::invalid_argument("trailing characters");
-    return parsed_value;
-  } catch (const std::exception &) {
-    throw std::runtime_error(error_message);
-  }
-}
-
-uint64_t parse_uint64_or_throw(const std::string &value,
-                               const char *error_message) {
-  try {
-    size_t parsed_chars = 0;
-    uint64_t parsed_value = std::stoull(value, &parsed_chars);
-    if (parsed_chars != value.size())
-      throw std::invalid_argument("trailing characters");
-    return parsed_value;
-  } catch (const std::exception &) {
-    throw std::runtime_error(error_message);
-  }
-}
-
 std::string strip_quotes(const std::string &value) {
   if (value.size() >= 2) {
     if ((value.front() == '"' && value.back() == '"') ||
@@ -281,17 +243,17 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
       options.working_dir = args[index++];
     } else if (arg == "-t" || arg == "--threads") {
       require_value(args, index, "--threads");
-      options.num_threads =
-          parse_int_or_throw(args[index++], "Invalid number of threads.");
+      options.num_threads = spring::parse_int_or_throw(
+          args[index++], "Invalid number of threads.");
       options.num_threads_was_explicit = true;
     } else if (arg == "-m" || arg == "--memory") {
       require_value(args, index, "--memory");
       options.memory_cap_gb =
-          parse_double_or_throw(args[index++], "Invalid memory cap.");
+          spring::parse_double_or_throw(args[index++], "Invalid memory cap.");
     } else if (arg == "-l" || arg == "--level") {
       require_value(args, index, "--level");
-      options.compression_level =
-          parse_int_or_throw(args[index++], "Invalid compression level.");
+      options.compression_level = spring::parse_int_or_throw(
+          args[index++], "Invalid compression level.");
       if (options.compression_level < 1 || options.compression_level > 9)
         throw std::runtime_error("Compression level must be between 1 and 9.");
     } else if (arg == "-i" || arg == "--input") {

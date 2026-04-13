@@ -98,32 +98,6 @@ void run_system_command_or_throw(const std::string &command,
     throw std::runtime_error(error_message);
 }
 
-double parse_double_or_throw(const std::string &value,
-                             const char *error_message) {
-  try {
-    size_t parsed_chars = 0;
-    double parsed_value = std::stod(value, &parsed_chars);
-    if (parsed_chars != value.size()) {
-      throw std::invalid_argument("trailing characters");
-    }
-    return parsed_value;
-  } catch (const std::exception &) {
-    throw std::runtime_error(error_message);
-  }
-}
-
-int parse_int_or_throw(const std::string &value, const char *error_message) {
-  try {
-    size_t parsed_chars = 0;
-    int parsed_value = std::stoi(value, &parsed_chars);
-    if (parsed_chars != value.size()) {
-      throw std::invalid_argument("trailing characters");
-    }
-    return parsed_value;
-  } catch (const std::exception &) {
-    throw std::runtime_error(error_message);
-  }
-}
 
 bool has_suffix(const std::string &value, const std::string &suffix) {
   if (suffix.size() > value.size())
