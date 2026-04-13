@@ -422,8 +422,8 @@ if (SPRING_OPENMP_INCLUDE_DIRS)
     target_include_directories(spring2-preview SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
 endif ()
  
-target_include_directories(spring2 PRIVATE ${LIBARCHIVE_DIR}/libarchive)
-target_include_directories(spring2-preview PRIVATE ${LIBARCHIVE_DIR}/libarchive)
+target_include_directories(spring2 SYSTEM PRIVATE ${LIBARCHIVE_DIR}/libarchive)
+target_include_directories(spring2-preview SYSTEM PRIVATE ${LIBARCHIVE_DIR}/libarchive)
 
 set(spring_libs
     libdeflate::libdeflate_static
