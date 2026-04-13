@@ -25,6 +25,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <array>
 #include "raii.h"
 
 namespace spring {
@@ -385,7 +386,7 @@ bool decompress_and_slice_id(const std::string &temp_path_bsc,
 
 } // namespace
 
-void set_dec_noise_array(char **dec_noise);
+void set_dec_noise_array(std::array<std::array<char, 128>, 128> &dec_noise);
 
 void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
                       const std::string &outfile_2, compression_params &cp,
@@ -463,10 +464,7 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
   uint32_t *read_lengths_buffer_2 = NULL;
   if (paired_end)
     read_lengths_buffer_2 = new uint32_t[num_reads_per_step];
-  char **decoded_noise_table;
-  decoded_noise_table = new char *[128];
-  for (int i = 0; i < 128; i++)
-    decoded_noise_table[i] = new char[128];
+  std::array<std::array<char, 128>, 128> decoded_noise_table;
   set_dec_noise_array(decoded_noise_table);
 
   omp_set_num_threads(cp.encoding.num_thr);
@@ -771,9 +769,6 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
   delete[] read_lengths_buffer_1;
   if (paired_end)
     delete[] read_lengths_buffer_2;
-  for (int i = 0; i < 128; i++)
-    delete[] decoded_noise_table[i];
-  delete[] decoded_noise_table;
 }
 
 void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
@@ -973,7 +968,7 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
   }
 }
 
-void set_dec_noise_array(char **dec_noise) {
+void set_dec_noise_array(std::array<std::array<char, 128>, 128> &dec_noise) {
   dec_noise[(uint8_t)'A'][(uint8_t)'0'] = 'C';
   dec_noise[(uint8_t)'A'][(uint8_t)'1'] = 'G';
   dec_noise[(uint8_t)'A'][(uint8_t)'2'] = 'T';

@@ -17,6 +17,7 @@
 * Refactored `src/encoder.h` into a thin interface header, moving template implementations to `src/encoder_impl.h` to improve compilation performance and modularity.
 * Added `src/raii.h` with RAII helpers (`OmpLock`, `OmpLockGuard`, `MmapView`); migrated `src/decompress.cpp`, `src/reorder_impl.h`, and `src/encoder_impl.h` to use RAII for `mmap` and OpenMP locks, fixing teardown bugs and preventing resource leaks.
 * Replaced hot-path raw arrays with `std::vector` or `std::unique_ptr<T[]>` starting in `src/reorder_impl.h` and `src/encoder_impl.h` to improve memory safety and eliminate manual `new[]/delete[]` usage.
+* Replaced manual `char**` decoded noise table in `src/decompress.cpp` with `std::array<std::array<char,128>,128>`, removing manual `new[]/delete[]` and ensuring RAII-managed lifetime.
 * Refactored `src/reorder.h` and the corresponding reordering implementation in `src/reorder_impl.h` to reduce template bloat and improve compilation speed.
 * Consolidated all third-party dependency licenses into the central root `LICENSE` file for improved legal compliance and audit-readiness.
 
