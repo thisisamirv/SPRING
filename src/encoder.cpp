@@ -174,7 +174,7 @@ void rewrite_thread_order_file(
 
   while (order_input.read(byte_ptr(&read_position), sizeof(uint32_t))) {
     if (read_position < cumulative_n_reads.size()) {
-        read_position += cumulative_n_reads[read_position];
+      read_position += cumulative_n_reads[read_position];
     }
     order_output.write(byte_ptr(&read_position), sizeof(uint32_t));
   }
@@ -232,7 +232,8 @@ std::string buildcontig(std::list<contig_reads> &current_contig,
     for (size_t i = 0;
          i < static_cast<size_t>((*current_contig_it).read_length); ++i) {
       const size_t idx = static_cast<size_t>(current_position) + i;
-      uint8_t base_idx = base_index_lookup[(uint8_t)(*current_contig_it).read[i]];
+      uint8_t base_idx =
+          base_index_lookup[(uint8_t)(*current_contig_it).read[i]];
       if (base_counts[idx][base_idx] < 65535) {
         base_counts[idx][base_idx] += 1;
       }
@@ -294,8 +295,9 @@ void writecontig(const std::string &ref,
 void getDataParams(encoder_global &eg, const compression_params &cp) {
   uint32_t clean_read_count;
   uint32_t total_read_count;
-  clean_read_count = cp.num_reads_clean[0] + cp.num_reads_clean[1];
-  total_read_count = cp.num_reads;
+  clean_read_count =
+      cp.read_info.num_reads_clean[0] + cp.read_info.num_reads_clean[1];
+  total_read_count = cp.read_info.num_reads;
 
   std::ifstream singleton_count_input(eg.infile + ".singleton" + ".count",
                                       std::ifstream::in);
@@ -305,8 +307,6 @@ void getDataParams(encoder_global &eg, const compression_params &cp) {
   remove(singleton_count_path.c_str());
   eg.numreads = clean_read_count - eg.numreads_s;
   eg.numreads_N = total_read_count - clean_read_count;
-
-
 }
 
 void correct_order(uint32_t *order_s, const encoder_global &eg) {

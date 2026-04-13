@@ -8,26 +8,26 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-#include <windows.h>
-#include <psapi.h>
-#include <io.h>
 #include <direct.h>
-#include <sys/types.h>
 #include <errno.h>
+#include <io.h>
+#include <psapi.h>
+#include <sys/types.h>
+#include <windows.h>
 
 // Resource usage
 #define RUSAGE_SELF 0
 struct rusage {
-    long ru_maxrss;
+  long ru_maxrss;
 };
 
 inline int getrusage(int who, struct rusage *usage) {
-    PROCESS_MEMORY_COUNTERS pmc;
-    if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
-        usage->ru_maxrss = (long)(pmc.WorkingSetSize / 1024);
-        return 0;
-    }
-    return -1;
+  PROCESS_MEMORY_COUNTERS pmc;
+  if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc))) {
+    usage->ru_maxrss = (long)(pmc.WorkingSetSize / 1024);
+    return 0;
+  }
+  return -1;
 }
 
 // Memory mapping
@@ -37,53 +37,57 @@ inline int getrusage(int who, struct rusage *usage) {
 #define MAP_PRIVATE 2
 #define MAP_ANON 0x20
 #define MAP_ANONYMOUS MAP_ANON
-#define MAP_FAILED ((void*)-1)
+#define MAP_FAILED ((void *)-1)
 
 #ifndef O_BINARY
 #define O_BINARY 0x8000
 #endif
 
-inline void* mmap(void* addr, size_t length, int prot, int flags, int fd, long long offset) {
-    HANDLE hFile = (HANDLE)_get_osfhandle(fd);
-    if (hFile == INVALID_HANDLE_VALUE) {
-        errno = EBADF;
-        return MAP_FAILED;
-    }
+inline void *mmap(void *addr, size_t length, int prot, int flags, int fd,
+                  long long offset) {
+  HANDLE hFile = (HANDLE)_get_osfhandle(fd);
+  if (hFile == INVALID_HANDLE_VALUE) {
+    errno = EBADF;
+    return MAP_FAILED;
+  }
 
-    DWORD flProtect = PAGE_READONLY;
-    DWORD dwAccess = FILE_MAP_READ;
+  DWORD flProtect = PAGE_READONLY;
+  DWORD dwAccess = FILE_MAP_READ;
 
-    if (prot & PROT_WRITE) {
-        flProtect = PAGE_READWRITE;
-        dwAccess = FILE_MAP_WRITE;
-    }
+  if (prot & PROT_WRITE) {
+    flProtect = PAGE_READWRITE;
+    dwAccess = FILE_MAP_WRITE;
+  }
 
-    HANDLE hMap = CreateFileMapping(hFile, NULL, flProtect, 0, 0, NULL);
-    if (hMap == NULL) {
-        DWORD err = GetLastError();
-        if (err == ERROR_DISK_FULL) errno = ENOSPC;
-        else errno = ENOMEM;
-        return MAP_FAILED;
-    }
+  HANDLE hMap = CreateFileMapping(hFile, NULL, flProtect, 0, 0, NULL);
+  if (hMap == NULL) {
+    DWORD err = GetLastError();
+    if (err == ERROR_DISK_FULL)
+      errno = ENOSPC;
+    else
+      errno = ENOMEM;
+    return MAP_FAILED;
+  }
 
-    DWORD offsetLow = (DWORD)(offset & 0xFFFFFFFF);
-    DWORD offsetHigh = (DWORD)((offset >> 32) & 0xFFFFFFFF);
+  DWORD offsetLow = (DWORD)(offset & 0xFFFFFFFF);
+  DWORD offsetHigh = (DWORD)((offset >> 32) & 0xFFFFFFFF);
 
-    void* ptr = MapViewOfFile(hMap, dwAccess, offsetHigh, offsetLow, length);
-    CloseHandle(hMap);
+  void *ptr = MapViewOfFile(hMap, dwAccess, offsetHigh, offsetLow, length);
+  CloseHandle(hMap);
 
-    if (ptr == NULL) {
-        DWORD err = GetLastError();
-        if (err == ERROR_INVALID_PARAMETER) errno = EINVAL;
-        else errno = ENOMEM;
-        return MAP_FAILED;
-    }
-    return ptr;
+  if (ptr == NULL) {
+    DWORD err = GetLastError();
+    if (err == ERROR_INVALID_PARAMETER)
+      errno = EINVAL;
+    else
+      errno = ENOMEM;
+    return MAP_FAILED;
+  }
+  return ptr;
 }
 
-
-inline int munmap(void* addr, size_t length) {
-    return UnmapViewOfFile(addr) ? 0 : -1;
+inline int munmap(void *addr, size_t length) {
+  return UnmapViewOfFile(addr) ? 0 : -1;
 }
 
 #ifndef O_BINARY
@@ -95,34 +99,32 @@ inline int munmap(void* addr, size_t length) {
 #define _SC_PHYS_PAGES 1
 
 inline long sysconf(int name) {
-    if (name == _SC_PAGESIZE) {
-        SYSTEM_INFO si;
-        GetSystemInfo(&si);
-        return si.dwPageSize;
-    } else if (name == _SC_PHYS_PAGES) {
-        MEMORYSTATUSEX ms;
-        ms.dwLength = sizeof(ms);
-        if (GlobalMemoryStatusEx(&ms)) {
-            SYSTEM_INFO si;
-            GetSystemInfo(&si);
-            return ms.ullTotalPhys / si.dwPageSize;
-        }
+  if (name == _SC_PAGESIZE) {
+    SYSTEM_INFO si;
+    GetSystemInfo(&si);
+    return si.dwPageSize;
+  } else if (name == _SC_PHYS_PAGES) {
+    MEMORYSTATUSEX ms;
+    ms.dwLength = sizeof(ms);
+    if (GlobalMemoryStatusEx(&ms)) {
+      SYSTEM_INFO si;
+      GetSystemInfo(&si);
+      return ms.ullTotalPhys / si.dwPageSize;
     }
-    return -1;
+  }
+  return -1;
 }
 
 // madvise (no-op)
 #define POSIX_MADV_NORMAL 0
 #define POSIX_MADV_RANDOM 0
 #define POSIX_MADV_SEQUENTIAL 0
-inline int posix_madvise(void* addr, size_t len, int advice) { return 0; }
+inline int posix_madvise(void *addr, size_t len, int advice) { return 0; }
 
 // Use namespaced mkdir to avoid macro clashes with STL .mkdir()
 namespace pthash_win {
-    inline int mkdir(const char* path, int mode) {
-        return _mkdir(path);
-    }
-}
+inline int mkdir(const char *path, int mode) { return _mkdir(path); }
+} // namespace pthash_win
 
 #endif // _WIN32
 

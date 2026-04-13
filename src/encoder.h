@@ -12,7 +12,8 @@
 
 namespace spring {
 
-// Forward declarations for types defined in bitset_dictionary.h or encoder_impl.h
+// Forward declarations for types defined in bitset_dictionary.h or
+// encoder_impl.h
 struct bbhashdict;
 struct compression_params;
 template <size_t bitset_size> struct encoder_global_b;

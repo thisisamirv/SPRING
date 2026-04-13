@@ -200,13 +200,13 @@ void reorder_compress_streams(const std::string &temp_dir,
                               const compression_params &cp) {
   const reordered_stream_paths paths = build_reordered_stream_paths(temp_dir);
 
-  uint32_t num_reads = cp.num_reads;
+  uint32_t num_reads = cp.read_info.num_reads;
   uint32_t aligned_read_count = 0;
   uint32_t unaligned_read_count;
   const uint32_t half_read_count = num_reads / 2;
-  const int num_thr = cp.num_thr;
-  const bool paired_end = cp.paired_end;
-  const bool preserve_order = cp.preserve_order;
+  const int num_thr = cp.encoding.num_thr;
+  const bool paired_end = cp.encoding.paired_end;
+  const bool preserve_order = cp.encoding.preserve_order;
 
   std::vector<char> orientation_by_read(num_reads);
   std::vector<uint16_t> read_lengths_by_read(num_reads);
@@ -321,7 +321,7 @@ void reorder_compress_streams(const std::string &temp_dir,
   remove_input_stream_files(paths);
 
   omp_set_num_threads(num_thr);
-  const uint32_t num_reads_per_block = cp.num_reads_per_block;
+  const uint32_t num_reads_per_block = cp.encoding.num_reads_per_block;
   const temporary_stream_paths temp_paths =
       build_temporary_stream_paths(temp_dir);
   const uint64_t read_limit = paired_end ? half_read_count : num_reads;
@@ -348,9 +348,11 @@ void reorder_compress_streams(const std::string &temp_dir,
           block_file_path(temp_paths.position_path, block_num),
           std::ios::binary);
       std::ofstream orientation_output(
-          block_file_path(temp_paths.orientation_path, block_num), std::ios::binary);
+          block_file_path(temp_paths.orientation_path, block_num),
+          std::ios::binary);
       std::ofstream unaligned_output(
-          block_file_path(temp_paths.unaligned_path, block_num), std::ios::binary);
+          block_file_path(temp_paths.unaligned_path, block_num),
+          std::ios::binary);
       std::ofstream read_length_output(
           block_file_path(temp_paths.read_length_path, block_num),
           std::ios::binary);
@@ -361,7 +363,8 @@ void reorder_compress_streams(const std::string &temp_dir,
             block_file_path(paths.mate_position_path, block_num),
             std::ios::binary);
         mate_orientation_output.open(
-            block_file_path(paths.mate_orientation_path, block_num), std::ios::binary);
+            block_file_path(paths.mate_orientation_path, block_num),
+            std::ios::binary);
       }
 
       uint64_t previous_position = 0;

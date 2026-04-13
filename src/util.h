@@ -32,59 +32,59 @@ static const char chartorevchar[128] = {
     0, 0,   0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0};
 
 struct compression_params {
-  bool paired_end;
-  bool preserve_order;
-  bool preserve_quality;
-  bool preserve_id;
-  bool long_flag;
-  bool qvz_flag;
-  bool ill_bin_flag;
-  bool bin_thr_flag;
-  double qvz_ratio;
-  unsigned int bin_thr_thr;
-  unsigned int bin_thr_high;
-  unsigned int bin_thr_low;
-  uint32_t num_reads;
-  uint32_t num_reads_clean[2];
-  uint32_t max_readlen;
-  uint8_t paired_id_code;
-  bool paired_id_match;
-  int num_reads_per_block;
-  int num_reads_per_block_long;
-  int num_thr;
-  int compression_level;
-  static constexpr size_t kFileLenThrSize = 1024;
-  uint64_t file_len_seq_thr[kFileLenThrSize];
-  uint64_t file_len_id_thr[kFileLenThrSize];
-  bool use_crlf;
-  std::string input_filename_1;
-  std::string input_filename_2;
-  std::string note;
-  bool fasta_mode;
+  struct EncodingConfig {
+    bool paired_end;
+    bool preserve_order;
+    bool preserve_quality;
+    bool preserve_id;
+    bool long_flag;
+    int num_thr;
+    int compression_level;
+    int num_reads_per_block;
+    int num_reads_per_block_long;
+    bool fasta_mode;
+    bool use_crlf;
+  } encoding;
 
-  // Original input compression metadata
-  bool input_1_was_gzipped;
-  bool input_2_was_gzipped;
-  uint8_t input_1_gzip_flg;
-  uint8_t input_2_gzip_flg;
-  uint32_t input_1_gzip_mtime;
-  uint32_t input_2_gzip_mtime;
-  uint8_t input_1_gzip_xfl;
-  uint8_t input_2_gzip_xfl;
-  uint8_t input_1_gzip_os;
-  uint8_t input_2_gzip_os;
-  std::string input_1_gzip_name;
-  std::string input_2_gzip_name;
-  bool input_1_is_bgzf;
-  bool input_2_is_bgzf;
-  uint16_t input_1_bgzf_block_size;
-  uint16_t input_2_bgzf_block_size;
-  uint64_t input_1_gzip_uncompressed_size;
-  uint64_t input_2_gzip_uncompressed_size;
-  uint64_t input_1_gzip_compressed_size;
-  uint64_t input_2_gzip_compressed_size;
-  uint32_t input_1_gzip_member_count;
-  uint32_t input_2_gzip_member_count;
+  struct QualityConfig {
+    bool qvz_flag;
+    double qvz_ratio;
+    bool ill_bin_flag;
+    bool bin_thr_flag;
+    unsigned int bin_thr_thr;
+    unsigned int bin_thr_high;
+    unsigned int bin_thr_low;
+  } quality;
+
+  struct GzipMetadata {
+    struct Stream {
+      bool was_gzipped;
+      uint8_t flg;
+      uint32_t mtime;
+      uint8_t xfl;
+      uint8_t os;
+      std::string name;
+      bool is_bgzf;
+      uint16_t bgzf_block_size;
+      uint64_t uncompressed_size;
+      uint64_t compressed_size;
+      uint32_t member_count;
+    } streams[2];
+  } gzip;
+
+  struct ReadMetadata {
+    uint32_t num_reads;
+    uint32_t num_reads_clean[2];
+    uint32_t max_readlen;
+    uint8_t paired_id_code;
+    bool paired_id_match;
+    static constexpr size_t kFileLenThrSize = 1024;
+    uint64_t file_len_seq_thr[kFileLenThrSize];
+    uint64_t file_len_id_thr[kFileLenThrSize];
+    std::string input_filename_1;
+    std::string input_filename_2;
+    std::string note;
+  } read_info;
 };
 
 class gzip_istreambuf : public std::streambuf {

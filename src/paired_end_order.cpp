@@ -40,10 +40,9 @@ void reorder_first_mates(std::vector<uint32_t> &reordered_positions,
   }
 }
 
-void reorder_second_mates(
-    std::vector<uint32_t> &reordered_positions,
-    const std::vector<uint32_t> &read_index_by_order,
-    const uint32_t mate_count) {
+void reorder_second_mates(std::vector<uint32_t> &reordered_positions,
+                          const std::vector<uint32_t> &read_index_by_order,
+                          const uint32_t mate_count) {
   for (uint32_t read_index = 0; read_index < reordered_positions.size();
        read_index++) {
     if (reordered_positions[read_index] < mate_count)
@@ -58,8 +57,9 @@ void reorder_second_mates(
   }
 }
 
-void persist_reordered_positions(const std::string &read_order_path,
-                                 const std::vector<uint32_t> &reordered_positions) {
+void persist_reordered_positions(
+    const std::string &read_order_path,
+    const std::vector<uint32_t> &reordered_positions) {
   const std::string temporary_output_path = read_order_path + ".tmp";
   std::ofstream order_output(temporary_output_path, std::ios::binary);
   for (uint32_t read_index = 0; read_index < reordered_positions.size();
@@ -72,11 +72,10 @@ void persist_reordered_positions(const std::string &read_order_path,
   rename(temporary_output_path.c_str(), read_order_path.c_str());
 }
 
-
 } // namespace
 
 void pe_encode(const std::string &temp_dir, const compression_params &cp) {
-  const uint32_t num_reads = cp.num_reads;
+  const uint32_t num_reads = cp.read_info.num_reads;
   const uint32_t mate_count = num_reads / 2;
   const std::string read_order_path = read_order_file_path(temp_dir);
   std::vector<uint32_t> reordered_positions(num_reads);

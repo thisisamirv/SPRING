@@ -12,8 +12,8 @@
 #include <vector>
 
 #include "libbsc/bsc.h"
-#include "reordered_quality_id.h"
 #include "progress.h"
+#include "reordered_quality_id.h"
 #include "reordered_streams.h"
 #include "util.h"
 
@@ -49,13 +49,12 @@ std::string block_file_path(const std::string &base_path,
   return base_path + "." + std::to_string(block_num);
 }
 
-uint32_t reads_per_file(const uint32_t num_reads,
-                        const bool paired_end) {
+uint32_t reads_per_file(const uint32_t num_reads, const bool paired_end) {
   return paired_end ? num_reads / 2 : num_reads;
 }
 
 uint32_t compute_batch_size(const uint32_t num_reads,
-                           const uint32_t num_reads_per_block) {
+                            const uint32_t num_reads_per_block) {
   return (1 + (num_reads - 1) / num_reads_per_block) * num_reads_per_block;
 }
 
@@ -87,14 +86,14 @@ void flush_batch_partition_file(batch_partition_file &batch_file) {
     return;
   }
 
-  batch_file.output.write(batch_file.buffer.data(),
-                          static_cast<std::streamsize>(batch_file.buffer.size()));
+  batch_file.output.write(
+      batch_file.buffer.data(),
+      static_cast<std::streamsize>(batch_file.buffer.size()));
   batch_file.buffer.clear();
 }
 
 void append_batch_record(batch_partition_file &batch_file,
-                         const batch_record &record,
-                         const std::string &value) {
+                         const batch_record &record, const std::string &value) {
   const char *record_bytes = byte_ptr(&record);
   batch_file.buffer.append(record_bytes, sizeof(batch_record));
   batch_file.buffer.append(value);
@@ -106,22 +105,20 @@ void append_batch_record(batch_partition_file &batch_file,
 
 void partition_reordered_batches(
     const std::string &input_path,
-    const std::vector<uint32_t> &reordered_positions,
-    const uint32_t batch_size,
+    const std::vector<uint32_t> &reordered_positions, const uint32_t batch_size,
     std::vector<std::string> &batch_paths) {
-  const uint32_t num_batches =
-      batch_count_for_reads(static_cast<uint32_t>(reordered_positions.size()),
-                            batch_size);
+  const uint32_t num_batches = batch_count_for_reads(
+      static_cast<uint32_t>(reordered_positions.size()), batch_size);
   batch_paths.resize(num_batches);
   std::vector<batch_partition_file> batch_files;
   batch_files.reserve(num_batches);
 
   for (uint32_t batch_index = 0; batch_index < num_batches; batch_index++) {
     batch_paths[batch_index] = batch_temp_path(input_path, batch_index);
-    batch_files.push_back({.path = batch_paths[batch_index],
-                           .output = std::ofstream(batch_paths[batch_index],
-                                                   std::ios::binary),
-                           .buffer = {}});
+    batch_files.push_back(
+        {.path = batch_paths[batch_index],
+         .output = std::ofstream(batch_paths[batch_index], std::ios::binary),
+         .buffer = {}});
     batch_files.back().buffer.reserve(kBatchIoBufferSize);
   }
 
@@ -169,8 +166,8 @@ void load_partitioned_batch(const std::string &batch_path,
     cursor += record.string_length;
   }
 
-  for (uint32_t read_index = reads_in_batch; read_index < reordered_strings.size();
-       read_index++) {
+  for (uint32_t read_index = reads_in_batch;
+       read_index < reordered_strings.size(); read_index++) {
     reordered_strings[read_index].clear();
   }
 }
@@ -207,16 +204,19 @@ void compress_block_batch(const std::string &input_path,
       if (mode == reorder_compress_mode::id) {
         compress_id_block(output_path.c_str(),
                           reordered_strings.data() + block_begin,
-                          reads_in_block, cp.compression_level,
+                          reads_in_block, cp.encoding.compression_level,
                           true /* pack_only */);
         const uint64_t global_block_idx = block_offset + block_index;
-        if (global_block_idx < compression_params::kFileLenThrSize) {
-          cp.file_len_id_thr[global_block_idx] =
+        if (global_block_idx <
+            compression_params::ReadMetadata::kFileLenThrSize) {
+          cp.read_info.file_len_id_thr[global_block_idx] =
               std::filesystem::file_size(output_path);
         } else {
-          throw std::runtime_error(std::string("Exceeded maximum supported block count (") +
-                                   std::to_string(compression_params::kFileLenThrSize) +
-                                   "). Increase array size in util.h.");
+          throw std::runtime_error(
+              std::string("Exceeded maximum supported block count (") +
+              std::to_string(
+                  compression_params::ReadMetadata::kFileLenThrSize) +
+              "). Increase array size in util.h.");
         }
       } else {
         for (uint64_t read_offset = 0; read_offset < reads_in_block;
@@ -224,10 +224,10 @@ void compress_block_batch(const std::string &input_path,
           read_lengths[read_offset] =
               reordered_strings[block_begin + read_offset].size();
         }
-        if (cp.qvz_flag) {
+        if (cp.quality.qvz_flag) {
           quantize_quality_qvz(reordered_strings.data() + block_begin,
                                reads_in_block, read_lengths.data(),
-                               cp.qvz_ratio);
+                               cp.quality.qvz_ratio);
         }
         bsc::BSC_str_array_compress(output_path.c_str(),
                                     reordered_strings.data() + block_begin,
@@ -285,8 +285,8 @@ void generate_order_pe(const std::string &base_dir,
   // 3. N-read spots
   std::ifstream n_input(base_dir + "/read_order_N.bin", std::ios::binary);
   if (n_input.is_open()) {
-    while (n_input.read(reinterpret_cast<char *>(&orig_spot),
-                        sizeof(uint32_t))) {
+    while (
+        n_input.read(reinterpret_cast<char *>(&orig_spot), sizeof(uint32_t))) {
       if (orig_spot < spot_count)
         reordered_positions[orig_spot] = corrected++;
     }
@@ -323,7 +323,8 @@ void generate_order_se(const std::string &base_dir,
   // 3. N-reads
   std::ifstream n_input(base_dir + "/read_order_N.bin", std::ios::binary);
   if (n_input.is_open()) {
-    while (n_input.read(reinterpret_cast<char *>(&orig_pos), sizeof(uint32_t))) {
+    while (
+        n_input.read(reinterpret_cast<char *>(&orig_pos), sizeof(uint32_t))) {
       if (orig_pos < num_reads)
         reordered_positions[orig_pos] = corrected++;
     }
@@ -360,13 +361,13 @@ void reorder_compress(const std::string &input_path,
 
 void reorder_compress_quality_id(const std::string &temp_dir,
                                  compression_params &cp) {
-  const uint32_t num_reads = cp.num_reads;
-  const int num_thr = cp.num_thr;
-  const bool preserve_id = cp.preserve_id;
-  const bool preserve_quality = cp.preserve_quality;
-  const bool paired_end = cp.paired_end;
-  const uint32_t num_reads_per_block = cp.num_reads_per_block;
-  const bool paired_id_match = cp.paired_id_match;
+  const uint32_t num_reads = cp.read_info.num_reads;
+  const int num_thr = cp.encoding.num_thr;
+  const bool preserve_id = cp.encoding.preserve_id;
+  const bool preserve_quality = cp.encoding.preserve_quality;
+  const bool paired_end = cp.encoding.paired_end;
+  const uint32_t num_reads_per_block = cp.encoding.num_reads_per_block;
+  const bool paired_id_match = cp.read_info.paired_id_match;
 
   const std::string base_dir = temp_dir;
 
@@ -418,10 +419,11 @@ void reorder_compress_quality_id(const std::string &temp_dir,
       // Monolithic ID merge phase: Merge blocks into one file and BSC compress.
       const uint32_t num_blocks =
           (file_read_count + num_reads_per_block - 1) / num_reads_per_block;
-      if (num_blocks > compression_params::kFileLenThrSize) {
-        throw std::runtime_error(std::string("Exceeded maximum supported block count (") +
-                                 std::to_string(compression_params::kFileLenThrSize) +
-                                 "). Increase array size in util.h.");
+      if (num_blocks > compression_params::ReadMetadata::kFileLenThrSize) {
+        throw std::runtime_error(
+            std::string("Exceeded maximum supported block count (") +
+            std::to_string(compression_params::ReadMetadata::kFileLenThrSize) +
+            "). Increase array size in util.h.");
       }
       const std::string monolithic_path = id_paths[stream_index] + ".bsc";
       const std::string merged_packed_path = id_paths[stream_index] + ".packed";
@@ -431,7 +433,8 @@ void reorder_compress_quality_id(const std::string &temp_dir,
         throw std::runtime_error("Failed to open merged packed ID file.");
 
       for (uint32_t b = 0; b < num_blocks; b++) {
-        const std::string block_path = block_file_path(id_paths[stream_index], b);
+        const std::string block_path =
+            block_file_path(id_paths[stream_index], b);
         std::ifstream block_in(block_path, std::ios::binary);
         if (block_in) {
           merged_out << block_in.rdbuf();

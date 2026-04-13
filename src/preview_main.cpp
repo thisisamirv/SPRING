@@ -1,5 +1,6 @@
-// Implements the standalone spring2-preview utility for extracting and displaying
-// archive metadata, original filenames, and format notes without decompression.
+// Implements the standalone spring2-preview utility for extracting and
+// displaying archive metadata, original filenames, and format notes without
+// decompression.
 
 #include <filesystem>
 #include <fstream>
@@ -27,9 +28,8 @@ void preview(const std::string &archive_path) {
     const std::string untar_command =
         "tar -xf " + shell_quote(shell_path(archive_path)) + " -C " +
         shell_quote(shell_path(temp_dir)) + " --wildcards '*cp.bin' 2>" +
-        null_dev + " || " + "tar -xf " +
-        shell_quote(shell_path(archive_path)) + " -C " +
-        shell_quote(shell_path(temp_dir)) + " cp.bin ./cp.bin";
+        null_dev + " || " + "tar -xf " + shell_quote(shell_path(archive_path)) +
+        " -C " + shell_quote(shell_path(temp_dir)) + " cp.bin ./cp.bin";
 
     if (std::system(untar_command.c_str()) != 0) {
       throw std::runtime_error("Failed to extract metadata from archive.");
@@ -45,56 +45,59 @@ void preview(const std::string &archive_path) {
 
     std::cout << "SPRING2 Archive Metadata Preview:\n";
     std::cout << "--------------------------------\n";
-    std::cout << "Original Input 1:  " << cp.input_filename_1 << "\n";
-    if (cp.paired_end) {
-      std::cout << "Original Input 2:  " << cp.input_filename_2 << "\n";
+    std::cout << "Original Input 1:  " << cp.read_info.input_filename_1 << "\n";
+    if (cp.encoding.paired_end) {
+      std::cout << "Original Input 2:  " << cp.read_info.input_filename_2
+                << "\n";
     }
     uint64_t archive_size = std::filesystem::file_size(archive_path);
-    if (!cp.note.empty()) {
-      std::cout << "Note:              " << cp.note << "\n";
+    if (!cp.read_info.note.empty()) {
+      std::cout << "Note:              " << cp.read_info.note << "\n";
     }
     std::cout << "Mode:              "
-              << (cp.paired_end ? "Paired-end" : "Single-end") << "\n";
-    std::cout << "Reads Processed:   " << cp.num_reads << "\n";
-    if (cp.paired_end) {
-      std::cout << "  (Input 1: " << cp.num_reads_clean[0]
-                << ", Input 2: " << cp.num_reads_clean[1] << ")\n";
+              << (cp.encoding.paired_end ? "Paired-end" : "Single-end") << "\n";
+    std::cout << "Reads Processed:   " << cp.read_info.num_reads << "\n";
+    if (cp.encoding.paired_end) {
+      std::cout << "  (Input 1: " << cp.read_info.num_reads_clean[0]
+                << ", Input 2: " << cp.read_info.num_reads_clean[1] << ")\n";
     }
 
-    uint64_t total_orig_compressed_size = cp.input_1_gzip_compressed_size;
-    if (cp.paired_end) {
-      total_orig_compressed_size += cp.input_2_gzip_compressed_size;
+    uint64_t total_orig_compressed_size = cp.gzip.streams[0].compressed_size;
+    if (cp.encoding.paired_end) {
+      total_orig_compressed_size += cp.gzip.streams[1].compressed_size;
     }
     if (total_orig_compressed_size > 0) {
       double to_mb_factor = 1024.0 * 1024.0;
       double overall_ratio = (double)total_orig_compressed_size / archive_size;
       std::cout << "Compression Ratio: " << std::fixed << std::setprecision(2)
                 << overall_ratio << "x ("
-                << (uint64_t)(total_orig_compressed_size / to_mb_factor) << " / "
-                << (uint64_t)(archive_size / to_mb_factor) << " MB)\n";
+                << (uint64_t)(total_orig_compressed_size / to_mb_factor)
+                << " / " << (uint64_t)(archive_size / to_mb_factor) << " MB)\n";
     }
-    std::cout << "Max Read Length:   " << cp.max_readlen << " (using "
-              << (cp.long_flag ? "long" : "short") << "-read encoder)\n";
-    std::cout << "Preserve Order:    " << (cp.preserve_order ? "Yes" : "No")
-              << "\n";
-    std::cout << "Preserve IDs:      " << (cp.preserve_id ? "Yes" : "No")
-              << "\n";
-    std::cout << "Preserve Quality:  " << (cp.preserve_quality ? "Yes" : "No")
-              << "\n";
-    if (cp.preserve_quality) {
+    std::cout << "Max Read Length:   " << cp.read_info.max_readlen << " (using "
+              << (cp.encoding.long_flag ? "long" : "short")
+              << "-read encoder)\n";
+    std::cout << "Preserve Order:    "
+              << (cp.encoding.preserve_order ? "Yes" : "No") << "\n";
+    std::cout << "Preserve IDs:      "
+              << (cp.encoding.preserve_id ? "Yes" : "No") << "\n";
+    std::cout << "Preserve Quality:  "
+              << (cp.encoding.preserve_quality ? "Yes" : "No") << "\n";
+    if (cp.encoding.preserve_quality) {
       std::cout << "Quality Mode:      ";
-      if (cp.qvz_flag)
-        std::cout << "QVZ (ratio: " << cp.qvz_ratio << ")";
-      else if (cp.ill_bin_flag)
+      if (cp.quality.qvz_flag)
+        std::cout << "QVZ (ratio: " << cp.quality.qvz_ratio << ")";
+      else if (cp.quality.ill_bin_flag)
         std::cout << "Illumina 8-level binning";
-      else if (cp.bin_thr_flag)
-        std::cout << "Binary binning (thr: " << cp.bin_thr_thr << ")";
+      else if (cp.quality.bin_thr_flag)
+        std::cout << "Binary binning (thr: " << cp.quality.bin_thr_thr << ")";
       else
         std::cout << "Lossless";
       std::cout << "\n";
     }
-    std::cout << "Compression Level: " << cp.compression_level << "\n";
-    std::cout << "Use CRLF:          " << (cp.use_crlf ? "Yes" : "No") << "\n";
+    std::cout << "Compression Level: " << cp.encoding.compression_level << "\n";
+    std::cout << "Use CRLF:          " << (cp.encoding.use_crlf ? "Yes" : "No")
+              << "\n";
 
     auto to_mb = [](uint64_t bytes) {
       return (double)bytes / (1024.0 * 1024.0);
@@ -127,10 +130,12 @@ void preview(const std::string &archive_path) {
       if (is_bgzf) {
         std::cout << "  Block Size:      " << bgzf_bsiz << "\n";
       }
-      std::cout << "  Uncompressed Name: " << (name.empty() ? suggested_name : name)
+      std::cout << "  Uncompressed Name: "
+                << (name.empty() ? suggested_name : name)
                 << (name.empty() ? "" : " (from header)") << "\n";
-      std::cout << "  Gzip Header:     FLG=0x" << std::hex << (int)flg << std::dec
-                << ", MTIME=" << mtime << ", OS=" << (int)os << "\n";
+      std::cout << "  Gzip Header:     FLG=0x" << std::hex << (int)flg
+                << std::dec << ", MTIME=" << mtime << ", OS=" << (int)os
+                << "\n";
       std::cout << "  Member Count:    " << members << "\n";
       if (comp_sz > 0) {
         double ratio = (double)uncomp_sz / comp_sz;
@@ -155,24 +160,24 @@ void preview(const std::string &archive_path) {
       return path;
     };
 
-    print_gzip_info(1, cp.input_1_was_gzipped, cp.input_1_gzip_flg,
-                    cp.input_1_gzip_mtime, cp.input_1_gzip_xfl,
-                    cp.input_1_gzip_os, cp.input_1_gzip_name,
-                    get_suggested_uncomp_name(cp.input_filename_1),
-                    cp.input_1_is_bgzf, cp.input_1_bgzf_block_size,
-                    cp.input_1_gzip_uncompressed_size,
-                    cp.input_1_gzip_compressed_size,
-                    cp.input_1_gzip_member_count);
+    print_gzip_info(
+        1, cp.gzip.streams[0].was_gzipped, cp.gzip.streams[0].flg,
+        cp.gzip.streams[0].mtime, cp.gzip.streams[0].xfl, cp.gzip.streams[0].os,
+        cp.gzip.streams[0].name,
+        get_suggested_uncomp_name(cp.read_info.input_filename_1),
+        cp.gzip.streams[0].is_bgzf, cp.gzip.streams[0].bgzf_block_size,
+        cp.gzip.streams[0].uncompressed_size,
+        cp.gzip.streams[0].compressed_size, cp.gzip.streams[0].member_count);
 
-    if (cp.paired_end) {
-      print_gzip_info(2, cp.input_2_was_gzipped, cp.input_2_gzip_flg,
-                      cp.input_2_gzip_mtime, cp.input_2_gzip_xfl,
-                      cp.input_2_gzip_os, cp.input_2_gzip_name,
-                      get_suggested_uncomp_name(cp.input_filename_2),
-                      cp.input_2_is_bgzf, cp.input_2_bgzf_block_size,
-                      cp.input_2_gzip_uncompressed_size,
-                      cp.input_2_gzip_compressed_size,
-                      cp.input_2_gzip_member_count);
+    if (cp.encoding.paired_end) {
+      print_gzip_info(
+          2, cp.gzip.streams[1].was_gzipped, cp.gzip.streams[1].flg,
+          cp.gzip.streams[1].mtime, cp.gzip.streams[1].xfl,
+          cp.gzip.streams[1].os, cp.gzip.streams[1].name,
+          get_suggested_uncomp_name(cp.read_info.input_filename_2),
+          cp.gzip.streams[1].is_bgzf, cp.gzip.streams[1].bgzf_block_size,
+          cp.gzip.streams[1].uncompressed_size,
+          cp.gzip.streams[1].compressed_size, cp.gzip.streams[1].member_count);
     }
 
     std::cout << "--------------------------------\n";

@@ -12,8 +12,8 @@
 #include <string>
 #include <vector>
 
-#include "single_phf.hpp"
 #include "progress.h"
+#include "single_phf.hpp"
 #include "util.h"
 #include "utils/bucketers.hpp"
 #include "utils/encoders.hpp"
@@ -298,8 +298,10 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
     current_dict.numkeys = detail::sort_and_deduplicate_keys(
         dictionary_keys_data, current_dict.dict_numreads);
 
-    Logger::log_info(std::string("Dictionary ") + std::to_string(dict_index + 1) + " of " + std::to_string(numdict)
-              + ": Building MPHF for " + std::to_string(current_dict.numkeys) + " keys...");
+    Logger::log_info(std::string("Dictionary ") +
+                     std::to_string(dict_index + 1) + " of " +
+                     std::to_string(numdict) + ": Building MPHF for " +
+                     std::to_string(current_dict.numkeys) + " keys...");
     pthash::build_configuration config;
     config.num_threads = 1;
     config.minimal = false;
@@ -307,9 +309,10 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
     current_dict.bphf = new boophf_t();
     Logger::log_info("  Building MPHF... ");
     current_dict.bphf->build_in_internal_memory(dictionary_keys_data,
-                                                 current_dict.numkeys, config);
+                                                current_dict.numkeys, config);
     current_dict.numkeys = current_dict.bphf->table_size();
-    Logger::log_info(std::string("Done. (T=") + std::to_string(current_dict.numkeys) + ")");
+    Logger::log_info(std::string("Done. (T=") +
+                     std::to_string(current_dict.numkeys) + ")");
 
     // Re-read the stored keys and materialize their hash buckets.
     Logger::log_info("  Writing hash chunks... ");

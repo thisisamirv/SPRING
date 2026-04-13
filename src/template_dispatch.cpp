@@ -75,15 +75,15 @@ size_t dispatch_index(const size_t requested_bitset_size,
 } // namespace
 
 void call_reorder(const std::string &temp_dir, compression_params &params) {
-  const size_t reorder_bitset_size =
-      rounded_bitset_size(2 * static_cast<size_t>(params.max_readlen));
+  const size_t reorder_bitset_size = rounded_bitset_size(
+      2 * static_cast<size_t>(params.read_info.max_readlen));
   reorder_dispatchers[dispatch_index(reorder_bitset_size,
                                      kMaxReorderBitsetSize)](temp_dir, params);
 }
 
 void call_encoder(const std::string &temp_dir, compression_params &params) {
-  const size_t encoder_bitset_size =
-      rounded_bitset_size(3 * static_cast<size_t>(params.max_readlen));
+  const size_t encoder_bitset_size = rounded_bitset_size(
+      3 * static_cast<size_t>(params.read_info.max_readlen));
   encoder_dispatchers[dispatch_index(encoder_bitset_size,
                                      kMaxEncoderBitsetSize)](temp_dir, params);
 }

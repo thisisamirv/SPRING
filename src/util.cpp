@@ -1232,119 +1232,122 @@ std::string read_string(std::istream &in) {
 }
 
 void write_compression_params(std::ostream &out, const compression_params &cp) {
-  write_bool(out, cp.paired_end);
-  write_bool(out, cp.preserve_order);
-  write_bool(out, cp.preserve_quality);
-  write_bool(out, cp.preserve_id);
-  write_bool(out, cp.long_flag);
-  write_bool(out, cp.qvz_flag);
-  write_bool(out, cp.ill_bin_flag);
-  write_bool(out, cp.bin_thr_flag);
-  out.write(byte_ptr(&cp.qvz_ratio), sizeof(double));
-  out.write(byte_ptr(&cp.bin_thr_thr), sizeof(unsigned int));
-  out.write(byte_ptr(&cp.bin_thr_high), sizeof(unsigned int));
-  out.write(byte_ptr(&cp.bin_thr_low), sizeof(unsigned int));
-  out.write(byte_ptr(&cp.num_reads), sizeof(uint32_t));
-  out.write(byte_ptr(&cp.num_reads_clean[0]), sizeof(uint32_t));
-  out.write(byte_ptr(&cp.num_reads_clean[1]), sizeof(uint32_t));
-  out.write(byte_ptr(&cp.max_readlen), sizeof(uint32_t));
-  out.write(byte_ptr(&cp.paired_id_code), sizeof(uint8_t));
-  write_bool(out, cp.paired_id_match);
-  out.write(byte_ptr(&cp.num_reads_per_block), sizeof(int));
-  out.write(byte_ptr(&cp.num_reads_per_block_long), sizeof(int));
-  out.write(byte_ptr(&cp.num_thr), sizeof(int));
-  out.write(byte_ptr(&cp.compression_level), sizeof(int));
-  out.write(reinterpret_cast<const char *>(cp.file_len_seq_thr),
-            sizeof(uint64_t) * compression_params::kFileLenThrSize);
-  out.write(reinterpret_cast<const char *>(cp.file_len_id_thr),
-            sizeof(uint64_t) * compression_params::kFileLenThrSize);
-  write_bool(out, cp.use_crlf);
-  write_string(out, cp.input_filename_1);
-  write_string(out, cp.input_filename_2);
-  write_string(out, cp.note);
-  write_bool(out, cp.fasta_mode);
+  write_bool(out, cp.encoding.paired_end);
+  write_bool(out, cp.encoding.preserve_order);
+  write_bool(out, cp.encoding.preserve_quality);
+  write_bool(out, cp.encoding.preserve_id);
+  write_bool(out, cp.encoding.long_flag);
+  write_bool(out, cp.quality.qvz_flag);
+  write_bool(out, cp.quality.ill_bin_flag);
+  write_bool(out, cp.quality.bin_thr_flag);
+  out.write(byte_ptr(&cp.quality.qvz_ratio), sizeof(double));
+  out.write(byte_ptr(&cp.quality.bin_thr_thr), sizeof(unsigned int));
+  out.write(byte_ptr(&cp.quality.bin_thr_high), sizeof(unsigned int));
+  out.write(byte_ptr(&cp.quality.bin_thr_low), sizeof(unsigned int));
+  out.write(byte_ptr(&cp.read_info.num_reads), sizeof(uint32_t));
+  out.write(byte_ptr(&cp.read_info.num_reads_clean[0]), sizeof(uint32_t));
+  out.write(byte_ptr(&cp.read_info.num_reads_clean[1]), sizeof(uint32_t));
+  out.write(byte_ptr(&cp.read_info.max_readlen), sizeof(uint32_t));
+  out.write(byte_ptr(&cp.read_info.paired_id_code), sizeof(uint8_t));
+  write_bool(out, cp.read_info.paired_id_match);
+  out.write(byte_ptr(&cp.encoding.num_reads_per_block), sizeof(int));
+  out.write(byte_ptr(&cp.encoding.num_reads_per_block_long), sizeof(int));
+  out.write(byte_ptr(&cp.encoding.num_thr), sizeof(int));
+  out.write(byte_ptr(&cp.encoding.compression_level), sizeof(int));
+  out.write(reinterpret_cast<const char *>(cp.read_info.file_len_seq_thr),
+            sizeof(uint64_t) *
+                compression_params::ReadMetadata::kFileLenThrSize);
+  out.write(reinterpret_cast<const char *>(cp.read_info.file_len_id_thr),
+            sizeof(uint64_t) *
+                compression_params::ReadMetadata::kFileLenThrSize);
+  write_bool(out, cp.encoding.use_crlf);
+  write_string(out, cp.read_info.input_filename_1);
+  write_string(out, cp.read_info.input_filename_2);
+  write_string(out, cp.read_info.note);
+  write_bool(out, cp.encoding.fasta_mode);
 
   // Serialize enhanced gzip/BGZF metadata
-  write_bool(out, cp.input_1_was_gzipped);
-  write_bool(out, cp.input_2_was_gzipped);
-  out.write(byte_ptr(&cp.input_1_gzip_flg), sizeof(uint8_t));
-  out.write(byte_ptr(&cp.input_2_gzip_flg), sizeof(uint8_t));
-  out.write(byte_ptr(&cp.input_1_gzip_mtime), sizeof(uint32_t));
-  out.write(byte_ptr(&cp.input_2_gzip_mtime), sizeof(uint32_t));
-  out.write(byte_ptr(&cp.input_1_gzip_xfl), sizeof(uint8_t));
-  out.write(byte_ptr(&cp.input_2_gzip_xfl), sizeof(uint8_t));
-  out.write(byte_ptr(&cp.input_1_gzip_os), sizeof(uint8_t));
-  out.write(byte_ptr(&cp.input_2_gzip_os), sizeof(uint8_t));
-  write_string(out, cp.input_1_gzip_name);
-  write_string(out, cp.input_2_gzip_name);
-  write_bool(out, cp.input_1_is_bgzf);
-  write_bool(out, cp.input_2_is_bgzf);
-  out.write(byte_ptr(&cp.input_1_bgzf_block_size), sizeof(uint16_t));
-  out.write(byte_ptr(&cp.input_2_bgzf_block_size), sizeof(uint16_t));
-  out.write(byte_ptr(&cp.input_1_gzip_uncompressed_size), sizeof(uint64_t));
-  out.write(byte_ptr(&cp.input_2_gzip_uncompressed_size), sizeof(uint64_t));
-  out.write(byte_ptr(&cp.input_1_gzip_compressed_size), sizeof(uint64_t));
-  out.write(byte_ptr(&cp.input_2_gzip_compressed_size), sizeof(uint64_t));
-  out.write(byte_ptr(&cp.input_1_gzip_member_count), sizeof(uint32_t));
-  out.write(byte_ptr(&cp.input_2_gzip_member_count), sizeof(uint32_t));
+  for (int i = 0; i < 2; ++i)
+    write_bool(out, cp.gzip.streams[i].was_gzipped);
+  for (int i = 0; i < 2; ++i)
+    out.write(byte_ptr(&cp.gzip.streams[i].flg), sizeof(uint8_t));
+  for (int i = 0; i < 2; ++i)
+    out.write(byte_ptr(&cp.gzip.streams[i].mtime), sizeof(uint32_t));
+  for (int i = 0; i < 2; ++i)
+    out.write(byte_ptr(&cp.gzip.streams[i].xfl), sizeof(uint8_t));
+  for (int i = 0; i < 2; ++i)
+    out.write(byte_ptr(&cp.gzip.streams[i].os), sizeof(uint8_t));
+  for (int i = 0; i < 2; ++i)
+    write_string(out, cp.gzip.streams[i].name);
+  for (int i = 0; i < 2; ++i)
+    write_bool(out, cp.gzip.streams[i].is_bgzf);
+  for (int i = 0; i < 2; ++i)
+    out.write(byte_ptr(&cp.gzip.streams[i].bgzf_block_size), sizeof(uint16_t));
+  for (int i = 0; i < 2; ++i)
+    out.write(byte_ptr(&cp.gzip.streams[i].uncompressed_size),
+              sizeof(uint64_t));
+  for (int i = 0; i < 2; ++i)
+    out.write(byte_ptr(&cp.gzip.streams[i].compressed_size), sizeof(uint64_t));
+  for (int i = 0; i < 2; ++i)
+    out.write(byte_ptr(&cp.gzip.streams[i].member_count), sizeof(uint32_t));
 }
 
 void read_compression_params(std::istream &in, compression_params &cp) {
-  cp.paired_end = read_bool(in);
-  cp.preserve_order = read_bool(in);
-  cp.preserve_quality = read_bool(in);
-  cp.preserve_id = read_bool(in);
-  cp.long_flag = read_bool(in);
-  cp.qvz_flag = read_bool(in);
-  cp.ill_bin_flag = read_bool(in);
-  cp.bin_thr_flag = read_bool(in);
-  in.read(byte_ptr(&cp.qvz_ratio), sizeof(double));
-  in.read(byte_ptr(&cp.bin_thr_thr), sizeof(unsigned int));
-  in.read(byte_ptr(&cp.bin_thr_high), sizeof(unsigned int));
-  in.read(byte_ptr(&cp.bin_thr_low), sizeof(unsigned int));
-  in.read(byte_ptr(&cp.num_reads), sizeof(uint32_t));
-  in.read(byte_ptr(&cp.num_reads_clean[0]), sizeof(uint32_t));
-  in.read(byte_ptr(&cp.num_reads_clean[1]), sizeof(uint32_t));
-  in.read(byte_ptr(&cp.max_readlen), sizeof(uint32_t));
-  in.read(byte_ptr(&cp.paired_id_code), sizeof(uint8_t));
-  cp.paired_id_match = read_bool(in);
-  in.read(byte_ptr(&cp.num_reads_per_block), sizeof(int));
-  in.read(byte_ptr(&cp.num_reads_per_block_long), sizeof(int));
-  in.read(byte_ptr(&cp.num_thr), sizeof(int));
-  in.read(byte_ptr(&cp.compression_level), sizeof(int));
-  in.read(reinterpret_cast<char *>(cp.file_len_seq_thr),
-          sizeof(uint64_t) * compression_params::kFileLenThrSize);
-  in.read(reinterpret_cast<char *>(cp.file_len_id_thr),
-          sizeof(uint64_t) * compression_params::kFileLenThrSize);
-  cp.use_crlf = read_bool(in);
-  cp.input_filename_1 = read_string(in);
-  cp.input_filename_2 = read_string(in);
-  cp.note = read_string(in);
-  cp.fasta_mode = read_bool(in);
+  cp.encoding.paired_end = read_bool(in);
+  cp.encoding.preserve_order = read_bool(in);
+  cp.encoding.preserve_quality = read_bool(in);
+  cp.encoding.preserve_id = read_bool(in);
+  cp.encoding.long_flag = read_bool(in);
+  cp.quality.qvz_flag = read_bool(in);
+  cp.quality.ill_bin_flag = read_bool(in);
+  cp.quality.bin_thr_flag = read_bool(in);
+  in.read(byte_ptr(&cp.quality.qvz_ratio), sizeof(double));
+  in.read(byte_ptr(&cp.quality.bin_thr_thr), sizeof(unsigned int));
+  in.read(byte_ptr(&cp.quality.bin_thr_high), sizeof(unsigned int));
+  in.read(byte_ptr(&cp.quality.bin_thr_low), sizeof(unsigned int));
+  in.read(byte_ptr(&cp.read_info.num_reads), sizeof(uint32_t));
+  in.read(byte_ptr(&cp.read_info.num_reads_clean[0]), sizeof(uint32_t));
+  in.read(byte_ptr(&cp.read_info.num_reads_clean[1]), sizeof(uint32_t));
+  in.read(byte_ptr(&cp.read_info.max_readlen), sizeof(uint32_t));
+  in.read(byte_ptr(&cp.read_info.paired_id_code), sizeof(uint8_t));
+  cp.read_info.paired_id_match = read_bool(in);
+  in.read(byte_ptr(&cp.encoding.num_reads_per_block), sizeof(int));
+  in.read(byte_ptr(&cp.encoding.num_reads_per_block_long), sizeof(int));
+  in.read(byte_ptr(&cp.encoding.num_thr), sizeof(int));
+  in.read(byte_ptr(&cp.encoding.compression_level), sizeof(int));
+  in.read(reinterpret_cast<char *>(cp.read_info.file_len_seq_thr),
+          sizeof(uint64_t) * compression_params::ReadMetadata::kFileLenThrSize);
+  in.read(reinterpret_cast<char *>(cp.read_info.file_len_id_thr),
+          sizeof(uint64_t) * compression_params::ReadMetadata::kFileLenThrSize);
+  cp.encoding.use_crlf = read_bool(in);
+  cp.read_info.input_filename_1 = read_string(in);
+  cp.read_info.input_filename_2 = read_string(in);
+  cp.read_info.note = read_string(in);
+  cp.encoding.fasta_mode = read_bool(in);
 
   // Deserialize enhanced gzip/BGZF metadata
-  cp.input_1_was_gzipped = read_bool(in);
-  cp.input_2_was_gzipped = read_bool(in);
-  in.read(byte_ptr(&cp.input_1_gzip_flg), sizeof(uint8_t));
-  in.read(byte_ptr(&cp.input_2_gzip_flg), sizeof(uint8_t));
-  in.read(byte_ptr(&cp.input_1_gzip_mtime), sizeof(uint32_t));
-  in.read(byte_ptr(&cp.input_2_gzip_mtime), sizeof(uint32_t));
-  in.read(byte_ptr(&cp.input_1_gzip_xfl), sizeof(uint8_t));
-  in.read(byte_ptr(&cp.input_2_gzip_xfl), sizeof(uint8_t));
-  in.read(byte_ptr(&cp.input_1_gzip_os), sizeof(uint8_t));
-  in.read(byte_ptr(&cp.input_2_gzip_os), sizeof(uint8_t));
-  cp.input_1_gzip_name = read_string(in);
-  cp.input_2_gzip_name = read_string(in);
-  cp.input_1_is_bgzf = read_bool(in);
-  cp.input_2_is_bgzf = read_bool(in);
-  in.read(byte_ptr(&cp.input_1_bgzf_block_size), sizeof(uint16_t));
-  in.read(byte_ptr(&cp.input_2_bgzf_block_size), sizeof(uint16_t));
-  in.read(byte_ptr(&cp.input_1_gzip_uncompressed_size), sizeof(uint64_t));
-  in.read(byte_ptr(&cp.input_2_gzip_uncompressed_size), sizeof(uint64_t));
-  in.read(byte_ptr(&cp.input_1_gzip_compressed_size), sizeof(uint64_t));
-  in.read(byte_ptr(&cp.input_2_gzip_compressed_size), sizeof(uint64_t));
-  in.read(byte_ptr(&cp.input_1_gzip_member_count), sizeof(uint32_t));
-  in.read(byte_ptr(&cp.input_2_gzip_member_count), sizeof(uint32_t));
+  for (int i = 0; i < 2; ++i)
+    cp.gzip.streams[i].was_gzipped = read_bool(in);
+  for (int i = 0; i < 2; ++i)
+    in.read(byte_ptr(&cp.gzip.streams[i].flg), sizeof(uint8_t));
+  for (int i = 0; i < 2; ++i)
+    in.read(byte_ptr(&cp.gzip.streams[i].mtime), sizeof(uint32_t));
+  for (int i = 0; i < 2; ++i)
+    in.read(byte_ptr(&cp.gzip.streams[i].xfl), sizeof(uint8_t));
+  for (int i = 0; i < 2; ++i)
+    in.read(byte_ptr(&cp.gzip.streams[i].os), sizeof(uint8_t));
+  for (int i = 0; i < 2; ++i)
+    cp.gzip.streams[i].name = read_string(in);
+  for (int i = 0; i < 2; ++i)
+    cp.gzip.streams[i].is_bgzf = read_bool(in);
+  for (int i = 0; i < 2; ++i)
+    in.read(byte_ptr(&cp.gzip.streams[i].bgzf_block_size), sizeof(uint16_t));
+  for (int i = 0; i < 2; ++i)
+    in.read(byte_ptr(&cp.gzip.streams[i].uncompressed_size), sizeof(uint64_t));
+  for (int i = 0; i < 2; ++i)
+    in.read(byte_ptr(&cp.gzip.streams[i].compressed_size), sizeof(uint64_t));
+  for (int i = 0; i < 2; ++i)
+    in.read(byte_ptr(&cp.gzip.streams[i].member_count), sizeof(uint32_t));
 }
 
 void extract_gzip_detailed_info(const std::string &path, bool &is_gzipped,
@@ -1622,17 +1625,20 @@ void extract_tar_archive(const std::string &archive_path,
   int flags;
   int r;
 
-  flags = ARCHIVE_EXTRACT_TIME;
-  flags |= ARCHIVE_EXTRACT_PERM;
-  flags |= ARCHIVE_EXTRACT_ACL;
-  flags |= ARCHIVE_EXTRACT_FFLAGS;
+  flags = ARCHIVE_EXTRACT_PERM;
+  flags |= ARCHIVE_EXTRACT_SECURE_NODOTDOT;
+  flags |= ARCHIVE_EXTRACT_SECURE_SYMLINKS;
 
   a = archive_read_new();
-  archive_read_support_format_all(a);
-  archive_read_support_filter_all(a);
+  archive_read_support_filter_gzip(a);
+  archive_read_support_filter_xz(a);
+  archive_read_support_filter_zstd(a);
+  archive_read_support_filter_none(a);
+  archive_read_support_format_tar(a);
+  archive_read_support_format_empty(a);
+
   ext = archive_write_disk_new();
   archive_write_disk_set_options(ext, flags);
-  archive_write_disk_set_standard_lookup(ext);
 
   r = archive_read_open_filename(a, archive_path.c_str(), 10240);
   if (r != ARCHIVE_OK) {

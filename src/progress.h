@@ -4,46 +4,45 @@
 #ifndef SPRING_PROGRESS_H
 #define SPRING_PROGRESS_H
 
-#include <string>
 #include <mutex>
+#include <string>
 
 namespace spring {
 
 class Logger {
 public:
-    static void set_verbose(bool verbose);
-    static bool is_verbose();
-    
-    template<typename T>
-    static void log(const T& msg);
-    
-    static void log_info(const std::string& msg);
-    static void log_warning(const std::string& msg);
-    static void log_error(const std::string& msg);
+  static void set_verbose(bool verbose);
+  static bool is_verbose();
+
+  template <typename T> static void log(const T &msg);
+
+  static void log_info(const std::string &msg);
+  static void log_warning(const std::string &msg);
+  static void log_error(const std::string &msg);
 };
 
 class ProgressBar {
 public:
-    ProgressBar(bool enabled);
-    ~ProgressBar();
+  ProgressBar(bool enabled);
+  ~ProgressBar();
 
-    void set_stage(const std::string& label, float start_pct, float end_pct);
-    void update(float stage_progress); // stage_progress is 0.0 to 1.0
-    void finalize();
+  void set_stage(const std::string &label, float start_pct, float end_pct);
+  void update(float stage_progress); // stage_progress is 0.0 to 1.0
+  void finalize();
 
-    static ProgressBar* GlobalInstance();
-    static void SetGlobalInstance(ProgressBar* instance);
+  static ProgressBar *GlobalInstance();
+  static void SetGlobalInstance(ProgressBar *instance);
 
 private:
-    void render(float global_progress);
+  void render(float global_progress);
 
-    bool enabled_;
-    std::string current_label_;
-    float stage_start_ = 0.0f;
-    float stage_end_ = 1.0f;
-    float last_rendered_pct_ = -1.0f;
-    bool finalized_ = false;
-    std::mutex mutex_;
+  bool enabled_;
+  std::string current_label_;
+  float stage_start_ = 0.0f;
+  float stage_end_ = 1.0f;
+  float last_rendered_pct_ = -1.0f;
+  bool finalized_ = false;
+  std::mutex mutex_;
 };
 
 } // namespace spring

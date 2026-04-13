@@ -422,9 +422,9 @@ compression_io_config resolve_compression_io(const string_list &input_paths,
 void configure_quality_options(compression_params &compression_params,
                                const string_list &quality_options) {
   if (quality_options.empty() || quality_options[0] == "lossless") {
-    compression_params.qvz_flag = false;
-    compression_params.ill_bin_flag = false;
-    compression_params.bin_thr_flag = false;
+    compression_params.quality.qvz_flag = false;
+    compression_params.quality.ill_bin_flag = false;
+    compression_params.quality.bin_thr_flag = false;
     return;
   }
 
@@ -432,21 +432,21 @@ void configure_quality_options(compression_params &compression_params,
     if (quality_options.size() != 2)
       throw std::runtime_error("Invalid quality options.");
 
-    compression_params.qvz_ratio = parse_double_or_throw(
+    compression_params.quality.qvz_ratio = parse_double_or_throw(
         quality_options[1], "Invalid qvz ratio provided.");
-    if (compression_params.qvz_ratio == 0.0)
+    if (compression_params.quality.qvz_ratio == 0.0)
       throw std::runtime_error("Invalid qvz ratio provided.");
 
-    compression_params.qvz_flag = true;
-    compression_params.ill_bin_flag = false;
-    compression_params.bin_thr_flag = false;
+    compression_params.quality.qvz_flag = true;
+    compression_params.quality.ill_bin_flag = false;
+    compression_params.quality.bin_thr_flag = false;
     return;
   }
 
   if (quality_options[0] == "ill_bin") {
-    compression_params.ill_bin_flag = true;
-    compression_params.qvz_flag = false;
-    compression_params.bin_thr_flag = false;
+    compression_params.quality.ill_bin_flag = true;
+    compression_params.quality.qvz_flag = false;
+    compression_params.quality.bin_thr_flag = false;
     return;
   }
 
@@ -454,27 +454,30 @@ void configure_quality_options(compression_params &compression_params,
     if (quality_options.size() != 4)
       throw std::runtime_error("Invalid quality options.");
 
-    compression_params.bin_thr_thr = parse_int_or_throw(
+    compression_params.quality.bin_thr_thr = parse_int_or_throw(
         quality_options[1], "Invalid binary quality threshold.");
-    compression_params.bin_thr_high = parse_int_or_throw(
+    compression_params.quality.bin_thr_high = parse_int_or_throw(
         quality_options[2], "Invalid binary high quality value.");
-    compression_params.bin_thr_low = parse_int_or_throw(
+    compression_params.quality.bin_thr_low = parse_int_or_throw(
         quality_options[3], "Invalid binary low quality value.");
-    if (compression_params.bin_thr_thr > 94 ||
-        compression_params.bin_thr_high > 94 ||
-        compression_params.bin_thr_low > 94) {
+    if (compression_params.quality.bin_thr_thr > 94 ||
+        compression_params.quality.bin_thr_high > 94 ||
+        compression_params.quality.bin_thr_low > 94) {
       throw std::runtime_error(
           "Binary quality options must be in the range [0, 94].");
     }
-    if (compression_params.bin_thr_high < compression_params.bin_thr_thr ||
-        compression_params.bin_thr_low > compression_params.bin_thr_thr ||
-        compression_params.bin_thr_high < compression_params.bin_thr_low) {
+    if (compression_params.quality.bin_thr_high <
+            compression_params.quality.bin_thr_thr ||
+        compression_params.quality.bin_thr_low >
+            compression_params.quality.bin_thr_thr ||
+        compression_params.quality.bin_thr_high <
+            compression_params.quality.bin_thr_low) {
       throw std::runtime_error("Options do not satisfy low <= thr <= high.");
     }
 
-    compression_params.qvz_flag = false;
-    compression_params.ill_bin_flag = false;
-    compression_params.bin_thr_flag = true;
+    compression_params.quality.qvz_flag = false;
+    compression_params.quality.ill_bin_flag = false;
+    compression_params.quality.bin_thr_flag = true;
     return;
   }
 
@@ -608,41 +611,43 @@ void compress(const std::string &temp_dir,
   }
 
   compression_params cp{};
-  cp.paired_end = io_config.paired_end;
-  cp.preserve_order = preserve_order;
-  cp.preserve_quality = preserve_quality;
-  cp.preserve_id = preserve_id;
-  cp.long_flag = long_flag;
-  cp.use_crlf = use_crlf;
-  cp.num_reads_per_block = NUM_READS_PER_BLOCK;
-  cp.num_reads_per_block_long = NUM_READS_PER_BLOCK_LONG;
-  cp.num_thr = num_thr;
-  cp.compression_level = compression_level;
-  cp.note = note;
-  cp.fasta_mode = fasta_input;
-  cp.input_filename_1 =
+  cp.encoding.paired_end = io_config.paired_end;
+  cp.encoding.preserve_order = preserve_order;
+  cp.encoding.preserve_quality = preserve_quality;
+  cp.encoding.preserve_id = preserve_id;
+  cp.encoding.long_flag = long_flag;
+  cp.encoding.use_crlf = use_crlf;
+  cp.encoding.num_reads_per_block = NUM_READS_PER_BLOCK;
+  cp.encoding.num_reads_per_block_long = NUM_READS_PER_BLOCK_LONG;
+  cp.encoding.num_thr = num_thr;
+  cp.encoding.compression_level = compression_level;
+  cp.read_info.note = note;
+  cp.encoding.fasta_mode = fasta_input;
+  cp.read_info.input_filename_1 =
       std::filesystem::path(io_config.input_path_1).filename().string();
   if (io_config.paired_end) {
-    cp.input_filename_2 =
+    cp.read_info.input_filename_2 =
         std::filesystem::path(io_config.input_path_2).filename().string();
   }
 
   // Extract detailed gzip metadata for input 1
   extract_gzip_detailed_info(
-      io_config.input_path_1, cp.input_1_was_gzipped, cp.input_1_gzip_flg,
-      cp.input_1_gzip_mtime, cp.input_1_gzip_xfl, cp.input_1_gzip_os,
-      cp.input_1_gzip_name, cp.input_1_is_bgzf, cp.input_1_bgzf_block_size,
-      cp.input_1_gzip_uncompressed_size, cp.input_1_gzip_compressed_size,
-      cp.input_1_gzip_member_count);
+      io_config.input_path_1, cp.gzip.streams[0].was_gzipped,
+      cp.gzip.streams[0].flg, cp.gzip.streams[0].mtime, cp.gzip.streams[0].xfl,
+      cp.gzip.streams[0].os, cp.gzip.streams[0].name,
+      cp.gzip.streams[0].is_bgzf, cp.gzip.streams[0].bgzf_block_size,
+      cp.gzip.streams[0].uncompressed_size, cp.gzip.streams[0].compressed_size,
+      cp.gzip.streams[0].member_count);
 
   // Extract detailed gzip metadata for input 2 (if paired-end)
   if (io_config.paired_end) {
     extract_gzip_detailed_info(
-        io_config.input_path_2, cp.input_2_was_gzipped, cp.input_2_gzip_flg,
-        cp.input_2_gzip_mtime, cp.input_2_gzip_xfl, cp.input_2_gzip_os,
-        cp.input_2_gzip_name, cp.input_2_is_bgzf, cp.input_2_bgzf_block_size,
-        cp.input_2_gzip_uncompressed_size, cp.input_2_gzip_compressed_size,
-        cp.input_2_gzip_member_count);
+        io_config.input_path_2, cp.gzip.streams[1].was_gzipped,
+        cp.gzip.streams[1].flg, cp.gzip.streams[1].mtime,
+        cp.gzip.streams[1].xfl, cp.gzip.streams[1].os, cp.gzip.streams[1].name,
+        cp.gzip.streams[1].is_bgzf, cp.gzip.streams[1].bgzf_block_size,
+        cp.gzip.streams[1].uncompressed_size,
+        cp.gzip.streams[1].compressed_size, cp.gzip.streams[1].member_count);
   }
 
   if (preserve_quality)
@@ -776,13 +781,13 @@ void decompress(const std::string &temp_dir,
 
   if (verbose) {
     std::cout << "Original filenames detected in archive:\n";
-    std::cout << "  Input 1: " << cp.input_filename_1 << "\n";
-    if (cp.paired_end) {
-      std::cout << "  Input 2: " << cp.input_filename_2 << "\n";
+    std::cout << "  Input 1: " << cp.read_info.input_filename_1 << "\n";
+    if (cp.encoding.paired_end) {
+      std::cout << "  Input 2: " << cp.read_info.input_filename_2 << "\n";
     }
 
-    if (!cp.note.empty()) {
-      std::cout << "Note: " << cp.note << "\n";
+    if (!cp.read_info.note.empty()) {
+      std::cout << "Note: " << cp.read_info.note << "\n";
     }
   }
 
@@ -798,24 +803,23 @@ void decompress(const std::string &temp_dir,
 
   std::vector<std::string> resolved_output_paths = output_paths;
   if (resolved_output_paths.empty()) {
-    if (cp.input_filename_1.empty()) {
-      throw std::runtime_error(
-          "No output path specified and archive metadata contains no "
-          "original filenames.");
+    if (cp.read_info.input_filename_1.empty()) {
+      throw std::runtime_error("Input file 1 is required");
     }
-    resolved_output_paths.push_back(cp.input_filename_1);
-    if (cp.paired_end) {
-      resolved_output_paths.push_back(cp.input_filename_2);
+    resolved_output_paths.push_back(cp.read_info.input_filename_1);
+    if (cp.encoding.paired_end) {
+      resolved_output_paths.push_back(cp.read_info.input_filename_2);
     }
   }
 
   bool should_gzip[2] = {false, false};
   bool should_bgzf[2] = {false, false};
-  for (int i = 0; i < (cp.paired_end ? 2 : 1); i++) {
+  for (int i = 0; i < (cp.encoding.paired_end ? 2 : 1); i++) {
     const std::string &path =
         (i < output_paths.size()) ? output_paths[i] : output_paths[0];
-    bool is_bgzf = (i == 0) ? cp.input_1_is_bgzf : cp.input_2_is_bgzf;
-    uint8_t xfl = (i == 0) ? cp.input_1_gzip_xfl : cp.input_2_gzip_xfl;
+    bool is_bgzf =
+        (i == 0) ? cp.gzip.streams[0].is_bgzf : cp.gzip.streams[1].is_bgzf;
+    uint8_t xfl = (i == 0) ? cp.gzip.streams[0].xfl : cp.gzip.streams[1].xfl;
 
     if (unzip_flag)
       continue;
@@ -824,9 +828,9 @@ void decompress(const std::string &temp_dir,
       should_gzip[i] = true;
       should_bgzf[i] = is_bgzf;
       if (xfl == 2)
-        cp.compression_level = 9;
+        cp.encoding.compression_level = 9;
       else if (xfl == 4)
-        cp.compression_level = 1;
+        cp.encoding.compression_level = 1;
     }
   }
 
@@ -837,20 +841,20 @@ void decompress(const std::string &temp_dir,
     }
   }
 
-  bool paired_end = cp.paired_end;
+  bool paired_end = cp.encoding.paired_end;
   const decompression_io_config io_config =
       resolve_decompression_io(input_paths, resolved_output_paths, paired_end);
 
   run_timed_step("Decompressing ...", "Decompressing", [&] {
     progress.set_stage("Decompressing", 0.10F, 1.0F);
-    if (cp.long_flag) {
+    if (cp.encoding.long_flag) {
       decompress_long(temp_dir, io_config.output_path_1,
-                      io_config.output_path_2, cp, cp.use_crlf, should_gzip,
-                      should_bgzf);
+                      io_config.output_path_2, cp, cp.encoding.use_crlf,
+                      should_gzip, should_bgzf);
     } else {
       decompress_short(temp_dir, io_config.output_path_1,
-                       io_config.output_path_2, cp, cp.use_crlf, should_gzip,
-                       should_bgzf);
+                       io_config.output_path_2, cp, cp.encoding.use_crlf,
+                       should_gzip, should_bgzf);
     }
   });
 

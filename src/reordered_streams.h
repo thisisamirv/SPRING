@@ -1,5 +1,5 @@
-// Declares the stream-reordering stage that materializes archive-ready position,
-// noise, and unaligned data after reads have been reordered.
+// Declares the stream-reordering stage that materializes archive-ready
+// position, noise, and unaligned data after reads have been reordered.
 
 #ifndef SPRING_REORDERED_STREAMS_H_
 #define SPRING_REORDERED_STREAMS_H_

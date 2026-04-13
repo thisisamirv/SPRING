@@ -843,7 +843,7 @@ void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
 
 template <size_t bitset_size>
 void reorder_main(const std::string &temp_dir, const compression_params &cp) {
-  reorder_global<bitset_size> rg(cp.max_readlen);
+  reorder_global<bitset_size> rg(cp.read_info.max_readlen);
   rg.basedir = temp_dir;
   rg.infile[0] = rg.basedir + "/input_clean_1.dna";
   rg.infile[1] = rg.basedir + "/input_clean_2.dna";
@@ -854,16 +854,17 @@ void reorder_main(const std::string &temp_dir, const compression_params &cp) {
   rg.outfileorder = rg.basedir + "/read_order.bin";
   rg.outfilereadlength = rg.basedir + "/read_lengths.bin";
 
-  rg.max_readlen = cp.max_readlen;
-  rg.num_thr = cp.num_thr;
-  rg.paired_end = cp.paired_end;
+  rg.max_readlen = cp.read_info.max_readlen;
+  rg.num_thr = cp.encoding.num_thr;
+  rg.paired_end = cp.encoding.paired_end;
   rg.maxshift = rg.max_readlen / 2;
   std::array<bbhashdict, NUM_DICT_REORDER> dict;
   initialize_reorder_dict_ranges(dict, rg.max_readlen);
 
-  rg.numreads = cp.num_reads_clean[0] + cp.num_reads_clean[1];
-  rg.numreads_array[0] = cp.num_reads_clean[0];
-  rg.numreads_array[1] = cp.num_reads_clean[1];
+  rg.numreads =
+      cp.read_info.num_reads_clean[0] + cp.read_info.num_reads_clean[1];
+  rg.numreads_array[0] = cp.read_info.num_reads_clean[0];
+  rg.numreads_array[1] = cp.read_info.num_reads_clean[1];
 
   omp_set_num_threads(rg.num_thr);
   setglobalarrays(rg);

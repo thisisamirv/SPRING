@@ -13,7 +13,8 @@ bgzf_ostream::bgzf_ostream() {
   compressed_buffer_.resize(kMaxCompressedBlockSize);
 }
 
-bgzf_ostream::bgzf_ostream(const std::string &path, int level) : bgzf_ostream() {
+bgzf_ostream::bgzf_ostream(const std::string &path, int level)
+    : bgzf_ostream() {
   open(path, level);
 }
 
@@ -44,13 +45,12 @@ void bgzf_ostream::close() {
   if (is_open()) {
     flush_block();
     // Write the empty BGZF terminator block
-    // 1f 8b 08 04 00 00 00 00 00 ff 06 00 42 43 02 00 1b 00 03 00 00 00 00 00 00
-    // 00 00 00
+    // 1f 8b 08 04 00 00 00 00 00 ff 06 00 42 43 02 00 1b 00 03 00 00 00 00 00
+    // 00 00 00 00
     static const unsigned char terminator[] = {
-        0x1f, 0x8b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0xff, 0x06, 0x00, 0x42, 0x43, 0x02, 0x00, 0x1b, 0x00,
-        0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00};
+        0x1f, 0x8b, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff,
+        0x06, 0x00, 0x42, 0x43, 0x02, 0x00, 0x1b, 0x00, 0x03, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
     out_.write(reinterpret_cast<const char *>(terminator), sizeof(terminator));
     out_.close();
   }

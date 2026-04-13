@@ -377,11 +377,11 @@ bool decompress_and_slice_id(const std::string &temp_path_bsc,
 
   const uint32_t num_blocks =
       (num_reads + num_reads_per_block - 1) / num_reads_per_block;
-  if (num_blocks > compression_params::kFileLenThrSize) {
+  if (num_blocks > compression_params::ReadMetadata::kFileLenThrSize) {
     throw std::runtime_error(
         std::string("Archive contains too many ID blocks (") +
         std::to_string(num_blocks) + ") for metadata array size (" +
-        std::to_string(compression_params::kFileLenThrSize) +
+        std::to_string(compression_params::ReadMetadata::kFileLenThrSize) +
         "). Increase array size in util.h.");
   }
   for (uint32_t b = 0; b < num_blocks; b++) {
@@ -432,27 +432,30 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
   input_id_paths[1] = base_dir + "/id_2";
 
   bool monolithic_id[2] = {false, false};
-  if (cp.preserve_id) {
-    const uint32_t file_read_count =
-        (cp.paired_end) ? (cp.num_reads / 2) : cp.num_reads;
-    monolithic_id[0] = decompress_and_slice_id(
-        input_id_paths[0] + ".bsc", input_id_paths[0], cp.file_len_id_thr,
-        file_read_count, cp.num_reads_per_block);
-    if (cp.paired_end && !cp.paired_id_match) {
-      monolithic_id[1] = decompress_and_slice_id(
-          input_id_paths[1] + ".bsc", input_id_paths[1], cp.file_len_id_thr,
-          file_read_count, cp.num_reads_per_block);
+  if (cp.encoding.preserve_id) {
+    const uint32_t file_read_count = (cp.encoding.paired_end)
+                                         ? (cp.read_info.num_reads / 2)
+                                         : cp.read_info.num_reads;
+    monolithic_id[0] =
+        decompress_and_slice_id(input_id_paths[0] + ".bsc", input_id_paths[0],
+                                cp.read_info.file_len_id_thr, file_read_count,
+                                cp.encoding.num_reads_per_block);
+    if (cp.encoding.paired_end && !cp.read_info.paired_id_match) {
+      monolithic_id[1] =
+          decompress_and_slice_id(input_id_paths[1] + ".bsc", input_id_paths[1],
+                                  cp.read_info.file_len_id_thr, file_read_count,
+                                  cp.encoding.num_reads_per_block);
     }
   }
 
-  uint32_t num_reads = cp.num_reads;
-  uint8_t paired_id_code = cp.paired_id_code;
-  bool paired_id_match = cp.paired_id_match;
-  uint32_t num_reads_per_block = cp.num_reads_per_block;
-  bool paired_end = cp.paired_end;
-  bool preserve_id = cp.preserve_id;
-  bool preserve_quality = cp.preserve_quality;
-  bool preserve_order = cp.preserve_order;
+  uint32_t num_reads = cp.read_info.num_reads;
+  uint8_t paired_id_code = cp.read_info.paired_id_code;
+  bool paired_id_match = cp.read_info.paired_id_match;
+  uint32_t num_reads_per_block = cp.encoding.num_reads_per_block;
+  bool paired_end = cp.encoding.paired_end;
+  bool preserve_id = cp.encoding.preserve_id;
+  bool preserve_quality = cp.encoding.preserve_quality;
+  bool preserve_order = cp.encoding.preserve_order;
 
   std::string output_paths[2] = {outfile_1, outfile_2};
   for (int i = 0; i < 2; i++) {
@@ -466,7 +469,7 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
   validate_output_files(output_streams, paired_end);
 
   const uint64_t num_reads_per_step = compute_num_reads_per_step(
-      num_reads, num_reads_per_block, cp.num_thr, paired_end);
+      num_reads, num_reads_per_block, cp.encoding.num_thr, paired_end);
 
   std::string *read_buffer_1 = new std::string[num_reads_per_step];
   std::string *read_buffer_2 = NULL;
@@ -486,11 +489,12 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
     decoded_noise_table[i] = new char[128];
   set_dec_noise_array(decoded_noise_table);
 
-  omp_set_num_threads(cp.num_thr);
+  omp_set_num_threads(cp.encoding.num_thr);
 
   // Rebuild the packed reference sequence once before block processing.
-  int encoding_thread_count = cp.num_thr;
-  reference_sequence_store seq(file_seq, encoding_thread_count, cp.num_thr, cp);
+  int encoding_thread_count = cp.encoding.num_thr;
+  reference_sequence_store seq(file_seq, encoding_thread_count,
+                               cp.encoding.num_thr, cp);
 
   bool done = false;
   uint32_t num_blocks_done = 0;
@@ -762,15 +766,16 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
       else
         read_buffer = read_buffer_2;
       write_step_output(output_streams[stream_index], id_buffer, read_buffer,
-                        quality_buffer, num_reads_cur_step, cp.num_thr,
+                        quality_buffer, num_reads_cur_step, cp.encoding.num_thr,
                         should_gzip[stream_index], should_bgzf[stream_index],
-                        cp.compression_level, use_crlf, cp.fasta_mode);
+                        cp.encoding.compression_level, use_crlf,
+                        cp.encoding.fasta_mode);
     }
     num_reads_done += num_reads_cur_step;
     if (auto *progress = ProgressBar::GlobalInstance()) {
       progress->update(static_cast<float>(num_reads_done) / num_reads);
     }
-    num_blocks_done += cp.num_thr;
+    num_blocks_done += cp.encoding.num_thr;
   }
 
   output_streams[0].close();
@@ -809,13 +814,13 @@ void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
   input_read_length_paths[0] = base_dir + "/readlength_1";
   input_read_length_paths[1] = base_dir + "/readlength_2";
 
-  uint32_t num_reads = cp.num_reads;
-  uint8_t paired_id_code = cp.paired_id_code;
-  bool paired_id_match = cp.paired_id_match;
-  uint32_t num_reads_per_block = cp.num_reads_per_block_long;
-  bool paired_end = cp.paired_end;
-  bool preserve_id = cp.preserve_id;
-  bool preserve_quality = cp.preserve_quality;
+  uint32_t num_reads = cp.read_info.num_reads;
+  uint8_t paired_id_code = cp.read_info.paired_id_code;
+  bool paired_id_match = cp.read_info.paired_id_match;
+  uint32_t num_reads_per_block = cp.encoding.num_reads_per_block_long;
+  bool paired_end = cp.encoding.paired_end;
+  bool preserve_id = cp.encoding.preserve_id;
+  bool preserve_quality = cp.encoding.preserve_quality;
 
   std::string output_paths_local[2] = {outfile_1, outfile_2};
   for (int i = 0; i < 2; i++) {
@@ -830,7 +835,7 @@ void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
   validate_output_files(output_streams, paired_end);
 
   const uint64_t num_reads_per_step = compute_num_reads_per_step(
-      num_reads, num_reads_per_block, cp.num_thr, paired_end);
+      num_reads, num_reads_per_block, cp.encoding.num_thr, paired_end);
 
   std::string *read_buffer = new std::string[num_reads_per_step];
   std::string *id_buffer = new std::string[num_reads_per_step];
@@ -839,7 +844,7 @@ void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
     quality_buffer = new std::string[num_reads_per_step];
   uint32_t *read_lengths_buffer = new uint32_t[num_reads_per_step];
 
-  omp_set_num_threads(cp.num_thr);
+  omp_set_num_threads(cp.encoding.num_thr);
 
   bool done = false;
 
@@ -904,15 +909,16 @@ void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
       }
 
       write_step_output(output_streams[stream_index], id_buffer, read_buffer,
-                        quality_buffer, num_reads_cur_step, cp.num_thr,
+                        quality_buffer, num_reads_cur_step, cp.encoding.num_thr,
                         should_gzip[stream_index], should_bgzf[stream_index],
-                        cp.compression_level, use_crlf, cp.fasta_mode);
+                        cp.encoding.compression_level, use_crlf,
+                        cp.encoding.fasta_mode);
     }
     num_reads_done += num_reads_cur_step;
     if (auto *progress = ProgressBar::GlobalInstance()) {
       progress->update(static_cast<float>(num_reads_done) / num_reads);
     }
-    num_blocks_done += cp.num_thr;
+    num_blocks_done += cp.encoding.num_thr;
   }
   delete[] read_buffer;
   delete[] id_buffer;
@@ -939,12 +945,12 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
   }
 
   if (std::cmp_greater(encoding_thread_count,
-                       compression_params::kFileLenThrSize)) {
+                       compression_params::ReadMetadata::kFileLenThrSize)) {
     throw std::runtime_error(
         std::string("Archive indicates too many sequence chunks "
                     "(encoding_thread_count=") +
         std::to_string(encoding_thread_count) + ") for metadata array size (" +
-        std::to_string(compression_params::kFileLenThrSize) +
+        std::to_string(compression_params::ReadMetadata::kFileLenThrSize) +
         "). Increase array size in util.h or recreate archive.");
   }
 
@@ -955,7 +961,7 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
 
     // Each thread's packed chunk size in bytes is exactly 1/4 of its base
     // count.
-    const uint64_t chunk_bytes = (cp.file_len_seq_thr[tid] + 3) / 4;
+    const uint64_t chunk_bytes = (cp.read_info.file_len_seq_thr[tid] + 3) / 4;
     std::vector<char> buffer(1U << 20); // 1MB buffer
     uint64_t bytes_remaining = chunk_bytes;
 
@@ -980,8 +986,9 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
         encoding_thread_count, thread_id, decoding_thread_count);
     for (uint64_t encoding_thread_id = range.begin;
          encoding_thread_id < range.end; encoding_thread_id++) {
-      decode_packed_sequence_chunk(packed_seq_base_path, encoding_thread_id,
-                                   cp.file_len_seq_thr[encoding_thread_id]);
+      decode_packed_sequence_chunk(
+          packed_seq_base_path, encoding_thread_id,
+          cp.read_info.file_len_seq_thr[encoding_thread_id]);
     }
   }
 }
