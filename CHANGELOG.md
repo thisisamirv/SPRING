@@ -1,4 +1,11 @@
+<!-- markdownlint-disable MD024 -->
 # Changelog
+
+## V1.0.0-beta.1
+
+### Fixed
+
+* Removed debug `[GZIP-DIAG]` logs from the compression pipeline that were firing even in non-verbose mode.
 
 ## V1.0.0-alpha
 

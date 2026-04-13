@@ -667,7 +667,6 @@ void compress(const std::string &temp_dir,
       cp.input_1_gzip_name, cp.input_1_is_bgzf, cp.input_1_bgzf_block_size,
       cp.input_1_gzip_uncompressed_size, cp.input_1_gzip_compressed_size,
       cp.input_1_gzip_member_count);
-  Logger::log_info("[GZIP-DIAG] R1 detection: was_gzipped=" + std::to_string(cp.input_1_was_gzipped) + " is_bgzf=" + std::to_string(cp.input_1_is_bgzf));
 
   // Extract detailed gzip metadata for input 2 (if paired-end)
   if (io_config.paired_end) {
@@ -677,7 +676,6 @@ void compress(const std::string &temp_dir,
         cp.input_2_gzip_name, cp.input_2_is_bgzf, cp.input_2_bgzf_block_size,
         cp.input_2_gzip_uncompressed_size, cp.input_2_gzip_compressed_size,
         cp.input_2_gzip_member_count);
-    Logger::log_info("[GZIP-DIAG] R2 detection: was_gzipped=" + std::to_string(cp.input_2_was_gzipped) + " is_bgzf=" + std::to_string(cp.input_2_is_bgzf));
   }
 
   if (preserve_quality)
