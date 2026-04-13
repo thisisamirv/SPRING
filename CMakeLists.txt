@@ -531,3 +531,32 @@ add_dev_script_target(dev-valgrind-smoke valgrind-smoke.sh)
 
 add_dependencies(dev-lint spring2)
 add_dependencies(dev-valgrind-smoke spring2)
+
+# Unit testing integration using doctest.
+enable_testing()
+add_executable(spring2-tests tests/unit_tests.cpp ${core_source_files})
+target_include_directories(spring2-tests PRIVATE ${include_dir} ${vendor_dir} tests)
+target_link_libraries(spring2-tests PRIVATE ${spring_libs})
+if (TARGET OpenMP::OpenMP_CXX)
+    target_link_libraries(spring2-tests PRIVATE OpenMP::OpenMP_CXX)
+endif ()
+target_compile_definitions(spring2-tests PRIVATE SPRING_RAPIDGZIP_EXECUTABLE=\"$<TARGET_FILE:rapidgzip>\")
+add_test(NAME unit_tests COMMAND spring2-tests)
+
+# Integrated Smoke Tests
+if (WIN32)
+    # Windows: Use PowerShell version
+    find_program(POWERSHELL_PATH NAMES pwsh powershell)
+    if (POWERSHELL_PATH)
+        add_test(NAME smoke_tests COMMAND ${POWERSHELL_PATH} -ExecutionPolicy Bypass -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/smoke_test.ps1)
+        set_tests_properties(smoke_tests PROPERTIES 
+            ENVIRONMENT "SPRING_BIN=$<TARGET_FILE:spring2>;SPRING_PREVIEW_BIN=$<TARGET_FILE:spring2-preview>"
+        )
+    endif()
+else()
+    # Linux/macOS: Use Bash version
+    add_test(NAME smoke_tests COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/smoke_test.sh)
+    set_tests_properties(smoke_tests PROPERTIES 
+        ENVIRONMENT "SPRING_BIN=$<TARGET_FILE:spring2>;SPRING_PREVIEW_BIN=$<TARGET_FILE:spring2-preview>"
+    )
+endif()

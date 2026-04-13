@@ -126,21 +126,14 @@ jobs:
           cmake --build build --parallel
           cmake --install build --prefix spring2
 
-      - name: Smoke test on Linux and macOS
+      - name: Run all tests (Unit + Smoke) on Linux and macOS
         if: runner.os != 'Windows'
-        env:
-          SPRING_BIN: ${{ github.workspace }}/spring2/bin/spring2
-          SPRING_PREVIEW_BIN: ${{ github.workspace }}/spring2/bin/spring2-preview
-        run: tests/smoke_test.sh
+        run: ctest --test-dir build --output-on-failure
 
-      - name: Smoke test on Windows
+      - name: Run all tests (Unit + Smoke) on Windows
         if: runner.os == 'Windows'
         shell: powershell
-        env:
-          SPRING_BIN: ${{ github.workspace }}/spring2/bin/spring2.exe
-          SPRING_PREVIEW_BIN: ${{ github.workspace }}/spring2/bin/spring2-preview.exe
-          SPRING_TEST_ARGS: -t 1 --memory 1
-        run: ./tests/smoke_test.ps1
+        run: ctest --test-dir build --output-on-failure
 
   static-analysis:
     name: Analysis / ${{ matrix.name }}

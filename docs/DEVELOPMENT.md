@@ -35,13 +35,17 @@ We use `clang-format` and several custom lint scripts. You can run the convenien
 ./dev/lint.sh
 ```
 
-### Smoke Tests
+### Unit and Smoke Tests
 
-A basic round-trip validation script is provided:
+We use the **doctest** framework for granular unit testing. You can build and run tests using CMake:
 
 ```bash
-./tests/smoke_test.sh
+cmake -S . -B build
+cmake --build build
+ctest --test-dir build --output-on-failure
 ```
+
+The unit test source is located at `tests/unit_tests.cpp`.
 
 ## Release Pipeline
 

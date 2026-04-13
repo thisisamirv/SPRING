@@ -9,6 +9,10 @@
 * Replaced system `tar` subprocess calls with the native `libarchive` library, removing a major runtime dependency and improving cross-platform compatibility.
 * Added `src/scoped_temp_file.h` providing `ScopedTempFile` RAII helper to safely remove temporary files in a noexcept destructor; replaces ad-hoc temp-file handling to reduce races and ensure deterministic cleanup.
 * Added the `-V, --version` flag to both `spring2` and `spring2-preview` tools for reporting the application version.
+* Integrated the **doctest** unit testing framework for granular logic verification.
+* Added a suite of unit tests in `tests/unit_tests.cpp` covering core utility functions (sequence manipulation, parsing, string helpers).
+* Integrated both unit and smoke tests into the unified `ctest` workflow.
+* Implemented a native Windows backend for `MmapView` in `src/raii.h`, enabling high-performance memory-mapped I/O on Windows.
 
 ### Changed
 
@@ -22,6 +26,9 @@
 * Replaced hot-path raw arrays with `std::vector` or `std::unique_ptr<T[]>` starting in `src/reorder_impl.h` and `src/encoder_impl.h` to improve memory safety and eliminate manual `new[]/delete[]` usage.
 * Replaced manual `char**` decoded noise table in `src/decompress.cpp` with `std::array<std::array<char,128>,128>`, removing manual `new[]/delete[]` and ensuring RAII-managed lifetime.
 * Refactored `src/reorder.h` and the corresponding reordering implementation in `src/reorder_impl.h` to reduce template bloat and improve compilation speed.
+* Modernized memory management in `bbhashdict` (the core read dictionary) by replacing manual `new[]/delete[]` with `std::unique_ptr` and `std::make_unique`.
+* Refactored the `main.cpp` entry point to use a centralized RAII `SpringContext` class for managing temporary directories and resource cleanup, significantly reducing global state and improving signal-safety.
+* Improved development documentation in `DEVELOPMENT.md` with a new section on unit testing.
 * Consolidated all third-party dependency licenses into the central root `LICENSE` file for improved legal compliance and audit-readiness.
 
 ### Fixed

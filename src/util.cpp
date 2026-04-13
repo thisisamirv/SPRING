@@ -389,13 +389,17 @@ bool safe_rename_file(const std::string &old_path,
                              std::filesystem::copy_options::overwrite_existing,
                              ec2);
   if (ec2) {
-    Logger::log_warning("Failed to rename file: " + old_path + " -> " + new_path + ": " + ec.message() + "; copy failed: " + ec2.message());
+    Logger::log_warning("Failed to rename file: " + old_path + " -> " +
+                        new_path + ": " + ec.message() +
+                        "; copy failed: " + ec2.message());
     return false;
   }
   std::error_code ec3;
   std::filesystem::remove(old_path, ec3);
   if (ec3)
-    Logger::log_warning("Warning: renamed (copied) file but failed to remove original: " + old_path + ": " + ec3.message());
+    Logger::log_warning(
+        "Warning: renamed (copied) file but failed to remove original: " +
+        old_path + ": " + ec3.message());
   return true;
 }
 
@@ -1569,7 +1573,8 @@ std::string shell_path(const std::string &value) {
 bool has_suffix(const std::string &value, const std::string &suffix) {
   if (suffix.size() > value.size())
     return false;
-  return value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+  return value.compare(value.size() - suffix.size(), suffix.size(), suffix) ==
+         0;
 }
 
 int parse_int_or_throw(const std::string &value, const char *error_message) {
@@ -1602,6 +1607,9 @@ double parse_double_or_throw(const std::string &value,
 uint64_t parse_uint64_or_throw(const std::string &value,
                                const char *error_message) {
   try {
+    if (value.empty() || value[0] == '-') {
+      throw std::invalid_argument("negative or empty");
+    }
     size_t parsed_chars = 0;
     uint64_t parsed_value = std::stoull(value, &parsed_chars);
     if (parsed_chars != value.size()) {

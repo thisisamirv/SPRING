@@ -53,53 +53,64 @@ struct command_line_options {
   bool unzip_flag = false;
 };
 
-std::string temp_dir_global;
-bool temp_dir_flag_global = false;
-std::string working_dir_global;
-bool remove_working_dir_flag_global = false;
+class SpringContext {
+public:
+  explicit SpringContext(const std::string &working_dir) {
+    const std::filesystem::path working_dir_path(working_dir);
+    const bool working_dir_exists = std::filesystem::exists(working_dir_path);
+    if (!working_dir_exists) {
+      std::filesystem::create_directories(working_dir_path);
+    }
+    working_dir_ = working_dir_path;
+    remove_working_dir_ = !working_dir_exists;
 
-void delete_temp_dir_if_present() {
-  if (!temp_dir_flag_global)
-    return;
-
-  spring::Logger::log_info(std::string("Deleting temporary directory: ") +
-                           temp_dir_global);
-  std::filesystem::path p(temp_dir_global);
-  // remove_all can fail on Windows if path has trailing slash.
-  // Converting to path object and using that is more robust.
-  std::error_code ec;
-  std::filesystem::remove_all(p, ec);
-  if (ec) {
-    std::cerr << "Warning: could not delete temporary directory: "
-              << ec.message() << std::endl;
+    temp_dir_ = create_temp_dir(working_dir_path);
+    spring::Logger::log_info("Temporary directory: " +
+                             temp_dir_.generic_string());
   }
-  temp_dir_flag_global = false;
-}
 
-void delete_working_dir_if_present() {
-  if (!remove_working_dir_flag_global)
-    return;
+  ~SpringContext() { cleanup(); }
 
-  std::error_code error;
-  if (std::filesystem::is_directory(working_dir_global, error) &&
-      std::filesystem::is_empty(working_dir_global, error)) {
-    spring::Logger::log_info("Deleting working directory...");
-    std::filesystem::remove(working_dir_global, error);
-  }
-  remove_working_dir_flag_global = false;
-}
-
-std::string create_temp_dir(const std::string &working_dir) {
-  const std::filesystem::path working_dir_path(working_dir);
-  while (true) {
-    const std::string random_str = "tmp." + spring::random_string(10);
-    const std::filesystem::path temp_dir_path = working_dir_path / random_str;
-    if (!std::filesystem::exists(temp_dir_path) &&
-        std::filesystem::create_directory(temp_dir_path)) {
-      return temp_dir_path.generic_string() + '/';
+  void cleanup() noexcept {
+    if (!temp_dir_.empty()) {
+      spring::Logger::log_info("Deleting temporary directory: " +
+                               temp_dir_.generic_string());
+      std::error_code ec;
+      std::filesystem::remove_all(temp_dir_, ec);
+      temp_dir_.clear();
+    }
+    if (remove_working_dir_ && !working_dir_.empty()) {
+      std::error_code ec;
+      if (std::filesystem::is_directory(working_dir_, ec) &&
+          std::filesystem::is_empty(working_dir_, ec)) {
+        spring::Logger::log_info("Deleting working directory...");
+        std::filesystem::remove(working_dir_, ec);
+      }
+      remove_working_dir_ = false;
     }
   }
-}
+
+  std::string temp_dir_path() const { return temp_dir_.generic_string() + '/'; }
+
+private:
+  std::filesystem::path temp_dir_;
+  std::filesystem::path working_dir_;
+  bool remove_working_dir_ = false;
+
+  static std::filesystem::path
+  create_temp_dir(const std::filesystem::path &working_dir_path) {
+    while (true) {
+      const std::string random_str = "tmp." + spring::random_string(10);
+      const std::filesystem::path temp_dir_path = working_dir_path / random_str;
+      if (!std::filesystem::exists(temp_dir_path) &&
+          std::filesystem::create_directory(temp_dir_path)) {
+        return temp_dir_path;
+      }
+    }
+  }
+};
+
+SpringContext *g_context = nullptr;
 
 int print_invalid_mode_and_exit(const std::string &options_description) {
   std::cout << "Exactly one of compress or decompress needs to be specified \n";
@@ -316,22 +327,6 @@ int max_threads_for_memory_cap_gb(const double memory_cap_gb) {
   return std::max(1, capped_threads);
 }
 
-std::string create_and_register_temp_dir(const std::string &working_dir) {
-  const bool working_dir_exists = std::filesystem::exists(working_dir);
-  if (!working_dir_exists) {
-    std::filesystem::create_directories(working_dir);
-  }
-
-  working_dir_global = working_dir;
-  remove_working_dir_flag_global = !working_dir_exists;
-
-  const std::string temp_dir = create_temp_dir(working_dir);
-  spring::Logger::log_info("Temporary directory: " + temp_dir);
-  temp_dir_global = temp_dir;
-  temp_dir_flag_global = true;
-  return temp_dir;
-}
-
 void apply_memory_cap(command_line_options &options) {
   const int memory_capped_threads =
       max_threads_for_memory_cap_gb(options.memory_cap_gb);
@@ -354,8 +349,8 @@ void apply_memory_cap(command_line_options &options) {
 int print_unexpected_error_and_exit(const std::string &options_description,
                                     const std::string &error_message) {
   std::cout << error_message << "\n";
-  delete_temp_dir_if_present();
-  delete_working_dir_if_present();
+  if (g_context)
+    g_context->cleanup();
   std::cout << options_description << "\n";
   return 1;
 }
@@ -381,14 +376,9 @@ void run_requested_mode(const command_line_options &options,
 void signalHandler(int signum) {
   std::cout << "Interrupt signal (" << signum << ") received.\n";
   std::cout << "Program terminated unexpectedly\n";
-  if (temp_dir_flag_global) {
-    spring::Logger::log_info(std::string("Deleting temporary directory: ") +
-                             temp_dir_global);
-    std::error_code ec;
-    std::filesystem::remove_all(std::filesystem::path(temp_dir_global), ec);
-    temp_dir_flag_global = false;
+  if (g_context) {
+    g_context->cleanup();
   }
-  delete_working_dir_if_present();
   std::exit(signum);
 }
 
@@ -430,11 +420,11 @@ int main(int argc, char **argv) {
 
   // Isolate intermediate artifacts so cleanup is one directory removal.
   apply_memory_cap(options);
-  const std::string temp_dir =
-      create_and_register_temp_dir(options.working_dir);
+  SpringContext context(options.working_dir);
+  g_context = &context;
 
   try {
-    run_requested_mode(options, temp_dir);
+    run_requested_mode(options, context.temp_dir_path());
   } catch (const std::runtime_error &e) {
     return print_unexpected_error_and_exit(
         options_description,
@@ -444,7 +434,6 @@ int main(int argc, char **argv) {
                                            "Program terminated unexpectedly");
   }
 
-  delete_temp_dir_if_present();
-  delete_working_dir_if_present();
+  g_context = nullptr;
   return 0;
 }

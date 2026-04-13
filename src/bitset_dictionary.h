@@ -8,6 +8,7 @@
 #include <bitset>
 #include <cstdint>
 #include <fstream>
+#include <memory>
 #include <omp.h>
 #include <string>
 #include <vector>
@@ -37,30 +38,25 @@ inline std::string hash_bin_path(const std::string &base_dir,
 
 class bbhashdict {
 public:
-  boophf_t *bphf;
+  std::unique_ptr<boophf_t> bphf;
   int start;
   int end;
   uint32_t numkeys;
   uint32_t dict_numreads; // Number of reads long enough to participate here.
-  uint32_t *startpos;
-  uint32_t *read_id;
+  std::unique_ptr<uint32_t[]> startpos;
+  std::unique_ptr<uint32_t[]> read_id;
   std::vector<bool> empty_bin;
   void findpos(int64_t *dictidx, const uint64_t &startposidx);
   void remove(const int64_t *dictidx, const uint64_t &startposidx,
               const int64_t read_id_to_remove);
   bbhashdict()
-      : bphf(NULL), start(0), end(0), numkeys(0), dict_numreads(0),
-        startpos(NULL), read_id(NULL) {}
+      : bphf(nullptr), start(0), end(0), numkeys(0), dict_numreads(0),
+        startpos(nullptr), read_id(nullptr) {}
   bbhashdict(const bbhashdict &) = delete;
   bbhashdict &operator=(const bbhashdict &) = delete;
-  ~bbhashdict() {
-    if (startpos != NULL)
-      delete[] startpos;
-    if (read_id != NULL)
-      delete[] read_id;
-    if (bphf != NULL)
-      delete bphf;
-  }
+  bbhashdict(bbhashdict &&) noexcept = default;
+  bbhashdict &operator=(bbhashdict &&) noexcept = default;
+  ~bbhashdict() = default;
 };
 
 namespace detail {
@@ -215,7 +211,7 @@ inline void
 populate_bucket_read_ids(bbhashdict &dictionary, uint16_t *read_lengths,
                          const std::string &base_dir, const int dict_index,
                          const uint32_t numreads, const int thread_count) {
-  dictionary.read_id = new uint32_t[dictionary.dict_numreads];
+  dictionary.read_id = std::make_unique<uint32_t[]>(dictionary.dict_numreads);
   uint32_t read_index = 0;
   uint64_t current_hash;
 
@@ -306,7 +302,7 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
     config.num_threads = 1;
     config.minimal = false;
     config.verbose = false;
-    current_dict.bphf = new boophf_t();
+    current_dict.bphf = std::make_unique<boophf_t>();
     Logger::log_info("  Building MPHF... ");
     current_dict.bphf->build_in_internal_memory(dictionary_keys_data,
                                                 current_dict.numkeys, config);
@@ -323,7 +319,9 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
   Logger::log_info("  Finalizing dictionaries (sequentially)...");
   for (int dict_index = 0; dict_index < numdict; dict_index++) {
     bbhashdict &current_dict = dict[dict_index];
-    current_dict.startpos = new uint32_t[current_dict.numkeys + 1]();
+    current_dict.startpos =
+        std::make_unique<uint32_t[]>(current_dict.numkeys + 1);
+    std::fill_n(current_dict.startpos.get(), current_dict.numkeys + 1, 0);
     detail::count_bucket_sizes(current_dict, basedir, dict_index, num_thr);
     detail::finalize_bucket_offsets(current_dict);
     detail::populate_bucket_read_ids(current_dict, read_lengths, basedir,

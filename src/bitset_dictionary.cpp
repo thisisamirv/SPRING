@@ -57,7 +57,7 @@ void bbhashdict::findpos(int64_t *dictidx, const uint64_t &startposidx) {
 
   dictidx[0] = bin_begin;
   if (bin_begin < bucket_end_index && !empty_bin[startposidx]) {
-    dictidx[1] = logical_bin_end(read_id, bin_begin, bucket_end_index);
+    dictidx[1] = logical_bin_end(read_id.get(), bin_begin, bucket_end_index);
   } else {
     dictidx[1] = bin_begin;
   }
@@ -75,9 +75,9 @@ void bbhashdict::remove(const int64_t *dictidx, const uint64_t &startposidx,
   }
 
   const int64_t remove_offset =
-      std::lower_bound(read_id + bin_begin, read_id + logical_end,
+      std::lower_bound(read_id.get() + bin_begin, read_id.get() + logical_end,
                        read_id_to_remove) -
-      (read_id + bin_begin);
+      (read_id.get() + bin_begin);
 
   for (int64_t index = bin_begin + remove_offset; index < logical_end - 1;
        index++) {
@@ -85,7 +85,7 @@ void bbhashdict::remove(const int64_t *dictidx, const uint64_t &startposidx,
   }
 
   const uint32_t bucket_end_index = startpos[startposidx + 1];
-  update_tail_marker_after_remove(read_id, logical_end, bin_size,
+  update_tail_marker_after_remove(read_id.get(), logical_end, bin_size,
                                   bucket_end_index);
 }
 

@@ -53,15 +53,8 @@ jobs:
         run: |
           cmake --build $BUILD_DIR -j
 
-      - name: Quick smoke check
-        run: |
-          if [ -x "$BUILD_DIR/spring2" ]; then
-            $BUILD_DIR/spring2 --version
-          else
-            echo "Binary not found in $BUILD_DIR"
-            ls -la $BUILD_DIR || true
-            exit 1
-          fi
+      - name: Run all tests (Unit + Smoke) with Sanitizers
+        run: ctest --test-dir ${{ matrix.build_dir }} --output-on-failure
 
       - name: Upload logs on failure
         if: failure()
