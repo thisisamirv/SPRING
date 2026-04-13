@@ -62,6 +62,7 @@ Allowed options:
 
 * General Options:
   -h [ --help ]                   produce help message
+  -V [ --version ]                produce version information
   -i [ --input ] arg              input file name (two files for paired end)
   -o [ --output ] arg             output file name
                                     - if not specified, it uses original input

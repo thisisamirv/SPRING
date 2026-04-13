@@ -5,6 +5,7 @@
 #include "progress.h"
 #include "spring.h"
 #include "util.h"
+#include "version.h"
 #include <algorithm>
 #include <cmath>
 #include <csignal>
@@ -33,6 +34,7 @@ int default_num_threads() {
 
 struct command_line_options {
   bool help_flag = false;
+  bool version_flag = false;
   bool compress_flag = false;
   bool decompress_flag = false;
   bool pairing_only_flag = false;
@@ -111,6 +113,7 @@ std::string build_options_description() {
       << "Allowed options:\n\n"
       << "* General Options:\n"
       << "  -h [ --help ]                   produce help message\n"
+      << "  -V [ --version ]                produce version information\n"
       << "  -i [ --input ] arg              input file name (two files for "
          "paired end)\n"
       << "  -o [ --output ] arg             output file name\n"
@@ -215,6 +218,8 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
 
     if (arg == "-h" || arg == "--help") {
       options.help_flag = true;
+    } else if (arg == "-V" || arg == "--version") {
+      options.version_flag = true;
     } else if (arg == "-c" || arg == "--compress") {
       options.compress_flag = true;
     } else if (arg == "-d" || arg == "--decompress") {
@@ -403,6 +408,10 @@ int main(int argc, char **argv) {
 
   if (options.help_flag) {
     std::cout << options_description << "\n";
+    return 0;
+  }
+  if (options.version_flag) {
+    std::cout << "spring2 version " << spring::VERSION << "\n";
     return 0;
   }
 

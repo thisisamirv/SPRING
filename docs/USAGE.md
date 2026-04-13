@@ -63,6 +63,13 @@ To view the metadata and notes of an archive without decompressing it:
 ./spring2-preview file.sp
 ```
 
+To check the version of either tool:
+
+```bash
+./spring2 --version
+./spring2-preview --version
+```
+
 ### Paired-End Gzipped FASTQ
 
 SPRING2 automatically detects gzipped inputs and decompresses them on the fly using internal `rapidgzip` (if available) or `zlib`. Detailed gzip metadata (profile, block size, original internal filename) is stored in the archive for high-fidelity restoration.

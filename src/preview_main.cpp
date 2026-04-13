@@ -10,6 +10,7 @@
 
 #include "spring.h"
 #include "util.h"
+#include "version.h"
 
 namespace spring {
 
@@ -192,6 +193,18 @@ void preview(const std::string &archive_path) {
 } // namespace spring
 
 int main(int argc, char *argv[]) {
+  if (argc == 2) {
+    const std::string arg = argv[1];
+    if (arg == "-V" || arg == "--version") {
+      std::cout << "spring2-preview version " << spring::VERSION << "\n";
+      return 0;
+    }
+    if (arg == "-h" || arg == "--help") {
+      std::cout << "Usage: spring2-preview <archive.sp>\n";
+      return 0;
+    }
+  }
+
   if (argc != 2) {
     std::cerr << "Usage: spring2-preview <archive.sp>\n";
     return 1;
