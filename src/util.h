@@ -143,7 +143,7 @@ private:
   gzFile file_;
 };
 
-std::string gzip_compress_string(std::string input, int level);
+std::string gzip_compress_string(const std::string &input, int level);
 
 // FASTQ block helpers.
 uint32_t read_fastq_block(std::istream *input_stream, std::string *id_array,
@@ -151,7 +151,8 @@ uint32_t read_fastq_block(std::istream *input_stream, std::string *id_array,
                           const uint32_t &num_reads, const bool &fasta_flag);
 
 void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
-                       std::string *read_array, const std::string *quality_array,
+                       std::string *read_array,
+                       const std::string *quality_array,
                        const uint32_t &num_reads, const int &num_thr,
                        const bool &gzip_flag, const bool &bgzf_flag,
                        const int &compression_level, const bool use_crlf,
@@ -161,7 +162,8 @@ void write_bgzf_fastq_block(std::ofstream &output_stream, std::string *id_array,
                             std::string *read_array,
                             const std::string *quality_array,
                             const uint32_t &num_reads, const int &num_thr,
-                            const int &compression_level, const bool use_crlf, const bool fasta_mode);
+                            const int &compression_level, const bool use_crlf,
+                            const bool fasta_mode);
 
 // ID stream helpers.
 void compress_id_block(const char *output_path, std::string *id_array,

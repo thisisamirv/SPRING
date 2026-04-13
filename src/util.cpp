@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <sstream>
+#include <memory>
 #include <stdexcept>
 #include <streambuf>
 #include <string>
@@ -46,6 +46,22 @@ std::runtime_error gzip_runtime_error(gzFile file_handle,
   }
   return std::runtime_error(prefix + ": " + message);
 }
+
+thread_local std::string tl_plain_buffer;
+thread_local std::string tl_compressed_buffer;
+
+namespace {
+struct LibdeflateDeleter {
+  void operator()(libdeflate_compressor *c) const {
+    if (c)
+      libdeflate_free_compressor(c);
+  }
+};
+} // namespace
+
+thread_local std::unique_ptr<libdeflate_compressor, LibdeflateDeleter>
+    tl_compressor;
+thread_local int tl_compressor_level = -1;
 
 std::string gzip_mode_string(const char mode, const int level) {
   if (level == Z_DEFAULT_COMPRESSION) {
@@ -107,33 +123,38 @@ const std::array<char, 5> &int_to_dna_n_lookup() {
   return lookup;
 }
 
-void write_fastq_record(std::ostream &out, const std::string &id,
-                        const std::string &read,
-                        const std::string *quality_or_null, const bool use_crlf,
-                        const bool fasta_mode) {
+void append_fastq_record(std::string &out, const std::string &id,
+                         const std::string &read,
+                         const std::string *quality_or_null,
+                         const bool use_crlf, const bool fasta_mode) {
   const char *eol = use_crlf ? "\r\n" : "\n";
-  out << id << eol;
-  out << read << eol;
+  out += id;
+  out += eol;
+  out += read;
+  out += eol;
   if (!fasta_mode) {
-    out << "+" << eol;
+    out += "+";
+    out += eol;
     if (quality_or_null != nullptr) {
-      out << *quality_or_null << eol;
+      out += *quality_or_null;
+      out += eol;
     } else {
-      out << std::string(read.size(), 'I') << eol;
+      out.append(read.size(), 'I');
+      out += eol;
     }
   }
 }
 
-void write_fastq_records_range(std::ostream &output_stream,
-                               std::string *id_array, std::string *read_array,
-                               const std::string *quality_or_null,
-                               const uint64_t start_read_index,
-                               const uint64_t end_read_index,
-                               const bool use_crlf, const bool fasta_mode) {
+void append_fastq_records_range(std::string &output_buffer,
+                                std::string *id_array, std::string *read_array,
+                                const std::string *quality_or_null,
+                                const uint64_t start_read_index,
+                                const uint64_t end_read_index,
+                                const bool use_crlf, const bool fasta_mode) {
   for (uint64_t read_index = start_read_index; read_index < end_read_index;
        read_index++) {
-    write_fastq_record(
-        output_stream, id_array[read_index], read_array[read_index],
+    append_fastq_record(
+        output_buffer, id_array[read_index], read_array[read_index],
         quality_or_null == nullptr ? nullptr : &quality_or_null[read_index],
         use_crlf, fasta_mode);
   }
@@ -154,12 +175,12 @@ void write_gzip_fastq_block(std::ofstream &output_stream, std::string *id_array,
 #pragma omp parallel num_threads(num_thr)
   {
     const int tid = omp_get_thread_num();
-    std::ostringstream plain_output;
+    tl_plain_buffer.clear();
     const read_range &range = thread_ranges[static_cast<size_t>(tid)];
-    write_fastq_records_range(plain_output, id_array, read_array,
-                              quality_or_null, range.start, range.end, use_crlf,
-                              fasta_mode);
-    gzip_compressed[tid] = gzip_compress_string(plain_output.str(), gzip_level);
+    append_fastq_records_range(tl_plain_buffer, id_array, read_array,
+                               quality_or_null, range.start, range.end,
+                               use_crlf, fasta_mode);
+    gzip_compressed[tid] = gzip_compress_string(tl_plain_buffer, gzip_level);
   }
 
   for (int thread_index = 0; thread_index < num_thr; thread_index++) {
@@ -444,7 +465,8 @@ void gzip_ostream::close() {
 
 bool gzip_ostream::is_open() const { return file_ != nullptr; }
 
-std::string gzip_compress_string(std::string input, const int gzip_level) {
+std::string gzip_compress_string(const std::string &input,
+                                 const int gzip_level) {
   if (gzip_level < 0 || gzip_level > 9) {
     throw std::runtime_error("gzip level must be between 0 and 9.");
   }
@@ -469,9 +491,7 @@ std::string gzip_compress_string(std::string input, const int gzip_level) {
     if (ret != Z_OK)
       throw std::runtime_error("Failed initializing zlib gzip compressor.");
 
-    // `input` is taken by value (owned) so `data()` returns a mutable
-    // pointer; avoid const_cast and satisfy static analyzers.
-    strm.next_in = reinterpret_cast<Bytef *>(input.data());
+    strm.next_in = reinterpret_cast<Bytef *>(const_cast<char *>(input.data()));
     strm.avail_in = static_cast<uInt>(input.size());
     strm.next_out = outbuf.data();
     strm.avail_out = static_cast<uInt>(outbuf.size());
@@ -487,18 +507,21 @@ std::string gzip_compress_string(std::string input, const int gzip_level) {
     return std::string(reinterpret_cast<char *>(outbuf.data()), out_size);
   }
 
-  libdeflate_compressor *const compressor =
-      libdeflate_alloc_compressor(gzip_level);
-  if (compressor == nullptr) {
-    throw std::runtime_error("Failed initializing gzip compressor.");
+  if (tl_compressor_level != gzip_level) {
+    tl_compressor.reset(libdeflate_alloc_compressor(gzip_level));
+    tl_compressor_level = gzip_level;
+  }
+  if (!tl_compressor) {
+    throw std::runtime_error("Failed initializing libdeflate gzip compressor.");
   }
 
   std::string output;
-  output.resize(libdeflate_gzip_compress_bound(compressor, input.size()));
+  output.resize(
+      libdeflate_gzip_compress_bound(tl_compressor.get(), input.size()));
 
-  const size_t compressed_size = libdeflate_gzip_compress(
-      compressor, input.data(), input.size(), output.data(), output.size());
-  libdeflate_free_compressor(compressor);
+  const size_t compressed_size =
+      libdeflate_gzip_compress(tl_compressor.get(), input.data(), input.size(),
+                               output.data(), output.size());
 
   if (compressed_size == 0) {
     throw std::runtime_error("Failed compressing gzip payload.");
@@ -540,9 +563,12 @@ void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
                        const bool fasta_mode) {
   const std::string *quality_or_null = quality_array;
   if (!gzip_flag) {
-    write_fastq_records_range(output_stream, id_array, read_array,
-                              quality_or_null, 0, num_reads, use_crlf,
-                              fasta_mode);
+    tl_plain_buffer.clear();
+    append_fastq_records_range(tl_plain_buffer, id_array, read_array,
+                               quality_or_null, 0, num_reads, use_crlf,
+                               fasta_mode);
+    output_stream.write(tl_plain_buffer.data(),
+                        static_cast<std::streamsize>(tl_plain_buffer.size()));
   } else if (bgzf_flag) {
     write_bgzf_fastq_block(output_stream, id_array, read_array, quality_or_null,
                            num_reads, num_thr, compression_level, use_crlf,
@@ -574,33 +600,30 @@ void write_bgzf_fastq_block(std::ofstream &output_stream, std::string *id_array,
     uint32_t start_idx = (uint64_t(num_reads) * thread_id) / num_thr;
     uint32_t end_idx = (uint64_t(num_reads) * (thread_id + 1)) / num_thr;
 
-    std::string uncompressed_chunk;
-    // Estimate size: ~200 bytes per record
-    uncompressed_chunk.reserve(static_cast<size_t>(end_idx - start_idx) * 200);
+    tl_plain_buffer.clear();
+    append_fastq_records_range(tl_plain_buffer, id_array, read_array,
+                               quality_array, start_idx, end_idx, use_crlf,
+                               fasta_mode);
 
-    for (uint32_t i = start_idx; i < end_idx; i++) {
-      uncompressed_chunk += id_array[i] + eol;
-      uncompressed_chunk += read_array[i] + eol;
-      if (!fasta_mode) {
-        uncompressed_chunk += "+" + eol;
-        if (quality_array)
-          uncompressed_chunk += quality_array[i] + eol;
-        else
-          uncompressed_chunk += std::string(read_array[i].size(), 'I') + eol;
+    if (!tl_plain_buffer.empty()) {
+      // BGZF uses compression_level up to 12 in some variants, but libdeflate
+      // usually 1-12. CLAMP to safe range.
+      int effective_level = std::clamp(compression_level, 1, 12);
+      if (tl_compressor_level != effective_level) {
+        tl_compressor.reset(libdeflate_alloc_compressor(effective_level));
+        tl_compressor_level = effective_level;
       }
-    }
-
-    if (!uncompressed_chunk.empty()) {
-      libdeflate_compressor *compressor =
-          libdeflate_alloc_compressor(std::clamp(compression_level, 1, 12));
-      const char *ptr = uncompressed_chunk.data();
-      size_t remaining = uncompressed_chunk.size();
+      if (!tl_compressor) {
+        throw std::runtime_error("Failed initializing BGZF compressor.");
+      }
+      const char *ptr = tl_plain_buffer.data();
+      size_t remaining = tl_plain_buffer.size();
       std::vector<char> compressed_buffer(65536 + 1024);
 
       while (remaining > 0) {
         size_t block_size = std::min<size_t>(remaining, 65536);
         size_t cp_size = libdeflate_deflate_compress(
-            compressor, ptr, block_size, compressed_buffer.data(),
+            tl_compressor.get(), ptr, block_size, compressed_buffer.data(),
             compressed_buffer.size());
 
         // Header (10 bytes) + Extra (8 bytes)
@@ -624,7 +647,6 @@ void write_bgzf_fastq_block(std::ofstream &output_stream, std::string *id_array,
         ptr += block_size;
         remaining -= block_size;
       }
-      libdeflate_free_compressor(compressor);
     }
   }
 
