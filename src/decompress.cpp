@@ -368,7 +368,7 @@ bool decompress_and_slice_id(const std::string &temp_path_bsc,
         std::string("Archive contains too many ID blocks (") +
         std::to_string(num_blocks) + ") for metadata array size (" +
         std::to_string(compression_params::ReadMetadata::kFileLenThrSize) +
-        "). Increase array size in util.h.");
+        "). Increase array size in params.h.");
   }
   for (uint32_t b = 0; b < num_blocks; b++) {
     const uint64_t block_len = file_len_thr[b];
@@ -926,7 +926,7 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
                     "(encoding_thread_count=") +
         std::to_string(encoding_thread_count) + ") for metadata array size (" +
         std::to_string(compression_params::ReadMetadata::kFileLenThrSize) +
-        "). Increase array size in util.h or recreate archive.");
+        "). Increase array size in params.h or recreate archive.");
   }
 
   for (int tid = 0; tid < encoding_thread_count; tid++) {

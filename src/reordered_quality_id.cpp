@@ -426,7 +426,7 @@ void reorder_compress_quality_id(const std::string &temp_dir,
         throw std::runtime_error(
             std::string("Exceeded maximum supported block count (") +
             std::to_string(compression_params::ReadMetadata::kFileLenThrSize) +
-            "). Increase array size in util.h.");
+            "). Increase array size in params.h.");
       }
       const std::string monolithic_path = id_paths[stream_index] + ".bsc";
       const std::string merged_packed_path = id_paths[stream_index] + ".packed";

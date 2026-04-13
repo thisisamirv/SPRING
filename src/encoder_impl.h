@@ -774,7 +774,7 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
       throw std::runtime_error(
           std::string("Exceeded maximum supported thread count (") +
           std::to_string(compression_params::ReadMetadata::kFileLenThrSize) +
-          "). Increase array size in util.h.");
+          "). Increase array size in params.h.");
     }
     cp.read_info.file_len_seq_thr[tid] = file_len_seq_thr[tid];
   }
