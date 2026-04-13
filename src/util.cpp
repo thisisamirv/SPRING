@@ -498,6 +498,7 @@ std::string gzip_compress_string(const std::string &input,
     if (ret != Z_OK)
       throw std::runtime_error("Failed initializing zlib gzip compressor.");
 
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-const-cast)
     strm.next_in = reinterpret_cast<Bytef *>(const_cast<char *>(input.data()));
     strm.avail_in = static_cast<uInt>(input.size());
     strm.next_out = outbuf.data();
@@ -599,7 +600,6 @@ void write_bgzf_fastq_block(std::ofstream &output_stream, std::string *id_array,
     return;
 
   std::vector<std::string> compressed_parts(num_thr);
-  const std::string eol = use_crlf ? "\r\n" : "\n";
 
 #pragma omp parallel num_threads(num_thr)
   {
@@ -1564,8 +1564,6 @@ uint64_t parse_uint64_or_throw(const std::string &value,
   }
 }
 
-
-
 void create_tar_archive(const std::string &archive_path,
                         const std::string &source_dir) {
   struct archive *a;
@@ -1600,7 +1598,7 @@ void create_tar_archive(const std::string &archive_path,
     archive_entry_set_perm(entry, 0644);
     archive_write_header(a, entry);
 
-    fd = open(full_path.c_str(), O_RDONLY);
+    fd = open(full_path.c_str(), O_RDONLY | O_CLOEXEC);
     if (fd >= 0) {
       len = read(fd, buff, sizeof(buff));
       while (len > 0) {
@@ -1636,7 +1634,8 @@ void extract_tar_archive(const std::string &archive_path,
   archive_write_disk_set_options(ext, flags);
   archive_write_disk_set_standard_lookup(ext);
 
-  if ((r = archive_read_open_filename(a, archive_path.c_str(), 10240))) {
+  r = archive_read_open_filename(a, archive_path.c_str(), 10240);
+  if (r != ARCHIVE_OK) {
     throw std::runtime_error("Failed to open archive for reading: " +
                              std::string(archive_error_string(a)));
   }
@@ -1648,10 +1647,11 @@ void extract_tar_archive(const std::string &archive_path,
     if (r == ARCHIVE_EOF)
       break;
     if (r < ARCHIVE_OK) {
-        // Warning or error
+      // Warning or error
     }
     if (r < ARCHIVE_WARN) {
-        throw std::runtime_error("Error reading archive header: " + std::string(archive_error_string(a)));
+      throw std::runtime_error("Error reading archive header: " +
+                               std::string(archive_error_string(a)));
     }
 
     std::filesystem::path dest_path =
@@ -1660,7 +1660,7 @@ void extract_tar_archive(const std::string &archive_path,
 
     r = archive_write_header(ext, entry);
     if (r < ARCHIVE_OK) {
-        // Warning or error
+      // Warning or error
     } else if (archive_entry_size(entry) > 0) {
       const void *buff;
       size_t size;
@@ -1670,15 +1670,18 @@ void extract_tar_archive(const std::string &archive_path,
         if (r == ARCHIVE_EOF)
           break;
         if (r < ARCHIVE_OK)
-          throw std::runtime_error("Error reading archive data: " + std::string(archive_error_string(a)));
+          throw std::runtime_error("Error reading archive data: " +
+                                   std::string(archive_error_string(a)));
         r = archive_write_data_block(ext, buff, size, offset);
         if (r < ARCHIVE_OK)
-          throw std::runtime_error("Error writing disk data: " + std::string(archive_error_string(ext)));
+          throw std::runtime_error("Error writing disk data: " +
+                                   std::string(archive_error_string(ext)));
       }
     }
     r = archive_write_finish_entry(ext);
     if (r < ARCHIVE_OK)
-        throw std::runtime_error("Error finishing disk entry: " + std::string(archive_error_string(ext)));
+      throw std::runtime_error("Error finishing disk entry: " +
+                               std::string(archive_error_string(ext)));
   }
 
   archive_read_close(a);
@@ -1688,4 +1691,3 @@ void extract_tar_archive(const std::string &archive_path,
 }
 
 } // namespace spring
-

@@ -3,6 +3,7 @@
 
 #include "encoder.h"
 #include "libbsc/bsc.h"
+#include "util.h"
 #include <array>
 #include <cstdint>
 #include <cstdio>

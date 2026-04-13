@@ -184,8 +184,7 @@ public:
 
 private:
   [[nodiscard]] size_t find_chunk_index(const uint64_t offset) const {
-    auto it =
-        std::upper_bound(start_offsets_.begin(), start_offsets_.end(), offset);
+    auto it = std::ranges::upper_bound(start_offsets_, offset);
     if (it == start_offsets_.begin()) {
       throw std::runtime_error("Reference offset out of range");
     }
