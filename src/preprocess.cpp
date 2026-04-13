@@ -220,11 +220,15 @@ void merge_paired_n_reads(const preprocess_paths &paths,
   std::ifstream mate_n_read_order_input(paths.n_read_order_paths[1],
                                         std::ios::binary);
   const uint32_t mate_n_read_count = num_reads[1] - num_reads_clean[1];
-  uint32_t n_read_order;
-  for (uint32_t read_index = 0; read_index < mate_n_read_count; read_index++) {
-    mate_n_read_order_input.read(byte_ptr(&n_read_order), sizeof(uint32_t));
-    n_read_order += num_reads[0];
-    merged_n_read_order_output.write(byte_ptr(&n_read_order), sizeof(uint32_t));
+  if (mate_n_read_count > 0) {
+    std::vector<uint32_t> n_read_orders(mate_n_read_count);
+    mate_n_read_order_input.read(byte_ptr(n_read_orders.data()),
+                                 mate_n_read_count * sizeof(uint32_t));
+    for (uint32_t &n_read_order : n_read_orders) {
+      n_read_order += num_reads[0];
+    }
+    merged_n_read_order_output.write(byte_ptr(n_read_orders.data()),
+                                     mate_n_read_count * sizeof(uint32_t));
   }
   remove(paths.n_read_order_paths[1].c_str());
 }

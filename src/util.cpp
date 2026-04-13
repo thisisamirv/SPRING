@@ -637,6 +637,9 @@ void write_bgzf_fastq_block(std::ofstream &output_stream, std::string *id_array,
             reinterpret_cast<const char *>(header), 18);
         compressed_parts[thread_id].append(compressed_buffer.data(), cp_size);
 
+        // For BGZF, each block is a completely independent gzip member with its
+        // own CRC and ISIZE. The CRC is calculated only over the current 64KB
+        // block rather than the entire thread chunk.
         uint32_t crc = libdeflate_crc32(0, ptr, block_size);
         uint32_t isize = static_cast<uint32_t>(block_size);
         compressed_parts[thread_id].append(reinterpret_cast<const char *>(&crc),
