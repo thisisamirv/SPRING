@@ -288,7 +288,7 @@ void readDnaFile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
     f.read(byte_ptr(&read[i]), num_bytes_to_read);
   }
   f.close();
-  remove(rg.infile[0].c_str());
+  safe_remove_file(rg.infile[0]);
   if (rg.paired_end) {
     std::ifstream f(rg.infile[1], std::ifstream::in | std::ios::binary);
     for (uint32_t i = rg.numreads_array[0];
@@ -298,7 +298,7 @@ void readDnaFile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
       f.read(byte_ptr(&read[i]), num_bytes_to_read);
     }
     f.close();
-    remove(rg.infile[1].c_str());
+    safe_remove_file(rg.infile[1]);
   }
   return;
 }
@@ -822,8 +822,8 @@ void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
     detail::append_file_to_stream(foutorder_s, singleton_order_path,
                                   std::ios::binary);
 
-    remove(singleton_read_path.c_str());
-    remove(singleton_order_path.c_str());
+    safe_remove_file(singleton_read_path);
+    safe_remove_file(singleton_order_path);
   }
   fout_s.close();
   foutorder_s.close();

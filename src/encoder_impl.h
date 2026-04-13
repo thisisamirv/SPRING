@@ -64,22 +64,17 @@ inline void append_thread_stream(
 
 inline void cleanup_thread_encode_files(const encoder_global &encoder_state,
                                         const int thread_id) {
-  remove(
-      (encoder_state.infile_order + '.' + std::to_string(thread_id)).c_str());
-  remove(thread_output_tmp_path(encoder_state.infile_order, thread_id).c_str());
-  remove((encoder_state.infile_readlength + '.' + std::to_string(thread_id))
-             .c_str());
-  remove(thread_output_tmp_path(encoder_state.infile_readlength, thread_id)
-             .c_str());
-  remove((encoder_state.outfile_noisepos + '.' + std::to_string(thread_id))
-             .c_str());
-  remove(
-      (encoder_state.outfile_noise + '.' + std::to_string(thread_id)).c_str());
-  remove(thread_output_tmp_path(encoder_state.infile_RC, thread_id).c_str());
-  remove((encoder_state.infile_RC + '.' + std::to_string(thread_id)).c_str());
-  remove((encoder_state.infile_flag + '.' + std::to_string(thread_id)).c_str());
-  remove((encoder_state.infile_pos + '.' + std::to_string(thread_id)).c_str());
-  remove((encoder_state.infile + '.' + std::to_string(thread_id)).c_str());
+  safe_remove_file(encoder_state.infile_order + '.' + std::to_string(thread_id));
+  safe_remove_file(thread_output_tmp_path(encoder_state.infile_order, thread_id));
+  safe_remove_file(encoder_state.infile_readlength + '.' + std::to_string(thread_id));
+  safe_remove_file(thread_output_tmp_path(encoder_state.infile_readlength, thread_id));
+  safe_remove_file(encoder_state.outfile_noisepos + '.' + std::to_string(thread_id));
+  safe_remove_file(encoder_state.outfile_noise + '.' + std::to_string(thread_id));
+  safe_remove_file(thread_output_tmp_path(encoder_state.infile_RC, thread_id));
+  safe_remove_file(encoder_state.infile_RC + '.' + std::to_string(thread_id));
+  safe_remove_file(encoder_state.infile_flag + '.' + std::to_string(thread_id));
+  safe_remove_file(encoder_state.infile_pos + '.' + std::to_string(thread_id));
+  safe_remove_file(encoder_state.infile + '.' + std::to_string(thread_id));
 }
 
 inline void merge_thread_encoded_outputs(const encoder_global &encoder_state) {
@@ -596,7 +591,7 @@ void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
                   const_cast<std::bitset<bitset_size> **>(egb.basemask_ptrs.data()));
   }
   f.close();
-  remove((eg.infile + ".singleton").c_str());
+  safe_remove_file(eg.infile + ".singleton");
   f.open(eg.infile_N, std::ios::binary);
   for (uint32_t i = eg.numreads_s; i < eg.numreads_s + eg.numreads_N; i++) {
     read_dnaN_from_bits(s, f);
@@ -608,7 +603,7 @@ void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
   for (uint32_t i = 0; i < eg.numreads_s; i++)
     f_order_s.read(byte_ptr(&order_s[i]), sizeof(uint32_t));
   f_order_s.close();
-  remove((eg.infile_order + ".singleton").c_str());
+  safe_remove_file(eg.infile_order + ".singleton");
   std::ifstream f_order_N(eg.infile_order_N, std::ios::binary);
   for (uint32_t i = eg.numreads_s; i < eg.numreads_s + eg.numreads_N; i++)
     f_order_N.read(byte_ptr(&order_s[i]), sizeof(uint32_t));
@@ -658,7 +653,7 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   Logger::log_info("Reading singletons...");
   readsingletons<bitset_size>(read.data(), order_s.data(), read_lengths_s.data(), eg, egb);
 
-  remove(eg.infile_N.c_str());
+  safe_remove_file(eg.infile_N);
   Logger::log_info("Correcting order...");
   correct_order(order_s.data(), eg);
 
@@ -744,7 +739,7 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
       fout_pos.write(byte_ptr(&abs_pos_thr), sizeof(uint64_t));
     }
     fin_pos.close();
-    remove((eg.outfile_pos + '.' + std::to_string(tid)).c_str());
+    safe_remove_file(eg.outfile_pos + '.' + std::to_string(tid));
     abs_pos += file_len_seq_thr[tid];
   }
   fout_pos.close();

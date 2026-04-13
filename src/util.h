@@ -243,6 +243,13 @@ void extract_gzip_detailed_info(const std::string &path, bool &is_gzipped,
 std::string shell_quote(const std::string &value);
 std::string shell_path(const std::string &value);
 
+// Filesystem helpers (non-throwing): perform operations and log failures
+// without throwing exceptions. Useful for cleanup in destructors and
+// best-effort removal/rename semantics.
+bool safe_remove_file(const std::string &path) noexcept;
+bool safe_rename_file(const std::string &old_path,
+                      const std::string &new_path) noexcept;
+
 // Parse helpers.
 bool has_suffix(const std::string &value, const std::string &suffix);
 

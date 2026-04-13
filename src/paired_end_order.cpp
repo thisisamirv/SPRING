@@ -68,8 +68,8 @@ void persist_reordered_positions(
                        sizeof(uint32_t));
   }
   order_output.close();
-  remove(read_order_path.c_str());
-  rename(temporary_output_path.c_str(), read_order_path.c_str());
+  safe_remove_file(read_order_path);
+  safe_rename_file(temporary_output_path, read_order_path);
 }
 
 } // namespace

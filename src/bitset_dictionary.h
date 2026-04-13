@@ -179,7 +179,7 @@ inline void write_hash_chunks(const bbhashdict &dictionary,
     hash_output.close();
 
     key_input.close();
-    remove(key_path.c_str());
+    safe_remove_file(key_path);
   }
 }
 
@@ -238,7 +238,7 @@ populate_bucket_read_ids(bbhashdict &dictionary, uint16_t *read_lengths,
       }
     }
     hash_input.close();
-    remove(hash_path.c_str());
+    safe_remove_file(hash_path);
   }
 }
 

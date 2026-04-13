@@ -106,7 +106,7 @@ public:
     }
   }
 
-  ~MmapView() { unmap(); }
+  ~MmapView() noexcept { unmap(); }
 
 private:
   void *mapping_;

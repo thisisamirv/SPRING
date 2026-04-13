@@ -353,7 +353,7 @@ void reorder_compress(const std::string &input_path,
                            reordered_strings);
     compress_block_batch(input_path, mode, cp, reordered_strings, batch,
                          num_reads_per_block, num_thr);
-    remove(batch_paths[batch_index].c_str());
+    safe_remove_file(batch_paths[batch_index]);
   }
 }
 
@@ -439,14 +439,14 @@ void reorder_compress_quality_id(const std::string &temp_dir,
         if (block_in) {
           merged_out << block_in.rdbuf();
           block_in.close();
-          remove(block_path.c_str());
+          safe_remove_file(block_path);
         }
       }
       merged_out.close();
 
       bsc::BSC_compress(merged_packed_path.c_str(), monolithic_path.c_str());
-      remove(merged_packed_path.c_str());
-      remove(id_paths[stream_index].c_str());
+      safe_remove_file(merged_packed_path);
+      safe_remove_file(id_paths[stream_index]);
     }
   }
 }

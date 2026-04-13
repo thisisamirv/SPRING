@@ -2,6 +2,7 @@
 // quantization, and miscellaneous helpers used across Spring stages.
 
 #include "util.h"
+#include "progress.h"
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -169,6 +170,9 @@ void append_fastq_records_range(std::string &output_buffer,
         use_crlf, fasta_mode);
   }
 }
+
+// safe_remove_file and safe_rename_file are defined after the anonymous
+// namespace so they implement the `spring::` declarations in the header.
 
 void write_gzip_fastq_block(std::ofstream &output_stream, std::string *id_array,
                             std::string *read_array,
@@ -355,6 +359,45 @@ void fill_reverse_complement(const char *input_bases, char *output_bases,
 }
 
 } // namespace
+
+bool safe_remove_file(const std::string &path) noexcept {
+  if (path.empty())
+    return true;
+  std::error_code ec;
+  std::filesystem::remove(path, ec);
+  if (ec) {
+    Logger::log_warning("Failed to remove file: " + path + ": " + ec.message());
+    return false;
+  }
+  return true;
+}
+
+bool safe_rename_file(const std::string &old_path,
+                      const std::string &new_path) noexcept {
+  if (old_path.empty() || new_path.empty()) {
+    Logger::log_warning("safe_rename_file called with empty path");
+    return false;
+  }
+  std::error_code ec;
+  std::filesystem::rename(old_path, new_path, ec);
+  if (!ec)
+    return true;
+
+  // Fallback: attempt copy+remove for cross-device moves or other errno cases.
+  std::error_code ec2;
+  std::filesystem::copy_file(old_path, new_path,
+                             std::filesystem::copy_options::overwrite_existing,
+                             ec2);
+  if (ec2) {
+    Logger::log_warning("Failed to rename file: " + old_path + " -> " + new_path + ": " + ec.message() + "; copy failed: " + ec2.message());
+    return false;
+  }
+  std::error_code ec3;
+  std::filesystem::remove(old_path, ec3);
+  if (ec3)
+    Logger::log_warning("Warning: renamed (copied) file but failed to remove original: " + old_path + ": " + ec3.message());
+  return true;
+}
 
 gzip_istreambuf::gzip_istreambuf() : file_(nullptr) {
   setg(buffer_, buffer_, buffer_);
@@ -840,7 +883,7 @@ void compress_id_block(const char *output_path, std::string *id_array,
   id_out.close();
 
   bsc::BSC_compress(temp_id_path.c_str(), output_path);
-  remove(temp_id_path.c_str());
+  safe_remove_file(temp_id_path);
 }
 
 void decompress_id_block(const char *input_path, std::string *id_array,
@@ -860,7 +903,7 @@ void decompress_id_block(const char *input_path, std::string *id_array,
   std::ifstream id_in(temp_id_path, std::ios::binary | std::ios::ate);
   if (!id_in) {
     if (!pack_only)
-      remove(temp_id_path.c_str());
+      safe_remove_file(temp_id_path);
     throw std::runtime_error("Failed to open temporary decompressed ID file.");
   }
   const size_t r_size = static_cast<size_t>(id_in.tellg());
@@ -870,12 +913,12 @@ void decompress_id_block(const char *input_path, std::string *id_array,
   if (!id_in.read(reinterpret_cast<char *>(buffer.data()), r_size)) {
     id_in.close();
     if (!pack_only)
-      remove(temp_id_path.c_str());
+      safe_remove_file(temp_id_path);
     throw std::runtime_error("Failed to read decompressed ID block.");
   }
   id_in.close();
   if (!pack_only)
-    remove(temp_id_path.c_str());
+    safe_remove_file(temp_id_path);
 
   const char *curr = reinterpret_cast<const char *>(buffer.data());
   const size_t d_size = r_size;

@@ -60,7 +60,7 @@ std::string compressed_block_file_path(const std::string &base_path,
 void compress_block_file(const std::string &input_path,
                          const std::string &output_path) {
   bsc::BSC_compress(input_path.c_str(), output_path.c_str());
-  remove(input_path.c_str());
+  safe_remove_file(input_path);
 }
 
 void compress_temp_block(const std::string &temp_base_path,
@@ -159,13 +159,13 @@ void write_aligned_position(std::ofstream &position_output,
 }
 
 void remove_input_stream_files(const reordered_stream_paths &paths) {
-  remove(paths.noise_path.c_str());
-  remove(paths.noise_position_path.c_str());
-  remove(paths.orientation_path.c_str());
-  remove(paths.order_path.c_str());
-  remove(paths.read_length_path.c_str());
-  remove(paths.unaligned_path.c_str());
-  remove(paths.position_path.c_str());
+  safe_remove_file(paths.noise_path);
+  safe_remove_file(paths.noise_position_path);
+  safe_remove_file(paths.orientation_path);
+  safe_remove_file(paths.order_path);
+  safe_remove_file(paths.read_length_path);
+  safe_remove_file(paths.unaligned_path);
+  safe_remove_file(paths.position_path);
 }
 
 void compress_output_block(const temporary_stream_paths &temp_paths,

@@ -134,7 +134,7 @@ public:
   ~reference_sequence_store() {
     for (reference_chunk &chunk : chunks_) {
       close_reference_chunk(chunk);
-      remove(chunk.path.c_str());
+      safe_remove_file(chunk.path);
     }
   }
 
@@ -207,7 +207,7 @@ void decompress_bsc_block(const std::string &base_path,
   const std::string input_path =
       compressed_block_file_path(base_path, block_num);
   safe_bsc_decompress(input_path, output_path);
-  remove(input_path.c_str());
+  safe_remove_file(input_path);
 }
 
 void decompress_read_length_block(const std::string &base_path,
@@ -219,7 +219,7 @@ void decompress_read_length_block(const std::string &base_path,
       compressed_block_file_path(base_path, block_num);
   const std::string output_path = block_file_path(base_path, block_num);
   safe_bsc_decompress(compressed_path, output_path);
-  remove(compressed_path.c_str());
+  safe_remove_file(compressed_path);
 
   std::ifstream read_length_input(output_path, std::ios::binary);
   for (uint32_t read_index = 0; read_index < read_count; read_index++) {
@@ -227,7 +227,7 @@ void decompress_read_length_block(const std::string &base_path,
         byte_ptr(&read_lengths_buffer[buffer_offset + read_index]),
         sizeof(uint32_t));
   }
-  remove(output_path.c_str());
+  safe_remove_file(output_path);
 }
 
 uint32_t compute_thread_read_count(const uint32_t step_read_count,
@@ -292,8 +292,8 @@ void decode_packed_sequence_chunk(const std::string &packed_seq_base_path,
 
   packed_input.close();
   unpacked_output.close();
-  remove(chunk_base_path.c_str());
-  rename(temporary_output_path.c_str(), chunk_base_path.c_str());
+  safe_remove_file(chunk_base_path);
+  safe_rename_file(temporary_output_path, chunk_base_path);
 }
 
 bool is_gzip_output_path(const std::string &output_path) {
@@ -689,16 +689,16 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
               f_RC_pair.close();
             }
 
-            remove(block_file_path(file_flag, block_num).c_str());
-            remove(block_file_path(file_pos, block_num).c_str());
-            remove(block_file_path(file_noise, block_num).c_str());
-            remove(block_file_path(file_noisepos, block_num).c_str());
-            remove(block_file_path(file_unaligned, block_num).c_str());
-            remove(block_file_path(file_readlength, block_num).c_str());
-            remove(block_file_path(file_RC, block_num).c_str());
+            safe_remove_file(block_file_path(file_flag, block_num));
+            safe_remove_file(block_file_path(file_pos, block_num));
+            safe_remove_file(block_file_path(file_noise, block_num));
+            safe_remove_file(block_file_path(file_noisepos, block_num));
+            safe_remove_file(block_file_path(file_unaligned, block_num));
+            safe_remove_file(block_file_path(file_readlength, block_num));
+            safe_remove_file(block_file_path(file_RC, block_num));
             if (paired_end) {
-              remove(block_file_path(file_pos_pair, block_num).c_str());
-              remove(block_file_path(file_RC_pair, block_num).c_str());
+              safe_remove_file(block_file_path(file_pos_pair, block_num));
+              safe_remove_file(block_file_path(file_RC_pair, block_num));
             }
           }
           // Decompress ids and quality
@@ -717,7 +717,7 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
                   thread_read_count,
                   read_lengths_buffer_2.data() + buffer_offset);
             }
-            remove(input_path.c_str());
+            safe_remove_file(input_path);
           }
           if (!preserve_id) {
             for (uint32_t i = buffer_offset;
@@ -735,7 +735,7 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
               decompress_id_block(input_path.c_str(), id_buffer.data() + buffer_offset,
                                   thread_read_count,
                                   monolithic_id[stream_index]);
-              remove(input_path.c_str());
+              safe_remove_file(input_path);
             }
           }
         }
@@ -843,7 +843,7 @@ void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
           safe_bsc_str_array_decompress(input_path, read_buffer.data() + buffer_offset,
                                         thread_read_count,
                                         read_lengths_buffer.data() + buffer_offset);
-          remove(input_path.c_str());
+          safe_remove_file(input_path);
 
           if (preserve_quality) {
             input_path = input_quality_paths[stream_index] + "." +
@@ -851,7 +851,7 @@ void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
             safe_bsc_str_array_decompress(
               input_path, quality_buffer.data() + buffer_offset, thread_read_count,
               read_lengths_buffer.data() + buffer_offset);
-            remove(input_path.c_str());
+            safe_remove_file(input_path);
           }
           if (!preserve_id) {
             for (uint32_t i = buffer_offset;
@@ -868,7 +868,7 @@ void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
                            std::to_string(block_num);
               decompress_id_block(input_path.c_str(), id_buffer.data() + buffer_offset,
                                   thread_read_count, false);
-              remove(input_path.c_str());
+              safe_remove_file(input_path);
             }
           }
         }
@@ -899,7 +899,7 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
 
   // Decompress the monolithic archive block into raw packed sequence data.
   safe_bsc_decompress(monolithic_compressed_path, monolithic_packed_path);
-  remove(monolithic_compressed_path.c_str());
+  safe_remove_file(monolithic_compressed_path);
 
   // Slice the monolithic raw file into the parallelized chunks expected by
   // callers.
@@ -941,7 +941,7 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
     chunk_out.close();
   }
   monolithic_in.close();
-  remove(monolithic_packed_path.c_str());
+  safe_remove_file(monolithic_packed_path);
 
 #pragma omp parallel
   {

@@ -111,8 +111,7 @@ void pack_sequence_chunk(const encoder_global &encoder_state,
   const uint64_t sequence_length = write_packed_sequence(
       paths.input_path, paths.packed_path, paths.tail_path);
   thread_sequence_lengths[thread_id] = sequence_length;
-
-  remove(paths.input_path.c_str());
+  safe_remove_file(paths.input_path);
 }
 
 void calculate_sequence_lengths(const encoder_global &encoder_state,
@@ -153,7 +152,7 @@ void pack_compress_seq(const encoder_global &encoder_state,
     if (chunk_in.is_open()) {
       monolithic_out << chunk_in.rdbuf();
       chunk_in.close();
-      remove(paths.packed_path.c_str());
+      safe_remove_file(paths.packed_path);
     }
   }
   monolithic_out.close();
@@ -161,7 +160,7 @@ void pack_compress_seq(const encoder_global &encoder_state,
   std::string monolithic_compressed_path = encoder_state.outfile_seq + ".bsc";
   bsc::BSC_compress(monolithic_packed_path.c_str(),
                     monolithic_compressed_path.c_str());
-  remove(monolithic_packed_path.c_str());
+  safe_remove_file(monolithic_packed_path);
 }
 
 void rewrite_thread_order_file(
@@ -181,8 +180,8 @@ void rewrite_thread_order_file(
   order_input.close();
   order_output.close();
 
-  remove(order_path.c_str());
-  rename(order_tmp_path.c_str(), order_path.c_str());
+  safe_remove_file(order_path);
+  safe_rename_file(order_tmp_path, order_path);
 }
 
 std::string buildcontig(std::list<contig_reads> &current_contig,
@@ -304,7 +303,7 @@ void getDataParams(encoder_global &eg, const compression_params &cp) {
   singleton_count_input.read(byte_ptr(&eg.numreads_s), sizeof(uint32_t));
   singleton_count_input.close();
   const std::string singleton_count_path = eg.infile + ".singleton.count";
-  remove(singleton_count_path.c_str());
+  safe_remove_file(singleton_count_path);
   eg.numreads = clean_read_count - eg.numreads_s;
   eg.numreads_N = total_read_count - clean_read_count;
 }
@@ -335,7 +334,7 @@ void correct_order(uint32_t *order_s, const encoder_global &eg) {
     rewrite_thread_order_file(thread_file_path(eg.infile_order, thread_id),
                               cumulative_N_reads);
   }
-  remove(eg.infile_order_N.c_str());
+  safe_remove_file(eg.infile_order_N);
   return;
 }
 
