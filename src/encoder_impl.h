@@ -20,22 +20,19 @@
 namespace spring {
 
 template <size_t bitset_size> struct encoder_global_b {
-  std::bitset<bitset_size> **basemask;
+  std::vector<std::array<std::bitset<bitset_size>, 128>> basemask;
+  std::vector<std::bitset<bitset_size> *> basemask_ptrs;
   int max_readlen;
   std::bitset<bitset_size> mask63;
-  encoder_global_b(int max_readlen_param)
-      : basemask(nullptr), max_readlen(max_readlen_param) {
-    basemask = new std::bitset<bitset_size> *[max_readlen_param];
+  encoder_global_b(int max_readlen_param) : basemask(), max_readlen(max_readlen_param) {
+    basemask.resize(static_cast<size_t>(max_readlen_param));
+    basemask_ptrs.resize(static_cast<size_t>(max_readlen_param));
     for (int i = 0; i < max_readlen_param; i++)
-      basemask[i] = new std::bitset<bitset_size>[128];
+      basemask_ptrs[i] = basemask[static_cast<size_t>(i)].data();
   }
   encoder_global_b(const encoder_global_b &) = delete;
   encoder_global_b &operator=(const encoder_global_b &) = delete;
-  ~encoder_global_b() {
-    for (int i = 0; i < max_readlen; i++)
-      delete[] basemask[i];
-    delete[] basemask;
-  }
+  ~encoder_global_b() = default;
 };
 
 namespace detail {
@@ -201,14 +198,17 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
   // indexing.
   const uint32_t num_locks = NUM_LOCKS_REORDER;
 
-  std::bitset<bitset_size> *index_masks =
-      new std::bitset<bitset_size>[eg.numdict_s];
-  generateindexmasks<bitset_size>(index_masks, dictionaries, eg.numdict_s, 3);
-  std::bitset<bitset_size> **length_masks =
-      new std::bitset<bitset_size> *[eg.max_readlen + 1];
-  for (int i = 0; i <= eg.max_readlen; i++)
-    length_masks[i] = new std::bitset<bitset_size>[eg.max_readlen + 1];
-  generatemasks<bitset_size>(length_masks, eg.max_readlen, 3);
+  std::vector<std::bitset<bitset_size>> index_masks(static_cast<size_t>(eg.numdict_s));
+  generateindexmasks<bitset_size>(index_masks.data(), dictionaries, eg.numdict_s, 3);
+
+  std::vector<std::vector<std::bitset<bitset_size>>> length_masks;
+  length_masks.assign(static_cast<size_t>(eg.max_readlen) + 1,
+                      std::vector<std::bitset<bitset_size>>(static_cast<size_t>(eg.max_readlen) + 1));
+  std::vector<std::bitset<bitset_size> *> length_masks_ptrs;
+  length_masks_ptrs.reserve(static_cast<size_t>(eg.max_readlen) + 1);
+  for (int i = 0; i <= eg.max_readlen; ++i)
+    length_masks_ptrs.push_back(length_masks[static_cast<size_t>(i)].data());
+  generatemasks<bitset_size>(length_masks_ptrs.data(), eg.max_readlen, 3);
 
   Logger::log_info("Encoding reads");
 #pragma omp parallel
@@ -345,11 +345,13 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
             forward_bitset.reset();
             reverse_bitset.reset();
             stringtobitset(reference_contig.substr(0, eg.max_readlen),
-                           eg.max_readlen, forward_bitset, egb.basemask);
+                     eg.max_readlen, forward_bitset,
+                     const_cast<std::bitset<bitset_size> **>(egb.basemask_ptrs.data()));
             stringtobitset(
-                reverse_complement(reference_contig.substr(0, eg.max_readlen),
-                                   eg.max_readlen),
-                eg.max_readlen, reverse_bitset, egb.basemask);
+              reverse_complement(reference_contig.substr(0, eg.max_readlen),
+                         eg.max_readlen),
+              eg.max_readlen, reverse_bitset,
+              const_cast<std::bitset<bitset_size> **>(egb.basemask_ptrs.data()));
             for (long window_start = 0;
                  window_start <
                  (int64_t)reference_contig.size() - eg.max_readlen + 1;
@@ -529,11 +531,7 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
     orientation_output.close();
   }
 
-  for (int read_length_index = 0; read_length_index <= eg.max_readlen;
-       read_length_index++)
-    delete[] length_masks[read_length_index];
-  delete[] length_masks;
-  delete[] index_masks;
+  // length_masks and index_masks are RAII-managed and freed automatically
 }
 
 template <size_t bitset_size>
@@ -594,7 +592,8 @@ void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
   for (uint32_t i = 0; i < eg.numreads_s; i++) {
     read_dna_from_bits(s, f);
     read_lengths_s[i] = s.length();
-    stringtobitset<bitset_size>(s, read_lengths_s[i], read[i], egb.basemask);
+    stringtobitset<bitset_size>(s, read_lengths_s[i], read[i],
+                  const_cast<std::bitset<bitset_size> **>(egb.basemask_ptrs.data()));
   }
   f.close();
   remove((eg.infile + ".singleton").c_str());
@@ -602,7 +601,8 @@ void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
   for (uint32_t i = eg.numreads_s; i < eg.numreads_s + eg.numreads_N; i++) {
     read_dnaN_from_bits(s, f);
     read_lengths_s[i] = s.length();
-    stringtobitset<bitset_size>(s, read_lengths_s[i], read[i], egb.basemask);
+    stringtobitset<bitset_size>(s, read_lengths_s[i], read[i],
+                  const_cast<std::bitset<bitset_size> **>(egb.basemask_ptrs.data()));
   }
   std::ifstream f_order_s(eg.infile_order + ".singleton", std::ios::binary);
   for (uint32_t i = 0; i < eg.numreads_s; i++)
@@ -649,23 +649,25 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   getDataParams(eg, cp); // populate numreads
   setglobalarrays<bitset_size>(eg, egb);
   const uint32_t singleton_pool_size = eg.numreads_s + eg.numreads_N;
-  std::bitset<bitset_size> *read =
-      new std::bitset<bitset_size>[singleton_pool_size];
-  uint32_t *order_s = new uint32_t[singleton_pool_size];
-  uint16_t *read_lengths_s = new uint16_t[singleton_pool_size];
+  std::vector<std::bitset<bitset_size>> read;
+  std::vector<uint32_t> order_s;
+  std::vector<uint16_t> read_lengths_s;
+  read.resize(static_cast<size_t>(singleton_pool_size));
+  order_s.resize(static_cast<size_t>(singleton_pool_size));
+  read_lengths_s.resize(static_cast<size_t>(singleton_pool_size));
   Logger::log_info("Reading singletons...");
-  readsingletons<bitset_size>(read, order_s, read_lengths_s, eg, egb);
+  readsingletons<bitset_size>(read.data(), order_s.data(), read_lengths_s.data(), eg, egb);
 
   remove(eg.infile_N.c_str());
   Logger::log_info("Correcting order...");
-  correct_order(order_s, eg);
+  correct_order(order_s.data(), eg);
 
   std::array<bbhashdict, NUM_DICT_ENCODER> dict;
   initialize_encoder_dict_ranges(dict, eg.max_readlen);
-  if (singleton_pool_size > 0) {
+    if (singleton_pool_size > 0) {
     Logger::log_info("Building encoder dictionary for " +
                      std::to_string(singleton_pool_size) + " singletons...");
-    constructdictionary<bitset_size>(read, dict.data(), read_lengths_s,
+    constructdictionary<bitset_size>(read.data(), dict.data(), read_lengths_s.data(),
                                      eg.numdict_s, singleton_pool_size, 3,
                                      eg.basedir, eg.num_thr);
   }
@@ -684,11 +686,12 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   const uint32_t num_locks = NUM_LOCKS_REORDER;
   std::vector<OmpLock> read_locks(num_locks);
   std::vector<OmpLock> dictionary_locks(num_locks);
-  bool *remaining_reads = new bool[eg.numreads_s + eg.numreads_N];
-  std::fill(remaining_reads, remaining_reads + eg.numreads_s + eg.numreads_N,
-            1);
+  auto remaining_reads_storage = std::make_unique<bool[]>(
+      static_cast<size_t>(eg.numreads_s + eg.numreads_N));
+  bool *remaining_reads = remaining_reads_storage.get();
+  std::fill(remaining_reads, remaining_reads + eg.numreads_s + eg.numreads_N, true);
 
-  encode<bitset_size>(read, dict.data(), order_s, read_lengths_s,
+  encode<bitset_size>(read.data(), dict.data(), order_s.data(), read_lengths_s.data(),
                       all_read_lengths, remaining_reads, read_locks.data(),
                       dictionary_locks.data(), eg, egb);
 
@@ -703,12 +706,12 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
 
   uint64_t len_unaligned = 0;
 
-  const uint32_t remaining_singleton_reads = detail::write_unaligned_range(
-      order_output, read_length_output, unaligned_output, read, order_s,
-      read_lengths_s, remaining_reads, egb, 0, eg.numreads_s, len_unaligned);
-  const uint32_t remaining_n_reads = detail::write_unaligned_range(
-      order_output, read_length_output, unaligned_output, read, order_s,
-      read_lengths_s, remaining_reads, egb, eg.numreads_s,
+    const uint32_t remaining_singleton_reads = detail::write_unaligned_range(
+      order_output, read_length_output, unaligned_output, read.data(), order_s.data(),
+      read_lengths_s.data(), remaining_reads, egb, 0, eg.numreads_s, len_unaligned);
+    const uint32_t remaining_n_reads = detail::write_unaligned_range(
+      order_output, read_length_output, unaligned_output, read.data(), order_s.data(),
+      read_lengths_s.data(), remaining_reads, egb, eg.numreads_s,
       eg.numreads_s + eg.numreads_N, len_unaligned);
 
   order_output.close();
@@ -716,7 +719,7 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   unaligned_output.close();
 
   // Cleanup state arrays and locks (OmpLock destructors handle locks)
-  delete[] remaining_reads;
+  // remaining_reads_storage will be freed automatically
 
   std::ofstream f_unaligned_count(eg.outfile_unaligned + ".count",
                                   std::ios::out | std::ios::binary);
@@ -759,9 +762,7 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   // Generate per-thread .bsc sequence blocks as expected by the decompressor.
   pack_compress_seq(eg, file_len_seq_thr.data());
 
-  delete[] read;
-  delete[] order_s;
-  delete[] read_lengths_s;
+  // read/order_s/read_lengths_s are RAII-managed (std::vector)
 }
 
 } // namespace spring

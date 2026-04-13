@@ -17,6 +17,7 @@
 #include <numeric>
 #include <omp.h>
 #include "raii.h"
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -40,22 +41,20 @@ template <size_t bitset_size> struct reorder_global {
 
   bool paired_end;
 
-  std::bitset<bitset_size> **basemask;
+  std::vector<std::array<std::bitset<bitset_size>, 128>> basemask;
+  std::vector<std::bitset<bitset_size> *> basemask_ptrs;
   std::bitset<bitset_size> mask64;
   reorder_global(int max_readlen_param)
       : numreads(0), numreads_array{0, 0}, maxshift(0), num_thr(0),
-        max_readlen(max_readlen_param), paired_end(false), basemask(nullptr) {
-    basemask = new std::bitset<bitset_size> *[max_readlen_param];
+        max_readlen(max_readlen_param), paired_end(false) {
+    basemask.resize(static_cast<size_t>(max_readlen_param));
+    basemask_ptrs.resize(static_cast<size_t>(max_readlen_param));
     for (int i = 0; i < max_readlen_param; i++)
-      basemask[i] = new std::bitset<bitset_size>[128];
+      basemask_ptrs[i] = basemask[static_cast<size_t>(i)].data();
   }
   reorder_global(const reorder_global &) = delete;
   reorder_global &operator=(const reorder_global &) = delete;
-  ~reorder_global() {
-    for (int i = 0; i < max_readlen; i++)
-      delete[] basemask[i];
-    delete[] basemask;
-  }
+  ~reorder_global() = default;
 };
 
 namespace detail {
@@ -269,11 +268,12 @@ void updaterefcount(std::bitset<bitset_size> &current_read,
     }
   }
   chartobitset<bitset_size>(oriented_read, reference_length, reference_read,
-                            rg.basemask);
+                            const_cast<std::bitset<bitset_size> **>(rg.basemask_ptrs.data()));
   char reverse_oriented_read[MAX_READ_LEN + 1];
   reverse_complement(oriented_read, reverse_oriented_read, reference_length);
   chartobitset<bitset_size>(reverse_oriented_read, reference_length,
-                            reverse_reference_read, rg.basemask);
+                            reverse_reference_read,
+                            const_cast<std::bitset<bitset_size> **>(rg.basemask_ptrs.data()));
 
   return;
 }
@@ -397,19 +397,20 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
   std::vector<OmpLock> dict_locks(num_locks);
   std::vector<OmpLock> read_locks(num_locks);
   std::vector<OmpLock> remaining_read_lock(num_locks);
-  std::bitset<bitset_size> **length_masks =
-      new std::bitset<bitset_size> *[rg.max_readlen];
-  for (int read_length_index = 0; read_length_index < rg.max_readlen;
-       read_length_index++)
-    length_masks[read_length_index] =
-        new std::bitset<bitset_size>[rg.max_readlen];
-  generatemasks<bitset_size>(length_masks, rg.max_readlen, 2);
-  std::bitset<bitset_size> *index_masks =
-      new std::bitset<bitset_size>[rg.numdict];
+  std::vector<std::vector<std::bitset<bitset_size>>> length_masks;
+  length_masks.assign(static_cast<size_t>(rg.max_readlen),
+                      std::vector<std::bitset<bitset_size>>(rg.max_readlen));
+  std::vector<std::bitset<bitset_size> *> length_masks_ptrs;
+  length_masks_ptrs.reserve(static_cast<size_t>(rg.max_readlen));
+  for (int i = 0; i < rg.max_readlen; ++i)
+    length_masks_ptrs.push_back(length_masks[static_cast<size_t>(i)].data());
+  generatemasks<bitset_size>(length_masks_ptrs.data(), rg.max_readlen, 2);
+  std::vector<std::bitset<bitset_size>> index_masks(static_cast<size_t>(rg.numdict));
   Logger::log_info("Constructing dictionaries");
-  generateindexmasks<bitset_size>(index_masks, dict, rg.numdict, 2);
-  bool *remaining_reads = new bool[rg.numreads];
-  std::fill(remaining_reads, remaining_reads + rg.numreads, 1);
+  generateindexmasks<bitset_size>(index_masks.data(), dict, rg.numdict, 2);
+  auto remaining_reads_storage = std::make_unique<bool[]>(rg.numreads);
+  bool *remaining_reads = remaining_reads_storage.get();
+  std::fill(remaining_reads, remaining_reads + rg.numreads, true);
 
   uint32_t first_read = 0;
   Logger::log_info("Reordering reads");
@@ -461,9 +462,14 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
     uint32_t thread_read_count = 0;
     uint32_t unmatched_reads_in_window = 0;
 
-    int **base_counts = new int *[4];
-    for (int base_index = 0; base_index < 4; base_index++)
-      base_counts[base_index] = new int[rg.max_readlen];
+    std::array<std::unique_ptr<int[]>, 4> base_counts_storage;
+    std::array<int *, 4> base_counts;
+    for (int base_index = 0; base_index < 4; base_index++) {
+      base_counts_storage[static_cast<size_t>(base_index)] =
+          std::make_unique<int[]>(static_cast<size_t>(rg.max_readlen));
+      base_counts[static_cast<size_t>(base_index)] =
+          base_counts_storage[static_cast<size_t>(base_index)].get();
+    }
     int64_t bucket_range[2];
     uint64_t bucket_start_index;
     bool found_match = 0;
@@ -494,7 +500,7 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
 #pragma omp barrier
     if (!done) {
       updaterefcount<bitset_size>(read[current_read_id], reference_read,
-                                  reverse_reference_read, base_counts, true,
+                                  reverse_reference_read, base_counts.data(), true,
                                   false, 0, read_lengths[current_read_id],
                                   reference_length, rg);
       current_read_position = 0;
@@ -574,16 +580,16 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
           (reference_position < MAX_CONTIG_GROWTH - 2 * rg.max_readlen))
         for (int shift = 0; shift < rg.maxshift; shift++) {
             found_match = detail::search_match<bitset_size>(
-              reference_read, index_masks, dict_locks, read_locks, length_masks,
+              reference_read, index_masks.data(), dict_locks.data(), read_locks.data(), length_masks_ptrs.data(),
               read_lengths, remaining_reads, read, dict, matched_read_id, false,
               shift, reference_length, rg);
           if (found_match == 1) {
             current_read_id = matched_read_id;
             int previous_reference_length = reference_length;
             updaterefcount<bitset_size>(
-                read[current_read_id], reference_read, reverse_reference_read,
-                base_counts, false, false, shift, read_lengths[current_read_id],
-                reference_length, rg);
+              read[current_read_id], reference_read, reverse_reference_read,
+              base_counts.data(), false, false, shift, read_lengths[current_read_id],
+              reference_length, rg);
             if (!left_search) {
               current_read_position = reference_position + shift;
               reference_position = current_read_position;
@@ -618,15 +624,15 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
 
           // find reverse match
             found_match = detail::search_match<bitset_size>(
-              reverse_reference_read, index_masks, dict_locks, read_locks,
-              length_masks, read_lengths, remaining_reads, read, dict,
+              reverse_reference_read, index_masks.data(), dict_locks.data(), read_locks.data(),
+              length_masks_ptrs.data(), read_lengths, remaining_reads, read, dict,
               matched_read_id, true, shift, reference_length, rg);
           if (found_match == 1) {
             current_read_id = matched_read_id;
             int previous_reference_length = reference_length;
             updaterefcount<bitset_size>(
                 read[current_read_id], reference_read, reverse_reference_read,
-                base_counts, false, true, shift, read_lengths[current_read_id],
+              base_counts.data(), false, true, shift, read_lengths[current_read_id],
                 reference_length, rg);
             if (!left_search) {
               current_read_position = reference_position +
@@ -672,7 +678,7 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
           left_search = true;
           left_search_start = true;
           updaterefcount<bitset_size>(read[seed_read_id], reference_read,
-                                      reverse_reference_read, base_counts, true,
+                                      reverse_reference_read, base_counts.data(), true,
                                       true, 0, read_lengths[seed_read_id],
                                       reference_length, rg);
           reference_position = 0;
@@ -706,9 +712,9 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
             done = 1;
           } else {
             updaterefcount<bitset_size>(
-                read[current_read_id], reference_read, reverse_reference_read,
-                base_counts, true, false, 0, read_lengths[current_read_id],
-                reference_length, rg);
+              read[current_read_id], reference_read, reverse_reference_read,
+              base_counts.data(), true, false, 0, read_lengths[current_read_id],
+              reference_length, rg);
             reference_position = 0;
             current_read_position = 0;
             if (previous_read_unmatched == true) {
@@ -729,21 +735,14 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
     position_output.close();
     singleton_order_output.close();
     read_length_output.close();
-    for (int base_index = 0; base_index < 4; base_index++)
-      delete[] base_counts[base_index];
-    delete[] base_counts;
+    // base_counts_storage RAII will free the per-thread buffers
   }
-
-  delete[] remaining_reads;
+  // remaining_reads_storage RAII will free the remaining_reads buffer
   Logger::log_info("Reordering done, " +
                    std::to_string(std::accumulate(unmatched_counts.begin(),
                                                   unmatched_counts.end(), 0)) +
                    " were unmatched");
-  for (int read_length_index = 0; read_length_index < rg.max_readlen;
-       read_length_index++)
-    delete[] length_masks[read_length_index];
-  delete[] length_masks;
-  delete[] index_masks;
+  // length_masks and index_masks are now RAII-managed containers
   return;
 }
 
@@ -858,23 +857,23 @@ void reorder_main(const std::string &temp_dir, const compression_params &cp) {
 
   omp_set_num_threads(rg.num_thr);
   setglobalarrays(rg);
-  std::bitset<bitset_size> *read = new std::bitset<bitset_size>[rg.numreads];
-  uint16_t *read_lengths = new uint16_t[rg.numreads];
+  std::vector<std::bitset<bitset_size>> read;
+  std::vector<uint16_t> read_lengths;
+  read.resize(static_cast<size_t>(rg.numreads));
+  read_lengths.resize(static_cast<size_t>(rg.numreads));
   Logger::log_info("Reading file");
-  readDnaFile<bitset_size>(read, read_lengths, rg);
+  readDnaFile<bitset_size>(read.data(), read_lengths.data(), rg);
 
   if (rg.numreads > 0) {
     Logger::log_info("Constructing dictionaries");
-    constructdictionary<bitset_size>(read, dict.data(), read_lengths,
+    constructdictionary<bitset_size>(read.data(), dict.data(), read_lengths.data(),
                                      rg.numdict, rg.numreads, 2, rg.basedir,
                                      rg.num_thr);
   }
   Logger::log_info("Reordering reads");
-  reorder<bitset_size>(read, dict.data(), read_lengths, rg);
+  reorder<bitset_size>(read.data(), dict.data(), read_lengths.data(), rg);
   Logger::log_info("Writing to file");
-  writetofile<bitset_size>(read, read_lengths, rg);
-  delete[] read;
-  delete[] read_lengths;
+  writetofile<bitset_size>(read.data(), read_lengths.data(), rg);
   Logger::log_info("Done!");
 }
 
