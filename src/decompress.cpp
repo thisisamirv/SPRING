@@ -184,11 +184,13 @@ public:
 
 private:
   [[nodiscard]] size_t find_chunk_index(const uint64_t offset) const {
-    auto it = std::ranges::upper_bound(start_offsets_, offset);
+    auto it = std::upper_bound(start_offsets_.begin(), start_offsets_.end(),
+                              offset);
     if (it == start_offsets_.begin()) {
       throw std::runtime_error("Reference offset out of range");
     }
-    size_t chunk_index = std::distance(start_offsets_.begin(), std::prev(it));
+    size_t chunk_index = static_cast<size_t>(std::prev(it) -
+                                             start_offsets_.begin());
     const auto &chunk = chunks_[chunk_index];
     if (offset >= chunk.start_offset + chunk.size) {
       throw std::runtime_error("Reference offset out of range");
@@ -944,8 +946,8 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
     throw std::runtime_error("Can't open unpacked monolithic sequence file.");
   }
 
-  if (std::cmp_greater(encoding_thread_count,
-                       compression_params::ReadMetadata::kFileLenThrSize)) {
+    if (encoding_thread_count >
+      compression_params::ReadMetadata::kFileLenThrSize) {
     throw std::runtime_error(
         std::string("Archive indicates too many sequence chunks "
                     "(encoding_thread_count=") +

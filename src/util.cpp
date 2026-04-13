@@ -23,6 +23,9 @@
 #include <archive.h>
 #include <archive_entry.h>
 #include <fcntl.h>
+#ifndef O_CLOEXEC
+#define O_CLOEXEC 0
+#endif
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -1523,7 +1526,7 @@ std::string shell_path(const std::string &value) {
 bool has_suffix(const std::string &value, const std::string &suffix) {
   if (suffix.size() > value.size())
     return false;
-  return value.ends_with(suffix);
+  return value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
 int parse_int_or_throw(const std::string &value, const char *error_message) {
