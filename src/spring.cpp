@@ -99,11 +99,6 @@ void run_system_command_or_throw(const std::string &command,
 }
 
 
-bool has_suffix(const std::string &value, const std::string &suffix) {
-  if (suffix.size() > value.size())
-    return false;
-  return value.ends_with(suffix);
-}
 
 std::string to_ascii_lowercase(std::string value) {
   for (char &character : value) {

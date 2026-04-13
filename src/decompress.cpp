@@ -311,11 +311,6 @@ void decode_packed_sequence_chunk(const std::string &packed_seq_base_path,
   rename(temporary_output_path.c_str(), chunk_base_path.c_str());
 }
 
-bool has_suffix(const std::string &value, const std::string &suffix) {
-  if (suffix.size() > value.size())
-    return false;
-  return value.ends_with(suffix);
-}
 
 bool is_gzip_output_path(const std::string &output_path) {
   return has_suffix(output_path, ".gz");

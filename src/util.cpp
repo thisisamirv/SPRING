@@ -1485,6 +1485,12 @@ std::string shell_path(const std::string &value) {
   return std::filesystem::path(value).generic_string();
 }
 
+bool has_suffix(const std::string &value, const std::string &suffix) {
+  if (suffix.size() > value.size())
+    return false;
+  return value.ends_with(suffix);
+}
+
 int parse_int_or_throw(const std::string &value, const char *error_message) {
   try {
     size_t parsed_chars = 0;

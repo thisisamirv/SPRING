@@ -242,6 +242,8 @@ std::string shell_quote(const std::string &value);
 std::string shell_path(const std::string &value);
 
 // Parse helpers.
+bool has_suffix(const std::string &value, const std::string &suffix);
+
 int parse_int_or_throw(const std::string &value, const char *error_message);
 
 double parse_double_or_throw(const std::string &value,
