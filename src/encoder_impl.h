@@ -192,8 +192,8 @@ template <size_t bitset_size>
 void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
             uint32_t *read_orders, uint16_t *read_lengths,
             const std::vector<uint16_t> &all_read_lengths,
-            bool *remaining_reads, omp_lock_t *read_locks,
-            omp_lock_t *dictionary_locks, const encoder_global &eg,
+            bool *remaining_reads, OmpLock *read_locks,
+            OmpLock *dictionary_locks, const encoder_global &eg,
             const encoder_global_b<bitset_size> &egb) {
   static const int thresh_s = THRESH_ENCODER;
   static const int maxsearch = MAX_SEARCH_ENCODER;
@@ -372,15 +372,15 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                   if (bucket_start_index >=
                       dictionaries[dictionary_index].numkeys)
                     continue;
-                  if (!omp_test_lock(&dictionary_locks[detail::lock_shard(
-                          bucket_start_index)]))
+                    if (!omp_test_lock(dictionary_locks[detail::lock_shard(
+                      bucket_start_index)].get()))
                     continue;
                   dictionaries[dictionary_index].findpos(bucket_range,
                                                          bucket_start_index);
-                  if (dictionaries[dictionary_index]
-                          .empty_bin[bucket_start_index]) {
-                    omp_unset_lock(&dictionary_locks[detail::lock_shard(
-                        bucket_start_index)]);
+                    if (dictionaries[dictionary_index]
+                      .empty_bin[bucket_start_index]) {
+                      omp_unset_lock(dictionary_locks[detail::lock_shard(
+                    bucket_start_index)].get());
                     continue;
                   }
                   uint64_t candidate_key =
@@ -409,14 +409,14 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                                       .count();
                       if (hamming <= thresh_s) {
                         if (!omp_test_lock(
-                                &read_locks[detail::lock_shard(read_id)]))
+                                read_locks[detail::lock_shard(read_id)].get()))
                           continue;
                         if (remaining_reads[read_id]) {
                           remaining_reads[read_id] = 0;
                           matched_read = 1;
                         }
                         omp_unset_lock(
-                            &read_locks[detail::lock_shard(read_id)]);
+                            read_locks[detail::lock_shard(read_id)].get());
                       }
                       if (matched_read == 1) {
                         matched_read = 0;
@@ -450,8 +450,8 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                       }
                     }
                   }
-                  omp_unset_lock(&dictionary_locks[detail::lock_shard(
-                      bucket_start_index)]);
+                    omp_unset_lock(dictionary_locks[detail::lock_shard(
+                      bucket_start_index)].get());
                   for (int delete_dict_index = 0;
                        delete_dict_index < eg.numdict_s; delete_dict_index++)
                     for (auto deleted_it =
@@ -464,8 +464,8 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                                        .to_ullong();
                       bucket_start_index =
                           (*dictionaries[delete_dict_index].bphf)(lookup_key);
-                      if (!omp_test_lock(&dictionary_locks[detail::lock_shard(
-                              bucket_start_index)])) {
+                            if (!omp_test_lock(dictionary_locks[detail::lock_shard(
+                              bucket_start_index)].get())) {
                         ++deleted_it;
                         continue;
                       }
@@ -476,8 +476,8 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                           bucket_range, bucket_start_index, *deleted_it);
                       deleted_it =
                           deleted_rids[delete_dict_index].erase(deleted_it);
-                      omp_unset_lock(&dictionary_locks[detail::lock_shard(
-                          bucket_start_index)]);
+                        omp_unset_lock(dictionary_locks[detail::lock_shard(
+                          bucket_start_index)].get());
                     }
                 }
               }
@@ -682,20 +682,15 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   }
 
   const uint32_t num_locks = NUM_LOCKS_REORDER;
-  omp_lock_t *read_locks = new omp_lock_t[num_locks];
-  omp_lock_t *dictionary_locks = new omp_lock_t[num_locks];
+  std::vector<OmpLock> read_locks(num_locks);
+  std::vector<OmpLock> dictionary_locks(num_locks);
   bool *remaining_reads = new bool[eg.numreads_s + eg.numreads_N];
-
-  for (uint32_t i = 0; i < num_locks; i++) {
-    omp_init_lock(&read_locks[i]);
-    omp_init_lock(&dictionary_locks[i]);
-  }
   std::fill(remaining_reads, remaining_reads + eg.numreads_s + eg.numreads_N,
             1);
 
   encode<bitset_size>(read, dict.data(), order_s, read_lengths_s,
-                      all_read_lengths, remaining_reads, read_locks,
-                      dictionary_locks, eg, egb);
+                      all_read_lengths, remaining_reads, read_locks.data(),
+                      dictionary_locks.data(), eg, egb);
 
   // Stitch the per-thread streams back into the final encoded outputs.
   detail::merge_thread_encoded_outputs(eg);
@@ -720,13 +715,7 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   read_length_output.close();
   unaligned_output.close();
 
-  // Cleanup state arrays and locks
-  for (uint32_t i = 0; i < num_locks; i++) {
-    omp_destroy_lock(&read_locks[i]);
-    omp_destroy_lock(&dictionary_locks[i]);
-  }
-  delete[] read_locks;
-  delete[] dictionary_locks;
+  // Cleanup state arrays and locks (OmpLock destructors handle locks)
   delete[] remaining_reads;
 
   std::ofstream f_unaligned_count(eg.outfile_unaligned + ".count",

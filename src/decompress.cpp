@@ -25,6 +25,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include "raii.h"
 
 namespace spring {
 
@@ -40,8 +41,7 @@ struct reference_chunk {
   uint64_t size;
   std::string path;
 #ifndef _WIN32
-  int fd = -1;
-  void *mapping = nullptr;
+  MmapView mmap;
 #endif
   std::string owned_data;
   const char *data = nullptr;
@@ -77,27 +77,12 @@ void open_reference_chunk(reference_chunk &chunk) {
 
   chunk.data = chunk.owned_data.data();
 #else
-  chunk.fd = open(chunk.path.c_str(), O_RDONLY | O_CLOEXEC);
-  if (chunk.fd < 0) {
-    throw file_error("Error opening decoded reference chunk", chunk.path);
+  try {
+    chunk.mmap.mapFromPath(chunk.path, static_cast<size_t>(chunk.size));
+    chunk.data = chunk.mmap.data();
+  } catch (const std::exception &e) {
+    throw std::runtime_error(std::string("Error mapping decoded reference chunk: ") + e.what());
   }
-
-  if (chunk.size == 0) {
-    return;
-  }
-
-  void *mapped = mmap(nullptr, static_cast<size_t>(chunk.size), PROT_READ,
-                      MAP_PRIVATE, chunk.fd, 0);
-  if (mapped == MAP_FAILED) {
-    const int saved_errno = errno;
-    close(chunk.fd);
-    chunk.fd = -1;
-    errno = saved_errno;
-    throw file_error("Error mapping decoded reference chunk", chunk.path);
-  }
-
-  chunk.mapping = mapped;
-  chunk.data = static_cast<const char *>(mapped);
 #endif
 }
 
@@ -106,15 +91,8 @@ void close_reference_chunk(reference_chunk &chunk) {
   chunk.owned_data.clear();
   chunk.data = nullptr;
 #else
-  if (chunk.mapping != nullptr) {
-    munmap(chunk.mapping, static_cast<size_t>(chunk.size));
-    chunk.mapping = nullptr;
-    chunk.data = nullptr;
-  }
-  if (chunk.fd >= 0) {
-    close(chunk.fd);
-    chunk.fd = -1;
-  }
+  chunk.mmap.unmap();
+  chunk.data = nullptr;
 #endif
 };
 

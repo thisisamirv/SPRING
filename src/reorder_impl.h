@@ -16,6 +16,7 @@
 #include <list>
 #include <numeric>
 #include <omp.h>
+#include "raii.h"
 #include <utility>
 #include <vector>
 
@@ -302,10 +303,11 @@ void readDnaFile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
   return;
 }
 
+namespace detail {
 template <size_t bitset_size>
 bool search_match(const std::bitset<bitset_size> &ref,
-                  std::bitset<bitset_size> *index_masks, omp_lock_t *dict_locks,
-                  omp_lock_t *read_locks,
+                  std::bitset<bitset_size> *index_masks, OmpLock *dict_locks,
+                  OmpLock *read_locks,
                   std::bitset<bitset_size> **length_masks,
                   uint16_t *read_lengths, bool *remaining_reads,
                   std::bitset<bitset_size> *reads, bbhashdict *dict,
@@ -335,11 +337,11 @@ bool search_match(const std::bitset<bitset_size> &ref,
     bucket_start_index = (*dict[dictionary_index].bphf)(lookup_key);
     if (bucket_start_index >= dict[dictionary_index].numkeys)
       continue;
-    if (!omp_test_lock(&dict_locks[detail::lock_shard(bucket_start_index)]))
+    if (!omp_test_lock(dict_locks[detail::lock_shard(bucket_start_index)].get()))
       continue;
     dict[dictionary_index].findpos(bucket_range, bucket_start_index);
     if (dict[dictionary_index].empty_bin[bucket_start_index]) {
-      omp_unset_lock(&dict_locks[detail::lock_shard(bucket_start_index)]);
+      omp_unset_lock(dict_locks[detail::lock_shard(bucket_start_index)].get());
       continue;
     }
     uint64_t candidate_key =
@@ -367,38 +369,34 @@ bool search_match(const std::bitset<bitset_size> &ref,
                                                        read_lengths[read_id])])
                         .count();
         if (hamming <= thresh) {
-          if (!omp_test_lock(&read_locks[detail::lock_shard(read_id)]))
+          if (!omp_test_lock(read_locks[detail::lock_shard(read_id)].get()))
             continue;
           if (remaining_reads[read_id]) {
             remaining_reads[read_id] = 0;
             matched_read_id = read_id;
             found_match = 1;
           }
-          omp_unset_lock(&read_locks[detail::lock_shard(read_id)]);
+          omp_unset_lock(read_locks[detail::lock_shard(read_id)].get());
           if (found_match == 1)
             break;
         }
       }
     }
-    omp_unset_lock(&dict_locks[detail::lock_shard(bucket_start_index)]);
+    omp_unset_lock(dict_locks[detail::lock_shard(bucket_start_index)].get());
     if (found_match == 1)
       break;
   }
   return found_match;
 }
+} // namespace detail
 
 template <size_t bitset_size>
 void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
              uint16_t *read_lengths, const reorder_global<bitset_size> &rg) {
   const uint32_t num_locks = NUM_LOCKS_REORDER;
-  omp_lock_t *dict_locks = new omp_lock_t[num_locks];
-  omp_lock_t *read_locks = new omp_lock_t[num_locks];
-  omp_lock_t *remaining_read_lock = new omp_lock_t[num_locks];
-  for (unsigned int lock_index = 0; lock_index < num_locks; lock_index++) {
-    omp_init_lock(&dict_locks[lock_index]);
-    omp_init_lock(&read_locks[lock_index]);
-    omp_init_lock(&remaining_read_lock[lock_index]);
-  }
+  std::vector<OmpLock> dict_locks(num_locks);
+  std::vector<OmpLock> read_locks(num_locks);
+  std::vector<OmpLock> remaining_read_lock(num_locks);
   std::bitset<bitset_size> **length_masks =
       new std::bitset<bitset_size> *[rg.max_readlen];
   for (int read_length_index = 0; read_length_index < rg.max_readlen;
@@ -529,8 +527,8 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
              pending_bin_deletions[dictionary_index].end();) {
           uint32_t read_id = (*pending_delete_it).first;
           uint64_t pending_bucket_start = (*pending_delete_it).second;
-          if (!omp_test_lock(
-                  &dict_locks[detail::lock_shard(pending_bucket_start)])) {
+            if (!omp_test_lock(
+              dict_locks[detail::lock_shard(pending_bucket_start)].get())) {
             ++pending_delete_it;
             continue;
           }
@@ -539,7 +537,7 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
                                         read_id);
           pending_delete_it =
               pending_bin_deletions[dictionary_index].erase(pending_delete_it);
-          omp_unset_lock(&dict_locks[detail::lock_shard(pending_bucket_start)]);
+          omp_unset_lock(dict_locks[detail::lock_shard(pending_bucket_start)].get());
         }
       }
 
@@ -556,8 +554,8 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
           if (bucket_start_index >= dict[dictionary_index].numkeys ||
               dict[dictionary_index].empty_bin[bucket_start_index])
             continue;
-          if (!omp_test_lock(
-                  &dict_locks[detail::lock_shard(bucket_start_index)])) {
+            if (!omp_test_lock(
+              dict_locks[detail::lock_shard(bucket_start_index)].get())) {
             pending_bin_deletions[dictionary_index].push_back(
                 std::make_pair(current_read_id, bucket_start_index));
             continue;
@@ -565,7 +563,7 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
           dict[dictionary_index].findpos(bucket_range, bucket_start_index);
           dict[dictionary_index].remove(bucket_range, bucket_start_index,
                                         current_read_id);
-          omp_unset_lock(&dict_locks[detail::lock_shard(bucket_start_index)]);
+          omp_unset_lock(dict_locks[detail::lock_shard(bucket_start_index)].get());
         }
       } else {
         left_search_start = false;
@@ -575,7 +573,7 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
       if (!stop_searching &&
           (reference_position < MAX_CONTIG_GROWTH - 2 * rg.max_readlen))
         for (int shift = 0; shift < rg.maxshift; shift++) {
-          found_match = search_match<bitset_size>(
+            found_match = detail::search_match<bitset_size>(
               reference_read, index_masks, dict_locks, read_locks, length_masks,
               read_lengths, remaining_reads, read, dict, matched_read_id, false,
               shift, reference_length, rg);
@@ -619,7 +617,7 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
           }
 
           // find reverse match
-          found_match = search_match<bitset_size>(
+            found_match = detail::search_match<bitset_size>(
               reverse_reference_read, index_masks, dict_locks, read_locks,
               length_masks, read_lengths, remaining_reads, read, dict,
               matched_read_id, true, shift, reference_length, rg);
@@ -684,9 +682,9 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
           for (int64_t read_id = remaining_read_scan; read_id >= 0; read_id--) {
             if (remaining_reads[read_id] == 1) {
               if (!omp_test_lock(
-                      &remaining_read_lock[detail::lock_shard(read_id)]))
+                      remaining_read_lock[detail::lock_shard(read_id)].get()))
                 continue;
-              omp_set_lock(&read_locks[detail::lock_shard(read_id)]);
+              omp_set_lock(read_locks[detail::lock_shard(read_id)].get());
               if (remaining_reads[read_id]) {
                 current_read_id = read_id;
                 remaining_read_scan = read_id - 1;
@@ -694,8 +692,8 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
                 found_match = 1;
                 unmatched_counts[thread_id]++;
               }
-              omp_unset_lock(&read_locks[detail::lock_shard(read_id)]);
-              omp_unset_lock(&remaining_read_lock[detail::lock_shard(read_id)]);
+              omp_unset_lock(read_locks[detail::lock_shard(read_id)].get());
+              omp_unset_lock(remaining_read_lock[detail::lock_shard(read_id)].get());
               if (found_match == 1)
                 break;
             }
@@ -737,14 +735,6 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
   }
 
   delete[] remaining_reads;
-  for (uint32_t lock_index = 0; lock_index < num_locks; lock_index++) {
-    omp_init_lock(&dict_locks[lock_index]);
-    omp_init_lock(&read_locks[lock_index]);
-    omp_init_lock(&remaining_read_lock[lock_index]);
-  }
-  delete[] dict_locks;
-  delete[] read_locks;
-  delete[] remaining_read_lock;
   Logger::log_info("Reordering done, " +
                    std::to_string(std::accumulate(unmatched_counts.begin(),
                                                   unmatched_counts.end(), 0)) +

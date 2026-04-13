@@ -9,6 +9,7 @@
 #include <omp.h>
 #include <string>
 #include <vector>
+#include "raii.h"
 
 namespace spring {
 
@@ -82,8 +83,8 @@ template <size_t bitset_size>
 void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
             uint32_t *read_orders, uint16_t *read_lengths,
             const std::vector<uint16_t> &all_read_lengths,
-            bool *remaining_reads, omp_lock_t *read_locks,
-            omp_lock_t *dictionary_locks, const encoder_global &eg,
+            bool *remaining_reads, OmpLock *read_locks,
+            OmpLock *dictionary_locks, const encoder_global &eg,
             const encoder_global_b<bitset_size> &egb);
 
 template <size_t bitset_size>
