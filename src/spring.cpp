@@ -849,14 +849,13 @@ void decompress(const std::string &temp_dir,
 
   run_timed_step("Decompressing ...", "Decompressing", [&] {
     progress.set_stage("Decompressing", 0.10F, 1.0F);
+    FileDecompressionSink sink(io_config.output_path_1, io_config.output_path_2,
+                               cp, cp.encoding.use_crlf, should_gzip,
+                               should_bgzf);
     if (cp.encoding.long_flag) {
-      decompress_long(temp_dir, io_config.output_path_1,
-                      io_config.output_path_2, cp, cp.encoding.use_crlf,
-                      should_gzip, should_bgzf);
+      decompress_long(temp_dir, sink, cp);
     } else {
-      decompress_short(temp_dir, io_config.output_path_1,
-                       io_config.output_path_2, cp, cp.encoding.use_crlf,
-                       should_gzip, should_bgzf);
+      decompress_short(temp_dir, sink, cp);
     }
   });
 

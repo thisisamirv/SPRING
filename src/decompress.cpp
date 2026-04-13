@@ -243,6 +243,51 @@ uint32_t compute_thread_read_count(const uint32_t step_read_count,
          thread_id * num_reads_per_block;
 }
 
+} // namespace
+
+void write_fastq_block(std::ostream &output_stream, std::string *id_buffer,
+                       std::string *read_buffer,
+                       const std::string *quality_array,
+                       const uint32_t output_read_count, const int num_thr,
+                       const bool gzip_output, const bool bgzf_output,
+                       const int compression_level, const bool use_crlf,
+                       const bool fasta_mode);
+
+FileDecompressionSink::FileDecompressionSink(const std::string &outfile_1,
+                                             const std::string &outfile_2,
+                                             const compression_params &cp,
+                                             bool crlf, const bool (&gzip)[2],
+                                             const bool (&bgzf)[2])
+    : use_crlf(crlf), fasta_mode(cp.encoding.fasta_mode),
+      compression_level(cp.encoding.compression_level),
+      num_thr(cp.encoding.num_thr), paired_end(cp.encoding.paired_end) {
+  should_gzip[0] = gzip[0];
+  should_gzip[1] = gzip[1];
+  should_bgzf[0] = bgzf[0];
+  should_bgzf[1] = bgzf[1];
+
+  output_streams[0].open(outfile_1, std::ios::binary);
+  if (!output_streams[0])
+    throw std::runtime_error("Failed to open output file: " + outfile_1);
+  if (paired_end) {
+    output_streams[1].open(outfile_2, std::ios::binary);
+    if (!output_streams[1])
+      throw std::runtime_error("Failed to open output file: " + outfile_2);
+  }
+}
+
+FileDecompressionSink::~FileDecompressionSink() = default;
+
+void FileDecompressionSink::consume_step(std::string *id_buffer,
+                                         std::string *read_buffer,
+                                         const std::string *quality_buffer,
+                                         uint32_t count, int stream_index) {
+  write_fastq_block(output_streams[stream_index], id_buffer, read_buffer,
+                    quality_buffer, count, num_thr, should_gzip[stream_index],
+                    should_bgzf[stream_index], compression_level, use_crlf,
+                    fasta_mode);
+}
+
 void write_step_output(std::ofstream &output_stream, std::string *id_buffer,
                        std::string *read_buffer,
                        const std::string *quality_array,
@@ -389,14 +434,10 @@ bool decompress_and_slice_id(const std::string &temp_path_bsc,
   return true;
 }
 
-} // namespace
-
 void set_dec_noise_array(std::array<std::array<char, 128>, 128> &dec_noise);
 
-void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
-                      const std::string &outfile_2, compression_params &cp,
-                      const bool use_crlf, const bool (&should_gzip)[2],
-                      const bool (&should_bgzf)[2]) {
+void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
+                      compression_params &cp) {
   std::string base_dir = temp_dir;
 
   std::string file_seq = base_dir + "/read_seq.bin";
@@ -442,17 +483,6 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
   bool preserve_id = cp.encoding.preserve_id;
   bool preserve_quality = cp.encoding.preserve_quality;
   bool preserve_order = cp.encoding.preserve_order;
-
-  std::string output_paths[2] = {outfile_1, outfile_2};
-  for (int i = 0; i < 2; i++) {
-    if (should_gzip[i]) {
-      output_paths[i] += ".gz";
-    }
-  }
-  std::ofstream output_streams[2];
-
-  open_output_files(output_streams, output_paths, paired_end, should_gzip);
-  validate_output_files(output_streams, paired_end);
 
   const uint64_t num_reads_per_step = compute_num_reads_per_step(
       num_reads, num_reads_per_block, cp.encoding.num_thr, paired_end);
@@ -752,11 +782,8 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
           (stream_index == 0) ? read_buffer_1.data() : read_buffer_2.data();
       const std::string *quality_ptr =
           preserve_quality ? quality_buffer.data() : nullptr;
-      write_step_output(
-          output_streams[stream_index], id_buffer.data(), read_buffer_ptr,
-          quality_ptr, num_reads_cur_step, cp.encoding.num_thr,
-          should_gzip[stream_index], should_bgzf[stream_index],
-          cp.encoding.compression_level, use_crlf, cp.encoding.fasta_mode);
+      sink.consume_step(id_buffer.data(), read_buffer_ptr, quality_ptr,
+                        num_reads_cur_step, stream_index);
     }
     num_reads_done += num_reads_cur_step;
     if (auto *progress = ProgressBar::GlobalInstance()) {
@@ -764,16 +791,10 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
     }
     num_blocks_done += cp.encoding.num_thr;
   }
-
-  output_streams[0].close();
-  if (paired_end)
-    output_streams[1].close();
 }
 
-void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
-                     const std::string &outfile_2, compression_params &cp,
-                     const bool use_crlf, const bool (&should_gzip)[2],
-                     const bool (&should_bgzf)[2]) {
+void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
+                     compression_params &cp) {
   std::string input_read_paths[2];
   std::string input_quality_paths[2];
   std::string input_id_paths[2];
@@ -795,18 +816,6 @@ void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
   bool paired_end = cp.encoding.paired_end;
   bool preserve_id = cp.encoding.preserve_id;
   bool preserve_quality = cp.encoding.preserve_quality;
-
-  std::string output_paths_local[2] = {outfile_1, outfile_2};
-  for (int i = 0; i < 2; i++) {
-    if (should_gzip[i]) {
-      output_paths_local[i] += ".gz";
-    }
-  }
-  std::ofstream output_streams[2];
-
-  open_output_files(output_streams, output_paths_local, paired_end,
-                    should_gzip);
-  validate_output_files(output_streams, paired_end);
 
   const uint64_t num_reads_per_step = compute_num_reads_per_step(
       num_reads, num_reads_per_block, cp.encoding.num_thr, paired_end);
@@ -887,11 +896,8 @@ void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
       std::string *read_buffer_ptr = read_buffer.data();
       const std::string *quality_ptr =
           preserve_quality ? quality_buffer.data() : nullptr;
-      write_step_output(
-          output_streams[stream_index], id_buffer.data(), read_buffer_ptr,
-          quality_ptr, num_reads_cur_step, cp.encoding.num_thr,
-          should_gzip[stream_index], should_bgzf[stream_index],
-          cp.encoding.compression_level, use_crlf, cp.encoding.fasta_mode);
+      sink.consume_step(id_buffer.data(), read_buffer_ptr, quality_ptr,
+                        num_reads_cur_step, stream_index);
     }
     num_reads_done += num_reads_cur_step;
     if (auto *progress = ProgressBar::GlobalInstance()) {
@@ -899,7 +905,6 @@ void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
     }
     num_blocks_done += cp.encoding.num_thr;
   }
-  // RAII-managed buffers are cleaned up automatically
 }
 
 void decompress_unpack_seq(const std::string &packed_seq_base_path,

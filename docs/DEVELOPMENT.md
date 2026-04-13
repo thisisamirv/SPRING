@@ -35,9 +35,9 @@ We use `clang-format` and several custom lint scripts. You can run the convenien
 ./dev/lint.sh
 ```
 
-### Unit and Smoke Tests
+### Unit and Integration Tests
 
-We use the **doctest** framework for granular unit testing. You can build and run tests using CMake:
+We use the **doctest** framework for both granular unit testing and high-level integration testing. You can build and run all tests using standard CMake/CTest workflows:
 
 ```bash
 cmake -S . -B build
@@ -45,7 +45,9 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The unit test source is located at `tests/unit_tests.cpp`.
+- **Unit Tests**: `tests/unit_tests.cpp` (Utility functions, parsing, DNA manipulation).
+- **Streaming API Integration Tests**: `tests/reader_test.cpp` (Verifies end-to-end archive streaming).
+- **Smoke Tests**: `tests/smoke_test.sh` (CLI behavioral validation).
 
 ## Release Pipeline
 

@@ -5,6 +5,9 @@
 
 ### Added
 
+* Implemented a public library-style **Streaming Decompression API** (`SpringReader`) for SPRING2 archives, enabling external tools to consume genomic records programmatically without intermediate file I/O.
+* Added the `DecompressionSink` abstract interface, allowing the decompression engine to push reconstructed records to arbitrary consumers (files, memory buffers, or network streams).
+* Integrated a high-performance **Asynchronous Producer-Consumer model** within `SpringReader` that leverages background pre-fetching to maintain maximum throughout during streaming.
 * Added robust stream error checking in `src/decompress.cpp` to handle corrupt or truncated archives during position and orientation decoding.
 * Replaced system `tar` subprocess calls with the native `libarchive` library, removing a major runtime dependency and improving cross-platform compatibility.
 * Added `src/scoped_temp_file.h` providing `ScopedTempFile` RAII helper to safely remove temporary files in a noexcept destructor; replaces ad-hoc temp-file handling to reduce races and ensure deterministic cleanup.
@@ -35,6 +38,7 @@
   * `src/parse_utils.h/cpp`: Handle ID pattern matching, FASTQ block parsing, and numeric string conversions.
   * `src/fs_utils.h/cpp`: Granular filesystem helpers and RAII file management.
   * `src/params.h/cpp`: Serialization of compression parameters and metadata structures to resolve circular dependencies.
+* Refactored the core decompression engine in `src/decompress.cpp` and `src/decompress.h` into a stateful, sink-based architecture to support the new streaming reader while maintaining bit-perfect CLI backward compatibility.
 * Consolidated all third-party dependency licenses into the central root `LICENSE` file for improved legal compliance and audit-readiness.
 
 ### Fixed

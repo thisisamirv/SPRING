@@ -385,6 +385,7 @@ set(core_source_files
     ${source_dir}/reordered_quality_id.cpp
     ${source_dir}/decompress.cpp
     ${source_dir}/template_dispatch.cpp
+    ${source_dir}/spring_reader.cpp
     ${source_dir}/progress.cpp
     ${source_dir}/bgzf.cpp
 )
@@ -546,6 +547,15 @@ if (TARGET OpenMP::OpenMP_CXX)
 endif ()
 target_compile_definitions(spring2-tests PRIVATE SPRING_RAPIDGZIP_EXECUTABLE=\"$<TARGET_FILE:rapidgzip>\")
 add_test(NAME unit_tests COMMAND spring2-tests)
+
+add_executable(reader-tests tests/reader_test.cpp ${core_source_files})
+target_include_directories(reader-tests PRIVATE ${include_dir} ${vendor_dir} tests)
+target_link_libraries(reader-tests PRIVATE ${spring_libs})
+if (OpenMP_CXX_FOUND)
+    target_link_libraries(reader-tests PRIVATE OpenMP::OpenMP_CXX)
+endif()
+target_compile_definitions(reader-tests PRIVATE SPRING_RAPIDGZIP_EXECUTABLE=\"$<TARGET_FILE:rapidgzip>\")
+add_test(NAME reader_tests COMMAND reader-tests)
 
 # Integrated Smoke Tests
 if (WIN32)
