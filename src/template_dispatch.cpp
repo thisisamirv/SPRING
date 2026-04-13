@@ -2,7 +2,7 @@
 // based on the dataset's read-length requirements.
 
 #include "encoder_impl.h"
-#include "reorder.h"
+#include "reorder_impl.h"
 #include "util.h"
 #include <array>
 #include <stdexcept>
@@ -57,8 +57,7 @@ const std::array<template_main_fn, 24> encoder_dispatchers = {
 };
 
 size_t rounded_bitset_size(const size_t encoded_bits_per_read) {
-  return (encoded_bits_per_read - 1) / kBitsetStep * kBitsetStep +
-         kBitsetStep;
+  return (encoded_bits_per_read - 1) / kBitsetStep * kBitsetStep + kBitsetStep;
 }
 
 size_t dispatch_index(const size_t requested_bitset_size,

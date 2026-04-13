@@ -2,12 +2,15 @@
 # dependencies.
 
 cmake_minimum_required (VERSION 4.2)
+
+set(CMAKE_MESSAGE_LOG_LEVEL NOTICE)
+
 project (SPRING2)
 
 # The project is validated against GCC and Clang toolchains.
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-  message(STATUS "Setting build type to 'Release' as none was specified.")
+  message(NOTICE "Setting build type to 'Release' as none was specified.")
   set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Choose the type of build." FORCE)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
@@ -40,7 +43,7 @@ function(extract_archive_if_needed archive_path destination_parent expected_path
 
     if (should_extract)
         file(MAKE_DIRECTORY "${destination_parent}")
-        message(STATUS "Extracting ${archive_name}...")
+        message(NOTICE "Extracting ${archive_name}...")
         # On Windows/MSYS2, GNU tar treats "C:" as a remote host. --force-local fixes this.
         execute_process(COMMAND tar --version OUTPUT_VARIABLE tar_version ERROR_QUIET)
         if (tar_version MATCHES "GNU tar")
@@ -91,9 +94,9 @@ endfunction()
 
 # The project is validated against GCC and Clang toolchains.
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-	message(STATUS "Detected compiler: GNU Compiler Collection")
+	message(NOTICE "Detected compiler: GNU Compiler Collection")
 elseif ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
-	message(STATUS "Detected compiler: LLVM Clang or Apple Clang")
+	message(NOTICE "Detected compiler: LLVM Clang or Apple Clang")
 else ()
 	message(FATAL_ERROR "Compiler currently not supported by CMake build: ${CMAKE_CXX_COMPILER_ID}")
 endif()
@@ -102,7 +105,7 @@ option(SPRING_ENABLE_IPO "Enable Interprocedural Optimization if supported" ON)
 if (NOT WIN32 AND SPRING_ENABLE_IPO AND NOT DEFINED CMAKE_INTERPROCEDURAL_OPTIMIZATION)
         check_ipo_supported(RESULT result)
         if(result)
-            message(STATUS "Support for Interprocedural Optimization detected.")
+            message(NOTICE "Support for Interprocedural Optimization detected.")
             set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
         endif()
 endif ()
@@ -117,13 +120,13 @@ if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i[3-6]86)$")
     set(SPRING_X86_FAMILY TRUE)
 endif ()
 
-message(STATUS "Setting compiler flags")
+message(NOTICE "Setting compiler flags")
 set(FLAGS "${FLAGS} -O3")
 if (spring_optimize_for_portability)
     if (SPRING_X86_FAMILY)
         set(FLAGS "${FLAGS} -msse4.1")
     else ()
-        message(STATUS "spring_optimize_for_portability requested on non-x86 target ${CMAKE_SYSTEM_PROCESSOR}; skipping -msse4.1")
+        message(NOTICE "spring_optimize_for_portability requested on non-x86 target ${CMAKE_SYSTEM_PROCESSOR}; skipping -msse4.1")
     endif ()
 elseif (spring_optimize_for_native)
     set(FLAGS "${FLAGS} -march=native")
@@ -151,7 +154,7 @@ if (APPLE)
         endif()
 
         if (BREW_LIBOMP_DIR)
-            message(STATUS "Found Homebrew libomp at ${BREW_LIBOMP_DIR}, configuring OpenMP automatically")
+            message(NOTICE "Found Homebrew libomp at ${BREW_LIBOMP_DIR}, configuring OpenMP automatically")
             set(OpenMP_ROOT "${BREW_LIBOMP_DIR}" CACHE PATH "Path to OpenMP root")
             set(OpenMP_C_FLAGS "-Xpreprocessor -fopenmp" CACHE STRING "C flags for OpenMP")
             set(OpenMP_CXX_FLAGS "-Xpreprocessor -fopenmp" CACHE STRING "CXX flags for OpenMP")
@@ -163,7 +166,7 @@ if (APPLE)
 endif()
 
 FIND_PACKAGE( OpenMP REQUIRED)
-message(STATUS "OPENMP FOUND")
+message(NOTICE "OPENMP FOUND")
 set(OpenMP_DEFINITIONS "-DLIBBSC_OPENMP_SUPPORT -DLIBSAIS_OPENMP")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS} ${OpenMP_DEFINITIONS}")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS} ${OpenMP_DEFINITIONS}")
@@ -224,8 +227,8 @@ else()
     file(CREATE_LINK "${CMAKE_BINARY_DIR}/compile_commands.json" "${CMAKE_SOURCE_DIR}/compile_commands.json" SYMBOLIC)
 endif()
 
-# message(STATUS "** CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
-# message(STATUS "** CMAKE_C_FLAGS: ${CMAKE_C_FLAGS}")
+# message(NOTICE "** CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
+# message(NOTICE "** CMAKE_C_FLAGS: ${CMAKE_C_FLAGS}")
 
 # Option to statically link common GCC runtimes so the executable can run
 # on Windows `cmd.exe` without shipping DLLs next to the binary.
@@ -397,7 +400,7 @@ if (WIN32)
     if (EXISTS "${CMAKE_SOURCE_DIR}/assets/icons/logo.ico")
         set(win_resources ${source_dir}/spring2.rc)
     else()
-        message(STATUS "logo.ico not found in assets/icons, skipping Windows icon resource")
+        message(NOTICE "logo.ico not found in assets/icons, skipping Windows icon resource")
     endif()
 endif()
 
@@ -457,7 +460,7 @@ add_dependencies(spring2-preview rapidgzip)
 # On Windows with GNU toolchain: support static linking of GCC runtimes
 if (WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     if (SPRING_STATIC_RUNTIMES)
-        message(STATUS "SPRING: linking libgcc/libstdc++/libgomp statically")
+        message(NOTICE "SPRING: linking libgcc/libstdc++/libgomp statically")
         # Prefer modern CMake link options when available
         if (COMMAND target_link_options)
             target_link_options(spring2 PRIVATE -static)
