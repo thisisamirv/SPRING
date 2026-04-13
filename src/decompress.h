@@ -4,6 +4,7 @@
 #ifndef SPRING_DECOMPRESS_H_
 #define SPRING_DECOMPRESS_H_
 
+#include "integrity_utils.h"
 #include <cstdint>
 #include <fstream>
 #include <string>
@@ -35,6 +36,23 @@ public:
   virtual void consume_step(std::string *id_buffer, std::string *read_buffer,
                             const std::string *quality_buffer, uint32_t count,
                             int stream_index) = 0;
+
+  /**
+   * @brief Finalizes and returns the computed integrity digests.
+   */
+  void get_digests(uint32_t seq_crc[2], uint32_t qual_crc[2],
+                   uint32_t id_crc[2]) const {
+    for (int i = 0; i < 2; ++i) {
+      seq_crc[i] = sequence_crc_[i];
+      qual_crc[i] = quality_crc_[i];
+      id_crc[i] = id_crc_[i];
+    }
+  }
+
+protected:
+  uint32_t sequence_crc_[2] = {0, 0};
+  uint32_t quality_crc_[2] = {0, 0};
+  uint32_t id_crc_[2] = {0, 0};
 };
 
 /**
@@ -62,6 +80,25 @@ private:
   int compression_level;
   int num_thr;
   bool paired_end;
+};
+
+/**
+ * @brief Sink that discards all data but computes integrity hashes.
+ * Useful for --verify dry-runs.
+ */
+class NullDecompressionSink : public DecompressionSink {
+public:
+  void consume_step(std::string *id_buffer, std::string *read_buffer,
+                    const std::string *quality_buffer, uint32_t count,
+                    int stream_index) override {
+    for (uint32_t i = 0; i < count; ++i) {
+      update_record_crc(sequence_crc_[stream_index], read_buffer[i]);
+      if (quality_buffer) {
+        update_record_crc(quality_crc_[stream_index], quality_buffer[i]);
+      }
+      update_record_crc(id_crc_[stream_index], id_buffer[i]);
+    }
+  }
 };
 
 // Short-read archives reconstruct aligned and unaligned records separately.

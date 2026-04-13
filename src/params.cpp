@@ -92,6 +92,12 @@ void write_compression_params(std::ostream &out, const compression_params &cp) {
     out.write(byte_ptr(&cp.gzip.streams[i].compressed_size), sizeof(uint64_t));
   for (int i = 0; i < 2; ++i)
     out.write(byte_ptr(&cp.gzip.streams[i].member_count), sizeof(uint32_t));
+
+  for (int i = 0; i < 2; ++i) {
+    out.write(byte_ptr(&cp.read_info.sequence_crc[i]), sizeof(uint32_t));
+    out.write(byte_ptr(&cp.read_info.quality_crc[i]), sizeof(uint32_t));
+    out.write(byte_ptr(&cp.read_info.id_crc[i]), sizeof(uint32_t));
+  }
 }
 
 void read_compression_params(std::istream &in, compression_params &cp) {
@@ -149,6 +155,22 @@ void read_compression_params(std::istream &in, compression_params &cp) {
     in.read(byte_ptr(&cp.gzip.streams[i].compressed_size), sizeof(uint64_t));
   for (int i = 0; i < 2; ++i)
     in.read(byte_ptr(&cp.gzip.streams[i].member_count), sizeof(uint32_t));
+
+  // Initialize digests to 0 (backward compatibility for older archives)
+  for (int i = 0; i < 2; ++i) {
+    cp.read_info.sequence_crc[i] = 0;
+    cp.read_info.quality_crc[i] = 0;
+    cp.read_info.id_crc[i] = 0;
+  }
+
+  // Attempt to read digests if they exist in the stream
+  if (in.peek() != std::char_traits<char>::eof()) {
+    for (int i = 0; i < 2; ++i) {
+      in.read(byte_ptr(&cp.read_info.sequence_crc[i]), sizeof(uint32_t));
+      in.read(byte_ptr(&cp.read_info.quality_crc[i]), sizeof(uint32_t));
+      in.read(byte_ptr(&cp.read_info.id_crc[i]), sizeof(uint32_t));
+    }
+  }
 }
 
 } // namespace spring

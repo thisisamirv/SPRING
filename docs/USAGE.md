@@ -100,6 +100,26 @@ If the original input was gzipped, SPRING2 will default to producing gzipped out
 ./spring2 -d -u -i file.sp
 ```
 
+## Archive Integrity Auditing
+
+SPRING2 implements a robust, logical record-level hashing system to guarantee 100% data fidelity for lossless archives.
+
+### Mandatory Verification
+
+When you decompress an archive using `spring2 -d`, the program automatically recalculates CRC32 digests for all sequences, identifiers, and quality scores. These are compared against the golden digests stored during compression. If any discrepancy is found, decompression will abort with an integrity error.
+
+### Proactive Auditing (Dry-Run)
+
+You can audit an archive's integrity without performing a full decompression to disk. This is useful for verifying cold storage or large transfers where disk space for full extraction is not immediately available.
+
+Use the `-a, --audit` flag with `spring2-preview`:
+
+```bash
+spring2-preview --audit archive.sp
+```
+
+This "dry-run" mode reconstructs all records in memory and verifies their integrity, then reports success or failure. It is significantly faster than a full decompression because it eliminates all disk I/O overhead for reconstructed FASTQ files.
+
 ## Archive Format
 
-SPRING2 archives (`.sp`) are technically tar files containing several compressed internal streams (reads, quality, IDs, metadata). You can technically inspect them with `tar -tf file.sp`, but they should always be manipulated using the `spring2` executable to ensure data integrity.
+SPRING2 archives (`.sp`) are technically tar files containing several compressed internal streams (reads, quality, IDs, metadata). You can technically inspect them with `tar -tf file.sp`, but they should always be evaluated using the `spring2` or `spring2-preview` tools to ensure data integrity.

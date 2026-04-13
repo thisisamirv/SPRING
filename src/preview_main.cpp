@@ -8,6 +8,7 @@
 #include <iostream>
 #include <string>
 
+#include "decompress.h"
 #include "fs_utils.h"
 #include "params.h"
 #include "spring.h"
@@ -15,7 +16,52 @@
 
 namespace spring {
 
-void preview(const std::string &archive_path) {
+void perform_verification(const std::string &archive_path,
+                          const std::string &temp_dir, compression_params &cp) {
+  std::cout << "Verifying archive integrity...\n";
+
+  // Extract all streams
+  const std::string untar_all = "tar -xf " +
+                                shell_quote(shell_path(archive_path)) + " -C " +
+                                shell_quote(shell_path(temp_dir));
+  if (std::system(untar_all.c_str()) != 0) {
+    throw std::runtime_error("Failed to extract archive for verification.");
+  }
+
+  NullDecompressionSink sink;
+  if (cp.encoding.long_flag) {
+    decompress_long(temp_dir, sink, cp);
+  } else {
+    decompress_short(temp_dir, sink, cp);
+  }
+
+  uint32_t seq_crc[2], qual_crc[2], id_crc[2];
+  sink.get_digests(seq_crc, qual_crc, id_crc);
+  bool mismatch = false;
+  for (int i = 0; i < (cp.encoding.paired_end ? 2 : 1); ++i) {
+    if (cp.read_info.sequence_crc[i] != 0 &&
+        seq_crc[i] != cp.read_info.sequence_crc[i]) {
+      std::cerr << "Stream " << (i + 1) << " sequence digest mismatch!\n";
+      mismatch = true;
+    }
+    if (cp.read_info.quality_crc[i] != 0 &&
+        qual_crc[i] != cp.read_info.quality_crc[i]) {
+      std::cerr << "Stream " << (i + 1) << " quality digest mismatch!\n";
+      mismatch = true;
+    }
+    if (cp.read_info.id_crc[i] != 0 && id_crc[i] != cp.read_info.id_crc[i]) {
+      std::cerr << "Stream " << (i + 1) << " ID digest mismatch!\n";
+      mismatch = true;
+    }
+  }
+
+  if (mismatch) {
+    throw std::runtime_error("INTEGRITY VERIFICATION FAILED!");
+  }
+  std::cout << "Verification successful. All digests match original data.\n";
+}
+
+void preview(const std::string &archive_path, bool audit_only) {
   const std::string temp_dir = "tmp_preview_" + random_string(10);
   std::filesystem::create_directories(temp_dir);
 
@@ -184,6 +230,10 @@ void preview(const std::string &archive_path) {
 
     std::cout << "--------------------------------\n";
 
+    if (audit_only) {
+      perform_verification(archive_path, temp_dir, cp);
+    }
+
   } catch (const std::exception &e) {
     std::filesystem::remove_all(temp_dir);
     throw;
@@ -201,18 +251,33 @@ int main(int argc, char *argv[]) {
       return 0;
     }
     if (arg == "-h" || arg == "--help") {
-      std::cout << "Usage: spring2-preview <archive.sp>\n";
+      std::cout << "Usage: spring2-preview [options] <archive.sp>\n";
+      std::cout << "Options:\n";
+      std::cout << "  -h, --help     Show this help\n";
+      std::cout << "  -V, --version  Show version\n";
+      std::cout << "  -a, --audit    Perform full archive integrity check\n";
       return 0;
     }
   }
 
-  if (argc != 2) {
-    std::cerr << "Usage: spring2-preview <archive.sp>\n";
+  bool audit_only = false;
+  std::string archive_path;
+  for (int i = 1; i < argc; ++i) {
+    std::string arg = argv[i];
+    if (arg == "-a" || arg == "--audit") {
+      audit_only = true;
+    } else if (arg[0] != '-') {
+      archive_path = arg;
+    }
+  }
+
+  if (archive_path.empty()) {
+    std::cerr << "Usage: spring2-preview [options] <archive.sp>\n";
     return 1;
   }
 
   try {
-    spring::preview(argv[1]);
+    spring::preview(archive_path, audit_only);
   } catch (const std::exception &e) {
     std::cerr << "Error: " << e.what() << "\n";
     return 1;

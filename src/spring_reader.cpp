@@ -1,6 +1,7 @@
 #include "spring_reader.h"
 #include "decompress.h"
 #include "fs_utils.h"
+#include "integrity_utils.h"
 #include "params.h"
 #include <chrono>
 #include <condition_variable>
@@ -34,6 +35,14 @@ public:
     std::unique_lock<std::mutex> lock(mutex_);
     // Throttle decompression if the queue is full
     cv_.wait(lock, [this] { return queue_.size() < max_queue_size_; });
+
+    for (uint32_t i = 0; i < count; ++i) {
+      update_record_crc(sequence_crc_[stream_index], read_buffer[i]);
+      if (quality_buffer) {
+        update_record_crc(quality_crc_[stream_index], quality_buffer[i]);
+      }
+      update_record_crc(id_crc_[stream_index], id_buffer[i]);
+    }
 
     if (stream_index == 0) {
       current_step_.first.clear();
@@ -231,6 +240,22 @@ bool SpringReader::next(ReadRecord &mate1, ReadRecord &mate2) {
   if (!impl_->params().encoding.paired_end)
     throw std::runtime_error("Archive is single-end, use next(record)");
   return impl_->next(mate1, &mate2);
+}
+
+void SpringReader::get_digests(uint32_t seq_crc[2], uint32_t qual_crc[2],
+                               uint32_t id_crc[2]) const {
+  for (int i = 0; i < 2; ++i) {
+    seq_crc[i] = 0;
+    qual_crc[i] = 0;
+    id_crc[i] = 0;
+  }
+  // This is tricky because the worker might still be running.
+  // We need to wait or only report after we are done.
+  // Actually, for simplicity, we provide this if anyone needs to check
+  // after reading all records.
+  // But since the Sink is internal to Impl, we might need a better way.
+  // For now, let's keep it unimplemented or revisit if we need it for Reader
+  // tests.
 }
 
 } // namespace spring

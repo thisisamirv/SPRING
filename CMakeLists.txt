@@ -555,7 +555,18 @@ if (OpenMP_CXX_FOUND)
     target_link_libraries(reader-tests PRIVATE OpenMP::OpenMP_CXX)
 endif()
 target_compile_definitions(reader-tests PRIVATE SPRING_RAPIDGZIP_EXECUTABLE=\"$<TARGET_FILE:rapidgzip>\")
+target_compile_definitions(reader-tests PRIVATE SPRING2_EXECUTABLE=\"$<TARGET_FILE:spring2>\")
 add_test(NAME reader_tests COMMAND reader-tests)
+
+add_executable(integrity-tests tests/integrity_test.cpp ${core_source_files})
+target_include_directories(integrity-tests PRIVATE ${include_dir} ${vendor_dir} tests)
+target_link_libraries(integrity-tests PRIVATE ${spring_libs})
+if (OpenMP_CXX_FOUND)
+    target_link_libraries(integrity-tests PRIVATE OpenMP::OpenMP_CXX)
+endif()
+target_compile_definitions(integrity-tests PRIVATE SPRING_RAPIDGZIP_EXECUTABLE=\"$<TARGET_FILE:rapidgzip>\")
+target_compile_definitions(integrity-tests PRIVATE SPRING2_EXECUTABLE=\"$<TARGET_FILE:spring2>\")
+add_test(NAME integrity_tests COMMAND integrity-tests)
 
 # Integrated Smoke Tests
 if (WIN32)

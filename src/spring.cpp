@@ -857,6 +857,27 @@ void decompress(const std::string &temp_dir,
     } else {
       decompress_short(temp_dir, sink, cp);
     }
+
+    // Integrity verification
+    uint32_t seq_crc[2], qual_crc[2], id_crc[2];
+    sink.get_digests(seq_crc, qual_crc, id_crc);
+    bool mismatch = false;
+    for (int i = 0; i < (cp.encoding.paired_end ? 2 : 1); ++i) {
+      if (cp.read_info.sequence_crc[i] != 0 &&
+          seq_crc[i] != cp.read_info.sequence_crc[i])
+        mismatch = true;
+      if (cp.read_info.quality_crc[i] != 0 &&
+          qual_crc[i] != cp.read_info.quality_crc[i])
+        mismatch = true;
+      if (cp.read_info.id_crc[i] != 0 && id_crc[i] != cp.read_info.id_crc[i])
+        mismatch = true;
+    }
+
+    if (mismatch) {
+      throw std::runtime_error(
+          "ARCHIVE INTEGRITY CHECK FAILED: Reconstructed data does not match "
+          "original digests. The archive may be corrupted.");
+    }
   });
 
   const auto decompression_end = clock_type::now();

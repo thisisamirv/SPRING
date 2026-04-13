@@ -18,6 +18,7 @@
 
 #include "core_utils.h"
 #include "dna_utils.h"
+#include "integrity_utils.h"
 #include "io_utils.h"
 #include "libbsc/bsc.h"
 #include "params.h"
@@ -374,6 +375,13 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   }
   detect_paired_id_pattern(input_files, input_streams, gzip_streams, paths, cp,
                            false, paired_id_code, paired_id_match);
+
+  // Initialize integrity digests
+  for (int i = 0; i < 2; ++i) {
+    cp.read_info.sequence_crc[i] = 0;
+    cp.read_info.quality_crc[i] = 0;
+    cp.read_info.id_crc[i] = 0;
+  }
   if (cp.encoding.num_thr <= 0)
     throw std::runtime_error("Number of threads must be positive.");
 
@@ -407,6 +415,20 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
         done[stream_index] = true;
       if (reads_in_step == 0)
         continue;
+
+      // Update integrity digests
+      for (uint32_t i = 0; i < reads_in_step; ++i) {
+        update_record_crc(cp.read_info.sequence_crc[stream_index],
+                          read_array[i]);
+        if (cp.encoding.preserve_quality) {
+          update_record_crc(cp.read_info.quality_crc[stream_index],
+                            quality_array[i]);
+        }
+        if (cp.encoding.preserve_id) {
+          update_record_crc(cp.read_info.id_crc[stream_index], id_array[i]);
+        }
+      }
+
       if (num_reads[0] + num_reads[1] + reads_in_step > MAX_NUM_READS) {
         std::cerr << "Max number of reads allowed is " << MAX_NUM_READS << "\n";
         throw std::runtime_error("Too many reads.");

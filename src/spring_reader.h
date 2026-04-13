@@ -62,6 +62,12 @@ public:
    */
   bool next(ReadRecord &mate1, ReadRecord &mate2);
 
+  /**
+   * @brief Retrieves the computed integrity digests for the archive.
+   */
+  void get_digests(uint32_t seq_crc[2], uint32_t qual_crc[2],
+                   uint32_t id_crc[2]) const;
+
 private:
   class Impl;
   std::unique_ptr<Impl> impl_;

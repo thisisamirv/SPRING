@@ -5,6 +5,7 @@
 #include "core_utils.h"
 #include "dna_utils.h"
 #include "fs_utils.h"
+#include "integrity_utils.h"
 #include "io_utils.h"
 #include "libbsc/bsc.h"
 #include "parse_utils.h"
@@ -282,6 +283,13 @@ void FileDecompressionSink::consume_step(std::string *id_buffer,
                                          std::string *read_buffer,
                                          const std::string *quality_buffer,
                                          uint32_t count, int stream_index) {
+  for (uint32_t i = 0; i < count; ++i) {
+    update_record_crc(sequence_crc_[stream_index], read_buffer[i]);
+    if (quality_buffer) {
+      update_record_crc(quality_crc_[stream_index], quality_buffer[i]);
+    }
+    update_record_crc(id_crc_[stream_index], id_buffer[i]);
+  }
   write_fastq_block(output_streams[stream_index], id_buffer, read_buffer,
                     quality_buffer, count, num_thr, should_gzip[stream_index],
                     should_bgzf[stream_index], compression_level, use_crlf,

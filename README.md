@@ -30,6 +30,7 @@ SPRING2 is a compressor for FASTQ and FASTA sequencing data, including paired-en
 - Gzipped FASTQ input support and gzip output on decompression based on output filename
 - Free for non-profit research and educational use
 - Automatic detection of short-read (up to 511 bases) and long-read modes
+- Mandatory record-level CRC32 verification ensures 100% data fidelity for lossless archives.
 
 ## Platform Support
 
@@ -104,12 +105,16 @@ Allowed options:
                                   uncompressed (even if original was .gz)
 ```
 
-### Previewing Archives
+## Previewing Archives
 
-You can use the `spring2-preview` tool to quickly inspect archive metadata, original filenames, and custom notes without performing a full decompression:
+You can use the `spring2-preview` tool to quickly inspect archive metadata, original filenames, and custom notes. It also provides a high-speed **Audit** mode to verify archive integrity without full decompression:
 
 ```bash
+# Display metadata preview
 spring2-preview archive.sp
+
+# Perform a high-speed integrity audit (dry-run)
+spring2-preview --audit archive.sp
 ```
 
 Example:

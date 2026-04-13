@@ -31,9 +31,9 @@ TEST_CASE("SpringReader Integration Test") {
   create_dummy_fastq(input_fastq, num_records);
 
   // Compress using the spring2 binary we just built
-  std::string compress_cmd = "./spring2 -c -i " + input_fastq + " -o " +
-                             archive_spring + " -w " + test_dir +
-                             "/work_compress -t 1";
+  std::string compress_cmd = std::string(SPRING2_EXECUTABLE) + " -c -i " +
+                             input_fastq + " -o " + archive_spring + " -w " +
+                             test_dir + "/work_compress -t 1";
   int ret = std::system(compress_cmd.c_str());
   REQUIRE(ret == 0);
 
