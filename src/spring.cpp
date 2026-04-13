@@ -59,8 +59,7 @@ struct prepared_compression_inputs {
 };
 
 void decompress_gzip_input_file(const std::string &input_path,
-                                const std::string &output_path,
-                                int num_thr);
+                                const std::string &output_path, int num_thr);
 
 enum class input_record_format : uint8_t { fastq, fasta };
 
@@ -97,8 +96,6 @@ void run_system_command_or_throw(const std::string &command,
   if (command_status != 0)
     throw std::runtime_error(error_message);
 }
-
-
 
 std::string to_ascii_lowercase(std::string value) {
   for (char &character : value) {
@@ -203,7 +200,7 @@ void decompress_gzip_input_file_with_zlib(const std::string &input_path,
             std::memmove(in_buf.data(), strm.next_in, strm.avail_in);
           }
           fin.read(reinterpret_cast<char *>(in_buf.data() + strm.avail_in),
-                    in_buf.size() - strm.avail_in);
+                   in_buf.size() - strm.avail_in);
           size_t read = static_cast<size_t>(fin.gcount());
           if (read == 0 && fin.eof()) {
             return;
@@ -276,7 +273,8 @@ prepare_compression_inputs(const compression_io_config &io_config,
 }
 
 void cleanup_prepared_compression_inputs(
-    const prepared_compression_inputs &prepared_inputs, bool pairing_only_flag) {
+    const prepared_compression_inputs &prepared_inputs,
+    bool pairing_only_flag) {
   if (!pairing_only_flag) {
     if (prepared_inputs.input_1_actual_was_gzipped) {
       std::filesystem::remove(prepared_inputs.input_path_1);
@@ -684,8 +682,6 @@ void compress(const std::string &temp_dir,
       call_encoder(temp_dir, cp);
     });
 
-
-
     print_temp_dir_size(temp_dir);
 
     if (!preserve_order && (preserve_quality || preserve_id)) {
@@ -810,6 +806,11 @@ void decompress(const std::string &temp_dir,
 
   std::vector<std::string> resolved_output_paths = output_paths;
   if (resolved_output_paths.empty()) {
+    if (cp.input_filename_1.empty()) {
+      throw std::runtime_error(
+          "No output path specified and archive metadata contains no "
+          "original filenames.");
+    }
     resolved_output_paths.push_back(cp.input_filename_1);
     if (cp.paired_end) {
       resolved_output_paths.push_back(cp.input_filename_2);
@@ -824,7 +825,8 @@ void decompress(const std::string &temp_dir,
     bool is_bgzf = (i == 0) ? cp.input_1_is_bgzf : cp.input_2_is_bgzf;
     uint8_t xfl = (i == 0) ? cp.input_1_gzip_xfl : cp.input_2_gzip_xfl;
 
-    if (unzip_flag) continue;
+    if (unzip_flag)
+      continue;
 
     if (has_compressed_suffix(path)) {
       should_gzip[i] = true;
@@ -834,12 +836,6 @@ void decompress(const std::string &temp_dir,
       else if (xfl == 4)
         cp.compression_level = 1;
     }
-  }
-
-  if (resolved_output_paths.empty()) {
-    resolved_output_paths.push_back(cp.input_filename_1);
-    if (cp.paired_end)
-      resolved_output_paths.push_back(cp.input_filename_2);
   }
 
   for (std::string &path : resolved_output_paths) {
