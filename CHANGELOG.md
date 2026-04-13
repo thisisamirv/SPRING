@@ -7,6 +7,10 @@
 
 * Added robust stream error checking in `src/decompress.cpp` to handle corrupt or truncated archives during position and orientation decoding.
 
+### Changed
+
+* Optimized `reference_sequence_store::find_chunk_index` in `src/decompress.cpp` by replacing the linear scan with a binary search on chunk start offsets.
+
 ### Fixed
 
 * Removed debug `[GZIP-DIAG]` logs from the compression pipeline that were firing even in non-verbose mode.

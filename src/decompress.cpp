@@ -18,6 +18,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #endif
+#include <algorithm>
+#include <iterator>
 #include <omp.h>
 #include <stdexcept>
 #include <string>
@@ -145,7 +147,7 @@ public:
       next_start_offset += chunk.size;
 
       open_reference_chunk(chunk);
-
+      start_offsets_.push_back(chunk.start_offset);
       chunks_.push_back(std::move(chunk));
     }
   }
@@ -182,17 +184,20 @@ public:
 
 private:
   [[nodiscard]] size_t find_chunk_index(const uint64_t offset) const {
-    for (size_t chunk_index = 0; chunk_index < chunks_.size(); ++chunk_index) {
-      const reference_chunk &chunk = chunks_[chunk_index];
-      if (offset >= chunk.start_offset &&
-          offset < chunk.start_offset + chunk.size) {
-        return chunk_index;
-      }
+    auto it =
+        std::upper_bound(start_offsets_.begin(), start_offsets_.end(), offset);
+    if (it == start_offsets_.begin()) {
+      throw std::runtime_error("Reference offset out of range");
     }
-
-    throw std::runtime_error("Reference offset out of range");
+    size_t chunk_index = std::distance(start_offsets_.begin(), std::prev(it));
+    const auto &chunk = chunks_[chunk_index];
+    if (offset >= chunk.start_offset + chunk.size) {
+      throw std::runtime_error("Reference offset out of range");
+    }
+    return chunk_index;
   }
 
+  std::vector<uint64_t> start_offsets_;
   std::vector<reference_chunk> chunks_;
 };
 
