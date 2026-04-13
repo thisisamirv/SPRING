@@ -7,6 +7,7 @@
 
 * Added robust stream error checking in `src/decompress.cpp` to handle corrupt or truncated archives during position and orientation decoding.
 * Replaced system `tar` subprocess calls with the native `libarchive` library, removing a major runtime dependency and improving cross-platform compatibility.
+* Added `src/scoped_temp_file.h` providing `ScopedTempFile` RAII helper to safely remove temporary files in a noexcept destructor; replaces ad-hoc temp-file handling to reduce races and ensure deterministic cleanup.
 
 ### Changed
 
