@@ -372,7 +372,11 @@ add_subdirectory("${LIBARCHIVE_DIR}" "${CMAKE_BINARY_DIR}/libarchive-build" EXCL
 # Core source files shared between spring2 and spring2-preview.
 set(core_source_files
     ${source_dir}/spring.cpp
-    ${source_dir}/util.cpp
+    ${source_dir}/params.cpp
+    ${source_dir}/parse_utils.cpp
+    ${source_dir}/dna_utils.cpp
+    ${source_dir}/fs_utils.cpp
+    ${source_dir}/io_utils.cpp
     ${source_dir}/bitset_dictionary.cpp
     ${source_dir}/preprocess.cpp
     ${source_dir}/encoder.cpp

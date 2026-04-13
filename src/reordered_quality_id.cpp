@@ -11,11 +11,14 @@
 #include <string>
 #include <vector>
 
+#include "core_utils.h"
+#include "fs_utils.h"
+#include "io_utils.h"
 #include "libbsc/bsc.h"
+#include "parse_utils.h"
 #include "progress.h"
 #include "reordered_quality_id.h"
 #include "reordered_streams.h"
-#include "util.h"
 
 namespace spring {
 

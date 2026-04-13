@@ -1,0 +1,154 @@
+#include "params.h"
+#include "core_utils.h"
+#include <iostream>
+
+namespace spring {
+
+void write_bool(std::ostream &out, bool value) {
+  uint8_t byte = value ? 1 : 0;
+  out.write(byte_ptr(&byte), sizeof(uint8_t));
+}
+
+bool read_bool(std::istream &in) {
+  uint8_t byte = 0;
+  in.read(byte_ptr(&byte), sizeof(uint8_t));
+  return byte != 0;
+}
+
+void write_string(std::ostream &out, const std::string &s) {
+  uint32_t len = static_cast<uint32_t>(s.length());
+  out.write(byte_ptr(&len), sizeof(uint32_t));
+  if (len > 0) {
+    out.write(s.data(), len);
+  }
+}
+
+std::string read_string(std::istream &in) {
+  uint32_t len = 0;
+  in.read(byte_ptr(&len), sizeof(uint32_t));
+  if (len == 0) {
+    return std::string();
+  }
+  std::string s(len, '\0');
+  in.read(&s[0], len);
+  return s;
+}
+
+void write_compression_params(std::ostream &out, const compression_params &cp) {
+  write_bool(out, cp.encoding.paired_end);
+  write_bool(out, cp.encoding.preserve_order);
+  write_bool(out, cp.encoding.preserve_quality);
+  write_bool(out, cp.encoding.preserve_id);
+  write_bool(out, cp.encoding.long_flag);
+  write_bool(out, cp.quality.qvz_flag);
+  write_bool(out, cp.quality.ill_bin_flag);
+  write_bool(out, cp.quality.bin_thr_flag);
+  out.write(byte_ptr(&cp.quality.qvz_ratio), sizeof(double));
+  out.write(byte_ptr(&cp.quality.bin_thr_thr), sizeof(unsigned int));
+  out.write(byte_ptr(&cp.quality.bin_thr_high), sizeof(unsigned int));
+  out.write(byte_ptr(&cp.quality.bin_thr_low), sizeof(unsigned int));
+  out.write(byte_ptr(&cp.read_info.num_reads), sizeof(uint32_t));
+  out.write(byte_ptr(&cp.read_info.num_reads_clean[0]), sizeof(uint32_t));
+  out.write(byte_ptr(&cp.read_info.num_reads_clean[1]), sizeof(uint32_t));
+  out.write(byte_ptr(&cp.read_info.max_readlen), sizeof(uint32_t));
+  out.write(byte_ptr(&cp.read_info.paired_id_code), sizeof(uint8_t));
+  write_bool(out, cp.read_info.paired_id_match);
+  out.write(byte_ptr(&cp.encoding.num_reads_per_block), sizeof(int));
+  out.write(byte_ptr(&cp.encoding.num_reads_per_block_long), sizeof(int));
+  out.write(byte_ptr(&cp.encoding.num_thr), sizeof(int));
+  out.write(byte_ptr(&cp.encoding.compression_level), sizeof(int));
+  out.write(reinterpret_cast<const char *>(cp.read_info.file_len_seq_thr),
+            sizeof(uint64_t) *
+                compression_params::ReadMetadata::kFileLenThrSize);
+  out.write(reinterpret_cast<const char *>(cp.read_info.file_len_id_thr),
+            sizeof(uint64_t) *
+                compression_params::ReadMetadata::kFileLenThrSize);
+  write_bool(out, cp.encoding.use_crlf);
+  write_string(out, cp.read_info.input_filename_1);
+  write_string(out, cp.read_info.input_filename_2);
+  write_string(out, cp.read_info.note);
+  write_bool(out, cp.encoding.fasta_mode);
+
+  for (int i = 0; i < 2; ++i)
+    write_bool(out, cp.gzip.streams[i].was_gzipped);
+  for (int i = 0; i < 2; ++i)
+    out.write(byte_ptr(&cp.gzip.streams[i].flg), sizeof(uint8_t));
+  for (int i = 0; i < 2; ++i)
+    out.write(byte_ptr(&cp.gzip.streams[i].mtime), sizeof(uint32_t));
+  for (int i = 0; i < 2; ++i)
+    out.write(byte_ptr(&cp.gzip.streams[i].xfl), sizeof(uint8_t));
+  for (int i = 0; i < 2; ++i)
+    out.write(byte_ptr(&cp.gzip.streams[i].os), sizeof(uint8_t));
+  for (int i = 0; i < 2; ++i)
+    write_string(out, cp.gzip.streams[i].name);
+  for (int i = 0; i < 2; ++i)
+    write_bool(out, cp.gzip.streams[i].is_bgzf);
+  for (int i = 0; i < 2; ++i)
+    out.write(byte_ptr(&cp.gzip.streams[i].bgzf_block_size), sizeof(uint16_t));
+  for (int i = 0; i < 2; ++i)
+    out.write(byte_ptr(&cp.gzip.streams[i].uncompressed_size),
+              sizeof(uint64_t));
+  for (int i = 0; i < 2; ++i)
+    out.write(byte_ptr(&cp.gzip.streams[i].compressed_size), sizeof(uint64_t));
+  for (int i = 0; i < 2; ++i)
+    out.write(byte_ptr(&cp.gzip.streams[i].member_count), sizeof(uint32_t));
+}
+
+void read_compression_params(std::istream &in, compression_params &cp) {
+  cp.encoding.paired_end = read_bool(in);
+  cp.encoding.preserve_order = read_bool(in);
+  cp.encoding.preserve_quality = read_bool(in);
+  cp.encoding.preserve_id = read_bool(in);
+  cp.encoding.long_flag = read_bool(in);
+  cp.quality.qvz_flag = read_bool(in);
+  cp.quality.ill_bin_flag = read_bool(in);
+  cp.quality.bin_thr_flag = read_bool(in);
+  in.read(byte_ptr(&cp.quality.qvz_ratio), sizeof(double));
+  in.read(byte_ptr(&cp.quality.bin_thr_thr), sizeof(unsigned int));
+  in.read(byte_ptr(&cp.quality.bin_thr_high), sizeof(unsigned int));
+  in.read(byte_ptr(&cp.quality.bin_thr_low), sizeof(unsigned int));
+  in.read(byte_ptr(&cp.read_info.num_reads), sizeof(uint32_t));
+  in.read(byte_ptr(&cp.read_info.num_reads_clean[0]), sizeof(uint32_t));
+  in.read(byte_ptr(&cp.read_info.num_reads_clean[1]), sizeof(uint32_t));
+  in.read(byte_ptr(&cp.read_info.max_readlen), sizeof(uint32_t));
+  in.read(byte_ptr(&cp.read_info.paired_id_code), sizeof(uint8_t));
+  cp.read_info.paired_id_match = read_bool(in);
+  in.read(byte_ptr(&cp.encoding.num_reads_per_block), sizeof(int));
+  in.read(byte_ptr(&cp.encoding.num_reads_per_block_long), sizeof(int));
+  in.read(byte_ptr(&cp.encoding.num_thr), sizeof(int));
+  in.read(byte_ptr(&cp.encoding.compression_level), sizeof(int));
+  in.read(reinterpret_cast<char *>(cp.read_info.file_len_seq_thr),
+          sizeof(uint64_t) * compression_params::ReadMetadata::kFileLenThrSize);
+  in.read(reinterpret_cast<char *>(cp.read_info.file_len_id_thr),
+          sizeof(uint64_t) * compression_params::ReadMetadata::kFileLenThrSize);
+  cp.encoding.use_crlf = read_bool(in);
+  cp.read_info.input_filename_1 = read_string(in);
+  cp.read_info.input_filename_2 = read_string(in);
+  cp.read_info.note = read_string(in);
+  cp.encoding.fasta_mode = read_bool(in);
+
+  for (int i = 0; i < 2; ++i)
+    cp.gzip.streams[i].was_gzipped = read_bool(in);
+  for (int i = 0; i < 2; ++i)
+    in.read(byte_ptr(&cp.gzip.streams[i].flg), sizeof(uint8_t));
+  for (int i = 0; i < 2; ++i)
+    in.read(byte_ptr(&cp.gzip.streams[i].mtime), sizeof(uint32_t));
+  for (int i = 0; i < 2; ++i)
+    in.read(byte_ptr(&cp.gzip.streams[i].xfl), sizeof(uint8_t));
+  for (int i = 0; i < 2; ++i)
+    in.read(byte_ptr(&cp.gzip.streams[i].os), sizeof(uint8_t));
+  for (int i = 0; i < 2; ++i)
+    cp.gzip.streams[i].name = read_string(in);
+  for (int i = 0; i < 2; ++i)
+    cp.gzip.streams[i].is_bgzf = read_bool(in);
+  for (int i = 0; i < 2; ++i)
+    in.read(byte_ptr(&cp.gzip.streams[i].bgzf_block_size), sizeof(uint16_t));
+  for (int i = 0; i < 2; ++i)
+    in.read(byte_ptr(&cp.gzip.streams[i].uncompressed_size), sizeof(uint64_t));
+  for (int i = 0; i < 2; ++i)
+    in.read(byte_ptr(&cp.gzip.streams[i].compressed_size), sizeof(uint64_t));
+  for (int i = 0; i < 2; ++i)
+    in.read(byte_ptr(&cp.gzip.streams[i].member_count), sizeof(uint32_t));
+}
+
+} // namespace spring

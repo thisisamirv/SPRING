@@ -37,6 +37,9 @@ private:
   static constexpr size_t kMaxCompressedBlockSize = 65536 + 1024;
 };
 
+std::vector<std::string> bgzf_compress_buffer(const std::string &buffer,
+                                              int level = 6);
+
 } // namespace spring
 
 #endif

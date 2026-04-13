@@ -2,8 +2,8 @@
 // based on the dataset's read-length requirements.
 
 #include "encoder_impl.h"
+#include "params.h"
 #include "reorder_impl.h"
-#include "util.h"
 #include <array>
 #include <stdexcept>
 #include <string>

@@ -13,9 +13,10 @@
 #include <string>
 #include <vector>
 
+#include "core_utils.h"
+#include "fs_utils.h"
 #include "progress.h"
 #include "single_phf.hpp"
-#include "util.h"
 #include "utils/bucketers.hpp"
 #include "utils/encoders.hpp"
 #include "utils/hasher.hpp"

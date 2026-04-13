@@ -2,8 +2,9 @@
 // writes the compressed sequence, position, noise, and unaligned side streams.
 
 #include "encoder.h"
+#include "core_utils.h"
+#include "fs_utils.h"
 #include "libbsc/bsc.h"
-#include "util.h"
 #include <array>
 #include <cstdint>
 #include <cstdio>

@@ -10,9 +10,11 @@
 #include <string>
 #include <vector>
 
+#include "core_utils.h"
+#include "dna_utils.h"
+#include "fs_utils.h"
 #include "libbsc/bsc.h"
 #include "reordered_streams.h"
-#include "util.h"
 
 namespace spring {
 

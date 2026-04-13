@@ -29,6 +29,12 @@
 * Modernized memory management in `bbhashdict` (the core read dictionary) by replacing manual `new[]/delete[]` with `std::unique_ptr` and `std::make_unique`.
 * Refactored the `main.cpp` entry point to use a centralized RAII `SpringContext` class for managing temporary directories and resource cleanup, significantly reducing global state and improving signal-safety.
 * Improved development documentation in `DEVELOPMENT.md` with a new section on unit testing.
+* Refactored the monolithic `util.h` and `util.cpp` into a modular, domain-specific architecture:
+  * `src/io_utils.h/cpp`: Specialized for C-SiT ID compression, QVZ quantization logic, and robust binary I/O.
+  * `src/dna_utils.h/cpp`: Centralized DNA sequence manipulation (reverse complement, bit-packing, N-read encoding).
+  * `src/parse_utils.h/cpp`: Handle ID pattern matching, FASTQ block parsing, and numeric string conversions.
+  * `src/fs_utils.h/cpp`: Granular filesystem helpers and RAII file management.
+  * `src/params.h/cpp`: Serialization of compression parameters and metadata structures to resolve circular dependencies.
 * Consolidated all third-party dependency licenses into the central root `LICENSE` file for improved legal compliance and audit-readiness.
 
 ### Fixed

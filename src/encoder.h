@@ -2,6 +2,7 @@
 #define SPRING_ENCODER_H_
 
 #include "params.h"
+#include "raii.h"
 #include <bitset>
 #include <cstdint>
 #include <fstream>
@@ -9,7 +10,6 @@
 #include <omp.h>
 #include <string>
 #include <vector>
-#include "raii.h"
 
 namespace spring {
 

@@ -1,13 +1,14 @@
 // Reorders paired-end mate indices to match Spring's reordered read layout
 // while preserving pair relationships for later reconstruction.
 
-#include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <vector>
 
+#include "core_utils.h"
+#include "fs_utils.h"
 #include "paired_end_order.h"
-#include "util.h"
+#include "params.h"
 
 namespace spring {
 

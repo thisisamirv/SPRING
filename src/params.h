@@ -1,10 +1,11 @@
-// Centralizes compile-time tuning constants for read limits, dictionary search
-// thresholds, and block sizes shared across the compression pipeline.
+// Centralizes compile-time tuning constants and runtime compression parameters.
 
 #ifndef SPRING_PARAMS_H_
 #define SPRING_PARAMS_H_
 
 #include <cstdint>
+#include <iosfwd>
+#include <string>
 
 namespace spring {
 
@@ -44,6 +45,71 @@ static constexpr int DEFAULT_COMPRESSION_LEVEL = 6;
 // Maximum allowed growth (in bases) for a single consensus contig before
 // forcing a break to prevent memory exhaustion or pathological reordering.
 constexpr int64_t MAX_CONTIG_GROWTH = 64 * 1024 * 1024; // 64 MB
+
+struct compression_params {
+  struct EncodingConfig {
+    bool paired_end;
+    bool preserve_order;
+    bool preserve_quality;
+    bool preserve_id;
+    bool long_flag;
+    int num_thr;
+    int compression_level;
+    int num_reads_per_block;
+    int num_reads_per_block_long;
+    bool fasta_mode;
+    bool use_crlf;
+  } encoding;
+
+  struct QualityConfig {
+    bool qvz_flag;
+    double qvz_ratio;
+    bool ill_bin_flag;
+    bool bin_thr_flag;
+    unsigned int bin_thr_thr;
+    unsigned int bin_thr_high;
+    unsigned int bin_thr_low;
+  } quality;
+
+  struct GzipMetadata {
+    struct Stream {
+      bool was_gzipped;
+      uint8_t flg;
+      uint32_t mtime;
+      uint8_t xfl;
+      uint8_t os;
+      std::string name;
+      bool is_bgzf;
+      uint16_t bgzf_block_size;
+      uint64_t uncompressed_size;
+      uint64_t compressed_size;
+      uint32_t member_count;
+    } streams[2];
+  } gzip;
+
+  struct ReadMetadata {
+    uint32_t num_reads;
+    uint32_t num_reads_clean[2];
+    uint32_t max_readlen;
+    uint8_t paired_id_code;
+    bool paired_id_match;
+    static constexpr size_t kFileLenThrSize = 1024;
+    uint64_t file_len_seq_thr[kFileLenThrSize];
+    uint64_t file_len_id_thr[kFileLenThrSize];
+    std::string input_filename_1;
+    std::string input_filename_2;
+    std::string note;
+  } read_info;
+};
+
+// Metadata serialization helpers.
+void write_bool(std::ostream &out, bool value);
+bool read_bool(std::istream &in);
+void write_string(std::ostream &out, const std::string &s);
+std::string read_string(std::istream &in);
+void write_compression_params(std::ostream &out, const compression_params &cp);
+void read_compression_params(std::istream &in, compression_params &cp);
+
 } // namespace spring
 
 #endif // SPRING_PARAMS_H_

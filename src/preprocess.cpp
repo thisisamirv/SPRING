@@ -10,15 +10,18 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <omp.h>
 #include <stdexcept>
 #include <string>
 #include <vector>
-#include <memory>
 
+#include "core_utils.h"
+#include "dna_utils.h"
+#include "io_utils.h"
 #include "libbsc/bsc.h"
 #include "params.h"
-#include "util.h"
+#include "parse_utils.h"
 
 namespace spring {
 
@@ -48,8 +51,8 @@ uint32_t block_count(const uint64_t num_reads,
 }
 
 void open_input_stream(std::ifstream &file_stream, std::istream *&input_stream,
-                       std::unique_ptr<gzip_istream> &gzip_stream, const std::string &path,
-                       const bool gzip_enabled) {
+                       std::unique_ptr<gzip_istream> &gzip_stream,
+                       const std::string &path, const bool gzip_enabled) {
   if (gzip_enabled) {
     gzip_stream = std::make_unique<gzip_istream>(path);
     input_stream = gzip_stream.get();
@@ -62,8 +65,8 @@ void open_input_stream(std::ifstream &file_stream, std::istream *&input_stream,
 }
 
 void reset_input_stream(std::ifstream &file_stream, std::istream *&input_stream,
-                        std::unique_ptr<gzip_istream> &gzip_stream, const std::string &path,
-                        const bool gzip_enabled) {
+                        std::unique_ptr<gzip_istream> &gzip_stream,
+                        const std::string &path, const bool gzip_enabled) {
   if (gzip_enabled) {
     file_stream.close();
     gzip_stream.reset();
@@ -77,7 +80,8 @@ void reset_input_stream(std::ifstream &file_stream, std::istream *&input_stream,
 }
 
 void close_input_stream(std::ifstream &file_stream, std::istream *&input_stream,
-                        std::unique_ptr<gzip_istream> &gzip_stream, const bool gzip_enabled) {
+                        std::unique_ptr<gzip_istream> &gzip_stream,
+                        const bool gzip_enabled) {
   if (gzip_enabled) {
     gzip_stream.reset();
     input_stream = nullptr;
@@ -112,17 +116,17 @@ uint32_t reads_for_thread_step(const uint32_t reads_in_step,
          thread_id * num_reads_per_block;
 }
 
-void open_preprocess_streams(std::array<std::ifstream, 2> &input_files,
-                             std::array<std::ofstream, 2> &clean_outputs,
-                             std::array<std::ofstream, 2> &n_read_outputs,
-                             std::array<std::ofstream, 2> &n_read_order_outputs,
-                             std::array<std::ofstream, 2> &id_outputs,
-                             std::array<std::ofstream, 2> &quality_outputs,
-                             std::array<std::istream *, 2> &input_streams,
-                             std::array<std::unique_ptr<gzip_istream>, 2> &gzip_streams,
-                             const preprocess_paths &paths,
-                             const compression_params &compression_params,
-                             const bool gzip_enabled) {
+void open_preprocess_streams(
+    std::array<std::ifstream, 2> &input_files,
+    std::array<std::ofstream, 2> &clean_outputs,
+    std::array<std::ofstream, 2> &n_read_outputs,
+    std::array<std::ofstream, 2> &n_read_order_outputs,
+    std::array<std::ofstream, 2> &id_outputs,
+    std::array<std::ofstream, 2> &quality_outputs,
+    std::array<std::istream *, 2> &input_streams,
+    std::array<std::unique_ptr<gzip_istream>, 2> &gzip_streams,
+    const preprocess_paths &paths, const compression_params &compression_params,
+    const bool gzip_enabled) {
   for (int stream_index = 0; stream_index < 2; stream_index++) {
     if (stream_index == 1 && !compression_params.encoding.paired_end)
       continue;
@@ -151,15 +155,15 @@ void open_preprocess_streams(std::array<std::ifstream, 2> &input_files,
 }
 
 void close_preprocess_streams(
-  std::array<std::ifstream, 2> &input_files,
-  std::array<std::ofstream, 2> &clean_outputs,
-  std::array<std::ofstream, 2> &n_read_outputs,
-  std::array<std::ofstream, 2> &n_read_order_outputs,
-  std::array<std::ofstream, 2> &id_outputs,
-  std::array<std::ofstream, 2> &quality_outputs,
-  std::array<std::istream *, 2> &input_streams,
-  std::array<std::unique_ptr<gzip_istream>, 2> &gzip_streams,
-  const compression_params &compression_params, const bool gzip_enabled) {
+    std::array<std::ifstream, 2> &input_files,
+    std::array<std::ofstream, 2> &clean_outputs,
+    std::array<std::ofstream, 2> &n_read_outputs,
+    std::array<std::ofstream, 2> &n_read_order_outputs,
+    std::array<std::ofstream, 2> &id_outputs,
+    std::array<std::ofstream, 2> &quality_outputs,
+    std::array<std::istream *, 2> &input_streams,
+    std::array<std::unique_ptr<gzip_istream>, 2> &gzip_streams,
+    const compression_params &compression_params, const bool gzip_enabled) {
   for (int stream_index = 0; stream_index < 2; stream_index++) {
     if (stream_index == 1 && !compression_params.encoding.paired_end)
       continue;
@@ -181,13 +185,12 @@ void close_preprocess_streams(
   }
 }
 
-void detect_paired_id_pattern(std::array<std::ifstream, 2> &input_files,
-                              std::array<std::istream *, 2> &input_streams,
-                              std::array<std::unique_ptr<gzip_istream>, 2> &gzip_streams,
-                              const preprocess_paths &paths,
-                              const compression_params &compression_params,
-                              const bool gzip_enabled, uint8_t &paired_id_code,
-                              bool &paired_id_match) {
+void detect_paired_id_pattern(
+    std::array<std::ifstream, 2> &input_files,
+    std::array<std::istream *, 2> &input_streams,
+    std::array<std::unique_ptr<gzip_istream>, 2> &gzip_streams,
+    const preprocess_paths &paths, const compression_params &compression_params,
+    const bool gzip_enabled, uint8_t &paired_id_code, bool &paired_id_match) {
   if (!compression_params.encoding.paired_end ||
       !compression_params.encoding.preserve_id)
     return;
@@ -359,9 +362,9 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   if (cp.quality.ill_bin_flag)
     generate_illumina_binning_table(quality_binning_table.data());
   if (cp.quality.bin_thr_flag)
-    generate_binary_binning_table(quality_binning_table.data(), cp.quality.bin_thr_thr,
-                                  cp.quality.bin_thr_high,
-                                  cp.quality.bin_thr_low);
+    generate_binary_binning_table(
+        quality_binning_table.data(), cp.quality.bin_thr_thr,
+        cp.quality.bin_thr_high, cp.quality.bin_thr_low);
 
   if (!input_files[0].is_open())
     throw std::runtime_error("Error opening input file");
@@ -458,7 +461,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
           }
           if (cp.encoding.long_flag)
             read_length_output.close();
-            if (cp.encoding.preserve_quality &&
+          if (cp.encoding.preserve_quality &&
               (cp.quality.ill_bin_flag || cp.quality.bin_thr_flag))
             quantize_quality(quality_array.data() +
                                  thread_id * num_reads_per_block,

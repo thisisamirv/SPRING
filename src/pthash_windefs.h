@@ -11,9 +11,9 @@
 #include <direct.h>
 #include <errno.h>
 #include <io.h>
-#include <windows.h>
 #include <psapi.h>
 #include <sys/types.h>
+#include <windows.h>
 
 // Resource usage
 #define RUSAGE_SELF 0
@@ -38,7 +38,6 @@ inline int getrusage(int who, struct rusage *usage) {
 #define MAP_ANON 0x20
 #define MAP_ANONYMOUS MAP_ANON
 #define MAP_FAILED ((void *)-1)
-
 
 /* Provide a noop fallback for O_CLOEXEC on Windows so POSIX flags compile. */
 #ifndef O_CLOEXEC

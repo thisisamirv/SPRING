@@ -2,9 +2,11 @@
 #define SPRING_ENCODER_IMPL_H_
 
 #include "bitset_dictionary.h"
+#include "core_utils.h"
+#include "dna_utils.h"
 #include "encoder.h"
+#include "fs_utils.h"
 #include "progress.h"
-#include "util.h"
 #include <algorithm>
 #include <array>
 #include <bitset>
@@ -24,7 +26,8 @@ template <size_t bitset_size> struct encoder_global_b {
   std::vector<std::bitset<bitset_size> *> basemask_ptrs;
   int max_readlen;
   std::bitset<bitset_size> mask63;
-  encoder_global_b(int max_readlen_param) : basemask(), max_readlen(max_readlen_param) {
+  encoder_global_b(int max_readlen_param)
+      : basemask(), max_readlen(max_readlen_param) {
     basemask.resize(static_cast<size_t>(max_readlen_param));
     basemask_ptrs.resize(static_cast<size_t>(max_readlen_param));
     for (int i = 0; i < max_readlen_param; i++)
@@ -64,12 +67,18 @@ inline void append_thread_stream(
 
 inline void cleanup_thread_encode_files(const encoder_global &encoder_state,
                                         const int thread_id) {
-  safe_remove_file(encoder_state.infile_order + '.' + std::to_string(thread_id));
-  safe_remove_file(thread_output_tmp_path(encoder_state.infile_order, thread_id));
-  safe_remove_file(encoder_state.infile_readlength + '.' + std::to_string(thread_id));
-  safe_remove_file(thread_output_tmp_path(encoder_state.infile_readlength, thread_id));
-  safe_remove_file(encoder_state.outfile_noisepos + '.' + std::to_string(thread_id));
-  safe_remove_file(encoder_state.outfile_noise + '.' + std::to_string(thread_id));
+  safe_remove_file(encoder_state.infile_order + '.' +
+                   std::to_string(thread_id));
+  safe_remove_file(
+      thread_output_tmp_path(encoder_state.infile_order, thread_id));
+  safe_remove_file(encoder_state.infile_readlength + '.' +
+                   std::to_string(thread_id));
+  safe_remove_file(
+      thread_output_tmp_path(encoder_state.infile_readlength, thread_id));
+  safe_remove_file(encoder_state.outfile_noisepos + '.' +
+                   std::to_string(thread_id));
+  safe_remove_file(encoder_state.outfile_noise + '.' +
+                   std::to_string(thread_id));
   safe_remove_file(thread_output_tmp_path(encoder_state.infile_RC, thread_id));
   safe_remove_file(encoder_state.infile_RC + '.' + std::to_string(thread_id));
   safe_remove_file(encoder_state.infile_flag + '.' + std::to_string(thread_id));
@@ -193,12 +202,15 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
   // indexing.
   const uint32_t num_locks = NUM_LOCKS_REORDER;
 
-  std::vector<std::bitset<bitset_size>> index_masks(static_cast<size_t>(eg.numdict_s));
-  generateindexmasks<bitset_size>(index_masks.data(), dictionaries, eg.numdict_s, 3);
+  std::vector<std::bitset<bitset_size>> index_masks(
+      static_cast<size_t>(eg.numdict_s));
+  generateindexmasks<bitset_size>(index_masks.data(), dictionaries,
+                                  eg.numdict_s, 3);
 
   std::vector<std::vector<std::bitset<bitset_size>>> length_masks;
   length_masks.assign(static_cast<size_t>(eg.max_readlen) + 1,
-                      std::vector<std::bitset<bitset_size>>(static_cast<size_t>(eg.max_readlen) + 1));
+                      std::vector<std::bitset<bitset_size>>(
+                          static_cast<size_t>(eg.max_readlen) + 1));
   std::vector<std::bitset<bitset_size> *> length_masks_ptrs;
   length_masks_ptrs.reserve(static_cast<size_t>(eg.max_readlen) + 1);
   for (int i = 0; i <= eg.max_readlen; ++i)
@@ -340,13 +352,15 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
             forward_bitset.reset();
             reverse_bitset.reset();
             stringtobitset(reference_contig.substr(0, eg.max_readlen),
-                     eg.max_readlen, forward_bitset,
-                     const_cast<std::bitset<bitset_size> **>(egb.basemask_ptrs.data()));
+                           eg.max_readlen, forward_bitset,
+                           const_cast<std::bitset<bitset_size> **>(
+                               egb.basemask_ptrs.data()));
             stringtobitset(
-              reverse_complement(reference_contig.substr(0, eg.max_readlen),
-                         eg.max_readlen),
-              eg.max_readlen, reverse_bitset,
-              const_cast<std::bitset<bitset_size> **>(egb.basemask_ptrs.data()));
+                reverse_complement(reference_contig.substr(0, eg.max_readlen),
+                                   eg.max_readlen),
+                eg.max_readlen, reverse_bitset,
+                const_cast<std::bitset<bitset_size> **>(
+                    egb.basemask_ptrs.data()));
             for (long window_start = 0;
                  window_start <
                  (int64_t)reference_contig.size() - eg.max_readlen + 1;
@@ -369,15 +383,17 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                   if (bucket_start_index >=
                       dictionaries[dictionary_index].numkeys)
                     continue;
-                    if (!omp_test_lock(dictionary_locks[detail::lock_shard(
-                      bucket_start_index)].get()))
+                  if (!omp_test_lock(dictionary_locks[detail::lock_shard(
+                                                          bucket_start_index)]
+                                         .get()))
                     continue;
                   dictionaries[dictionary_index].findpos(bucket_range,
                                                          bucket_start_index);
-                    if (dictionaries[dictionary_index]
-                      .empty_bin[bucket_start_index]) {
-                      omp_unset_lock(dictionary_locks[detail::lock_shard(
-                    bucket_start_index)].get());
+                  if (dictionaries[dictionary_index]
+                          .empty_bin[bucket_start_index]) {
+                    omp_unset_lock(
+                        dictionary_locks[detail::lock_shard(bucket_start_index)]
+                            .get());
                     continue;
                   }
                   uint64_t candidate_key =
@@ -447,8 +463,9 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                       }
                     }
                   }
-                    omp_unset_lock(dictionary_locks[detail::lock_shard(
-                      bucket_start_index)].get());
+                  omp_unset_lock(
+                      dictionary_locks[detail::lock_shard(bucket_start_index)]
+                          .get());
                   for (int delete_dict_index = 0;
                        delete_dict_index < eg.numdict_s; delete_dict_index++)
                     for (auto deleted_it =
@@ -461,8 +478,10 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                                        .to_ullong();
                       bucket_start_index =
                           (*dictionaries[delete_dict_index].bphf)(lookup_key);
-                            if (!omp_test_lock(dictionary_locks[detail::lock_shard(
-                              bucket_start_index)].get())) {
+                      if (!omp_test_lock(
+                              dictionary_locks[detail::lock_shard(
+                                                   bucket_start_index)]
+                                  .get())) {
                         ++deleted_it;
                         continue;
                       }
@@ -473,8 +492,9 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                           bucket_range, bucket_start_index, *deleted_it);
                       deleted_it =
                           deleted_rids[delete_dict_index].erase(deleted_it);
-                        omp_unset_lock(dictionary_locks[detail::lock_shard(
-                          bucket_start_index)].get());
+                      omp_unset_lock(dictionary_locks[detail::lock_shard(
+                                                          bucket_start_index)]
+                                         .get());
                     }
                 }
               }
@@ -587,8 +607,9 @@ void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
   for (uint32_t i = 0; i < eg.numreads_s; i++) {
     read_dna_from_bits(s, f);
     read_lengths_s[i] = s.length();
-    stringtobitset<bitset_size>(s, read_lengths_s[i], read[i],
-                  const_cast<std::bitset<bitset_size> **>(egb.basemask_ptrs.data()));
+    stringtobitset<bitset_size>(
+        s, read_lengths_s[i], read[i],
+        const_cast<std::bitset<bitset_size> **>(egb.basemask_ptrs.data()));
   }
   f.close();
   safe_remove_file(eg.infile + ".singleton");
@@ -596,8 +617,9 @@ void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
   for (uint32_t i = eg.numreads_s; i < eg.numreads_s + eg.numreads_N; i++) {
     read_dnaN_from_bits(s, f);
     read_lengths_s[i] = s.length();
-    stringtobitset<bitset_size>(s, read_lengths_s[i], read[i],
-                  const_cast<std::bitset<bitset_size> **>(egb.basemask_ptrs.data()));
+    stringtobitset<bitset_size>(
+        s, read_lengths_s[i], read[i],
+        const_cast<std::bitset<bitset_size> **>(egb.basemask_ptrs.data()));
   }
   std::ifstream f_order_s(eg.infile_order + ".singleton", std::ios::binary);
   for (uint32_t i = 0; i < eg.numreads_s; i++)
@@ -651,7 +673,8 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   order_s.resize(static_cast<size_t>(singleton_pool_size));
   read_lengths_s.resize(static_cast<size_t>(singleton_pool_size));
   Logger::log_info("Reading singletons...");
-  readsingletons<bitset_size>(read.data(), order_s.data(), read_lengths_s.data(), eg, egb);
+  readsingletons<bitset_size>(read.data(), order_s.data(),
+                              read_lengths_s.data(), eg, egb);
 
   safe_remove_file(eg.infile_N);
   Logger::log_info("Correcting order...");
@@ -659,12 +682,12 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
 
   std::array<bbhashdict, NUM_DICT_ENCODER> dict;
   initialize_encoder_dict_ranges(dict, eg.max_readlen);
-    if (singleton_pool_size > 0) {
+  if (singleton_pool_size > 0) {
     Logger::log_info("Building encoder dictionary for " +
                      std::to_string(singleton_pool_size) + " singletons...");
-    constructdictionary<bitset_size>(read.data(), dict.data(), read_lengths_s.data(),
-                                     eg.numdict_s, singleton_pool_size, 3,
-                                     eg.basedir, eg.num_thr);
+    constructdictionary<bitset_size>(
+        read.data(), dict.data(), read_lengths_s.data(), eg.numdict_s,
+        singleton_pool_size, 3, eg.basedir, eg.num_thr);
   }
   Logger::log_info("Starting main encoding loop...");
 
@@ -684,11 +707,12 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   auto remaining_reads_storage = std::make_unique<bool[]>(
       static_cast<size_t>(eg.numreads_s + eg.numreads_N));
   bool *remaining_reads = remaining_reads_storage.get();
-  std::fill(remaining_reads, remaining_reads + eg.numreads_s + eg.numreads_N, true);
+  std::fill(remaining_reads, remaining_reads + eg.numreads_s + eg.numreads_N,
+            true);
 
-  encode<bitset_size>(read.data(), dict.data(), order_s.data(), read_lengths_s.data(),
-                      all_read_lengths, remaining_reads, read_locks.data(),
-                      dictionary_locks.data(), eg, egb);
+  encode<bitset_size>(read.data(), dict.data(), order_s.data(),
+                      read_lengths_s.data(), all_read_lengths, remaining_reads,
+                      read_locks.data(), dictionary_locks.data(), eg, egb);
 
   // Stitch the per-thread streams back into the final encoded outputs.
   detail::merge_thread_encoded_outputs(eg);
@@ -701,13 +725,14 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
 
   uint64_t len_unaligned = 0;
 
-    const uint32_t remaining_singleton_reads = detail::write_unaligned_range(
-      order_output, read_length_output, unaligned_output, read.data(), order_s.data(),
-      read_lengths_s.data(), remaining_reads, egb, 0, eg.numreads_s, len_unaligned);
-    const uint32_t remaining_n_reads = detail::write_unaligned_range(
-      order_output, read_length_output, unaligned_output, read.data(), order_s.data(),
-      read_lengths_s.data(), remaining_reads, egb, eg.numreads_s,
-      eg.numreads_s + eg.numreads_N, len_unaligned);
+  const uint32_t remaining_singleton_reads = detail::write_unaligned_range(
+      order_output, read_length_output, unaligned_output, read.data(),
+      order_s.data(), read_lengths_s.data(), remaining_reads, egb, 0,
+      eg.numreads_s, len_unaligned);
+  const uint32_t remaining_n_reads = detail::write_unaligned_range(
+      order_output, read_length_output, unaligned_output, read.data(),
+      order_s.data(), read_lengths_s.data(), remaining_reads, egb,
+      eg.numreads_s, eg.numreads_s + eg.numreads_N, len_unaligned);
 
   order_output.close();
   read_length_output.close();

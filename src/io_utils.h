@@ -1,0 +1,137 @@
+#ifndef SPRING_IO_UTILS_H_
+#define SPRING_IO_UTILS_H_
+
+#include <cstdint>
+#include <fstream>
+#include <istream>
+#include <streambuf>
+#include <string>
+#include <zlib.h>
+
+namespace spring {
+
+// Gzip stream wrappers.
+class gzip_istreambuf : public std::streambuf {
+public:
+  gzip_istreambuf();
+  explicit gzip_istreambuf(const std::string &path);
+  gzip_istreambuf(const gzip_istreambuf &) = delete;
+  gzip_istreambuf &operator=(const gzip_istreambuf &) = delete;
+  ~gzip_istreambuf() override;
+
+  bool open(const std::string &path);
+  void close();
+  bool is_open() const;
+
+protected:
+  int_type underflow() override;
+
+private:
+  static constexpr std::size_t kBufferSize = 1 << 15;
+  gzFile file_;
+  char buffer_[kBufferSize];
+};
+
+class gzip_istream : public std::istream {
+public:
+  gzip_istream();
+  explicit gzip_istream(const std::string &path);
+  gzip_istream(const gzip_istream &) = delete;
+  gzip_istream &operator=(const gzip_istream &) = delete;
+
+  bool open(const std::string &path);
+  void close();
+  bool is_open() const;
+
+private:
+  gzip_istreambuf buffer_;
+};
+
+class gzip_ostream {
+public:
+  gzip_ostream();
+  explicit gzip_ostream(const std::string &path,
+                        int level = Z_DEFAULT_COMPRESSION);
+  gzip_ostream(const gzip_ostream &) = delete;
+  gzip_ostream &operator=(const gzip_ostream &) = delete;
+  ~gzip_ostream();
+
+  bool open(const std::string &path, int level = Z_DEFAULT_COMPRESSION);
+  void write(const char *data, std::streamsize size);
+  void put(char value);
+  void close();
+  bool is_open() const;
+
+private:
+  gzFile file_;
+};
+
+std::string gzip_compress_string(const std::string &input, int level);
+
+// FASTQ block helpers.
+uint32_t read_fastq_block(std::istream *input_stream, std::string *id_array,
+                          std::string *read_array, std::string *quality_array,
+                          const uint32_t &num_reads, const bool &fasta_flag);
+
+void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
+                       std::string *read_array,
+                       const std::string *quality_array,
+                       const uint32_t &num_reads, const int &num_thr,
+                       const bool &gzip_flag, const bool &bgzf_flag,
+                       const int &compression_level, const bool use_crlf,
+                       const bool fasta_mode);
+
+void write_bgzf_fastq_block(std::ofstream &output_stream, std::string *id_array,
+                            std::string *read_array,
+                            const std::string *quality_array,
+                            const uint32_t &num_reads, const int &num_thr,
+                            const int &compression_level, const bool use_crlf,
+                            const bool fasta_mode);
+
+// ID stream helpers (using libbsc).
+void compress_id_block(const char *output_path, std::string *id_array,
+                       const uint32_t &num_ids, const int &compression_level,
+                       bool pack_only = false);
+
+void decompress_id_block(const char *input_path, std::string *id_array,
+                         const uint32_t &num_ids, bool pack_only = false);
+
+// Quality helpers.
+void quantize_quality(std::string *quality_array, const uint32_t &num_lines,
+                      char *quantization_table);
+
+void quantize_quality_qvz(std::string *quality_array, const uint32_t &num_lines,
+                          uint32_t *str_len_array, double qv_ratio);
+
+void generate_illumina_binning_table(char *illumina_binning_table);
+
+void generate_binary_binning_table(char *binary_binning_table,
+                                   const unsigned int thr,
+                                   const unsigned int high,
+                                   const unsigned int low);
+
+// Reliability helpers.
+void safe_bsc_decompress(const std::string &input_path,
+                         const std::string &output_path);
+
+void safe_bsc_str_array_decompress(const std::string &input_path,
+                                   std::string *string_array,
+                                   uint32_t num_strings,
+                                   uint32_t *string_lengths);
+
+// Detailed Gzip probing.
+void extract_gzip_detailed_info(const std::string &path, bool &is_gzipped,
+                                uint8_t &flg, uint32_t &mtime, uint8_t &xfl,
+                                uint8_t &os, std::string &name, bool &is_bgzf,
+                                uint16_t &bgzf_block_size,
+                                uint64_t &uncompressed_size,
+                                uint64_t &compressed_size,
+                                uint32_t &member_count);
+
+// Temporary integer stream helpers.
+void write_var_int64(const int64_t value, std::ofstream &output_stream);
+int64_t read_var_int64(std::ifstream &input_stream);
+
+} // namespace spring
+
+#endif // SPRING_IO_UTILS_H_

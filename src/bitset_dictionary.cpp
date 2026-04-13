@@ -4,7 +4,6 @@
 #include "bitset_dictionary.h"
 #include "params.h"
 #include <cstdint>
-#include <utility>
 
 namespace spring {
 

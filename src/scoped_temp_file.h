@@ -11,10 +11,11 @@
 namespace spring {
 
 class ScopedTempFile {
- public:
+public:
   ScopedTempFile() noexcept = default;
 
-  explicit ScopedTempFile(std::filesystem::path p, bool remove_on_dtor = true) noexcept
+  explicit ScopedTempFile(std::filesystem::path p,
+                          bool remove_on_dtor = true) noexcept
       : path_(std::move(p)), remove_on_dtor_(remove_on_dtor) {}
 
   ~ScopedTempFile() noexcept { cleanup(); }
@@ -72,7 +73,7 @@ class ScopedTempFile {
     return !path_.empty() && std::filesystem::exists(path_, ec);
   }
 
- private:
+private:
   void cleanup() noexcept {
     if (!remove_on_dtor_ || path_.empty())
       return;

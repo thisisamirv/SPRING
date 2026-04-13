@@ -1,5 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include "../src/util.h"
+#include "dna_utils.h"
+#include "parse_utils.h"
 #include "doctest.h"
 #include <string>
 

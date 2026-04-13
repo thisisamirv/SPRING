@@ -2,9 +2,9 @@
 // temporary-directory management, and dispatch to compress/decompress modes.
 
 #include "params.h"
+#include "parse_utils.h"
 #include "progress.h"
 #include "spring.h"
-#include "util.h"
 #include "version.h"
 #include <algorithm>
 #include <cmath>

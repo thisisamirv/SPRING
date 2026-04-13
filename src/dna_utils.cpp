@@ -1,0 +1,181 @@
+#include "dna_utils.h"
+#include "core_utils.h"
+#include <array>
+#include <cstdint>
+#include <stdexcept>
+
+namespace spring {
+
+const char chartorevchar[128] = {
+    0, 0,   0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0,   0, 0, 0,
+    0, 0,   0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0,   0, 0, 0,
+    0, 0,   0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0,   0, 0, 'T',
+    0, 'G', 0, 0, 0, 'C', 0, 0, 0, 0, 0, 0, 'N', 0, 0, 0, 0, 0, 'A', 0, 0, 0,
+    0, 0,   0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0, 0,   0, 0, 0,
+    0, 0,   0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0, 0};
+
+namespace {
+
+void fill_reverse_complement(const char *input_bases, char *output_bases,
+                             const int readlen) {
+  for (int i = 0; i < readlen; i++)
+    output_bases[readlen - 1 - i] =
+        chartorevchar[static_cast<uint8_t>(input_bases[i])];
+}
+
+const std::array<uint8_t, 128> &dna_to_int_lookup() {
+  static const std::array<uint8_t, 128> lookup = []() {
+    std::array<uint8_t, 128> table = {};
+    table[(uint8_t)'A'] = 0;
+    table[(uint8_t)'C'] = 2;
+    table[(uint8_t)'G'] = 1;
+    table[(uint8_t)'T'] = 3;
+    return table;
+  }();
+  return lookup;
+}
+
+const std::array<uint8_t, 128> &dna_n_to_int_lookup() {
+  static const std::array<uint8_t, 128> lookup = []() {
+    std::array<uint8_t, 128> table = {};
+    table[(uint8_t)'A'] = 0;
+    table[(uint8_t)'C'] = 2;
+    table[(uint8_t)'G'] = 1;
+    table[(uint8_t)'T'] = 3;
+    table[(uint8_t)'N'] = 4;
+    return table;
+  }();
+  return lookup;
+}
+
+const std::array<char, 4> &int_to_dna_lookup() {
+  static const std::array<char, 4> lookup = {'A', 'G', 'C', 'T'};
+  return lookup;
+}
+
+const std::array<char, 5> &int_to_dna_n_lookup() {
+  static const std::array<char, 5> lookup = {'A', 'G', 'C', 'T', 'N'};
+  return lookup;
+}
+
+template <size_t BufferSize>
+void write_encoded_read(const std::string &read, std::ofstream &fout,
+                        const uint8_t *dna_to_int, const uint8_t bits_per_base,
+                        const uint8_t bases_per_byte) {
+  uint8_t bitarray[BufferSize];
+  uint8_t pos_in_bitarray = 0;
+  const uint16_t readlen = static_cast<uint16_t>(read.size());
+  fout.write(byte_ptr(&readlen), sizeof(uint16_t));
+
+  const int full_groups = readlen / bases_per_byte;
+  for (int group_index = 0; group_index < full_groups; ++group_index) {
+    bitarray[pos_in_bitarray] = 0;
+    for (int base_index = 0; base_index < bases_per_byte; ++base_index)
+      bitarray[pos_in_bitarray] |=
+          dna_to_int[static_cast<uint8_t>(
+              read[bases_per_byte * group_index + base_index])]
+          << (bits_per_base * base_index);
+    ++pos_in_bitarray;
+  }
+
+  const int trailing_bases = readlen % bases_per_byte;
+  if (trailing_bases != 0) {
+    const int group_index = full_groups;
+    bitarray[pos_in_bitarray] = 0;
+    for (int base_index = 0; base_index < trailing_bases; ++base_index)
+      bitarray[pos_in_bitarray] |=
+          dna_to_int[static_cast<uint8_t>(
+              read[bases_per_byte * group_index + base_index])]
+          << (bits_per_base * base_index);
+    ++pos_in_bitarray;
+  }
+
+  fout.write(byte_ptr(&bitarray[0]), pos_in_bitarray);
+  if (!fout.good()) {
+    throw std::runtime_error("Failed writing encoded read to binary stream.");
+  }
+}
+
+template <size_t BufferSize>
+void read_encoded_read(std::string &read, std::ifstream &fin,
+                       const char *int_to_dna, const uint8_t bit_mask,
+                       const uint8_t bits_per_base,
+                       const uint8_t bases_per_byte) {
+  uint16_t readlen;
+  uint8_t bitarray[BufferSize];
+  if (!fin.read(byte_ptr(&readlen), sizeof(uint16_t))) {
+    if (fin.eof())
+      return;
+    throw std::runtime_error("Failed reading readlen from binary stream.");
+  }
+  read.resize(readlen);
+
+  const uint16_t num_bytes_to_read =
+      (static_cast<uint32_t>(readlen) + bases_per_byte - 1) / bases_per_byte;
+  if (num_bytes_to_read > BufferSize) {
+    throw std::runtime_error("Corrupted binary read: record length (" +
+                             std::to_string(readlen) +
+                             ") exceeds buffer capacity.");
+  }
+  if (!fin.read(byte_ptr(&bitarray[0]), num_bytes_to_read)) {
+    throw std::runtime_error("Failed reading encoded data from binary stream.");
+  }
+
+  uint8_t pos_in_bitarray = 0;
+  const int full_groups = readlen / bases_per_byte;
+  for (int group_index = 0; group_index < full_groups; ++group_index) {
+    for (int base_index = 0; base_index < bases_per_byte; ++base_index) {
+      read[bases_per_byte * group_index + base_index] =
+          int_to_dna[bitarray[pos_in_bitarray] & bit_mask];
+      bitarray[pos_in_bitarray] >>= bits_per_base;
+    }
+    ++pos_in_bitarray;
+  }
+
+  const int trailing_bases = readlen % bases_per_byte;
+  if (trailing_bases != 0) {
+    const int group_index = full_groups;
+    for (int base_index = 0; base_index < trailing_bases; ++base_index) {
+      read[bases_per_byte * group_index + base_index] =
+          int_to_dna[bitarray[pos_in_bitarray] & bit_mask];
+      bitarray[pos_in_bitarray] >>= bits_per_base;
+    }
+  }
+}
+
+} // namespace
+
+void reverse_complement(char *input_bases, char *output_bases,
+                        const int readlen) {
+  fill_reverse_complement(input_bases, output_bases, readlen);
+  output_bases[readlen] = '\0';
+}
+
+std::string reverse_complement(const std::string &input_bases,
+                               const int readlen) {
+  std::string output_bases(readlen, '\0');
+  fill_reverse_complement(input_bases.data(), &output_bases[0], readlen);
+  return output_bases;
+}
+
+void write_dna_in_bits(const std::string &read, std::ofstream &fout) {
+  const std::array<uint8_t, 128> &lookup = dna_to_int_lookup();
+  write_encoded_read<128>(read, fout, lookup.data(), 2, 4);
+}
+
+void read_dna_from_bits(std::string &read, std::ifstream &fin) {
+  const std::array<char, 4> &lookup = int_to_dna_lookup();
+  read_encoded_read<128>(read, fin, lookup.data(), 3, 2, 4);
+}
+
+void write_dnaN_in_bits(const std::string &read, std::ofstream &fout) {
+  const std::array<uint8_t, 128> &lookup = dna_n_to_int_lookup();
+  write_encoded_read<256>(read, fout, lookup.data(), 4, 2);
+}
+
+void read_dnaN_from_bits(std::string &read, std::ifstream &fin) {
+  const std::array<char, 5> &lookup = int_to_dna_n_lookup();
+  read_encoded_read<256>(read, fin, lookup.data(), 15, 4, 2);
+}
+
+} // namespace spring

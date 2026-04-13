@@ -20,15 +20,17 @@
 #include <vector>
 
 #include "decompress.h"
+#include "fs_utils.h"
+#include "io_utils.h"
 #include "paired_end_order.h"
 #include "params.h"
+#include "parse_utils.h"
 #include "preprocess.h"
 #include "progress.h"
 #include "reordered_quality_id.h"
 #include "reordered_streams.h"
 #include "spring.h"
 #include "template_dispatch.h"
-#include "util.h"
 
 namespace spring {
 

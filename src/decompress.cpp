@@ -2,9 +2,13 @@
 // sequences and replaying aligned, unaligned, quality, and id streams.
 
 #include "decompress.h"
+#include "core_utils.h"
+#include "dna_utils.h"
+#include "fs_utils.h"
+#include "io_utils.h"
 #include "libbsc/bsc.h"
+#include "parse_utils.h"
 #include "progress.h"
-#include "util.h"
 #include <cerrno>
 #include <cstdint>
 #include <cstdio>
@@ -18,15 +22,15 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #endif
+#include "raii.h"
 #include <algorithm>
+#include <array>
 #include <iterator>
 #include <omp.h>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
-#include <array>
-#include "raii.h"
 
 namespace spring {
 
@@ -82,7 +86,8 @@ void open_reference_chunk(reference_chunk &chunk) {
     chunk.mmap.mapFromPath(chunk.path, static_cast<size_t>(chunk.size));
     chunk.data = chunk.mmap.data();
   } catch (const std::exception &e) {
-    throw std::runtime_error(std::string("Error mapping decoded reference chunk: ") + e.what());
+    throw std::runtime_error(
+        std::string("Error mapping decoded reference chunk: ") + e.what());
   }
 #endif
 }
@@ -163,13 +168,13 @@ public:
 
 private:
   [[nodiscard]] size_t find_chunk_index(const uint64_t offset) const {
-    auto it = std::upper_bound(start_offsets_.begin(), start_offsets_.end(),
-                              offset);
+    auto it =
+        std::upper_bound(start_offsets_.begin(), start_offsets_.end(), offset);
     if (it == start_offsets_.begin()) {
       throw std::runtime_error("Reference offset out of range");
     }
-    size_t chunk_index = static_cast<size_t>(std::prev(it) -
-                                             start_offsets_.begin());
+    size_t chunk_index =
+        static_cast<size_t>(std::prev(it) - start_offsets_.begin());
     const auto &chunk = chunks_[chunk_index];
     if (offset >= chunk.start_offset + chunk.size) {
       throw std::runtime_error("Reference offset out of range");
@@ -452,7 +457,8 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
   const uint64_t num_reads_per_step = compute_num_reads_per_step(
       num_reads, num_reads_per_block, cp.encoding.num_thr, paired_end);
 
-  std::vector<std::string> read_buffer_1(static_cast<size_t>(num_reads_per_step));
+  std::vector<std::string> read_buffer_1(
+      static_cast<size_t>(num_reads_per_step));
   std::vector<std::string> read_buffer_2;
   if (paired_end)
     read_buffer_2.resize(static_cast<size_t>(num_reads_per_step));
@@ -460,7 +466,8 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
   std::vector<std::string> quality_buffer;
   if (preserve_quality)
     quality_buffer.resize(static_cast<size_t>(num_reads_per_step));
-  std::vector<uint32_t> read_lengths_buffer_1(static_cast<size_t>(num_reads_per_step));
+  std::vector<uint32_t> read_lengths_buffer_1(
+      static_cast<size_t>(num_reads_per_step));
   std::vector<uint32_t> read_lengths_buffer_2;
   if (paired_end)
     read_lengths_buffer_2.resize(static_cast<size_t>(num_reads_per_step));
@@ -732,23 +739,24 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
             } else {
               input_path = input_id_paths[stream_index] + "." +
                            std::to_string(num_blocks_done + thread_id);
-              decompress_id_block(input_path.c_str(), id_buffer.data() + buffer_offset,
-                                  thread_read_count,
-                                  monolithic_id[stream_index]);
+              decompress_id_block(
+                  input_path.c_str(), id_buffer.data() + buffer_offset,
+                  thread_read_count, monolithic_id[stream_index]);
               safe_remove_file(input_path);
             }
           }
         }
       }
 
-      std::string *read_buffer_ptr = (stream_index == 0) ? read_buffer_1.data()
-                                                       : read_buffer_2.data();
-      const std::string *quality_ptr = preserve_quality ? quality_buffer.data() : nullptr;
-      write_step_output(output_streams[stream_index], id_buffer.data(), read_buffer_ptr,
-                        quality_ptr, num_reads_cur_step, cp.encoding.num_thr,
-                        should_gzip[stream_index], should_bgzf[stream_index],
-                        cp.encoding.compression_level, use_crlf,
-                        cp.encoding.fasta_mode);
+      std::string *read_buffer_ptr =
+          (stream_index == 0) ? read_buffer_1.data() : read_buffer_2.data();
+      const std::string *quality_ptr =
+          preserve_quality ? quality_buffer.data() : nullptr;
+      write_step_output(
+          output_streams[stream_index], id_buffer.data(), read_buffer_ptr,
+          quality_ptr, num_reads_cur_step, cp.encoding.num_thr,
+          should_gzip[stream_index], should_bgzf[stream_index],
+          cp.encoding.compression_level, use_crlf, cp.encoding.fasta_mode);
     }
     num_reads_done += num_reads_cur_step;
     if (auto *progress = ProgressBar::GlobalInstance()) {
@@ -808,7 +816,8 @@ void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
   std::vector<std::string> quality_buffer;
   if (preserve_quality)
     quality_buffer.resize(static_cast<size_t>(num_reads_per_step));
-  std::vector<uint32_t> read_lengths_buffer(static_cast<size_t>(num_reads_per_step));
+  std::vector<uint32_t> read_lengths_buffer(
+      static_cast<size_t>(num_reads_per_step));
 
   omp_set_num_threads(cp.encoding.num_thr);
 
@@ -840,17 +849,17 @@ void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
 
           std::string input_path =
               input_read_paths[stream_index] + "." + std::to_string(block_num);
-          safe_bsc_str_array_decompress(input_path, read_buffer.data() + buffer_offset,
-                                        thread_read_count,
-                                        read_lengths_buffer.data() + buffer_offset);
+          safe_bsc_str_array_decompress(
+              input_path, read_buffer.data() + buffer_offset, thread_read_count,
+              read_lengths_buffer.data() + buffer_offset);
           safe_remove_file(input_path);
 
           if (preserve_quality) {
             input_path = input_quality_paths[stream_index] + "." +
                          std::to_string(block_num);
             safe_bsc_str_array_decompress(
-              input_path, quality_buffer.data() + buffer_offset, thread_read_count,
-              read_lengths_buffer.data() + buffer_offset);
+                input_path, quality_buffer.data() + buffer_offset,
+                thread_read_count, read_lengths_buffer.data() + buffer_offset);
             safe_remove_file(input_path);
           }
           if (!preserve_id) {
@@ -866,7 +875,8 @@ void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
             } else {
               input_path = input_id_paths[stream_index] + "." +
                            std::to_string(block_num);
-              decompress_id_block(input_path.c_str(), id_buffer.data() + buffer_offset,
+              decompress_id_block(input_path.c_str(),
+                                  id_buffer.data() + buffer_offset,
                                   thread_read_count, false);
               safe_remove_file(input_path);
             }
@@ -875,12 +885,13 @@ void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
       }
 
       std::string *read_buffer_ptr = read_buffer.data();
-      const std::string *quality_ptr = preserve_quality ? quality_buffer.data() : nullptr;
-      write_step_output(output_streams[stream_index], id_buffer.data(), read_buffer_ptr,
-            quality_ptr, num_reads_cur_step, cp.encoding.num_thr,
-            should_gzip[stream_index], should_bgzf[stream_index],
-            cp.encoding.compression_level, use_crlf,
-            cp.encoding.fasta_mode);
+      const std::string *quality_ptr =
+          preserve_quality ? quality_buffer.data() : nullptr;
+      write_step_output(
+          output_streams[stream_index], id_buffer.data(), read_buffer_ptr,
+          quality_ptr, num_reads_cur_step, cp.encoding.num_thr,
+          should_gzip[stream_index], should_bgzf[stream_index],
+          cp.encoding.compression_level, use_crlf, cp.encoding.fasta_mode);
     }
     num_reads_done += num_reads_cur_step;
     if (auto *progress = ProgressBar::GlobalInstance()) {
@@ -908,7 +919,7 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
     throw std::runtime_error("Can't open unpacked monolithic sequence file.");
   }
 
-    if (encoding_thread_count >
+  if (encoding_thread_count >
       compression_params::ReadMetadata::kFileLenThrSize) {
     throw std::runtime_error(
         std::string("Archive indicates too many sequence chunks "
