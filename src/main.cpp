@@ -40,6 +40,7 @@ struct command_line_options {
   bool pairing_only_flag = false;
   bool no_quality_flag = false;
   bool no_ids_flag = false;
+  bool audit_flag = false;
   std::vector<std::string> input_paths;
   std::vector<std::string> output_paths;
   std::vector<std::string> quality_options;
@@ -179,6 +180,8 @@ std::string build_options_description() {
          "to high if >=\n"
       << "                                      thr and to low if < thr)\n"
       << "  -n [ --note ] arg               add a custom note to the archive\n"
+      << "  -a [ --audit ]                  enable post-operation integrity "
+         "verification\n"
       << "---------------------------------------------------------------------"
          "-----------\n"
       << "* Decompression Options:\n"
@@ -298,6 +301,8 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
       options.note = strip_quotes(args[index++]);
     } else if (arg == "-v" || arg == "--verbose") {
       options.verbose_flag = true;
+    } else if (arg == "-a" || arg == "--audit") {
+      options.audit_flag = true;
     } else if (arg == "-u" || arg == "--unzip") {
       options.unzip_flag = true;
     } else {
@@ -362,7 +367,7 @@ void run_requested_mode(const command_line_options &options,
                      options.num_threads, options.pairing_only_flag,
                      options.no_quality_flag, options.no_ids_flag,
                      options.quality_options, options.compression_level,
-                     options.note, options.verbose_flag);
+                     options.note, options.verbose_flag, options.audit_flag);
     return;
   }
 

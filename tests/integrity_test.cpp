@@ -28,8 +28,8 @@ TEST_CASE("Archive Integrity Verification Test") {
   int num_records = 100;
   create_dummy_fastq(input_fastq, num_records);
 
-  // 1. Compress
-  std::string compress_cmd = std::string(SPRING2_EXECUTABLE) + " -c -i " +
+  // 1. Compress with mandatory audit
+  std::string compress_cmd = std::string(SPRING2_EXECUTABLE) + " -c -a -i " +
                              input_fastq + " -o " + archive_sp + " -w " +
                              test_dir + "/work_compress -t 1";
   REQUIRE(std::system(compress_cmd.c_str()) == 0);

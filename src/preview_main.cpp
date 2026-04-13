@@ -18,47 +18,9 @@ namespace spring {
 
 void perform_verification(const std::string &archive_path,
                           const std::string &temp_dir, compression_params &cp) {
-  std::cout << "Verifying archive integrity...\n";
-
-  // Extract all streams
-  const std::string untar_all = "tar -xf " +
-                                shell_quote(shell_path(archive_path)) + " -C " +
-                                shell_quote(shell_path(temp_dir));
-  if (std::system(untar_all.c_str()) != 0) {
-    throw std::runtime_error("Failed to extract archive for verification.");
-  }
-
-  NullDecompressionSink sink;
-  if (cp.encoding.long_flag) {
-    decompress_long(temp_dir, sink, cp);
-  } else {
-    decompress_short(temp_dir, sink, cp);
-  }
-
-  uint32_t seq_crc[2], qual_crc[2], id_crc[2];
-  sink.get_digests(seq_crc, qual_crc, id_crc);
-  bool mismatch = false;
-  for (int i = 0; i < (cp.encoding.paired_end ? 2 : 1); ++i) {
-    if (cp.read_info.sequence_crc[i] != 0 &&
-        seq_crc[i] != cp.read_info.sequence_crc[i]) {
-      std::cerr << "Stream " << (i + 1) << " sequence digest mismatch!\n";
-      mismatch = true;
-    }
-    if (cp.read_info.quality_crc[i] != 0 &&
-        qual_crc[i] != cp.read_info.quality_crc[i]) {
-      std::cerr << "Stream " << (i + 1) << " quality digest mismatch!\n";
-      mismatch = true;
-    }
-    if (cp.read_info.id_crc[i] != 0 && id_crc[i] != cp.read_info.id_crc[i]) {
-      std::cerr << "Stream " << (i + 1) << " ID digest mismatch!\n";
-      mismatch = true;
-    }
-  }
-
-  if (mismatch) {
-    throw std::runtime_error("INTEGRITY VERIFICATION FAILED!");
-  }
-  std::cout << "Verification successful. All digests match original data.\n";
+  (void)cp; // Metadata already extracted in preview(), perform_audit will
+            // re-extract what it needs
+  perform_audit(archive_path, temp_dir);
 }
 
 void preview(const std::string &archive_path, bool audit_only) {

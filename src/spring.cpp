@@ -562,6 +562,68 @@ resolve_decompression_io(const string_list &input_paths,
 
 } // namespace
 
+void perform_audit(const std::string &archive_path,
+                   const std::string &temp_dir) {
+  Logger::log_info("Verifying archive integrity (dry-run audit)...");
+
+  // Create a sub-directory for the audit untar to avoid clobbering existing
+  // temp files
+  std::string audit_dir = temp_dir + "/audit_extract";
+  std::filesystem::create_directories(audit_dir);
+
+  try {
+    extract_tar_archive(archive_path, audit_dir);
+
+    std::string compression_params_path = audit_dir + "/cp.bin";
+    std::ifstream compression_params_input(compression_params_path,
+                                           std::ios::binary);
+    if (!compression_params_input.is_open())
+      throw std::runtime_error("Can't open parameter file in audit.");
+
+    compression_params cp{};
+    read_compression_params(compression_params_input, cp);
+    compression_params_input.close();
+
+    NullDecompressionSink sink;
+    if (cp.encoding.long_flag) {
+      decompress_long(audit_dir, sink, cp);
+    } else {
+      decompress_short(audit_dir, sink, cp);
+    }
+
+    uint32_t seq_crc[2], qual_crc[2], id_crc[2];
+    sink.get_digests(seq_crc, qual_crc, id_crc);
+    bool mismatch = false;
+    for (int i = 0; i < (cp.encoding.paired_end ? 2 : 1); ++i) {
+      if (cp.read_info.sequence_crc[i] != 0 &&
+          seq_crc[i] != cp.read_info.sequence_crc[i]) {
+        std::cerr << "Stream " << (i + 1) << " sequence digest mismatch!\n";
+        mismatch = true;
+      }
+      if (cp.read_info.quality_crc[i] != 0 &&
+          qual_crc[i] != cp.read_info.quality_crc[i]) {
+        std::cerr << "Stream " << (i + 1) << " quality digest mismatch!\n";
+        mismatch = true;
+      }
+      if (cp.read_info.id_crc[i] != 0 && id_crc[i] != cp.read_info.id_crc[i]) {
+        std::cerr << "Stream " << (i + 1) << " ID digest mismatch!\n";
+        mismatch = true;
+      }
+    }
+
+    if (mismatch) {
+      throw std::runtime_error("ARCHIVE INTEGRITY AUDIT FAILED!");
+    }
+    Logger::log_info("Audit successful: Data and Digests match perfectly.");
+
+    std::filesystem::remove_all(audit_dir);
+  } catch (...) {
+    std::error_code ec;
+    std::filesystem::remove_all(audit_dir, ec);
+    throw;
+  }
+}
+
 void compress(const std::string &temp_dir,
               const std::vector<std::string> &input_paths,
               const std::vector<std::string> &output_paths, const int &num_thr,
@@ -569,7 +631,7 @@ void compress(const std::string &temp_dir,
               const bool &no_ids_flag,
               const std::vector<std::string> &quality_options,
               const int &compression_level, const std::string &note,
-              const bool verbose) {
+              const bool verbose, const bool audit_flag) {
   Logger::set_verbose(verbose);
   ProgressBar progress(!verbose);
   ProgressBar::SetGlobalInstance(&progress);

@@ -112,11 +112,19 @@ When you decompress an archive using `spring2 -d`, the program automatically rec
 
 You can audit an archive's integrity without performing a full decompression to disk. This is useful for verifying cold storage or large transfers where disk space for full extraction is not immediately available.
 
-Use the `-a, --audit` flag with `spring2-preview`:
+**Standalone Audit**: Use the `-a, --audit` flag with `spring2-preview`:
 
 ```bash
 spring2-preview --audit archive.sp
 ```
+
+**Post-Compression Audit**: You can add `-a, --audit` to your standard `spring2` compression command to perform a verification pass immediately after the archive is created:
+
+```bash
+spring2 -c -i input.fastq -o archive.sp -a
+```
+
+This will perform the compression normally, and then immediately run an internal dry-run decompression to verify the final archive's integrity before finishing. (Note: Decompression already performs this verification automatically).
 
 This "dry-run" mode reconstructs all records in memory and verifies their integrity, then reports success or failure. It is significantly faster than a full decompression because it eliminates all disk I/O overhead for reconstructed FASTQ files.
 

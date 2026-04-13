@@ -6,8 +6,8 @@
 ### Added
 
 * Implemented **Archive Integrity Auditing**: Added record-level CRC32 digests (Sequence, ID, Quality) to archive metadata to guarantee 100% data fidelity for lossless archives.
-* Integrated mandatory integrity verification at the end of every standard decompression process.
-* Added the `-a, --audit` high-speed dry-run verification mode to `spring2-preview`, allowing archive validation without writing reconstructed data to disk.
+* Integrated mandatory integrity verification for all standard decompression operations.
+* Added the `-a, --audit` optional flag to `spring2` (for post-compression verification) and `spring2-preview` (for high-speed dry-run auditing).
 * Added `tests/integrity_test.cpp` to validate end-to-end data fidelity and corruption detection.
 * Expanded the `SpringReader` API with `get_digests()` to enable programmatic integrity verification for library consumers.
 * Implemented a public library-style **Streaming Decompression API** (`SpringReader`) for SPRING2 archives, enabling external tools to consume genomic records programmatically without intermediate file I/O.

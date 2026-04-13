@@ -30,7 +30,7 @@ SPRING2 is a compressor for FASTQ and FASTA sequencing data, including paired-en
 - Gzipped FASTQ input support and gzip output on decompression based on output filename
 - Free for non-profit research and educational use
 - Automatic detection of short-read (up to 511 bases) and long-read modes
-- Mandatory record-level CRC32 verification ensures 100% data fidelity for lossless archives.
+- Record-level CRC32 verification ensures 100% data fidelity for lossless archives.
 
 ## Platform Support
 
@@ -98,6 +98,7 @@ Allowed options:
                                       thresholding, quality binned to high if >=
                                       thr and to low if < thr)
   -n [ --note ] arg               add a custom note to the archive
+  -a [ --audit ]                  enable post-operation integrity verification
 --------------------------------------------------------------------------------
 * Decompression Options:
   -d [ --decompress ]             decompress
