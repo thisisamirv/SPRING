@@ -311,7 +311,6 @@ void decode_packed_sequence_chunk(const std::string &packed_seq_base_path,
   rename(temporary_output_path.c_str(), chunk_base_path.c_str());
 }
 
-
 bool is_gzip_output_path(const std::string &output_path) {
   return has_suffix(output_path, ".gz");
 }
@@ -567,25 +566,42 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
               read_lengths_buffer_1[i] = read_length;
               read_1_is_singleton = (read_flag == '2') || (read_flag == '4');
               if (!read_1_is_singleton) {
-                if (preserve_order)
+                if (preserve_order) {
                   f_pos.read(byte_ptr(&read_1_position), sizeof(uint64_t));
-                else {
+                  if (!f_pos)
+                    throw std::runtime_error(
+                        "Corrupt archive: failed reading position");
+                } else {
                   if (first_read_of_block) {
                     // Non-order-preserving mode stores the first absolute
                     // position in each block and then deltas afterward.
                     first_read_of_block = false;
                     f_pos.read(byte_ptr(&read_1_position), sizeof(uint64_t));
+                    if (!f_pos)
+                      throw std::runtime_error(
+                          "Corrupt archive: failed reading first position of "
+                          "block");
                     previous_position = read_1_position;
                   } else {
                     f_pos.read(byte_ptr(&position_delta_16), sizeof(uint16_t));
-                    if (position_delta_16 == 65535)
+                    if (!f_pos)
+                      throw std::runtime_error(
+                          "Corrupt archive: failed reading position delta");
+                    if (position_delta_16 == 65535) {
                       f_pos.read(byte_ptr(&read_1_position), sizeof(uint64_t));
-                    else
+                      if (!f_pos)
+                        throw std::runtime_error(
+                            "Corrupt archive: failed reading fallback 64-bit "
+                            "position");
+                    } else {
                       read_1_position = previous_position + position_delta_16;
+                    }
                     previous_position = read_1_position;
                   }
                 }
-                f_RC >> read_1_orientation;
+                if (!(f_RC >> read_1_orientation))
+                  throw std::runtime_error(
+                      "Corrupt archive: failed reading orientation");
                 std::string read =
                     seq.read(read_1_position, read_lengths_buffer_1[i]);
                 std::string noise_codes;
@@ -620,15 +636,26 @@ void decompress_short(const std::string &temp_dir, const std::string &outfile_1,
                 if (!read_2_is_singleton) {
                   if (read_flag == '1' || read_flag == '4') {
                     f_pos.read(byte_ptr(&read_2_position), sizeof(uint64_t));
-                    f_RC >> read_2_orientation;
+                    if (!f_pos)
+                      throw std::runtime_error(
+                          "Corrupt archive: failed reading mate 2 position");
+                    if (!(f_RC >> read_2_orientation))
+                      throw std::runtime_error(
+                          "Corrupt archive: failed reading mate 2 orientation");
                   } else {
                     // Mate 2 can be stored relative to mate 1 inside the same
                     // block.
                     char relative_orientation_flag;
                     f_pos_pair.read(byte_ptr(&mate_position_delta_16),
                                     sizeof(int16_t));
+                    if (!f_pos_pair)
+                      throw std::runtime_error("Corrupt archive: failed "
+                                               "reading mate position delta");
                     read_2_position = read_1_position + mate_position_delta_16;
-                    f_RC_pair >> relative_orientation_flag;
+                    if (!(f_RC_pair >> relative_orientation_flag))
+                      throw std::runtime_error(
+                          "Corrupt archive: failed reading relative mate "
+                          "orientation");
                     if (relative_orientation_flag == '0')
                       read_2_orientation =
                           (read_1_orientation == 'd') ? 'r' : 'd';
@@ -794,7 +821,8 @@ void decompress_long(const std::string &temp_dir, const std::string &outfile_1,
   }
   std::ofstream output_streams[2];
 
-  open_output_files(output_streams, output_paths_local, paired_end, should_gzip);
+  open_output_files(output_streams, output_paths_local, paired_end,
+                    should_gzip);
   validate_output_files(output_streams, paired_end);
 
   const uint64_t num_reads_per_step = compute_num_reads_per_step(

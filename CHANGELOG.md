@@ -3,6 +3,10 @@
 
 ## V1.0.0-beta.1
 
+### Added
+
+* Added robust stream error checking in `src/decompress.cpp` to handle corrupt or truncated archives during position and orientation decoding.
+
 ### Fixed
 
 * Removed debug `[GZIP-DIAG]` logs from the compression pipeline that were firing even in non-verbose mode.
