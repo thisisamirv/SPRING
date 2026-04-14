@@ -11,9 +11,15 @@
 #include <direct.h>
 #include <errno.h>
 #include <io.h>
+#ifndef PSAPI_VERSION
+#define PSAPI_VERSION 1
+#endif
+// windows.h must be included before psapi.h to provide necessary type
+// definitions.
+#include <windows.h>
+
 #include <psapi.h>
 #include <sys/types.h>
-#include <windows.h>
 
 // Resource usage
 #define RUSAGE_SELF 0

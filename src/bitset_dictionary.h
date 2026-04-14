@@ -81,23 +81,32 @@ inline thread_range split_thread_range(const uint64_t item_count,
 template <size_t bitset_size>
 void compute_dictionary_keys(std::bitset<bitset_size> *read_bits,
                              const std::bitset<bitset_size> &index_mask,
-                             const bbhashdict &dictionary,
-                             const uint32_t read_count, const int bits_per_base,
+                             const int start_base, const uint32_t read_count,
+                             const int bits_per_base,
                              uint64_t *dictionary_keys) {
-#pragma omp parallel
-  {
-    std::bitset<bitset_size> masked_read_bits;
-    const int thread_id = omp_get_thread_num();
-    const int thread_count = omp_get_num_threads();
-    const thread_range range =
-        split_thread_range(read_count, thread_id, thread_count);
-
-    for (uint64_t read_index = range.begin; read_index < range.end;
-         read_index++) {
-      masked_read_bits = read_bits[read_index] & index_mask;
-      dictionary_keys[read_index] =
-          (masked_read_bits >> bits_per_base * dictionary.start).to_ullong();
-    }
+  struct TaskParams {
+    std::bitset<bitset_size> index_mask;
+    uint32_t read_count;
+    int bits_per_base;
+    int start_base;
+    std::bitset<bitset_size> *read_bits;
+    uint64_t *dictionary_keys;
+  };
+  auto params_storage = std::make_unique<TaskParams>(
+      TaskParams{index_mask, read_count, bits_per_base, start_base, read_bits,
+                 dictionary_keys});
+  static TaskParams *global_params;
+  global_params = params_storage.get();
+#pragma omp parallel for default(none) shared(global_params)
+  for (int64_t read_index = 0;
+       read_index < static_cast<int64_t>(global_params->read_count);
+       read_index++) {
+    TaskParams *params = global_params;
+    std::bitset<bitset_size> masked_read_bits =
+        params->read_bits[read_index] & params->index_mask;
+    params->dictionary_keys[read_index] =
+        (masked_read_bits >> params->bits_per_base * params->start_base)
+            .to_ullong();
   }
 }
 
@@ -119,17 +128,28 @@ inline uint32_t compact_dictionary_keys(uint64_t *dictionary_keys,
 inline void write_key_chunks(const uint64_t *dictionary_keys,
                              const uint32_t key_count,
                              const std::string &base_dir) {
-#pragma omp parallel
+  struct TaskParams {
+    uint32_t key_count;
+    std::string base_dir;
+    const uint64_t *dictionary_keys;
+  };
+  auto params_storage = std::make_unique<TaskParams>(
+      TaskParams{key_count, base_dir, dictionary_keys});
+  static TaskParams *global_params;
+  global_params = params_storage.get();
+#pragma omp parallel default(none) shared(global_params)
   {
+    TaskParams *params = global_params;
     const int thread_id = omp_get_thread_num();
     const int thread_count = omp_get_num_threads();
     const thread_range range =
-        split_thread_range(key_count, thread_id, thread_count);
-    std::ofstream key_output(keys_bin_path(base_dir, thread_id),
+        split_thread_range(params->key_count, thread_id, thread_count);
+    std::ofstream key_output(keys_bin_path(params->base_dir, thread_id),
                              std::ios::binary);
 
     for (uint64_t key_index = range.begin; key_index < range.end; key_index++)
-      key_output.write(byte_ptr(&dictionary_keys[key_index]), sizeof(uint64_t));
+      key_output.write(byte_ptr(&params->dictionary_keys[key_index]),
+                       sizeof(uint64_t));
   }
 }
 
@@ -149,27 +169,37 @@ inline uint32_t sort_and_deduplicate_keys(uint64_t *dictionary_keys,
 inline void write_hash_chunks(const bbhashdict &dictionary,
                               const std::string &base_dir,
                               const int dict_index) {
-#pragma omp parallel
+  struct TaskParams {
+    uint32_t num_reads;
+    std::string base_dir;
+    int dict_index;
+    const bbhashdict *dictionary;
+  };
+  auto params_storage = std::make_unique<TaskParams>(
+      TaskParams{dictionary.dict_numreads, base_dir, dict_index, &dictionary});
+  static TaskParams *global_params;
+  global_params = params_storage.get();
+#pragma omp parallel default(none) shared(std::cerr, global_params)
   {
+    TaskParams *params = global_params;
     const int thread_id = omp_get_thread_num();
     const int thread_count = omp_get_num_threads();
     const thread_range range =
-        split_thread_range(dictionary.dict_numreads, thread_id, thread_count);
-    const std::string key_path = keys_bin_path(base_dir, thread_id);
+        split_thread_range(params->num_reads, thread_id, thread_count);
+    const std::string key_path = keys_bin_path(params->base_dir, thread_id);
     const std::string hash_path =
-        hash_bin_path(base_dir, thread_id, dict_index);
+        hash_bin_path(params->base_dir, thread_id, params->dict_index);
     std::ifstream key_input(key_path, std::ios::binary);
     std::ofstream hash_output(hash_path, std::ios::binary);
     uint64_t current_key;
 
-    int log_count = 0;
     for (uint64_t key_index = range.begin; key_index < range.end; key_index++) {
       if (!key_input.read(byte_ptr(&current_key), sizeof(uint64_t))) {
-        std::cerr << "T" << thread_id << " read failed at index " << key_index
-                  << std::endl;
+        std::cerr << "Error reading key at index " << key_index << " from "
+                  << key_path << std::endl;
         break;
       }
-      const uint64_t current_hash = (*dictionary.bphf)(current_key);
+      const uint64_t current_hash = (*params->dictionary->bphf)(current_key);
       hash_output.write(byte_ptr(&current_hash), sizeof(uint64_t));
     }
     hash_output.flush();
@@ -271,8 +301,9 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
                          uint16_t *read_lengths, const int numdict,
                          const uint32_t numreads, const int bpb,
                          const std::string &basedir, const int num_thr) {
-  std::vector<std::bitset<bitset_size>> index_masks(numdict);
-  generateindexmasks<bitset_size>(index_masks.data(), dict, numdict, bpb);
+  auto index_masks = std::make_unique<std::bitset<bitset_size>[]>(
+      static_cast<size_t>(numdict));
+  generateindexmasks<bitset_size>(index_masks.get(), dict, numdict, bpb);
 
   for (int dict_index = 0; dict_index < numdict; dict_index++) {
     bbhashdict &current_dict = dict[dict_index];
@@ -280,8 +311,8 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
     uint64_t *dictionary_keys_data = dictionary_keys.data();
 
     detail::compute_dictionary_keys<bitset_size>(read, index_masks[dict_index],
-                                                 current_dict, numreads, bpb,
-                                                 dictionary_keys_data);
+                                                 current_dict.start, numreads,
+                                                 bpb, dictionary_keys_data);
 
     // Keep only reads that are long enough for this dictionary.
     current_dict.dict_numreads = detail::compact_dictionary_keys(

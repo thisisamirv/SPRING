@@ -420,10 +420,15 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
   uint32_t first_read = 0;
   Logger::log_info("Reordering reads");
   std::vector<uint32_t> unmatched_counts(static_cast<size_t>(rg.num_thr));
-#pragma omp parallel
+#pragma omp parallel default(none)                                             \
+    shared(rg, read, read_lengths, dict, dict_locks, read_locks,               \
+               remaining_read_lock, length_masks_ptrs, index_masks,            \
+               remaining_reads, unmatched_counts, std::cerr, std::cout)        \
+    firstprivate(first_read)
   {
     bool done = false;
     int thread_id = omp_get_thread_num();
+    int64_t remaining_read_scan = rg.numreads - 1;
     std::ofstream orientation_output(
         detail::thread_output_path(rg.outfileRC, thread_id), std::ios::binary);
     std::ofstream flag_output(
@@ -488,7 +493,6 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
     int64_t reference_position;
     int64_t current_read_position;
 
-    int64_t remaining_read_scan = rg.numreads - 1;
 #pragma omp critical
     {
       current_read_id = first_read;
@@ -695,10 +699,8 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
         } else {
           left_search = false;
           for (int64_t read_id = remaining_read_scan; read_id >= 0; read_id--) {
-            if (remaining_reads[read_id] == 1) {
-              if (!omp_test_lock(
-                      remaining_read_lock[detail::lock_shard(read_id)].get()))
-                continue;
+            if (omp_test_lock(
+                    remaining_read_lock[detail::lock_shard(read_id)].get())) {
               omp_set_lock(read_locks[detail::lock_shard(read_id)].get());
               if (remaining_reads[read_id]) {
                 current_read_id = read_id;
@@ -762,7 +764,8 @@ void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
   std::vector<uint32_t> numreads_s_thr(rg.num_thr, 0);
   // Each thread materializes its reordered reads before the singleton merge
   // step.
-#pragma omp parallel
+#pragma omp parallel default(none)                                             \
+    shared(rg, read, read_lengths, numreads_s_thr, std::cerr, std::cout)
   {
     int tid = omp_get_thread_num();
     std::ofstream fout(detail::thread_output_path(rg.outfile, tid),

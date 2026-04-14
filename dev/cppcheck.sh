@@ -29,7 +29,7 @@ cppcheck \
 	--enable=warning,performance,portability \
 	--suppress=missingInclude \
 	--suppress=missingIncludeSystem \
-	--suppress="*:$ROOT_DIR/src/BooPHF.h" \
+	--suppress="*:$ROOT_DIR/tests/doctest.h" \
 	-I "$ROOT_DIR/src" \
 	-I "$ROOT_DIR/vendor" \
 	-I "$ID_COMPRESSION_INCLUDE_DIR" \

@@ -16,15 +16,15 @@ using read_range = std::vector<uint64_t>;
 
 // Top-level compression and decompression entry points used by the CLI.
 void compress(const std::string &temp_dir, const string_list &input_paths,
-              const string_list &output_paths, const int &num_thr,
-              const bool &pairing_only_flag, const bool &no_quality_flag,
-              const bool &no_ids_flag, const string_list &quality_options,
-              const int &compression_level, const std::string &note,
+              const string_list &output_paths, const int num_thr,
+              const bool pairing_only_flag, const bool no_quality_flag,
+              const bool no_ids_flag, const string_list &quality_options,
+              const int compression_level, const std::string &note,
               const bool verbose = true, const bool audit_flag = false);
 
 void decompress(const std::string &temp_dir, const string_list &input_paths,
-                const string_list &output_paths, const int &num_thr,
-                const int &compression_level, const bool verbose = true,
+                const string_list &output_paths, const int num_thr,
+                const int compression_level, const bool verbose = true,
                 const bool unzip_flag = false);
 
 void perform_audit(const std::string &archive_path,

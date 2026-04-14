@@ -99,7 +99,7 @@ jobs:
           CC: clang
           CXX: clang++
         run: |
-          cmake -S . -B build -G Ninja
+          cmake -S . -B build -G Ninja -DOpenMP_ROOT="$MACOS_LIBOMP_PREFIX"
 
       - name: Configure on Windows
         if: runner.os == 'Windows'
@@ -219,7 +219,7 @@ jobs:
           CC: clang
           CXX: clang++
         run: |
-          cmake -S . -B build -G Ninja
+          cmake -S . -B build -G Ninja -DOpenMP_ROOT="$MACOS_LIBOMP_PREFIX"
 
       - name: Configure on Windows
         if: runner.os == 'Windows'
