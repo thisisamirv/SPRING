@@ -1,0 +1,15 @@
+# ThreadSanitizer suppression file for SPRING2
+# Suppress known benign races originating from OpenMP runtimes and related
+# third-party runtime artifacts that commonly trigger false positives.
+
+# Suppress libgomp runtime helpers
+race:__gomp_*
+race:libgomp*
+
+# Suppress Intel OpenMP runtime helpers (if present)
+race:__kmp_*
+
+# Suppress sanitizer-internal allocation races
+race:operator new
+
+# End of suppressions

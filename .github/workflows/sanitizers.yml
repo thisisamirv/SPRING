@@ -23,7 +23,7 @@ jobs:
             build_dir: build-tsan
             san_flags: "-g -O1 -fno-omit-frame-pointer -fsanitize=thread"
             ld_flags: "-fsanitize=thread"
-            options: "TSAN_OPTIONS=halt_on_error=1"
+            options: "TSAN_OPTIONS=halt_on_error=1:suppressions=${{ github.workspace }}/tests/tsan.supp"
     env:
       BUILD_DIR: ${{ matrix.build_dir }}
     steps:
@@ -44,7 +44,12 @@ jobs:
 
       - name: Configure CMake with sanitizer flags
         run: |
-          echo "${{ matrix.options }}" >> $GITHUB_ENV
+          # Ensure TSAN suppressions file is referenced with the runner workspace
+          if [ "${{ matrix.sanitizer }}" = "tsan" ]; then
+            echo "TSAN_OPTIONS=halt_on_error=1:suppressions=$GITHUB_WORKSPACE/tests/tsan.supp" >> $GITHUB_ENV
+          else
+            echo "${{ matrix.options }}" >> $GITHUB_ENV
+          fi
           cmake -S . -B $BUILD_DIR -G Ninja -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_C_FLAGS="${{ matrix.san_flags }}" -DCMAKE_CXX_FLAGS="${{ matrix.san_flags }}" \
             -DCMAKE_EXE_LINKER_FLAGS="${{ matrix.ld_flags }}" -DCMAKE_SHARED_LINKER_FLAGS="${{ matrix.ld_flags }}"

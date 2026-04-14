@@ -3,6 +3,8 @@
 #include <array>
 #include <cstdint>
 #include <stdexcept>
+// DNA utility routines: conversion, reverse-complement, and small lookup
+// helpers used for sequence processing and bitset packing.
 
 namespace spring {
 

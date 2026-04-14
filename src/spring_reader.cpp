@@ -1,4 +1,7 @@
 #include "spring_reader.h"
+#include <string>
+// Archive reading utilities and DecompressionSink implementations used to
+// stream records out of SPRING archives into consumer buffers or pipelines.
 #include "decompress.h"
 #include "fs_utils.h"
 #include "integrity_utils.h"

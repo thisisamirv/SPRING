@@ -13,6 +13,8 @@
 #include <stdexcept>
 #include <vector>
 #include <zstd.h>
+// I/O utilities: helpers for reading FASTQ/FASTA inputs, BGZF handling, and
+// integration with compression libraries used by the preprocessing stage.
 
 namespace spring {
 

@@ -1,4 +1,7 @@
 #include "fs_utils.h"
+#include <string>
+// Filesystem helpers: path manipulation, temporary-directory utilities, and
+// cross-platform file operations used throughout the project.
 #include "progress.h"
 #include <archive.h>
 #include <archive_entry.h>

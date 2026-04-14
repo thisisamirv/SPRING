@@ -1,6 +1,8 @@
 #include "parse_utils.h"
 #include <stdexcept>
 #include <string>
+// Small parsing helpers: string utilities and parsing helpers used for
+// command-line and configuration parsing.
 
 namespace spring {
 
