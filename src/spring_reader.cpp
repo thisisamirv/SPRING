@@ -32,9 +32,10 @@ public:
                     const std::string *quality_buffer, uint32_t count,
                     int stream_index) override {
 
-    std::unique_lock<std::mutex> lock(mutex_);
+    std::unique_lock<std::mutex> lock(mutex_.get());
     // Throttle decompression if the queue is full
-    cv_.wait(lock, [this] { return queue_.size() < max_queue_size_; });
+    cv_.get().wait(lock,
+                   [this] { return queue_.get().size() < max_queue_size_; });
 
     for (uint32_t i = 0; i < count; ++i) {
       update_record_crc(sequence_crc_[stream_index], read_buffer[i]);
@@ -56,10 +57,10 @@ public:
         current_step_.first.push_back(std::move(rec));
       }
       if (!paired_end_) {
-        queue_.push(std::move(current_step_));
+        queue_.get().push(std::move(current_step_));
         current_step_ = {}; // Reset
         lock.unlock();
-        cv_.notify_all();
+        cv_.get().notify_all();
       }
     } else {
       // stream_index == 1
@@ -73,17 +74,17 @@ public:
           rec.quality = quality_buffer[i];
         current_step_.second.push_back(std::move(rec));
       }
-      queue_.push(std::move(current_step_));
+      queue_.get().push(std::move(current_step_));
       current_step_ = {}; // Reset
       lock.unlock();
-      cv_.notify_all();
+      cv_.get().notify_all();
     }
   }
 
 private:
-  std::queue<StepPair> &queue_;
-  std::mutex &mutex_;
-  std::condition_variable &cv_;
+  std::reference_wrapper<std::queue<StepPair>> queue_;
+  std::reference_wrapper<std::mutex> mutex_;
+  std::reference_wrapper<std::condition_variable> cv_;
   bool paired_end_;
   size_t max_queue_size_;
   StepPair current_step_;
@@ -93,9 +94,14 @@ private:
 
 class SpringReader::Impl {
 public:
-  Impl(const std::string &archive_path, int num_thr,
-       const std::string &work_dir)
-      : archive_path_(archive_path), user_num_thr_(num_thr) {
+  // Disallow copying and moving for safety of background thread and resources.
+  Impl(const Impl &) = delete;
+  Impl &operator=(const Impl &) = delete;
+  Impl(Impl &&) = delete;
+  Impl &operator=(Impl &&) = delete;
+
+  Impl(std::string archive_path, int num_thr, std::string work_dir)
+      : archive_path_(std::move(archive_path)), user_num_thr_(num_thr) {
 
     // Setup temporary directory
     if (work_dir.empty()) {
@@ -107,7 +113,7 @@ public:
                 std::chrono::steady_clock::now().time_since_epoch().count())))
               .string();
     } else {
-      temp_dir_ = work_dir;
+      temp_dir_ = std::move(work_dir);
     }
     std::filesystem::create_directories(temp_dir_);
 
@@ -138,12 +144,12 @@ public:
         }
 
         {
-          std::lock_guard<std::mutex> lock(mutex_);
+          std::scoped_lock<std::mutex> lock(mutex_);
           worker_done_ = true;
         }
         cv_.notify_all();
       } catch (...) {
-        std::lock_guard<std::mutex> lock(mutex_);
+        std::scoped_lock<std::mutex> lock(mutex_);
         worker_exception_ = std::current_exception();
         worker_done_ = true;
         cv_.notify_all();
@@ -201,7 +207,7 @@ public:
     return true;
   }
 
-  const compression_params &params() const { return params_; }
+  [[nodiscard]] const compression_params &params() const { return params_; }
 
 private:
   std::string archive_path_;
@@ -243,7 +249,7 @@ bool SpringReader::next(ReadRecord &mate1, ReadRecord &mate2) {
 }
 
 void SpringReader::get_digests(uint32_t seq_crc[2], uint32_t qual_crc[2],
-                               uint32_t id_crc[2]) const {
+                               uint32_t id_crc[2]) {
   for (int i = 0; i < 2; ++i) {
     seq_crc[i] = 0;
     qual_crc[i] = 0;

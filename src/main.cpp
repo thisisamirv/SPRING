@@ -56,6 +56,12 @@ struct command_line_options {
 
 class SpringContext {
 public:
+  // Disallow copying and moving to manage lifetime of temporary directories.
+  SpringContext(const SpringContext &) = delete;
+  SpringContext &operator=(const SpringContext &) = delete;
+  SpringContext(SpringContext &&) = delete;
+  SpringContext &operator=(SpringContext &&) = delete;
+
   explicit SpringContext(const std::string &working_dir) {
     const std::filesystem::path working_dir_path(working_dir);
     const bool working_dir_exists = std::filesystem::exists(working_dir_path);
@@ -91,7 +97,9 @@ public:
     }
   }
 
-  std::string temp_dir_path() const { return temp_dir_.generic_string() + '/'; }
+  [[nodiscard]] std::string temp_dir_path() const {
+    return temp_dir_.generic_string() + '/';
+  }
 
 private:
   std::filesystem::path temp_dir_;

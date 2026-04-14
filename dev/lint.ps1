@@ -50,6 +50,8 @@ $commonTidyArgs = @(
     "--extra-arg-before=--target=x86_64-w64-windows-gnu",
     "--extra-arg-before=--driver-mode=g++",
     "--extra-arg=-I$LINT_INCLUDE_DIR",
+    "--extra-arg=-isystem",
+    "--extra-arg=$ROOT_DIR/tests",
     "--extra-arg=-w",
     "--extra-arg=-Wno-unknown-argument",
     "--extra-arg=-Wno-unknown-warning-option"
@@ -90,9 +92,11 @@ if ($cppFiles) {
     $standaloneFiles = @()
 
     foreach ($file in $cppFiles) {
+        if ($file -like "*doctest.h") { continue }
         if ($hasCompileCommands -and (Test-CompileCommandsContains $file)) {
             $compileDbFiles += $file
-        } else {
+        }
+        else {
             $standaloneFiles += $file
         }
     }

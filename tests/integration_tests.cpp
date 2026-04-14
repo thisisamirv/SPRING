@@ -22,8 +22,6 @@ void create_dummy_fastq(const std::string &path, int num_records) {
   }
 }
 
-} // namespace
-
 TEST_CASE("Archive Integrity Verification Test") {
   std::string test_dir = "integrity_test_tmp";
   fs::create_directories(test_dir);
@@ -55,7 +53,7 @@ TEST_CASE("Archive Integrity Verification Test") {
   std::string untar_cmd = "tar -xf " + archive_sp + " -C " + corrupt_dir;
   REQUIRE(std::system(untar_cmd.c_str()) == 0);
 
-  std::string stream_file = "";
+  std::string stream_file;
   for (const auto &entry : fs::recursive_directory_iterator(corrupt_dir)) {
     if (entry.is_regular_file() && entry.path().filename() != "cp.bin") {
       stream_file = entry.path().string();
@@ -123,3 +121,5 @@ TEST_CASE("SpringReader Integration Test") {
 
   fs::remove_all(test_dir);
 }
+
+} // namespace

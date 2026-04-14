@@ -12,8 +12,7 @@ void remove_CR_from_end(std::string &str) {
 bool has_suffix(const std::string &value, const std::string &suffix) {
   if (suffix.size() > value.size())
     return false;
-  return value.compare(value.size() - suffix.size(), suffix.size(), suffix) ==
-         0;
+  return value.ends_with(suffix);
 }
 
 int parse_int_or_throw(const std::string &value, const char *error_message) {

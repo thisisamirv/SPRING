@@ -10,7 +10,6 @@
 #include <cstring>
 #include <filesystem>
 #include <libdeflate.h>
-#include <memory>
 #include <stdexcept>
 #include <vector>
 #include <zstd.h>
@@ -60,17 +59,6 @@ std::runtime_error gzip_runtime_error(gzFile file_handle,
 }
 
 thread_local std::string tl_plain_buffer;
-
-struct LibdeflateDeleter {
-  void operator()(libdeflate_compressor *c) const {
-    if (c)
-      libdeflate_free_compressor(c);
-  }
-};
-
-thread_local std::unique_ptr<libdeflate_compressor, LibdeflateDeleter>
-    tl_compressor;
-thread_local int tl_compressor_level = -1;
 
 void write_gzip_data(gzFile file_handle, const char *data,
                      std::streamsize size) {
@@ -135,9 +123,10 @@ int64_t zigzag_decode64(const uint64_t value) {
 
 } // namespace
 
-gzip_istreambuf::gzip_istreambuf() : file_(nullptr) {}
+gzip_istreambuf::gzip_istreambuf() : file_(nullptr), buffer_{} {}
 
-gzip_istreambuf::gzip_istreambuf(const std::string &path) : file_(nullptr) {
+gzip_istreambuf::gzip_istreambuf(const std::string &path)
+    : file_(nullptr), buffer_{} {
   open(path);
 }
 
@@ -228,20 +217,17 @@ void gzip_ostream::close() {
 bool gzip_ostream::is_open() const { return file_ != nullptr; }
 
 std::string gzip_compress_string(const std::string &input, int level) {
-  if (tl_compressor_level != level) {
-    tl_compressor.reset(libdeflate_alloc_compressor(level));
-    tl_compressor_level = level;
-  }
-  if (!tl_compressor) {
-    throw std::runtime_error("Failed initializing libdeflate gzip compressor.");
+  libdeflate_compressor *compressor = libdeflate_alloc_compressor(level);
+  if (!compressor) {
+    throw std::runtime_error("Failed allocating libdeflate gzip compressor.");
   }
 
   std::string output;
-  output.resize(
-      libdeflate_gzip_compress_bound(tl_compressor.get(), input.size()));
-  const size_t compressed_size =
-      libdeflate_gzip_compress(tl_compressor.get(), input.data(), input.size(),
-                               output.data(), output.size());
+  output.resize(libdeflate_gzip_compress_bound(compressor, input.size()));
+  const size_t compressed_size = libdeflate_gzip_compress(
+      compressor, input.data(), input.size(), output.data(), output.size());
+
+  libdeflate_free_compressor(compressor);
 
   if (compressed_size == 0) {
     throw std::runtime_error("Failed compressing gzip payload.");

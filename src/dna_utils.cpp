@@ -67,10 +67,10 @@ void write_encoded_read(const std::string &read, std::ofstream &fout,
   const uint16_t readlen = static_cast<uint16_t>(read.size());
   fout.write(byte_ptr(&readlen), sizeof(uint16_t));
 
-  const int full_groups = readlen / bases_per_byte;
-  for (int group_index = 0; group_index < full_groups; ++group_index) {
+  const uint32_t full_groups = readlen / bases_per_byte;
+  for (uint32_t group_index = 0; group_index < full_groups; ++group_index) {
     bitarray[pos_in_bitarray] = 0;
-    for (int base_index = 0; base_index < bases_per_byte; ++base_index)
+    for (uint8_t base_index = 0; base_index < bases_per_byte; ++base_index)
       bitarray[pos_in_bitarray] |=
           dna_to_int[static_cast<uint8_t>(
               read[bases_per_byte * group_index + base_index])]
@@ -78,11 +78,11 @@ void write_encoded_read(const std::string &read, std::ofstream &fout,
     ++pos_in_bitarray;
   }
 
-  const int trailing_bases = readlen % bases_per_byte;
+  const uint32_t trailing_bases = readlen % bases_per_byte;
   if (trailing_bases != 0) {
-    const int group_index = full_groups;
+    const uint32_t group_index = full_groups;
     bitarray[pos_in_bitarray] = 0;
-    for (int base_index = 0; base_index < trailing_bases; ++base_index)
+    for (uint32_t base_index = 0; base_index < trailing_bases; ++base_index)
       bitarray[pos_in_bitarray] |=
           dna_to_int[static_cast<uint8_t>(
               read[bases_per_byte * group_index + base_index])]
@@ -122,9 +122,10 @@ void read_encoded_read(std::string &read, std::ifstream &fin,
   }
 
   uint8_t pos_in_bitarray = 0;
-  const int full_groups = readlen / bases_per_byte;
-  for (int group_index = 0; group_index < full_groups; ++group_index) {
-    for (int base_index = 0; base_index < bases_per_byte; ++base_index) {
+  const uint32_t full_groups = readlen / bases_per_byte;
+  for (uint32_t group_index = 0; group_index < full_groups; ++group_index) {
+    for (uint32_t base_index = 0; base_index < (uint32_t)bases_per_byte;
+         ++base_index) {
       read[bases_per_byte * group_index + base_index] =
           int_to_dna[bitarray[pos_in_bitarray] & bit_mask];
       bitarray[pos_in_bitarray] >>= bits_per_base;
@@ -132,10 +133,10 @@ void read_encoded_read(std::string &read, std::ifstream &fin,
     ++pos_in_bitarray;
   }
 
-  const int trailing_bases = readlen % bases_per_byte;
+  const uint32_t trailing_bases = readlen % bases_per_byte;
   if (trailing_bases != 0) {
-    const int group_index = full_groups;
-    for (int base_index = 0; base_index < trailing_bases; ++base_index) {
+    const uint32_t group_index = full_groups;
+    for (uint32_t base_index = 0; base_index < trailing_bases; ++base_index) {
       read[bases_per_byte * group_index + base_index] =
           int_to_dna[bitarray[pos_in_bitarray] & bit_mask];
       bitarray[pos_in_bitarray] >>= bits_per_base;

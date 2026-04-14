@@ -107,7 +107,7 @@ std::string to_ascii_lowercase(std::string value) {
   return value;
 }
 
-bool is_gzip_input_path(const std::string &input_path) {
+[[nodiscard]] bool is_gzip_input_path(const std::string &input_path) {
   return has_suffix(input_path, ".gz");
 }
 
@@ -564,8 +564,6 @@ resolve_decompression_io(const string_list &input_paths,
 
 void perform_audit(const std::string &archive_path,
                    const std::string &temp_dir) {
-  Logger::log_info("Verifying archive integrity (dry-run audit)...");
-
   // Create a sub-directory for the audit untar to avoid clobbering existing
   // temp files
   std::string audit_dir = temp_dir + "/audit_extract";
@@ -591,30 +589,43 @@ void perform_audit(const std::string &archive_path,
       decompress_short(audit_dir, sink, cp);
     }
 
-    uint32_t seq_crc[2], qual_crc[2], id_crc[2];
-    sink.get_digests(seq_crc, qual_crc, id_crc);
-    bool mismatch = false;
-    for (int i = 0; i < (cp.encoding.paired_end ? 2 : 1); ++i) {
-      if (cp.read_info.sequence_crc[i] != 0 &&
-          seq_crc[i] != cp.read_info.sequence_crc[i]) {
-        std::cerr << "Stream " << (i + 1) << " sequence digest mismatch!\n";
-        mismatch = true;
-      }
-      if (cp.read_info.quality_crc[i] != 0 &&
-          qual_crc[i] != cp.read_info.quality_crc[i]) {
-        std::cerr << "Stream " << (i + 1) << " quality digest mismatch!\n";
-        mismatch = true;
-      }
-      if (cp.read_info.id_crc[i] != 0 && id_crc[i] != cp.read_info.id_crc[i]) {
-        std::cerr << "Stream " << (i + 1) << " ID digest mismatch!\n";
-        mismatch = true;
-      }
-    }
+    const bool is_lossless =
+        cp.encoding.preserve_order && cp.encoding.preserve_quality &&
+        cp.encoding.preserve_id && !cp.quality.qvz_flag &&
+        !cp.quality.ill_bin_flag && !cp.quality.bin_thr_flag;
 
-    if (mismatch) {
-      throw std::runtime_error("ARCHIVE INTEGRITY AUDIT FAILED!");
+    if (is_lossless) {
+      uint32_t seq_crc[2], qual_crc[2], id_crc[2];
+      sink.get_digests(seq_crc, qual_crc, id_crc);
+      bool mismatch = false;
+      for (int i = 0; i < (cp.encoding.paired_end ? 2 : 1); ++i) {
+        if (cp.read_info.sequence_crc[i] != 0 &&
+            seq_crc[i] != cp.read_info.sequence_crc[i]) {
+          std::cerr << "Stream " << (i + 1) << " sequence digest mismatch!\n";
+          mismatch = true;
+        }
+        if (cp.read_info.quality_crc[i] != 0 &&
+            qual_crc[i] != cp.read_info.quality_crc[i]) {
+          std::cerr << "Stream " << (i + 1) << " quality digest mismatch!\n";
+          mismatch = true;
+        }
+        if (cp.read_info.id_crc[i] != 0 &&
+            id_crc[i] != cp.read_info.id_crc[i]) {
+          std::cerr << "Stream " << (i + 1) << " ID digest mismatch!\n";
+          mismatch = true;
+        }
+      }
+
+      if (mismatch)
+        throw std::runtime_error("Archive integrity verification failed.");
+
+      std::cout << "Audit successful: Data and Digests match perfectly."
+                << std::endl;
+    } else {
+      std::cout << "Audit skipped: Record-level hashing is only supported for "
+                   "lossless, ordered archives."
+                << std::endl;
     }
-    Logger::log_info("Audit successful: Data and Digests match perfectly.");
 
     std::filesystem::remove_all(audit_dir);
   } catch (...) {
@@ -626,11 +637,11 @@ void perform_audit(const std::string &archive_path,
 
 void compress(const std::string &temp_dir,
               const std::vector<std::string> &input_paths,
-              const std::vector<std::string> &output_paths, const int &num_thr,
-              const bool &pairing_only_flag, const bool &no_quality_flag,
-              const bool &no_ids_flag,
+              const std::vector<std::string> &output_paths, const int num_thr,
+              const bool pairing_only_flag, const bool no_quality_flag,
+              const bool no_ids_flag,
               const std::vector<std::string> &quality_options,
-              const int &compression_level, const std::string &note,
+              const int compression_level, const std::string &note,
               const bool verbose, const bool audit_flag) {
   Logger::set_verbose(verbose);
   ProgressBar progress(!verbose);
@@ -808,13 +819,16 @@ void compress(const std::string &temp_dir,
               << fs::file_size(archive_file_path) << " bytes\n";
   }
   ProgressBar::SetGlobalInstance(nullptr);
-  return;
+
+  if (audit_flag) {
+    perform_audit(io_config.archive_path, temp_dir);
+  }
 }
 
 void decompress(const std::string &temp_dir,
                 const std::vector<std::string> &input_paths,
                 const std::vector<std::string> &output_paths,
-                const int & /*num_thr*/, const int & /*compression_level*/,
+                const int /*num_thr*/, const int /*compression_level*/,
                 const bool verbose, const bool unzip_flag) {
   Logger::set_verbose(verbose);
   ProgressBar progress(!verbose);
@@ -843,10 +857,11 @@ void decompress(const std::string &temp_dir,
     throw std::runtime_error("Can't read compression parameters.");
   compression_params_input.close();
 
+  bool paired_end = cp.encoding.paired_end;
   if (verbose) {
     std::cout << "Original filenames detected in archive:\n";
     std::cout << "  Input 1: " << cp.read_info.input_filename_1 << "\n";
-    if (cp.encoding.paired_end) {
+    if (paired_end) {
       std::cout << "  Input 2: " << cp.read_info.input_filename_2 << "\n";
     }
 
@@ -856,11 +871,11 @@ void decompress(const std::string &temp_dir,
   }
 
   auto has_compressed_suffix = [](const std::string &path) {
-    return path.size() >= 3 && path.substr(path.size() - 3) == ".gz";
+    return path.ends_with(".gz");
   };
 
   auto strip_compressed_suffix = [](const std::string &path) {
-    if (path.size() >= 3 && path.substr(path.size() - 3) == ".gz")
+    if (path.ends_with(".gz"))
       return path.substr(0, path.size() - 3);
     return path;
   };
@@ -879,8 +894,9 @@ void decompress(const std::string &temp_dir,
   bool should_gzip[2] = {false, false};
   bool should_bgzf[2] = {false, false};
   for (int i = 0; i < (cp.encoding.paired_end ? 2 : 1); i++) {
-    const std::string &path =
-        (i < output_paths.size()) ? output_paths[i] : output_paths[0];
+    const std::string &path = (i < resolved_output_paths.size())
+                                  ? resolved_output_paths[i]
+                                  : resolved_output_paths[0];
     bool is_bgzf =
         (i == 0) ? cp.gzip.streams[0].is_bgzf : cp.gzip.streams[1].is_bgzf;
     uint8_t xfl = (i == 0) ? cp.gzip.streams[0].xfl : cp.gzip.streams[1].xfl;
@@ -899,13 +915,11 @@ void decompress(const std::string &temp_dir,
   }
 
   for (std::string &path : resolved_output_paths) {
-    if (unzip_flag || has_compressed_suffix(path)) {
-      if (has_compressed_suffix(path))
-        path = strip_compressed_suffix(path);
+    if (unzip_flag && has_compressed_suffix(path)) {
+      path = strip_compressed_suffix(path);
     }
   }
 
-  bool paired_end = cp.encoding.paired_end;
   const decompression_io_config io_config =
       resolve_decompression_io(input_paths, resolved_output_paths, paired_end);
 
@@ -921,24 +935,31 @@ void decompress(const std::string &temp_dir,
     }
 
     // Integrity verification
-    uint32_t seq_crc[2], qual_crc[2], id_crc[2];
-    sink.get_digests(seq_crc, qual_crc, id_crc);
-    bool mismatch = false;
-    for (int i = 0; i < (cp.encoding.paired_end ? 2 : 1); ++i) {
-      if (cp.read_info.sequence_crc[i] != 0 &&
-          seq_crc[i] != cp.read_info.sequence_crc[i])
-        mismatch = true;
-      if (cp.read_info.quality_crc[i] != 0 &&
-          qual_crc[i] != cp.read_info.quality_crc[i])
-        mismatch = true;
-      if (cp.read_info.id_crc[i] != 0 && id_crc[i] != cp.read_info.id_crc[i])
-        mismatch = true;
-    }
+    const bool is_lossless =
+        cp.encoding.preserve_order && cp.encoding.preserve_quality &&
+        cp.encoding.preserve_id && !cp.quality.qvz_flag &&
+        !cp.quality.ill_bin_flag && !cp.quality.bin_thr_flag;
 
-    if (mismatch) {
-      throw std::runtime_error(
-          "ARCHIVE INTEGRITY CHECK FAILED: Reconstructed data does not match "
-          "original digests. The archive may be corrupted.");
+    if (is_lossless) {
+      uint32_t seq_crc[2], qual_crc[2], id_crc[2];
+      sink.get_digests(seq_crc, qual_crc, id_crc);
+      bool mismatch = false;
+      for (int i = 0; i < (cp.encoding.paired_end ? 2 : 1); ++i) {
+        if (cp.read_info.sequence_crc[i] != 0 &&
+            seq_crc[i] != cp.read_info.sequence_crc[i])
+          mismatch = true;
+        if (cp.read_info.quality_crc[i] != 0 &&
+            qual_crc[i] != cp.read_info.quality_crc[i])
+          mismatch = true;
+        if (cp.read_info.id_crc[i] != 0 && id_crc[i] != cp.read_info.id_crc[i])
+          mismatch = true;
+      }
+
+      if (mismatch) {
+        throw std::runtime_error(
+            "ARCHIVE INTEGRITY CHECK FAILED: Reconstructed data does not match "
+            "original digests. The archive may be corrupted.");
+      }
     }
   });
 

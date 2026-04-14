@@ -1,11 +1,12 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "dna_utils.h"
-#include "parse_utils.h"
 #include "doctest.h"
+#include "parse_utils.h"
 #include <string>
 
 using namespace spring;
 
+namespace {
 TEST_CASE("Testing reverse_complement") {
   SUBCASE("Standard DNA sequences") {
     CHECK(reverse_complement("ATGC", 4) == "GCAT");
@@ -44,3 +45,4 @@ TEST_CASE("Testing uint64 parsing") {
   CHECK(parse_uint64_or_throw("123456789012345", "err") == 123456789012345ULL);
   CHECK_THROWS_AS(parse_uint64_or_throw("-1", "err"), std::runtime_error);
 }
+} // namespace

@@ -17,6 +17,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <utility>
 #ifndef _WIN32
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -30,7 +31,6 @@
 #include <omp.h>
 #include <stdexcept>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace spring {
@@ -169,8 +169,7 @@ public:
 
 private:
   [[nodiscard]] size_t find_chunk_index(const uint64_t offset) const {
-    auto it =
-        std::upper_bound(start_offsets_.begin(), start_offsets_.end(), offset);
+    auto it = std::ranges::upper_bound(start_offsets_, offset);
     if (it == start_offsets_.begin()) {
       throw std::runtime_error("Reference offset out of range");
     }
@@ -237,11 +236,11 @@ void decompress_read_length_block(const std::string &base_path,
 }
 
 uint32_t compute_thread_read_count(const uint32_t step_read_count,
-                                   const uint32_t num_reads_per_block,
-                                   const uint64_t thread_id) {
+                                   uint32_t num_reads_per_block,
+                                   uint64_t thread_id) {
   return std::min((uint64_t)step_read_count,
-                  (thread_id + 1) * num_reads_per_block) -
-         thread_id * num_reads_per_block;
+                  (thread_id + 1) * (uint64_t)num_reads_per_block) -
+         thread_id * (uint64_t)num_reads_per_block;
 }
 
 } // namespace
@@ -249,10 +248,9 @@ uint32_t compute_thread_read_count(const uint32_t step_read_count,
 void write_fastq_block(std::ostream &output_stream, std::string *id_buffer,
                        std::string *read_buffer,
                        const std::string *quality_array,
-                       const uint32_t output_read_count, const int num_thr,
-                       const bool gzip_output, const bool bgzf_output,
-                       const int compression_level, const bool use_crlf,
-                       const bool fasta_mode);
+                       uint32_t output_read_count, int num_thr,
+                       bool gzip_output, bool bgzf_output,
+                       int compression_level, bool use_crlf, bool fasta_mode);
 
 FileDecompressionSink::FileDecompressionSink(const std::string &outfile_1,
                                              const std::string &outfile_2,
@@ -932,8 +930,8 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
     throw std::runtime_error("Can't open unpacked monolithic sequence file.");
   }
 
-  if (encoding_thread_count >
-      compression_params::ReadMetadata::kFileLenThrSize) {
+  if (std::cmp_greater(encoding_thread_count,
+                       compression_params::ReadMetadata::kFileLenThrSize)) {
     throw std::runtime_error(
         std::string("Archive indicates too many sequence chunks "
                     "(encoding_thread_count=") +

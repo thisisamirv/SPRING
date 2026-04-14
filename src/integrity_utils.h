@@ -14,8 +14,9 @@ namespace spring {
  * @param data The string content to add to the digest.
  */
 inline void update_record_crc(uint32_t &crc, const std::string &data) {
-  crc = (uint32_t)crc32((uLong)crc, (const Bytef *)data.data(),
-                        (uInt)data.size());
+  crc = static_cast<uint32_t>(crc32(
+      static_cast<uLong>(crc), reinterpret_cast<const Bytef *>(data.data()),
+      static_cast<uInt>(data.size())));
 }
 
 } // namespace spring
