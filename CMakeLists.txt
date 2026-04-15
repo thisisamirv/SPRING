@@ -133,8 +133,6 @@ elseif (spring_optimize_for_native)
     set(FLAGS "${FLAGS} -march=native")
 endif ()
 set(FLAGS "${FLAGS} -fomit-frame-pointer")
-set(FLAGS "${FLAGS} -fstrict-aliasing")
-set(FLAGS "${FLAGS} -ffast-math")
 
 if (CMAKE_BUILD_TYPE MATCHES "^(Debug|RelWithDebInfo)$")
     set(FLAGS "${FLAGS} -g")

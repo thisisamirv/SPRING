@@ -341,6 +341,19 @@ void compress_id_block(const char *output_path, std::string *id_array,
   if (num_ids == 0)
     return;
 
+  if (pack_only) {
+    std::ofstream output(output_path, std::ios::binary);
+    if (!output)
+      throw std::runtime_error("Failed to open raw ID output file.");
+    for (uint32_t i = 0; i < num_ids; i++) {
+      output.write(id_array[i].data(),
+                   static_cast<std::streamsize>(id_array[i].size()));
+      output.put('\n');
+    }
+    output.close();
+    return;
+  }
+
   std::vector<std::string> alpha_cols;
   std::vector<std::string> non_alpha_cols;
   std::vector<uint8_t> col_counts;
@@ -489,13 +502,7 @@ void compress_id_block(const char *output_path, std::string *id_array,
                   new_alpha_cols[i].end());
   }
 
-  if (pack_only) {
-    std::ofstream fout(output_path, std::ios::binary);
-    if (!fout)
-      throw std::runtime_error("Failed to open ID pack output file.");
-    fout.write(reinterpret_cast<const char *>(buffer.data()), buffer.size());
-    fout.close();
-  } else {
+  {
     const std::string temp_id_path = std::string(output_path) + ".tmp_id_enc";
     std::ofstream out(temp_id_path, std::ios::binary);
     if (!out)
@@ -519,18 +526,25 @@ void decompress_id_block(const char *input_path, std::string *id_array,
   if (num_ids == 0)
     return;
 
-  std::string temp_id_path;
   if (pack_only) {
-    temp_id_path = input_path;
-  } else {
-    temp_id_path = std::string(input_path) + ".tmp_id_dec";
-    safe_bsc_decompress(input_path, temp_id_path);
+    std::ifstream input(input_path, std::ios::binary);
+    if (!input)
+      throw std::runtime_error("Failed to open raw ID input file.");
+    for (uint32_t i = 0; i < num_ids; i++) {
+      if (!std::getline(input, id_array[i])) {
+        throw std::runtime_error("Failed to decode raw ID block.");
+      }
+    }
+    return;
   }
+
+  std::string temp_id_path;
+  temp_id_path = std::string(input_path) + ".tmp_id_dec";
+  safe_bsc_decompress(input_path, temp_id_path);
 
   std::ifstream id_in(temp_id_path, std::ios::binary | std::ios::ate);
   if (!id_in) {
-    if (!pack_only)
-      std::filesystem::remove(temp_id_path);
+    std::filesystem::remove(temp_id_path);
     throw std::runtime_error("Failed to open temporary decompressed ID file.");
   }
   const size_t r_size = static_cast<size_t>(id_in.tellg());
@@ -538,13 +552,11 @@ void decompress_id_block(const char *input_path, std::string *id_array,
   std::vector<uint8_t> buffer(r_size);
   if (!id_in.read(reinterpret_cast<char *>(buffer.data()), r_size)) {
     id_in.close();
-    if (!pack_only)
-      std::filesystem::remove(temp_id_path);
+    std::filesystem::remove(temp_id_path);
     throw std::runtime_error("Failed to read decompressed ID block.");
   }
   id_in.close();
-  if (!pack_only)
-    std::filesystem::remove(temp_id_path);
+  std::filesystem::remove(temp_id_path);
 
   const char *curr = reinterpret_cast<const char *>(buffer.data());
   const char *end = curr + r_size;
@@ -676,6 +688,15 @@ void safe_bsc_decompress(const std::string &input_path,
   }
 
   const std::streampos file_size = input.tellg();
+  if (file_size == 0) {
+    std::ofstream output(output_path, std::ios::binary);
+    if (!output.is_open()) {
+      throw std::runtime_error("Can't open output file for empty BSC stream: " +
+                               output_path);
+    }
+    return;
+  }
+
   if (file_size < 4) {
     throw std::runtime_error("Compressed file is too small to be valid: " +
                              input_path);

@@ -51,6 +51,20 @@ uint32_t block_count(const uint64_t num_reads,
   return 1 + (num_reads - 1) / num_reads_per_block;
 }
 
+void write_raw_string_block(const std::string &output_path,
+                            std::string *strings,
+                            const uint32_t string_count,
+                            const uint32_t *string_lengths) {
+  std::ofstream output(output_path, std::ios::binary);
+  if (!output.is_open()) {
+    throw std::runtime_error("Failed to open raw string block output: " +
+                             output_path);
+  }
+  for (uint32_t i = 0; i < string_count; i++) {
+    output.write(strings[i].data(), string_lengths[i]);
+  }
+}
+
 void open_input_stream(std::ifstream &file_stream, std::istream *&input_stream,
                        std::unique_ptr<gzip_istream> &gzip_stream,
                        const std::string &path, const bool gzip_enabled) {
@@ -505,18 +519,19 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                 compress_id_block(output_path.c_str(),
                                   id_array + thread_id * num_reads_per_block,
                                   thread_read_count,
-                                  cp.encoding.compression_level);
+                                  cp.encoding.compression_level,
+                                  true /* pack_only */);
               }
               if (cp.encoding.preserve_quality) {
                 std::string output_path =
                     paths.quality_output_paths[stream_index] + "." +
                     std::to_string(num_blocks_done + thread_id);
-                bsc::BSC_str_array_compress(
-                    output_path.c_str(),
-                    quality_array.data() + thread_id * num_reads_per_block,
-                    thread_read_count,
-                    read_lengths_array.data() +
-                        thread_id * num_reads_per_block);
+                write_raw_string_block(
+                  output_path,
+                  quality_array.data() + thread_id * num_reads_per_block,
+                  thread_read_count,
+                  read_lengths_array.data() +
+                    thread_id * num_reads_per_block);
               }
             }
           } else {
@@ -524,8 +539,9 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                 paths.read_length_paths[stream_index], block_num);
             std::string read_length_output_path =
                 read_length_input_path + ".bsc";
-            bsc::BSC_compress(read_length_input_path.c_str(),
-                              read_length_output_path.c_str());
+            std::filesystem::copy_file(
+              read_length_input_path, read_length_output_path,
+              std::filesystem::copy_options::overwrite_existing);
             remove(read_length_input_path.c_str());
             if (cp.encoding.preserve_id) {
               std::string output_path = block_file_path(
@@ -533,24 +549,25 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
               compress_id_block(output_path.c_str(),
                                 id_array + thread_id * num_reads_per_block,
                                 thread_read_count,
-                                cp.encoding.compression_level);
+                                cp.encoding.compression_level,
+                                true /* pack_only */);
             }
             if (cp.encoding.preserve_quality) {
               std::string output_path = block_file_path(
                   paths.quality_output_paths[stream_index], block_num);
-              bsc::BSC_str_array_compress(
-                  output_path.c_str(),
-                  quality_array.data() + thread_id * num_reads_per_block,
-                  thread_read_count,
-                  read_lengths_array.data() + thread_id * num_reads_per_block);
+              write_raw_string_block(
+                output_path,
+                quality_array.data() + thread_id * num_reads_per_block,
+                thread_read_count,
+                read_lengths_array.data() + thread_id * num_reads_per_block);
             }
             std::string output_path = block_file_path(
                 paths.read_block_paths[stream_index], block_num);
-            bsc::BSC_str_array_compress(
-                output_path.c_str(),
-                read_array.data() + thread_id * num_reads_per_block,
-                thread_read_count,
-                read_lengths_array.data() + thread_id * num_reads_per_block);
+            write_raw_string_block(
+              output_path,
+              read_array.data() + thread_id * num_reads_per_block,
+              thread_read_count,
+              read_lengths_array.data() + thread_id * num_reads_per_block);
           }
         }
       }

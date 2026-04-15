@@ -6,6 +6,7 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <filesystem>
 #include <omp.h>
 #include <string>
 #include <vector>
@@ -59,9 +60,44 @@ std::string compressed_block_file_path(const std::string &base_path,
   return block_file_path(base_path, block_num) + ".bsc";
 }
 
+bool is_unaligned_block_path(const std::string &path) {
+  return path.find("read_unaligned.txt.") != std::string::npos;
+}
+
+void copy_binary_file(const std::string &input_path,
+                      const std::string &output_path) {
+  std::ifstream input(input_path, std::ios::binary);
+  if (!input.is_open()) {
+    throw std::runtime_error("Failed to open input file for copy: " +
+                             input_path);
+  }
+  std::ofstream output(output_path, std::ios::binary);
+  if (!output.is_open()) {
+    throw std::runtime_error("Failed to open output file for copy: " +
+                             output_path);
+  }
+  output << input.rdbuf();
+}
+
 void compress_block_file(const std::string &input_path,
                          const std::string &output_path) {
-  bsc::BSC_compress(input_path.c_str(), output_path.c_str());
+  if (is_unaligned_block_path(output_path)) {
+    copy_binary_file(input_path, output_path);
+    safe_remove_file(input_path);
+    return;
+  }
+
+  std::error_code ec;
+  const auto input_size = std::filesystem::file_size(input_path, ec);
+  if (!ec && input_size == 0) {
+    std::ofstream empty_output(output_path, std::ios::binary);
+    if (!empty_output.is_open()) {
+      throw std::runtime_error("Failed to create empty compressed block: " +
+                               output_path);
+    }
+  } else {
+    bsc::BSC_compress(input_path.c_str(), output_path.c_str());
+  }
   safe_remove_file(input_path);
 }
 

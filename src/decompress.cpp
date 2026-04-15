@@ -206,12 +206,54 @@ std::string compressed_block_file_path(const std::string &base_path,
   return block_file_path(base_path, block_num) + ".bsc";
 }
 
+bool is_unaligned_block_path(const std::string &path) {
+  return path.find("read_unaligned.txt.") != std::string::npos;
+}
+
+void copy_binary_file(const std::string &input_path,
+                      const std::string &output_path) {
+  std::ifstream input(input_path, std::ios::binary);
+  if (!input.is_open()) {
+    throw std::runtime_error("Failed to open input file for copy: " +
+                             input_path);
+  }
+  std::ofstream output(output_path, std::ios::binary);
+  if (!output.is_open()) {
+    throw std::runtime_error("Failed to open output file for copy: " +
+                             output_path);
+  }
+  output << input.rdbuf();
+}
+
+void read_raw_string_block(const std::string &input_path,
+                           std::string *string_array,
+                           const uint32_t string_count,
+                           const uint32_t *string_lengths) {
+  std::ifstream input(input_path, std::ios::binary);
+  if (!input.is_open()) {
+    throw std::runtime_error("Failed to open raw string block: " + input_path);
+  }
+  for (uint32_t i = 0; i < string_count; i++) {
+    string_array[i].resize(string_lengths[i]);
+    input.read(string_array[i].data(),
+               static_cast<std::streamsize>(string_lengths[i]));
+    if (!input) {
+      throw std::runtime_error("Failed to read raw string block: " +
+                               input_path);
+    }
+  }
+}
+
 void decompress_bsc_block(const std::string &base_path,
                           const uint32_t block_num) {
   const std::string output_path = block_file_path(base_path, block_num);
   const std::string input_path =
       compressed_block_file_path(base_path, block_num);
-  safe_bsc_decompress(input_path, output_path);
+  if (is_unaligned_block_path(input_path)) {
+    copy_binary_file(input_path, output_path);
+  } else {
+    safe_bsc_decompress(input_path, output_path);
+  }
   safe_remove_file(input_path);
 }
 
@@ -223,7 +265,11 @@ void decompress_read_length_block(const std::string &base_path,
   const std::string compressed_path =
       compressed_block_file_path(base_path, block_num);
   const std::string output_path = block_file_path(base_path, block_num);
-  safe_bsc_decompress(compressed_path, output_path);
+  if (compressed_path.find("readlength_") != std::string::npos) {
+    copy_binary_file(compressed_path, output_path);
+  } else {
+    safe_bsc_decompress(compressed_path, output_path);
+  }
   safe_remove_file(compressed_path);
 
   std::ifstream read_length_input(output_path, std::ios::binary);
@@ -232,6 +278,7 @@ void decompress_read_length_block(const std::string &base_path,
         byte_ptr(&read_lengths_buffer[buffer_offset + read_index]),
         sizeof(uint32_t));
   }
+  read_length_input.close();
   safe_remove_file(output_path);
 }
 
@@ -406,7 +453,8 @@ bool decompress_and_slice_id(const std::string &temp_path_bsc,
   if (!std::filesystem::exists(temp_path_bsc))
     return false;
 
-  safe_bsc_decompress(temp_path_bsc, packed_path);
+  // ID streams are stored as packed payloads without BSC wrapping.
+  copy_binary_file(temp_path_bsc, packed_path);
 
   std::ifstream packed_in(packed_path, std::ios::binary);
   if (!packed_in)
@@ -750,15 +798,17 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
             input_path = input_quality_paths[stream_index] + "." +
                          std::to_string(num_blocks_done + thread_id);
             if (stream_index == 0) {
-              bsc::BSC_str_array_decompress(
-                  input_path.c_str(), quality_buffer.data() + buffer_offset,
-                  thread_read_count,
-                  read_lengths_buffer_1.data() + buffer_offset);
+              read_raw_string_block(input_path,
+                                    quality_buffer.data() + buffer_offset,
+                                    thread_read_count,
+                                    read_lengths_buffer_1.data() +
+                                        buffer_offset);
             } else {
-              bsc::BSC_str_array_decompress(
-                  input_path.c_str(), quality_buffer.data() + buffer_offset,
-                  thread_read_count,
-                  read_lengths_buffer_2.data() + buffer_offset);
+              read_raw_string_block(input_path,
+                                    quality_buffer.data() + buffer_offset,
+                                    thread_read_count,
+                                    read_lengths_buffer_2.data() +
+                                        buffer_offset);
             }
             safe_remove_file(input_path);
           }
@@ -777,7 +827,7 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
                            std::to_string(num_blocks_done + thread_id);
               decompress_id_block(
                   input_path.c_str(), id_buffer.data() + buffer_offset,
-                  thread_read_count, monolithic_id[stream_index]);
+                  thread_read_count, true);
               safe_remove_file(input_path);
             }
           }
@@ -864,17 +914,18 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
 
           std::string input_path =
               input_read_paths[stream_index] + "." + std::to_string(block_num);
-          safe_bsc_str_array_decompress(
-              input_path, read_buffer.data() + buffer_offset, thread_read_count,
-              read_lengths_buffer.data() + buffer_offset);
+            read_raw_string_block(input_path, read_buffer.data() + buffer_offset,
+                      thread_read_count,
+                      read_lengths_buffer.data() + buffer_offset);
           safe_remove_file(input_path);
 
           if (preserve_quality) {
             input_path = input_quality_paths[stream_index] + "." +
                          std::to_string(block_num);
-            safe_bsc_str_array_decompress(
-                input_path, quality_buffer.data() + buffer_offset,
-                thread_read_count, read_lengths_buffer.data() + buffer_offset);
+            read_raw_string_block(input_path,
+                                  quality_buffer.data() + buffer_offset,
+                                  thread_read_count,
+                                  read_lengths_buffer.data() + buffer_offset);
             safe_remove_file(input_path);
           }
           if (!preserve_id) {
@@ -892,7 +943,7 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
                            std::to_string(block_num);
               decompress_id_block(input_path.c_str(),
                                   id_buffer.data() + buffer_offset,
-                                  thread_read_count, false);
+                                  thread_read_count, true);
               safe_remove_file(input_path);
             }
           }
