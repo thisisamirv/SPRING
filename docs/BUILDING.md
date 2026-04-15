@@ -81,30 +81,24 @@ cmake --install build --prefix spring2
 
 ### Windows (native MinGW-w64)
 
-You can build using a standalone MinGW-w64 (UCRT) distribution and native CMake/Ninja.
-
-What to install (exact recommendations):
-
-- MinGW-w64 UCRT64 (standalone): get a winlibs MinGW build
-  <https://winlibs.com/> — download the latest "ucrt64" archive and extract it to C:\Program Files\mingw-w64\ucrt64\
-- CMake (>= 4.2): Windows installer from Kitware
-  <https://cmake.org/download/>
-- Ninja: download single `ninja.exe` binary and extract it to C:\Program Files\Ninja\
-  <https://github.com/ninja-build/ninja/releases>
-- NASM (assembler): Windows installer
-  <https://www.nasm.us/>
-- Gzip: required for gzipped FASTQ support. You can use the one included in Git for Windows or a standalone binary.
-  Ensure `gzip.exe` is in your PATH.
-
-Arrange PATH (temporary for current cmd session). Open a new `PowerShell` and run (adjust paths to where you installed/extracted):
+You can build using a standalone MinGW-w64 (UCRT) distribution and native CMake/Ninja:
 
 ```powershell
-$env:PATH="C:\Program Files\mingw-w64\ucrt64\bin;C:\Program Files\CMake\bin;C:\Program Files\Ninja\ninja.exe;$env:PATH"
+winget install --id BrechtSanders.WinLibs.MCF.UCRT -e
+winget install --id Kitware.CMake -e
+winget install --id Ninja-build.Ninja -e
+winget install --id NASM.NASM -e
+winget install --id Git.Git -e
+```
+
+Arrange PATH in `PowerShell`:
+
+```powershell
 $env:CC="gcc"
 $env:CXX="g++"
 ```
 
-Configure & build (native cmd) from the repo root:
+Configure & build from the repo root:
 
 ```powershell
 cmake -S . -B build -G Ninja

@@ -44,6 +44,8 @@
   * `src/fs_utils.h/cpp`: Granular filesystem helpers and RAII file management.
   * `src/params.h/cpp`: Serialization of compression parameters and metadata structures to resolve circular dependencies.
 * Refactored the core decompression engine in `src/decompress.cpp` and `src/decompress.h` into a stateful, sink-based architecture to support the new streaming reader while maintaining bit-perfect CLI backward compatibility.
+* Pruned indexed_bzip2 even more.
+* Made windows build process guide easier and more straightforward.
 * Consolidated all third-party dependency licenses into the central root `LICENSE` file for improved legal compliance and audit-readiness.
 
 ### Fixed
