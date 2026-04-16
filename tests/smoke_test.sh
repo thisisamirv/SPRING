@@ -52,6 +52,23 @@ cleanup() {
 trap cleanup EXIT
 trap on_error ERR
 
+ensure_smoke_binaries() {
+	if ! command -v cmake >/dev/null 2>&1; then
+		echo "cmake is required to build smoke-test binaries" >&2
+		exit 1
+	fi
+
+	if [[ ! -d "$BUILD_DIR" ]]; then
+		echo "Build directory not found: $BUILD_DIR" >&2
+		exit 1
+	fi
+
+	echo "Building smoke binaries (spring2, spring2-preview)..."
+	cmake --build "$BUILD_DIR" --target spring2 spring2-preview --parallel
+}
+
+ensure_smoke_binaries
+
 if [[ ! -x "$SPRING_BIN" ]]; then
 	echo "Expected built binary at $SPRING_BIN"
 	exit 1

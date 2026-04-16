@@ -843,7 +843,7 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
                            std::to_string(num_blocks_done + thread_id);
               decompress_id_block(
                   input_path.c_str(), id_buffer.data() + buffer_offset,
-                  thread_read_count, monolithic_id[stream_index]);
+                  thread_read_count, false);
               safe_remove_file(input_path);
             }
           }

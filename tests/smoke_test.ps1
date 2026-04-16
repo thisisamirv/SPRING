@@ -13,6 +13,24 @@ if (-not $SPRING_PREVIEW_BIN) { $SPRING_PREVIEW_BIN = Join-Path $BUILD_DIR "spri
 $SPRING_COMMAND_TIMEOUT_SECONDS = $env:SPRING_COMMAND_TIMEOUT_SECONDS
 if (-not $SPRING_COMMAND_TIMEOUT_SECONDS) { $SPRING_COMMAND_TIMEOUT_SECONDS = 0 }
 
+function Ensure-SmokeBinaries {
+    if (-not (Get-Command "cmake" -ErrorAction SilentlyContinue)) {
+        Write-Error "cmake is required to build smoke-test binaries"
+        exit 1
+    }
+
+    if (-not (Test-Path $BUILD_DIR)) {
+        Write-Error "Build directory not found: $BUILD_DIR"
+        exit 1
+    }
+
+    Write-Host "Building smoke binaries (spring2, spring2-preview)..." -ForegroundColor Cyan
+    & cmake --build $BUILD_DIR --target spring2 spring2-preview --parallel
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to build smoke-test binaries"
+    }
+}
+
 # Create a temporary working directory inside tests/output
 $tempBase = Join-Path $ROOT_DIR "tests\output\smoke-test."
 $uniqueId = [System.Guid]::NewGuid().ToString().Substring(0, 8)
@@ -193,6 +211,8 @@ function Initialize-SmokeInput {
 
 # Equivalent of 'trap' in Bash
 try {
+    Ensure-SmokeBinaries
+
     if (-not (Test-Path $SPRING_BIN)) {
         Write-Error "Expected built binary at $SPRING_BIN"
         exit 1
