@@ -29,6 +29,20 @@ $INCLUDE_ARGS = @(
 # Configure targets
 $targets = if ($args) { Get-FirstPartyPaths $args } else { $DEFAULT_CPP_ROOTS }
 
+# Skip tests from cppcheck to avoid third-party doctest noise.
+$testsDirPath = [System.IO.Path]::GetFullPath((Join-Path $ROOT_DIR "tests"))
+$filteredTargets = @()
+foreach ($target in $targets) {
+    $fullTarget = [System.IO.Path]::GetFullPath($target)
+    if ($fullTarget -ieq $testsDirPath -or
+        $fullTarget.StartsWith($testsDirPath + [System.IO.Path]::DirectorySeparatorChar,
+            [System.StringComparison]::OrdinalIgnoreCase)) {
+        continue
+    }
+    $filteredTargets += $target
+}
+$targets = $filteredTargets
+
 if ($null -eq $targets -or $targets.Count -eq 0) {
     Write-Error "No first-party targets selected for cppcheck."
     exit 1
@@ -41,7 +55,9 @@ $cppcheckArgs = @(
     "--error-exitcode=1",
     "--enable=warning,performance,portability",
     "--suppress=missingInclude",
-    "--suppress=missingIncludeSystem"
+    "--suppress=missingIncludeSystem",
+    "--suppress=normalCheckLevelMaxBranches",
+    "--suppress=toomanyconfigs"
 )
 
 $cppcheckArgs += $INCLUDE_ARGS

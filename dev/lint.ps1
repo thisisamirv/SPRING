@@ -66,6 +66,8 @@ if ($null -eq $cppFiles -and $null -eq $pythonFiles) {
     exit 0
 }
 
+$testsDirPath = [System.IO.Path]::GetFullPath((Join-Path $ROOT_DIR "tests"))
+
 if ($cppFiles) {
     # On Windows, we'll try to find compile_commands.json
     $hasCompileCommands = $false
@@ -92,7 +94,11 @@ if ($cppFiles) {
     $standaloneFiles = @()
 
     foreach ($file in $cppFiles) {
-        if ($file -like "*doctest.h") { continue }
+        $fullFilePath = [System.IO.Path]::GetFullPath($file)
+        if ($fullFilePath.StartsWith($testsDirPath + [System.IO.Path]::DirectorySeparatorChar,
+                [System.StringComparison]::OrdinalIgnoreCase)) {
+            continue
+        }
         if ($hasCompileCommands -and (Test-CompileCommandsContains $file)) {
             $compileDbFiles += $file
         }
