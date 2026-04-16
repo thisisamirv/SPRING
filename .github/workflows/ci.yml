@@ -69,19 +69,19 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          choco install -y cmake ninja nasm
-          Write-Host 'Downloading winlibs...'
-          $url = 'https://github.com/brechtsanders/winlibs_mingw/releases/' + `
-                 'download/15.2.0posix-14.0.0-ucrt-r7/' + `
-                 'winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-14.0.0-r7.zip'
-          $tmp = Join-Path $env:TEMP 'winlibs.zip'
-          Invoke-WebRequest -Uri $url -OutFile $tmp
-          Expand-Archive -Path $tmp -DestinationPath C:\mingw-w64
-          Remove-Item $tmp -Force
-          Write-Host 'Configuring PATH'
-          $gccbin = Get-ChildItem -Path C:\mingw-w64 -Filter gcc.exe `
-                    -Recurse | Select-Object -First 1 `
+          winget install --id BrechtSanders.WinLibs.MCF.UCRT -e
+          winget install --id Kitware.CMake -e
+          winget install --id Ninja-build.Ninja -e
+          winget install --id NASM.NASM -e
+          winget install --id Git.Git -e
+
+          Write-Host 'Configuring PATH for WinLibs GCC toolchain'
+          $gccbin = Get-ChildItem -Path "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" `
+                    -Filter gcc.exe -Recurse | Select-Object -First 1 `
                     -ExpandProperty DirectoryName
+          if (-not $gccbin) {
+            throw 'Unable to locate gcc.exe from WinLibs installation'
+          }
           Add-Content -Path $env:GITHUB_PATH -Value $gccbin
 
       - name: Configure on Linux
@@ -104,10 +104,9 @@ jobs:
       - name: Configure on Windows
         if: runner.os == 'Windows'
         shell: powershell
-        env:
-          CC: gcc
-          CXX: g++
         run: |
+          $env:CC="gcc"
+          $env:CXX="g++"
           cmake -S . -B build -G Ninja
 
       - name: Build on Linux and macOS
@@ -123,6 +122,8 @@ jobs:
           magick assets/icons/logo.png `
             -define icon:auto-resize=16,32,48,64,128,256 `
             assets/icons/logo.ico
+          $env:CC="gcc"
+          $env:CXX="g++"
           cmake --build build --parallel
           cmake --install build --prefix spring2
 
