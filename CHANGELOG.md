@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD024 -->
 # Changelog
 
-## V1.0.0-beta.1
+## V1.0.0-beta
 
 ### Added
 

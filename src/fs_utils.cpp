@@ -140,7 +140,14 @@ void create_tar_archive(const std::string &archive_path,
     archive_entry_set_perm(entry, 0644);
     archive_write_header(a, entry);
 
-    fd = open(full_path.c_str(), O_RDONLY | O_BINARY | O_CLOEXEC);
+    int open_flags = O_RDONLY;
+  #if defined(_WIN32) && defined(O_BINARY) && (O_BINARY != 0)
+    open_flags |= O_BINARY;
+  #endif
+  #if defined(O_CLOEXEC) && (O_CLOEXEC != 0)
+    open_flags |= O_CLOEXEC;
+  #endif
+    fd = open(full_path.c_str(), open_flags);
     if (fd >= 0) {
 #ifdef _WIN32
       len = _read(fd, buff, sizeof(buff));

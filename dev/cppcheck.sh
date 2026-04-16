@@ -34,4 +34,4 @@ cppcheck \
 	-I "$ROOT_DIR/vendor" \
 	-I "$ID_COMPRESSION_INCLUDE_DIR" \
 	-I "$QVZ_INCLUDE_DIR" \
-	"${targets[@]}"
+	"${targets[@]}" 2>&1 | awk '/^[[:space:]]*Checking[[:space:]]+/ { next } { print }'

@@ -63,5 +63,15 @@ $cppcheckArgs = @(
 $cppcheckArgs += $INCLUDE_ARGS
 $cppcheckArgs += $targets
 
-# Use & (call operator) to invoke the native command
-& cppcheck @cppcheckArgs
+# Run cppcheck and hide per-file "Checking ..." chatter while keeping
+# progress lines and diagnostics.
+& cppcheck @cppcheckArgs 2>&1 | ForEach-Object {
+    $line = $_.ToString()
+    if ($line -notmatch '^\s*Checking\s+') {
+        Write-Output $line
+    }
+}
+
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
