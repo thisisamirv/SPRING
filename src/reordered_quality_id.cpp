@@ -79,20 +79,6 @@ uint32_t batch_count_for_reads(const uint32_t total_reads,
   return (total_reads + batch_size - 1) / batch_size;
 }
 
-void write_raw_string_block(const std::string &output_path,
-                            std::string *strings,
-                            const uint32_t string_count,
-                            const uint32_t *string_lengths) {
-  std::ofstream output(output_path, std::ios::binary);
-  if (!output.is_open()) {
-    throw std::runtime_error("Failed to open raw string block output: " +
-                             output_path);
-  }
-  for (uint32_t i = 0; i < string_count; i++) {
-    output.write(strings[i].data(), string_lengths[i]);
-  }
-}
-
 std::string batch_temp_path(const std::string &input_path,
                             const uint32_t batch_index) {
   return input_path + ".batch." + std::to_string(batch_index);
@@ -221,8 +207,7 @@ void compress_block_batch(const std::string &input_path,
       if (mode == reorder_compress_mode::id) {
         compress_id_block(output_path.c_str(),
                           reordered_strings.data() + block_begin,
-                          reads_in_block, cp.encoding.compression_level,
-                          true /* pack_only */);
+                          reads_in_block, cp.encoding.compression_level);
         const uint64_t global_block_idx = block_offset + block_index;
         if (global_block_idx <
             compression_params::ReadMetadata::kFileLenThrSize) {
@@ -246,9 +231,9 @@ void compress_block_batch(const std::string &input_path,
                                reads_in_block, read_lengths.data(),
                                cp.quality.qvz_ratio);
         }
-        write_raw_string_block(output_path,
-                               reordered_strings.data() + block_begin,
-                               reads_in_block, read_lengths.data());
+        bsc::BSC_str_array_compress(output_path.c_str(),
+                                    reordered_strings.data() + block_begin,
+                                    reads_in_block, read_lengths.data());
       }
 
       block_index += num_threads;
@@ -461,15 +446,7 @@ void reorder_compress_quality_id(const std::string &temp_dir,
       }
       merged_out.close();
 
-      std::ifstream merged_in(merged_packed_path, std::ios::binary);
-      std::ofstream monolithic_out(monolithic_path, std::ios::binary);
-      if (!merged_in || !monolithic_out) {
-        throw std::runtime_error(
-            "Failed to write monolithic packed ID stream.");
-      }
-      monolithic_out << merged_in.rdbuf();
-      merged_in.close();
-      monolithic_out.close();
+      bsc::BSC_compress(merged_packed_path.c_str(), monolithic_path.c_str());
       safe_remove_file(merged_packed_path);
       safe_remove_file(id_paths[stream_index]);
     }

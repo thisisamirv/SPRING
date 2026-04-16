@@ -134,6 +134,7 @@ public:
       open_reference_chunk(chunk);
       start_offsets_.push_back(chunk.start_offset);
       chunks_.push_back(std::move(chunk));
+      total_size_ = next_start_offset;
     }
   }
 
@@ -171,19 +172,29 @@ private:
   [[nodiscard]] size_t find_chunk_index(const uint64_t offset) const {
     auto it = std::ranges::upper_bound(start_offsets_, offset);
     if (it == start_offsets_.begin()) {
-      throw std::runtime_error("Reference offset out of range");
+      throw std::runtime_error("Reference offset out of range (offset=" +
+                               std::to_string(offset) +
+                               ", total=" + std::to_string(total_size_) +
+                               ")");
     }
     size_t chunk_index =
         static_cast<size_t>(std::prev(it) - start_offsets_.begin());
     const auto &chunk = chunks_[chunk_index];
     if (offset >= chunk.start_offset + chunk.size) {
-      throw std::runtime_error("Reference offset out of range");
+      throw std::runtime_error("Reference offset out of range (offset=" +
+                               std::to_string(offset) +
+                               ", chunk_start=" +
+                               std::to_string(chunk.start_offset) +
+                               ", chunk_size=" + std::to_string(chunk.size) +
+                               ", total=" + std::to_string(total_size_) +
+                               ")");
     }
     return chunk_index;
   }
 
   std::vector<uint64_t> start_offsets_;
   std::vector<reference_chunk> chunks_;
+  uint64_t total_size_ = 0;
 };
 
 thread_range split_thread_range(const uint64_t item_count, const int thread_id,
@@ -453,8 +464,7 @@ bool decompress_and_slice_id(const std::string &temp_path_bsc,
   if (!std::filesystem::exists(temp_path_bsc))
     return false;
 
-  // ID streams are stored as packed payloads without BSC wrapping.
-  copy_binary_file(temp_path_bsc, packed_path);
+  safe_bsc_decompress(temp_path_bsc, packed_path);
 
   std::ifstream packed_in(packed_path, std::ios::binary);
   if (!packed_in)
@@ -728,7 +738,15 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
                     if (!f_pos_pair)
                       throw std::runtime_error("Corrupt archive: failed "
                                                "reading mate position delta");
-                    read_2_position = read_1_position + mate_position_delta_16;
+                    const int64_t mate_position_signed =
+                        static_cast<int64_t>(read_1_position) +
+                        static_cast<int64_t>(mate_position_delta_16);
+                    if (mate_position_signed < 0) {
+                      throw std::runtime_error(
+                          "Corrupt archive: negative mate position");
+                    }
+                    read_2_position =
+                        static_cast<uint64_t>(mate_position_signed);
                     if (!(f_RC_pair >> relative_orientation_flag))
                       throw std::runtime_error(
                           "Corrupt archive: failed reading relative mate "
@@ -798,17 +816,15 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
             input_path = input_quality_paths[stream_index] + "." +
                          std::to_string(num_blocks_done + thread_id);
             if (stream_index == 0) {
-              read_raw_string_block(input_path,
-                                    quality_buffer.data() + buffer_offset,
-                                    thread_read_count,
-                                    read_lengths_buffer_1.data() +
-                                        buffer_offset);
+              bsc::BSC_str_array_decompress(
+                  input_path.c_str(), quality_buffer.data() + buffer_offset,
+                  thread_read_count,
+                  read_lengths_buffer_1.data() + buffer_offset);
             } else {
-              read_raw_string_block(input_path,
-                                    quality_buffer.data() + buffer_offset,
-                                    thread_read_count,
-                                    read_lengths_buffer_2.data() +
-                                        buffer_offset);
+              bsc::BSC_str_array_decompress(
+                  input_path.c_str(), quality_buffer.data() + buffer_offset,
+                  thread_read_count,
+                  read_lengths_buffer_2.data() + buffer_offset);
             }
             safe_remove_file(input_path);
           }
@@ -827,7 +843,7 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
                            std::to_string(num_blocks_done + thread_id);
               decompress_id_block(
                   input_path.c_str(), id_buffer.data() + buffer_offset,
-                  thread_read_count, true);
+                  thread_read_count, monolithic_id[stream_index]);
               safe_remove_file(input_path);
             }
           }
@@ -914,7 +930,8 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
 
           std::string input_path =
               input_read_paths[stream_index] + "." + std::to_string(block_num);
-            read_raw_string_block(input_path, read_buffer.data() + buffer_offset,
+            read_raw_string_block(input_path,
+                      read_buffer.data() + buffer_offset,
                       thread_read_count,
                       read_lengths_buffer.data() + buffer_offset);
           safe_remove_file(input_path);
@@ -1007,6 +1024,13 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
           std::min(bytes_remaining, static_cast<uint64_t>(buffer.size()));
       monolithic_in.read(buffer.data(),
                          static_cast<std::streamsize>(bytes_to_read));
+      const uint64_t bytes_read =
+          static_cast<uint64_t>(monolithic_in.gcount());
+      if (bytes_read != bytes_to_read) {
+        throw std::runtime_error(
+            "Corrupt archive: truncated packed sequence stream while "
+            "slicing monolithic data");
+      }
       chunk_out.write(buffer.data(),
                       static_cast<std::streamsize>(bytes_to_read));
       bytes_remaining -= bytes_to_read;

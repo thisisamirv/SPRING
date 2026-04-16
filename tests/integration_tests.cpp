@@ -6,6 +6,10 @@
 #include <iostream>
 #include <string>
 
+#ifndef SPRING2_EXECUTABLE
+#define SPRING2_EXECUTABLE "spring2"
+#endif
+
 namespace fs = std::filesystem;
 using namespace spring;
 

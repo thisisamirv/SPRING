@@ -73,6 +73,8 @@ readonly TIDY_CHECKS="*,-fuchsia-*,-llvmlibc-*,-altera-*,-google-*,-cert-*,-llvm
 readonly ID_COMPRESSION_INCLUDE_DIR="$BUILD_DIR/vendor/id_compression/include"
 readonly QVZ_INCLUDE_DIR="$BUILD_DIR/vendor/qvz/include"
 readonly LIBDEFLATE_INCLUDE_DIR="$BUILD_DIR/vendor/libdeflate"
+readonly PTHASH_INCLUDE_DIR="$BUILD_DIR/vendor/pthash/include"
+readonly PTHASH_EXTERNAL_DIR="$BUILD_DIR/vendor/pthash/external"
 readonly EXTRA_INCLUDES=(
 	"$ROOT_DIR/src"
 	"$ROOT_DIR/vendor"
@@ -80,6 +82,11 @@ readonly EXTRA_INCLUDES=(
 	"$ID_COMPRESSION_INCLUDE_DIR"
 	"$LIBDEFLATE_INCLUDE_DIR"
 	"$QVZ_INCLUDE_DIR"
+	"$PTHASH_INCLUDE_DIR"
+	"$PTHASH_EXTERNAL_DIR/xxHash"
+	"$PTHASH_EXTERNAL_DIR/bits/include"
+	"$PTHASH_EXTERNAL_DIR/bits/external/essentials/include"
+	"$PTHASH_EXTERNAL_DIR/mm_file/include"
 )
 
 clang_tidy_common_args=(
@@ -162,8 +169,8 @@ while IFS= read -r file; do
 done < <(collect_python_sources "$@")
 
 if [[ ${#files[@]} -eq 0 && ${#python_files[@]} -eq 0 ]]; then
-	echo "No C/C++ or Python source files found." >&2
-	exit 1
+	echo "No C/C++ or Python source files found to lint."
+	exit 0
 fi
 
 compile_db_files=()

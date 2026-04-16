@@ -951,7 +951,8 @@ void decompress(const std::string &temp_dir,
         if (cp.read_info.quality_crc[i] != 0 &&
             qual_crc[i] != cp.read_info.quality_crc[i])
           mismatch = true;
-        if (cp.read_info.id_crc[i] != 0 && id_crc[i] != cp.read_info.id_crc[i])
+        if (cp.read_info.id_crc[i] != 0 &&
+            id_crc[i] != cp.read_info.id_crc[i])
           mismatch = true;
       }
 

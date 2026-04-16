@@ -18,6 +18,10 @@
 #define O_CLOEXEC 0
 #endif
 
+#ifndef O_BINARY
+#define O_BINARY 0
+#endif
+
 namespace spring {
 
 size_t get_directory_size(const std::string &temp_dir) {
@@ -136,7 +140,7 @@ void create_tar_archive(const std::string &archive_path,
     archive_entry_set_perm(entry, 0644);
     archive_write_header(a, entry);
 
-    fd = open(full_path.c_str(), O_RDONLY | O_CLOEXEC);
+    fd = open(full_path.c_str(), O_RDONLY | O_BINARY | O_CLOEXEC);
     if (fd >= 0) {
 #ifdef _WIN32
       len = _read(fd, buff, sizeof(buff));

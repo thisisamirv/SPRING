@@ -213,18 +213,12 @@ endif ()
 if (NOT CLANGD_CONTENT STREQUAL EXISTING_CLANGD_CONTENT)
     file(WRITE "${CMAKE_SOURCE_DIR}/.clangd" "${CLANGD_CONTENT}")
 endif ()
-if (WIN32)
-    # On Windows creating symbolic links often requires elevated privileges.
-    # Instead of creating a symbolic link during configure, add a build
-    # target that copies compile_commands.json from the build directory
-    # into the source tree after it is generated.
-    add_custom_target(copy_compile_commands
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_BINARY_DIR}/compile_commands.json" "${CMAKE_SOURCE_DIR}/compile_commands.json"
-        COMMENT "Copying compile_commands.json into source tree"
-    )
-else()
-    file(CREATE_LINK "${CMAKE_BINARY_DIR}/compile_commands.json" "${CMAKE_SOURCE_DIR}/compile_commands.json" SYMBOLIC)
-endif()
+# Keep compile_commands.json in the source tree as a regular file copy.
+# This avoids symlink permission/portability issues across platforms.
+add_custom_target(copy_compile_commands ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_BINARY_DIR}/compile_commands.json" "${CMAKE_SOURCE_DIR}/compile_commands.json"
+    COMMENT "Copying compile_commands.json into source tree"
+)
 
 # message(NOTICE "** CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
 # message(NOTICE "** CMAKE_C_FLAGS: ${CMAKE_C_FLAGS}")

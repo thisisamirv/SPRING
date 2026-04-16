@@ -440,7 +440,7 @@ void reorder_compress_streams(const std::string &temp_dir,
               (int64_t)position_by_read[read_index];
           int read_flag = 2;
           if (aligned_flags[read_index] && aligned_flags[mate_read_index] &&
-              std::abs(mate_position_delta) < 32767)
+              mate_position_delta >= 0 && mate_position_delta < 32767)
             read_flag = 0;
           else if (aligned_flags[read_index] && aligned_flags[mate_read_index])
             read_flag = 1;

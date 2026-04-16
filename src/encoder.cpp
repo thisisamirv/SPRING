@@ -50,11 +50,27 @@ uint64_t write_packed_sequence(const std::string &sequence_path,
   base_to_int[(uint8_t)'C'] = 1;
   base_to_int[(uint8_t)'G'] = 2;
   base_to_int[(uint8_t)'T'] = 3;
+  base_to_int[(uint8_t)'a'] = 0;
+  base_to_int[(uint8_t)'c'] = 1;
+  base_to_int[(uint8_t)'g'] = 2;
+  base_to_int[(uint8_t)'t'] = 3;
 
   constexpr size_t input_buffer_size = 1 << 16;
   std::ifstream sequence_input(sequence_path, std::ios::binary);
   std::ofstream packed_output(packed_path, std::ios::binary);
   std::ofstream tail_output(tail_path, std::ios::binary);
+  if (!sequence_input.is_open()) {
+    throw std::runtime_error("Failed to open sequence chunk for packing: " +
+                             sequence_path);
+  }
+  if (!packed_output.is_open()) {
+    throw std::runtime_error("Failed to open packed sequence output: " +
+                             packed_path);
+  }
+  if (!tail_output.is_open()) {
+    throw std::runtime_error("Failed to open sequence tail output: " +
+                             tail_path);
+  }
   std::array<char, input_buffer_size> input_buffer{};
   std::array<char, input_buffer_size / 4 + 1> packed_buffer{};
   std::array<char, 4> trailing_bases{};
@@ -98,6 +114,11 @@ uint64_t write_packed_sequence(const std::string &sequence_path,
       packed_byte |= (base_to_int[(uint8_t)trailing_bases[i]] << (2 * i));
     }
     packed_output.write(reinterpret_cast<const char *>(&packed_byte), 1);
+  }
+
+  if (!packed_output.good() || !tail_output.good()) {
+    throw std::runtime_error("Failed while writing packed sequence chunk: " +
+                             packed_path);
   }
 
   return sequence_length;
@@ -146,14 +167,29 @@ void pack_compress_seq(const encoder_global &encoder_state,
   // block.
   std::string monolithic_packed_path = encoder_state.outfile_seq + ".packed";
   std::ofstream monolithic_out(monolithic_packed_path, std::ios::binary);
+  if (!monolithic_out.is_open()) {
+    throw std::runtime_error("Failed to open monolithic packed sequence file: " +
+                             monolithic_packed_path);
+  }
+  std::array<char, 1 << 20> copy_buffer{};
   for (int tid = 0; tid < encoder_state.num_thr; tid++) {
     const sequence_pack_paths paths =
         make_sequence_pack_paths(encoder_state.outfile_seq, tid);
     std::ifstream chunk_in(paths.packed_path, std::ios::binary);
     if (chunk_in.is_open()) {
-      monolithic_out << chunk_in.rdbuf();
+      while (chunk_in.read(copy_buffer.data(), copy_buffer.size())) {
+        const std::streamsize bytes = chunk_in.gcount();
+        monolithic_out.write(copy_buffer.data(), bytes);
+      }
+      const std::streamsize tail_bytes = chunk_in.gcount();
+      if (tail_bytes > 0) {
+        monolithic_out.write(copy_buffer.data(), tail_bytes);
+      }
       chunk_in.close();
       safe_remove_file(paths.packed_path);
+    } else {
+      throw std::runtime_error("Failed to open packed sequence chunk: " +
+                               paths.packed_path);
     }
   }
   monolithic_out.close();
@@ -188,13 +224,23 @@ void rewrite_thread_order_file(
 std::string buildcontig(std::list<contig_reads> &current_contig,
                         const uint32_t &list_size) {
   static const char base_char_lookup[5] = {'A', 'C', 'G', 'T', 'N'};
-  static const long base_index_lookup[128] = {
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0, 1, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 3, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  auto base_index = [](const uint8_t base) -> uint8_t {
+    switch (base) {
+    case 'A':
+    case 'a':
+      return 0;
+    case 'C':
+    case 'c':
+      return 1;
+    case 'G':
+    case 'g':
+      return 2;
+    case 'T':
+    case 't':
+      return 3;
+    default:
+      return 4;
+    }
   };
   if (list_size == 1)
     return (current_contig.front()).read;
@@ -232,9 +278,9 @@ std::string buildcontig(std::list<contig_reads> &current_contig,
     for (size_t i = 0;
          i < static_cast<size_t>((*current_contig_it).read_length); ++i) {
       const size_t idx = static_cast<size_t>(current_position) + i;
-      uint8_t base_idx =
-          base_index_lookup[(uint8_t)(*current_contig_it).read[i]];
-      if (base_counts[idx][base_idx] < 65535) {
+      const uint8_t base_idx =
+          base_index(static_cast<uint8_t>((*current_contig_it).read[i]));
+      if (base_idx < 4 && base_counts[idx][base_idx] < 65535) {
         base_counts[idx][base_idx] += 1;
       }
     }
