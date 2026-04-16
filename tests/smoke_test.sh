@@ -5,7 +5,10 @@ set -e
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
 ASSET_DIR="$ROOT_DIR/assets/sample-data"
-BUILD_DIR="$ROOT_DIR/build"
+BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/build}"
+if [[ "$BUILD_DIR" != /* ]]; then
+	BUILD_DIR="$ROOT_DIR/$BUILD_DIR"
+fi
 SPRING_BIN="${SPRING_BIN:-$BUILD_DIR/spring2}"
 SPRING_PREVIEW_BIN="${SPRING_PREVIEW_BIN:-$BUILD_DIR/spring2-preview}"
 SPRING_BIN_CMD=()

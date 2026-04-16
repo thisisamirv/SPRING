@@ -59,6 +59,8 @@ jobs:
           cmake --build $BUILD_DIR -j
 
       - name: Run all tests (Unit + Smoke) with Sanitizers
+        env:
+          BUILD_DIR: ${{ github.workspace }}/${{ matrix.build_dir }}
         run: ctest --test-dir ${{ matrix.build_dir }} --output-on-failure
 
       - name: Upload logs on failure

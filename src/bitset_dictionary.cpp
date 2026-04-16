@@ -4,6 +4,7 @@
 #include "bitset_dictionary.h"
 #include "params.h"
 #include <cstdint>
+#include <iterator>
 #include <utility>
 
 namespace spring {
@@ -74,10 +75,13 @@ void bbhashdict::remove(const int64_t *dictidx, const uint64_t &startposidx,
     return;
   }
 
-  const int64_t remove_offset =
-      std::lower_bound(read_id.get() + bin_begin, read_id.get() + logical_end,
-                       read_id_to_remove) -
-      (read_id.get() + bin_begin);
+    uint32_t *const read_ids = read_id.get();
+    uint32_t *const bin_begin_it = read_ids + bin_begin;
+    uint32_t *const logical_end_it = read_ids + logical_end;
+    const auto remove_it = std::lower_bound(
+      bin_begin_it, logical_end_it, read_id_to_remove,
+      [](const uint32_t lhs, const int64_t rhs) { return std::cmp_less(lhs, rhs); });
+    const int64_t remove_offset = std::distance(bin_begin_it, remove_it);
 
   for (int64_t index = bin_begin + remove_offset; index < logical_end - 1;
        index++) {

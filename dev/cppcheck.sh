@@ -29,6 +29,8 @@ cppcheck \
 	--enable=warning,performance,portability \
 	--suppress=missingInclude \
 	--suppress=missingIncludeSystem \
+	--suppress=normalCheckLevelMaxBranches \
+	--suppress=toomanyconfigs \
 	--suppress="*:$ROOT_DIR/tests/doctest.h" \
 	-I "$ROOT_DIR/src" \
 	-I "$ROOT_DIR/vendor" \

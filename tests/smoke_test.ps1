@@ -3,7 +3,10 @@ $ErrorActionPreference = "Stop"
 $SCRIPT_DIR = $PSScriptRoot
 $ROOT_DIR = (Get-Item "$SCRIPT_DIR\..").FullName
 $ASSET_DIR = Join-Path $ROOT_DIR "assets\sample-data"
-$BUILD_DIR = Join-Path $ROOT_DIR "build"
+$BUILD_DIR = if ($env:BUILD_DIR) { $env:BUILD_DIR } else { Join-Path $ROOT_DIR "build" }
+if (-not [System.IO.Path]::IsPathRooted($BUILD_DIR)) {
+    $BUILD_DIR = Join-Path $ROOT_DIR $BUILD_DIR
+}
 $SPRING_BIN = $env:SPRING_BIN
 if (-not $SPRING_BIN) { $SPRING_BIN = Join-Path $BUILD_DIR "spring2.exe" }
 

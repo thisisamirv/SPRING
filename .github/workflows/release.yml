@@ -119,20 +119,48 @@ jobs:
         if: matrix.name == 'windows'
         shell: powershell
         run: |
-          winget install --id BrechtSanders.WinLibs.MCF.UCRT -e
-          winget install --id Kitware.CMake -e
-          winget install --id Ninja-build.Ninja -e
-          winget install --id NASM.NASM -e
-          winget install --id Git.Git -e
+          $wingetFlags = @(
+            "--source", "winget",
+            "--exact",
+            "--accept-source-agreements",
+            "--accept-package-agreements",
+            "--disable-interactivity"
+          )
+
+          winget install --id BrechtSanders.WinLibs.MCF.UCRT @wingetFlags
+          winget install --id Ninja-build.Ninja @wingetFlags
+          winget install --id NASM.NASM @wingetFlags
+          winget install --id Git.Git @wingetFlags
 
           Write-Host 'Configuring PATH for WinLibs GCC toolchain'
-          $gccbin = Get-ChildItem -Path "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" `
-                    -Filter gcc.exe -Recurse | Select-Object -First 1 `
-                    -ExpandProperty DirectoryName
-          if (-not $gccbin) {
-            throw 'Unable to locate gcc.exe from WinLibs installation'
+          $searchRoots = @(
+            "$env:LOCALAPPDATA\Microsoft\WinGet\Packages",
+            "$env:LOCALAPPDATA\Microsoft\WinGet\Links",
+            "$env:ProgramFiles\WinLibs",
+            "$env:ProgramFiles\mingw64",
+            "$env:SystemDrive\mingw64"
+          ) | Where-Object { Test-Path $_ }
+
+          $gcc = $null
+          foreach ($root in $searchRoots) {
+            $gcc = Get-ChildItem -Path $root -Filter gcc.exe -Recurse -File -ErrorAction SilentlyContinue |
+              Select-Object -First 1
+            if ($gcc) { break }
           }
-          Add-Content -Path $env:GITHUB_PATH -Value $gccbin
+
+          if (-not $gcc) {
+            throw 'Unable to locate gcc.exe after WinLibs installation'
+          }
+
+          Add-Content -Path $env:GITHUB_PATH -Value $gcc.DirectoryName
+
+          # Install pinned CMake in a Python virtualenv and prepend it to PATH.
+          $cmakeVenv = Join-Path $env:RUNNER_TEMP "cmake-venv"
+          py -3 -m venv $cmakeVenv
+          & "$cmakeVenv\Scripts\python.exe" -m pip install --upgrade pip
+          & "$cmakeVenv\Scripts\python.exe" -m pip install "cmake==4.2.0"
+          Add-Content -Path $env:GITHUB_PATH -Value "$cmakeVenv\Scripts"
+          & "$cmakeVenv\Scripts\cmake.exe" --version
 
       # Build jobs (Non-Windows)
       - name: Configure (macOS)
