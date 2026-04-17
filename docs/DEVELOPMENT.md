@@ -35,6 +35,32 @@ We use `clang-format` and several custom lint scripts. You can run the convenien
 ./dev/lint.sh
 ```
 
+### Compiler Cache (Faster Rebuilds)
+
+For faster incremental development builds, SPRING2 supports compiler cache launchers during CMake configure:
+
+- Windows: `sccache`
+- Linux/macOS: `ccache` (falls back to `sccache` if `ccache` is unavailable)
+
+This behavior is enabled by default with `-DSPRING_ENABLE_COMPILER_CACHE=ON`.
+
+Install suggestions:
+
+- Linux (Debian/Ubuntu): `sudo apt-get install -y ccache`
+- macOS (Homebrew): `brew install ccache`
+- Windows (winget): `winget install --id Mozilla.sccache -e`
+
+Disable compiler cache explicitly (if needed):
+
+```bash
+cmake -S . -B build -G Ninja -DSPRING_ENABLE_COMPILER_CACHE=OFF
+```
+
+Check cache stats:
+
+- `ccache -s` (Linux/macOS)
+- `sccache --show-stats` (Windows, or any platform using `sccache`)
+
 ### Unit and Integration Tests
 
 We use the **doctest** framework for both granular unit testing and high-level integration testing. You can build and run all tests using standard CMake/CTest workflows:

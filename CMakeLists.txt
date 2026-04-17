@@ -7,6 +7,23 @@ set(CMAKE_MESSAGE_LOG_LEVEL NOTICE)
 
 project (SPRING2)
 
+option(SPRING_ENABLE_COMPILER_CACHE "Use sccache/ccache as compiler launcher when available" ON)
+if (SPRING_ENABLE_COMPILER_CACHE)
+    if (WIN32)
+        find_program(SPRING_COMPILER_CACHE_PROGRAM NAMES sccache)
+    else ()
+        find_program(SPRING_COMPILER_CACHE_PROGRAM NAMES ccache sccache)
+    endif ()
+
+    if (SPRING_COMPILER_CACHE_PROGRAM)
+        message(NOTICE "Using compiler cache launcher: ${SPRING_COMPILER_CACHE_PROGRAM}")
+        set(CMAKE_C_COMPILER_LAUNCHER "${SPRING_COMPILER_CACHE_PROGRAM}" CACHE STRING "C compiler launcher" FORCE)
+        set(CMAKE_CXX_COMPILER_LAUNCHER "${SPRING_COMPILER_CACHE_PROGRAM}" CACHE STRING "CXX compiler launcher" FORCE)
+    else ()
+        message(NOTICE "Compiler cache requested, but no sccache/ccache executable was found on PATH.")
+    endif ()
+endif ()
+
 # The project is validated against GCC and Clang toolchains.
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)

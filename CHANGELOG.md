@@ -21,6 +21,7 @@
 * Added a suite of unit tests in `tests/unit_tests.cpp` covering core utility functions (sequence manipulation, parsing, string helpers).
 * Integrated both unit and smoke tests into the unified `ctest` workflow.
 * Implemented a native Windows backend for `MmapView` in `src/raii.h`, enabling high-performance memory-mapped I/O on Windows.
+* Added automatic compiler-cache launcher support in CMake (`SPRING_ENABLE_COMPILER_CACHE`, default ON).
 
 ### Changed
 
