@@ -115,6 +115,13 @@ function Invoke-Spring {
         $cmdArgs = @($env:SPRING_TEST_ARGS.Split(" ", [System.StringSplitOptions]::RemoveEmptyEntries)) + $cmdArgs
     }
 
+    if ($exe -notmatch "preview") {
+        $hasVerboseFlag = $cmdArgs -contains "-v" -or $cmdArgs -contains "--verbose"
+        if (-not $hasVerboseFlag) {
+            $cmdArgs = @("-v", "debug") + $cmdArgs
+        }
+    }
+
     if (-not $exe) { 
         Write-Error "No Spring binary specified or found."
         return 

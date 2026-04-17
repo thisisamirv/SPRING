@@ -103,6 +103,16 @@ fi
 
 run_spring() {
 	local cmd=("${SPRING_BIN_CMD[@]}" "${SPRING_TEST_ARGS_CMD[@]}" "$@")
+	local has_verbose=0
+	for arg in "${cmd[@]}"; do
+		if [[ "$arg" == "-v" || "$arg" == "--verbose" ]]; then
+			has_verbose=1
+			break
+		fi
+	done
+	if [[ "$has_verbose" -eq 0 ]]; then
+		cmd=("${SPRING_BIN_CMD[@]}" -v debug "${SPRING_TEST_ARGS_CMD[@]}" "$@")
+	fi
 	if [[ "$SPRING_COMMAND_TIMEOUT_SECONDS" -gt 0 ]] && command -v timeout >/dev/null 2>&1; then
 		timeout "$SPRING_COMMAND_TIMEOUT_SECONDS" "${cmd[@]}"
 	else

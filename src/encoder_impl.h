@@ -898,6 +898,18 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
                     std::to_string(cp.encoding.num_thr) +
                     ", total_seq_bases=" + std::to_string(total_seq_bases));
 
+  if (total_seq_bases == 0) {
+    Logger::log_debug("block_id=enc-main, Skipping sequence packing: no sequence bases to compress.");
+    std::ofstream empty_seq_output(eg.outfile_seq + ".bsc",
+                                   std::ios::binary | std::ios::trunc);
+    if (!empty_seq_output.is_open()) {
+      throw std::runtime_error("Failed to create empty sequence archive: " +
+                               eg.outfile_seq + ".bsc");
+    }
+    empty_seq_output.close();
+    return;
+  }
+
   // Generate per-thread .bsc sequence blocks as expected by the decompressor.
   pack_compress_seq(eg, file_len_seq_thr.data());
 

@@ -4,6 +4,7 @@
 #include "encoder.h"
 #include "core_utils.h"
 #include "fs_utils.h"
+#include "progress.h"
 #include "libbsc/bsc.h"
 #include <array>
 #include <cstdint>
@@ -45,7 +46,7 @@ sequence_pack_paths make_sequence_pack_paths(const std::string &base_path,
 uint64_t write_packed_sequence(const std::string &sequence_path,
                                const std::string &packed_path,
                                const std::string &tail_path) {
-  uint8_t base_to_int[128] = {};
+  std::array<uint8_t, 256> base_to_int{};
   base_to_int[(uint8_t)'A'] = 0;
   base_to_int[(uint8_t)'C'] = 1;
   base_to_int[(uint8_t)'G'] = 2;
@@ -129,10 +130,16 @@ void pack_sequence_chunk(const encoder_global &encoder_state,
                          uint64_t *thread_sequence_lengths) {
   const sequence_pack_paths paths =
       make_sequence_pack_paths(encoder_state.outfile_seq, thread_id);
+  Logger::log_debug("block_id=enc-pack-chunk-" + std::to_string(thread_id) +
+                    ", pack_sequence_chunk start: input=" + paths.input_path +
+                    ", packed=" + paths.packed_path);
 
   const uint64_t sequence_length = write_packed_sequence(
       paths.input_path, paths.packed_path, paths.tail_path);
   thread_sequence_lengths[thread_id] = sequence_length;
+  Logger::log_debug("block_id=enc-pack-chunk-" + std::to_string(thread_id) +
+                    ", pack_sequence_chunk done: seq_bases=" +
+                    std::to_string(sequence_length));
   safe_remove_file(paths.input_path);
 }
 
@@ -155,23 +162,26 @@ void pack_compress_seq(const encoder_global &encoder_state,
                        uint64_t *thread_sequence_lengths) {
   if (encoder_state.num_thr <= 0)
     return;
-#pragma omp parallel num_threads(encoder_state.num_thr)
-  {
-    int tid = omp_get_thread_num();
-    if (tid < encoder_state.num_thr) {
-      pack_sequence_chunk(encoder_state, tid, thread_sequence_lengths);
-    }
+  Logger::log_debug("block_id=enc-pack-main, pack_compress_seq start: threads=" +
+                    std::to_string(encoder_state.num_thr));
+  // This stage is I/O-heavy and only processes one chunk per thread output
+  // file. Running it sequentially avoids rare OpenMP-runtime crashes on large
+  // Windows workloads while preserving deterministic behavior.
+  for (int tid = 0; tid < encoder_state.num_thr; tid++) {
+    pack_sequence_chunk(encoder_state, tid, thread_sequence_lengths);
   }
+  Logger::log_debug("block_id=enc-pack-main, per-thread packing complete.");
 
   // Concatenate all thread-local packed files and compress as one monolithic
   // block.
   std::string monolithic_packed_path = encoder_state.outfile_seq + ".packed";
+  std::string monolithic_compressed_path = encoder_state.outfile_seq + ".bsc";
   std::ofstream monolithic_out(monolithic_packed_path, std::ios::binary);
   if (!monolithic_out.is_open()) {
     throw std::runtime_error("Failed to open monolithic packed sequence file: " +
                              monolithic_packed_path);
   }
-  std::array<char, 1 << 20> copy_buffer{};
+  std::vector<char> copy_buffer(1 << 20);
   for (int tid = 0; tid < encoder_state.num_thr; tid++) {
     const sequence_pack_paths paths =
         make_sequence_pack_paths(encoder_state.outfile_seq, tid);
@@ -193,10 +203,39 @@ void pack_compress_seq(const encoder_global &encoder_state,
     }
   }
   monolithic_out.close();
+  Logger::log_debug("block_id=enc-pack-main, monolithic packed file assembled: path=" +
+                    monolithic_packed_path);
 
-  std::string monolithic_compressed_path = encoder_state.outfile_seq + ".bsc";
+  {
+    std::ifstream packed_size_check(monolithic_packed_path,
+                                    std::ios::binary | std::ios::ate);
+    if (!packed_size_check.is_open()) {
+      throw std::runtime_error(
+          "Failed to reopen monolithic packed sequence file: " +
+          monolithic_packed_path);
+    }
+    if (packed_size_check.tellg() <= 0) {
+      packed_size_check.close();
+      std::ofstream empty_out(monolithic_compressed_path,
+                              std::ios::binary | std::ios::trunc);
+      if (!empty_out.is_open()) {
+        throw std::runtime_error(
+            "Failed to create empty compressed sequence file: " +
+            monolithic_compressed_path);
+      }
+      empty_out.close();
+      safe_remove_file(monolithic_packed_path);
+      return;
+    }
+    packed_size_check.close();
+  }
+
+  Logger::log_debug("block_id=enc-pack-main, invoking BSC_compress: input=" +
+                    monolithic_packed_path + ", output=" +
+                    monolithic_compressed_path);
   bsc::BSC_compress(monolithic_packed_path.c_str(),
                     monolithic_compressed_path.c_str());
+  Logger::log_debug("block_id=enc-pack-main, BSC_compress complete.");
   safe_remove_file(monolithic_packed_path);
 }
 
