@@ -84,6 +84,25 @@ Disable this behavior explicitly (if needed):
 cmake -S . -B build -G Ninja -DSPRING_ENABLE_FAST_LINKER=OFF
 ```
 
+### Precompiled Headers (PCH)
+
+SPRING2 uses precompiled headers to accelerate incremental rebuilds, enabled by default with `-DSPRING_ENABLE_PRECOMPILED_HEADERS=ON`.
+
+The precompiled header (`src/pch.h`) includes stable, frequently-used headers:
+
+- Standard library containers (`<vector>`, `<string>`, `<array>`)
+- I/O utilities (`<iostream>`, `<fstream>`, `<iomanip>`)
+- File system and concurrency (`<filesystem>`, `<mutex>`, `<thread>`, `<atomic>`)
+- OpenMP (`<omp.h>`)
+
+When enabled, CMake compiles this header once and caches it, significantly reducing compile time on subsequent rebuilds. The improvement is especially noticeable after touching a few files or after clean configuration, where PCH cache is reused across translation units.
+
+Disable precompiled headers explicitly (if needed):
+
+```bash
+cmake -S . -B build -G Ninja -DSPRING_ENABLE_PRECOMPILED_HEADERS=OFF
+```
+
 ### Unit and Integration Tests
 
 We use the **doctest** framework for both granular unit testing and high-level integration testing. You can build and run all tests using standard CMake/CTest workflows:

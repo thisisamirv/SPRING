@@ -23,6 +23,7 @@
 * Implemented a native Windows backend for `MmapView` in `src/raii.h`, enabling high-performance memory-mapped I/O on Windows.
 * Added automatic compiler-cache launcher support in CMake (`SPRING_ENABLE_COMPILER_CACHE`, default ON).
 * Added automatic fast-linker selection in CMake (`SPRING_ENABLE_FAST_LINKER`, default ON), preferring `mold` on Linux and falling back to `lld` where supported.
+* Added precompiled header support in CMake (`SPRING_ENABLE_PRECOMPILED_HEADERS`, default ON) to accelerate incremental rebuilds by caching stable headers (`src/pch.h`).
 
 ### Changed
 

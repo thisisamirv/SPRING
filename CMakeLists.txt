@@ -449,6 +449,14 @@ endif()
 add_executable (spring2 ${source_dir}/main.cpp ${core_source_files} ${win_resources})
 add_executable (spring2-preview ${source_dir}/preview_main.cpp ${core_source_files} ${win_resources})
 
+# Configure precompiled headers for faster incremental builds
+option(SPRING_ENABLE_PRECOMPILED_HEADERS "Use precompiled headers to speed up compilation" ON)
+if (SPRING_ENABLE_PRECOMPILED_HEADERS)
+    target_precompile_headers(spring2 PRIVATE ${source_dir}/pch.h)
+    target_precompile_headers(spring2-preview PRIVATE ${source_dir}/pch.h)
+    message(NOTICE "Precompiled headers enabled for faster rebuilds")
+endif ()
+
 # Spring headers live in src/, while vendor/ exposes bundled libraries such
 # as BBHash, libbsc, id_compression, qvz, and the vendored libdeflate sources.
 target_include_directories(spring2 PRIVATE ${include_dir})
@@ -702,6 +710,9 @@ add_dependencies(dev-valgrind-smoke spring2)
 # Unit testing integration using doctest.
 enable_testing()
 add_executable(spring2-tests tests/unit_tests.cpp ${core_source_files})
+if (SPRING_ENABLE_PRECOMPILED_HEADERS)
+    target_precompile_headers(spring2-tests PRIVATE ${source_dir}/pch.h)
+endif ()
 target_include_directories(spring2-tests PRIVATE ${include_dir} ${vendor_dir} tests)
 target_link_libraries(spring2-tests PRIVATE ${spring_libs})
 if (TARGET OpenMP::OpenMP_CXX)
@@ -714,6 +725,9 @@ target_compile_definitions(spring2-tests PRIVATE SPRING_RAPIDGZIP_EXECUTABLE=\"$
 add_test(NAME unit_tests COMMAND spring2-tests)
 
 add_executable(integration-tests tests/integration_tests.cpp ${core_source_files})
+if (SPRING_ENABLE_PRECOMPILED_HEADERS)
+    target_precompile_headers(integration-tests PRIVATE ${source_dir}/pch.h)
+endif ()
 target_include_directories(integration-tests PRIVATE ${include_dir} ${vendor_dir} tests)
 target_link_libraries(integration-tests PRIVATE ${spring_libs})
 if (OpenMP_CXX_FOUND)
