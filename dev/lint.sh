@@ -173,6 +173,71 @@ if [[ ${#files[@]} -eq 0 && ${#python_files[@]} -eq 0 ]]; then
 	exit 0
 fi
 
+tidy_db_dir="$BUILD_DIR"
+
+sanitize_compile_commands_for_tidy() {
+	local source_db="$1"
+	local target_db="$2"
+
+	python3 - "$source_db" "$target_db" <<'PY'
+import json
+import pathlib
+import shlex
+import sys
+
+
+def _is_pch_flag(arg: str) -> bool:
+	lower = arg.lower()
+	return "cmake_pch.h" in lower
+
+
+def _sanitize_args(args):
+	sanitized = []
+	i = 0
+	while i < len(args):
+		arg = args[i]
+
+		if arg in ("-include", "-include-pch") and i + 1 < len(args):
+			if _is_pch_flag(args[i + 1]):
+				i += 2
+				continue
+
+		if arg.startswith("-include-pch") and _is_pch_flag(arg):
+			i += 1
+			continue
+
+		if arg.startswith("-include") and _is_pch_flag(arg):
+			i += 1
+			continue
+
+		sanitized.append(arg)
+		i += 1
+	return sanitized
+
+
+src_path = pathlib.Path(sys.argv[1])
+dst_path = pathlib.Path(sys.argv[2])
+entries = json.loads(src_path.read_text(encoding="utf-8"))
+
+for entry in entries:
+	if "arguments" in entry and isinstance(entry["arguments"], list):
+		entry["arguments"] = _sanitize_args(entry["arguments"])
+		continue
+
+	command = entry.get("command")
+	if isinstance(command, str) and command.strip():
+		try:
+			split = shlex.split(command)
+			entry["command"] = shlex.join(_sanitize_args(split))
+		except ValueError:
+			# Keep original command when shell parsing fails.
+			pass
+
+dst_path.parent.mkdir(parents=True, exist_ok=True)
+dst_path.write_text(json.dumps(entries, indent=2), encoding="utf-8")
+PY
+}
+
 compile_db_files=()
 standalone_files=()
 
@@ -181,6 +246,12 @@ if [[ ${#files[@]} -gt 0 ]]; then
 		standalone_files=("${files[@]}")
 	else
 		require_compile_commands
+
+		tidy_db_dir="$BUILD_DIR/tidy_db"
+		tidy_compile_commands="$tidy_db_dir/compile_commands.json"
+		echo "Sanitizing compilation database for clang-tidy..."
+		sanitize_compile_commands_for_tidy "$COMPILE_COMMANDS" "$tidy_compile_commands"
+		COMPILE_COMMANDS="$tidy_compile_commands"
 
 		for file in "${files[@]}"; do
 			if compile_commands_contains "$file"; then
@@ -195,7 +266,7 @@ fi
 if [[ -n "${compile_db_files+set}" && ${#compile_db_files[@]} -gt 0 ]]; then
 	run_clang_tidy \
 		"${clang_tidy_common_args[@]}" \
-		-p "$BUILD_DIR" \
+		-p "$tidy_db_dir" \
 		"${compile_db_files[@]}"
 fi
 

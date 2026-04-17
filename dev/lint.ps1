@@ -81,6 +81,13 @@ if ($cppFiles) {
         $sanitizedContent = $sanitizedContent -replace '-fmodules-ts', ''
         $sanitizedContent = $sanitizedContent -replace '-fmodule-mapper=[^ "]+', ''
         $sanitizedContent = $sanitizedContent -replace '-fdeps-format=[^ "]+', ''
+        # Strip CMake PCH include flags so clang-tidy does not consume stale
+        # compiler-version-specific .pch artifacts.
+        $sanitizedContent = $sanitizedContent -replace '-include-pch\s+"?[^"]*cmake_pch\.(h|hxx)\.pch"?', ''
+        $sanitizedContent = $sanitizedContent -replace '-include\s+"?[^"]*cmake_pch\.(h|hxx)"?', ''
+        $sanitizedContent = $sanitizedContent -replace '-include-pch"?[^"]*cmake_pch\.(h|hxx)\.pch"?', ''
+        $sanitizedContent = $sanitizedContent -replace '-include"?[^"]*cmake_pch\.(h|hxx)"?', ''
+        $sanitizedContent = $sanitizedContent -replace '\s+', ' '
         
         $tidyDbDir = Join-Path $BUILD_DIR "tidy_db"
         if (-not (Test-Path $tidyDbDir)) { New-Item -ItemType Directory -Path $tidyDbDir -Force | Out-Null }
