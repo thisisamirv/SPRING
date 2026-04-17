@@ -4,7 +4,6 @@ set -euo pipefail
 
 # shellcheck source=dev/common.sh
 source "$(cd -- "$(dirname -- "$0")" && pwd)/common.sh"
-
 require_command python3
 
 is_msys_windows=false

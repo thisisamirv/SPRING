@@ -225,8 +225,7 @@ void decode_unaligned_reads(const std::string &path,
       'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N'};
 
 #pragma omp parallel for schedule(static)
-  for (int read_index = 0; read_index < static_cast<int>(expected_read_count);
-       ++read_index) {
+  for (size_t read_index = 0; read_index < expected_read_count; ++read_index) {
     const uint16_t read_length = decoded_lengths[read_index];
     const uint8_t *encoded_read = reinterpret_cast<const uint8_t *>(
         encoded.data() + encoded_offsets[read_index]);

@@ -83,10 +83,10 @@ if ($cppFiles) {
         $sanitizedContent = $sanitizedContent -replace '-fdeps-format=[^ "]+', ''
         # Strip CMake PCH include flags so clang-tidy does not consume stale
         # compiler-version-specific .pch artifacts.
-        $sanitizedContent = $sanitizedContent -replace '-include-pch\s+"?[^"]*cmake_pch\.(h|hxx)\.pch"?', ''
-        $sanitizedContent = $sanitizedContent -replace '-include\s+"?[^"]*cmake_pch\.(h|hxx)"?', ''
-        $sanitizedContent = $sanitizedContent -replace '-include-pch"?[^"]*cmake_pch\.(h|hxx)\.pch"?', ''
-        $sanitizedContent = $sanitizedContent -replace '-include"?[^"]*cmake_pch\.(h|hxx)"?', ''
+        $sanitizedContent = $sanitizedContent -replace '-include-pch\s+"?[^"]*cmake_pch\.(hxx|h)\.pch"?', ''
+        $sanitizedContent = $sanitizedContent -replace '-include\s+"?[^"]*cmake_pch\.(hxx|h)"?', ''
+        $sanitizedContent = $sanitizedContent -replace '-include-pch"?[^"]*cmake_pch\.(hxx|h)\.pch"?', ''
+        $sanitizedContent = $sanitizedContent -replace '-include"?[^"]*cmake_pch\.(hxx|h)"?', ''
         $sanitizedContent = $sanitizedContent -replace '\s+', ' '
         
         $tidyDbDir = Join-Path $BUILD_DIR "tidy_db"
@@ -116,7 +116,11 @@ if ($cppFiles) {
 
     if ($compileDbFiles) {
         Write-Host "Linting $($compileDbFiles.Count) files via compilation database..." -ForegroundColor Cyan
-        $tidyArgs = $commonTidyArgs + @("-p", "$tidyDbDir") + $compileDbFiles
+        $compileDbIncludeArgs = @()
+        foreach ($inc in $EXTRA_INCLUDES) {
+            $compileDbIncludeArgs += "--extra-arg=-I$inc"
+        }
+        $tidyArgs = $commonTidyArgs + @("-p", "$tidyDbDir") + $compileDbIncludeArgs + $compileDbFiles
         
         $oldPreference = $ErrorActionPreference
         $ErrorActionPreference = 'SilentlyContinue'
