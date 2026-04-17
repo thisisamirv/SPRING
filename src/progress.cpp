@@ -9,13 +9,27 @@
 namespace spring {
 
 namespace {
-bool g_verbose = true;
+log_level g_log_level = log_level::quiet;
 ProgressBar *g_global_progress_bar = nullptr;
 } // namespace
 
-void Logger::set_verbose(bool verbose) { g_verbose = verbose; }
+void Logger::set_level(log_level level) { g_log_level = level; }
 
-bool Logger::is_verbose() { return g_verbose; }
+log_level Logger::level() { return g_log_level; }
+
+bool Logger::is_info_enabled() {
+  return static_cast<int>(g_log_level) >= static_cast<int>(log_level::info);
+}
+
+bool Logger::is_debug_enabled() {
+  return static_cast<int>(g_log_level) >= static_cast<int>(log_level::debug);
+}
+
+void Logger::set_verbose(bool verbose) {
+  g_log_level = verbose ? log_level::info : log_level::quiet;
+}
+
+bool Logger::is_verbose() { return is_info_enabled(); }
 
 ProgressBar *ProgressBar::GlobalInstance() { return g_global_progress_bar; }
 
@@ -24,8 +38,14 @@ void ProgressBar::SetGlobalInstance(ProgressBar *instance) {
 }
 
 void Logger::log_info(const std::string &msg) {
-  if (g_verbose) {
+  if (is_info_enabled()) {
     std::cout << msg << std::endl;
+  }
+}
+
+void Logger::log_debug(const std::string &msg) {
+  if (is_debug_enabled()) {
+    std::cout << "[DEBUG] " << msg << std::endl;
   }
 }
 
@@ -41,14 +61,14 @@ void Logger::log_error(const std::string &msg) {
 }
 
 ProgressBar::ProgressBar(bool enabled) : enabled_(enabled) {
-  if (enabled_ && !g_verbose) {
+  if (enabled_ && !Logger::is_info_enabled()) {
     // Initial empty bar
     render(0.0F);
   }
 }
 
 ProgressBar::~ProgressBar() {
-  if (enabled_ && !g_verbose) {
+  if (enabled_ && !Logger::is_info_enabled()) {
     finalize();
   }
 }
@@ -62,7 +82,7 @@ void ProgressBar::set_stage(const std::string &label, float start_pct,
 }
 
 void ProgressBar::update(float stage_progress) {
-  if (!enabled_ || g_verbose)
+  if (!enabled_ || Logger::is_info_enabled())
     return;
 
   std::scoped_lock<std::mutex> lock(mutex_);
@@ -78,7 +98,7 @@ void ProgressBar::update(float stage_progress) {
 }
 
 void ProgressBar::finalize() {
-  if (!enabled_ || g_verbose)
+  if (!enabled_ || Logger::is_info_enabled())
     return;
 
   std::scoped_lock<std::mutex> lock(mutex_);

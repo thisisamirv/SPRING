@@ -50,7 +50,7 @@ struct command_line_options {
   double memory_cap_gb = 0.0;
   int compression_level = spring::DEFAULT_COMPRESSION_LEVEL;
   std::string note;
-  bool verbose_flag = false;
+  spring::log_level log_level = spring::log_level::quiet;
   bool unzip_flag = false;
 };
 
@@ -157,8 +157,9 @@ std::string build_options_description() {
       << "                                  effective thread count using about "
          "1 GB per\n"
       << "                                  worker thread (0 disables)\n"
-      << "  -v [ --verbose ]                enable extensive logging (default: "
-         "progress bar)\n"
+      << "  -v [ --verbose ] [arg (=info)]  logging level: info or debug "
+        "(default\n"
+      << "                                  without -v: progress bar)\n"
       << "---------------------------------------------------------------------"
          "-----------\n"
       << "* Compression Options:\n"
@@ -229,6 +230,15 @@ collect_option_values(const std::vector<std::string> &args, size_t &index) {
     index++;
   }
   return values;
+}
+
+spring::log_level parse_log_level(const std::string &value) {
+  if (value == "info")
+    return spring::log_level::info;
+  if (value == "debug")
+    return spring::log_level::debug;
+  throw std::runtime_error("Invalid --verbose level: " + value +
+                           ". Valid values are: info, debug.");
 }
 
 void parse_command_line(int argc, char **argv, command_line_options &options) {
@@ -308,7 +318,10 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
       require_value(args, index, "--note");
       options.note = strip_quotes(args[index++]);
     } else if (arg == "-v" || arg == "--verbose") {
-      options.verbose_flag = true;
+      options.log_level = spring::log_level::info;
+      if (index < args.size() && !is_option_token(args[index])) {
+        options.log_level = parse_log_level(args[index++]);
+      }
     } else if (arg == "-a" || arg == "--audit") {
       options.audit_flag = true;
     } else if (arg == "-u" || arg == "--unzip") {
@@ -375,13 +388,43 @@ void run_requested_mode(const command_line_options &options,
                      options.num_threads, options.pairing_only_flag,
                      options.no_quality_flag, options.no_ids_flag,
                      options.quality_options, options.compression_level,
-                     options.note, options.verbose_flag, options.audit_flag);
+                     options.note, options.log_level, options.audit_flag);
     return;
   }
 
   spring::decompress(temp_dir, options.input_paths, options.output_paths,
                      options.num_threads, options.compression_level,
-                     options.verbose_flag, options.unzip_flag);
+                     options.log_level, options.unzip_flag);
+}
+
+void log_options_for_debugging(const command_line_options &options) {
+  if (!spring::Logger::is_debug_enabled())
+    return;
+
+  spring::Logger::log_debug(
+      "CLI mode: " +
+      std::string(options.compress_flag ? "compress" : "decompress"));
+  spring::Logger::log_debug(
+      "CLI settings: threads=" + std::to_string(options.num_threads) +
+      ", memory_cap_gb=" + std::to_string(options.memory_cap_gb) +
+      ", level=" + std::to_string(options.compression_level) +
+      ", log_level=" +
+      std::string(options.log_level == spring::log_level::debug ? "debug"
+                                  : "info") +
+      ", audit=" + std::string(options.audit_flag ? "true" : "false") +
+      ", unzip=" + std::string(options.unzip_flag ? "true" : "false"));
+
+  spring::Logger::log_debug(
+      "CLI strip flags: order=" +
+      std::string(options.pairing_only_flag ? "true" : "false") +
+      ", quality=" + std::string(options.no_quality_flag ? "true" : "false") +
+      ", ids=" + std::string(options.no_ids_flag ? "true" : "false"));
+
+  spring::Logger::log_debug("CLI paths: inputs=" +
+                            std::to_string(options.input_paths.size()) +
+                            ", outputs=" +
+                            std::to_string(options.output_paths.size()) +
+                            ", tmp_dir=" + options.working_dir);
 }
 
 } // namespace
@@ -402,7 +445,7 @@ int main(int argc, char **argv) {
 
   try {
     parse_command_line(argc, argv, options);
-    spring::Logger::set_verbose(options.verbose_flag);
+    spring::Logger::set_level(options.log_level);
   } catch (const std::runtime_error &e) {
     std::cout << e.what() << "\n";
     std::cout << options_description << "\n";
@@ -433,6 +476,7 @@ int main(int argc, char **argv) {
 
   // Isolate intermediate artifacts so cleanup is one directory removal.
   apply_memory_cap(options);
+  log_options_for_debugging(options);
   SpringContext context(options.working_dir);
   g_context = &context;
 

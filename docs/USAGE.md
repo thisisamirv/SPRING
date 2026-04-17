@@ -38,7 +38,10 @@ spring2 [mode] [options] -i <input_files> -o <output_file>
   - *Example*: `--strip io` to drop both identifiers and original order.
 - `-l, --level arg`: Compression level (1-9). This controls the compression level for `.gz` file formatting and is scaled to Zstd (1-22) internally for other streams. Default is `6`.
 - `-n, --note arg`: Attach a custom text note to the archive. This note is stored in the metadata and can be viewed during decompression or using the preview tool.
-- `-v, --verbose`: Enable extensive logging. By default, SPRING2 displays a concise, stage-based progress bar. Enabling verbose mode disables the progress bar and prints detailed step-by-step logs, including data statistics and execution times.
+- `-v, --verbose [info|debug]`: Control logging verbosity.
+  - Default (no `--verbose`): shows the concise stage-based progress bar, plus warnings/errors.
+  - `--verbose` or `--verbose info`: disables the progress bar and prints informational step-by-step logs.
+  - `--verbose debug`: includes all informational logs plus detailed debug diagnostics for troubleshooting.
 
 ### Quality Modes (`-q, --qmod`)
 
@@ -53,6 +56,19 @@ spring2 [mode] [options] -i <input_files> -o <output_file>
 
 ```bash
 ./spring2 -c -i file_1.fastq file_2.fastq -o file.sp -n "Batch 01 - Control"
+```
+
+### Verbose Logging Levels
+
+```bash
+# Informational logs (same as --verbose info)
+./spring2 -c -i file_1.fastq -o file.sp --verbose
+
+# Explicit info level
+./spring2 -d -i file.sp --verbose info
+
+# Deep debug diagnostics for issue reporting
+./spring2 -d -i file.sp --verbose debug
 ```
 
 ### Inspected with Preview Tool

@@ -44,8 +44,10 @@
   * `src/fs_utils.h/cpp`: Granular filesystem helpers and RAII file management.
   * `src/params.h/cpp`: Serialization of compression parameters and metadata structures to resolve circular dependencies.
 * Refactored the core decompression engine in `src/decompress.cpp` and `src/decompress.h` into a stateful, sink-based architecture to support the new streaming reader while maintaining bit-perfect CLI backward compatibility.
+* Upgraded the CLI verbosity system from a binary toggle to explicit log levels: default quiet mode keeps the progress bar, `--verbose`/`--verbose info` enables informational logs, and `--verbose debug` enables both informational and detailed debug diagnostics.
 * Pruned indexed_bzip2 even more.
 * Made windows build process guide easier and more straightforward.
+* Expanded CMake runtime portability packaging: improved Windows GCC/OpenMP runtime DLL resolution and bundling for `spring2`, `spring2-preview`, and `rapidgzip`; added install-time RPATH configuration and OpenMP runtime library bundling support for macOS (`@loader_path/../lib`) and Linux (`$ORIGIN/../lib`).
 * Consolidated all third-party dependency licenses into the central root `LICENSE` file for improved legal compliance and audit-readiness.
 
 ### Fixed

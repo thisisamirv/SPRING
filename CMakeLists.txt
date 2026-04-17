@@ -457,46 +457,111 @@ add_dependencies(spring2-preview rapidgzip)
 
 # On Windows with GNU toolchain: support static linking of GCC runtimes
 if (WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    # Base GCC runtime set. OpenMP runtime is additionally resolved below from
+    # compiler/OpenMP metadata to support toolchain variations.
+    set(SPRING_RUNTIME_DLLS
+        libstdc++-6.dll
+        libgcc_s_seh-1.dll
+        libwinpthread-1.dll
+    )
+
+    function(resolve_gcc_runtime_dll dll_name out_path)
+        get_filename_component(_gcc_bin_dir "${CMAKE_C_COMPILER}" DIRECTORY)
+        set(_candidate "${_gcc_bin_dir}/${dll_name}")
+        if (EXISTS "${_candidate}")
+            set(${out_path} "${_candidate}" PARENT_SCOPE)
+            return()
+        endif()
+
+        execute_process(
+            COMMAND "${CMAKE_C_COMPILER}" -print-file-name=${dll_name}
+            OUTPUT_VARIABLE _print_path
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+        if (_print_path AND NOT _print_path STREQUAL dll_name AND EXISTS "${_print_path}")
+            set(${out_path} "${_print_path}" PARENT_SCOPE)
+            return()
+        endif()
+
+        set(${out_path} "" PARENT_SCOPE)
+    endfunction()
+
+    function(resolve_openmp_runtime_dll out_path)
+        set(_openmp_candidates
+            libgomp-1.dll
+            libgomp.dll
+            libomp.dll
+            libomp-1.dll
+        )
+
+        if (DEFINED OpenMP_CXX_LIB_NAMES)
+            foreach(_omp_name IN LISTS OpenMP_CXX_LIB_NAMES)
+                list(APPEND _openmp_candidates "lib${_omp_name}-1.dll")
+                list(APPEND _openmp_candidates "lib${_omp_name}.dll")
+            endforeach()
+        endif()
+        list(REMOVE_DUPLICATES _openmp_candidates)
+
+        foreach(_candidate IN LISTS _openmp_candidates)
+            resolve_gcc_runtime_dll("${_candidate}" _resolved)
+            if (_resolved)
+                set(${out_path} "${_resolved}" PARENT_SCOPE)
+                return()
+            endif()
+        endforeach()
+
+        set(${out_path} "" PARENT_SCOPE)
+    endfunction()
+
+    set(SPRING_RUNTIME_DLL_PATHS)
+    foreach(_dll IN LISTS SPRING_RUNTIME_DLLS)
+        resolve_gcc_runtime_dll("${_dll}" _resolved_dll_path)
+        if (_resolved_dll_path)
+            list(APPEND SPRING_RUNTIME_DLL_PATHS "${_resolved_dll_path}")
+        else()
+            message(NOTICE "SPRING: runtime DLL ${_dll} not found for bundling")
+        endif()
+    endforeach()
+
+    resolve_openmp_runtime_dll(_resolved_openmp_runtime)
+    if (_resolved_openmp_runtime)
+        list(APPEND SPRING_RUNTIME_DLL_PATHS "${_resolved_openmp_runtime}")
+    else()
+        message(NOTICE "SPRING: OpenMP runtime DLL not found for bundling")
+    endif()
+    list(REMOVE_DUPLICATES SPRING_RUNTIME_DLL_PATHS)
+
     if (SPRING_STATIC_RUNTIMES)
         message(NOTICE "SPRING: linking libgcc/libstdc++/libgomp statically")
         # Prefer modern CMake link options when available
         if (COMMAND target_link_options)
             target_link_options(spring2 PRIVATE -static)
+            target_link_options(spring2-preview PRIVATE -static)
+            target_link_options(rapidgzip PRIVATE -static)
         else()
             set_property(TARGET spring2 APPEND_STRING PROPERTY LINK_FLAGS " -static")
+            set_property(TARGET spring2-preview APPEND_STRING PROPERTY LINK_FLAGS " -static")
+            set_property(TARGET rapidgzip APPEND_STRING PROPERTY LINK_FLAGS " -static")
         endif()
     else()
-        # Add a post-build step and a convenience target to copy commonly required
-        # GCC runtime DLLs (if present near the compiler) into the executable dir.
-        get_filename_component(SPRING_GCC_BIN_DIR "${CMAKE_C_COMPILER}" DIRECTORY)
-        set(SPRING_RUNTIME_DLLS
-            libgomp-1.dll
-            libstdc++-6.dll
-            libgcc_s_seh-1.dll
-            libwinpthread-1.dll
-        )
-
-        foreach(_dll IN LISTS SPRING_RUNTIME_DLLS)
-            set(_src "${SPRING_GCC_BIN_DIR}/${_dll}")
-            if (EXISTS "${_src}")
-                add_custom_command(TARGET spring2 POST_BUILD
-                    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_src}" "$<TARGET_FILE_DIR:spring2>/${_dll}"
-                    COMMENT "Copying runtime ${_dll} to target directory"
-                )
-            endif()
-        endforeach()
-
-        # Convenience target to explicitly copy runtime DLLs (useful for installers)
-        # Marked as ALL so it runs automatically during 'cmake --build build'
+        # Convenience target to copy commonly required GCC runtime DLLs for
+        # all distributed Windows binaries.
         add_custom_target(copy_runtime_dlls ALL
             COMMENT "Copying GCC runtime DLLs next to spring2 executable"
         )
-        add_dependencies(copy_runtime_dlls spring2)
-        foreach(_dll IN LISTS SPRING_RUNTIME_DLLS)
-            set(_src "${SPRING_GCC_BIN_DIR}/${_dll}")
+        add_dependencies(copy_runtime_dlls spring2 spring2-preview rapidgzip)
+        foreach(_src IN LISTS SPRING_RUNTIME_DLL_PATHS)
+            get_filename_component(_dll "${_src}" NAME)
             if (EXISTS "${_src}")
                 add_custom_command(TARGET copy_runtime_dlls POST_BUILD
                     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_src}" "$<TARGET_FILE_DIR:spring2>/${_dll}"
+                )
+                add_custom_command(TARGET copy_runtime_dlls POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_src}" "$<TARGET_FILE_DIR:spring2-preview>/${_dll}"
+                )
+                add_custom_command(TARGET copy_runtime_dlls POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_src}" "$<TARGET_FILE_DIR:rapidgzip>/${_dll}"
                 )
             endif()
         endforeach()
@@ -505,6 +570,62 @@ endif()
 
 
 # Installation logic for a clean release footprint
+if (APPLE)
+    set(SPRING_INSTALL_RPATH "@loader_path/../lib")
+elseif (UNIX AND NOT WIN32)
+    set(SPRING_INSTALL_RPATH "$ORIGIN/../lib")
+endif()
+
+if (DEFINED SPRING_INSTALL_RPATH)
+    foreach(_target IN ITEMS spring2 spring2-preview rapidgzip)
+        set_target_properties(${_target} PROPERTIES
+            BUILD_WITH_INSTALL_RPATH OFF
+            INSTALL_RPATH "${SPRING_INSTALL_RPATH}"
+        )
+    endforeach()
+endif()
+
+function(resolve_unix_runtime_library out_path)
+    foreach(_candidate IN LISTS ARGN)
+        execute_process(
+            COMMAND "${CMAKE_CXX_COMPILER}" -print-file-name=${_candidate}
+            OUTPUT_VARIABLE _resolved
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+        if (_resolved AND NOT _resolved STREQUAL _candidate AND EXISTS "${_resolved}")
+            set(${out_path} "${_resolved}" PARENT_SCOPE)
+            return()
+        endif()
+    endforeach()
+    set(${out_path} "" PARENT_SCOPE)
+endfunction()
+
+set(SPRING_OPENMP_RUNTIME_LIB "")
+if (APPLE)
+    if (DEFINED OpenMP_omp_LIBRARY AND EXISTS "${OpenMP_omp_LIBRARY}")
+        set(SPRING_OPENMP_RUNTIME_LIB "${OpenMP_omp_LIBRARY}")
+    endif()
+    if (NOT SPRING_OPENMP_RUNTIME_LIB AND DEFINED OpenMP_CXX_LIB_NAMES)
+        foreach(_omp_name IN LISTS OpenMP_CXX_LIB_NAMES)
+            resolve_unix_runtime_library(_resolved_omp_dylib
+                "lib${_omp_name}.dylib"
+                "${_omp_name}.dylib")
+            if (_resolved_omp_dylib)
+                set(SPRING_OPENMP_RUNTIME_LIB "${_resolved_omp_dylib}")
+                break()
+            endif()
+        endforeach()
+    endif()
+elseif (UNIX)
+    # GNU toolchains generally use libgomp; Clang toolchains may use libomp.
+    resolve_unix_runtime_library(SPRING_OPENMP_RUNTIME_LIB
+        "libgomp.so.1"
+        "libgomp.so"
+        "libomp.so.1"
+        "libomp.so")
+endif()
+
 set(INSTALL_TARGETS spring2 spring2-preview rapidgzip)
 install(TARGETS ${INSTALL_TARGETS}
     RUNTIME DESTINATION bin
@@ -512,10 +633,14 @@ install(TARGETS ${INSTALL_TARGETS}
     ARCHIVE DESTINATION lib
 )
 
+if ((APPLE OR (UNIX AND NOT WIN32)) AND SPRING_OPENMP_RUNTIME_LIB)
+    install(FILES "${SPRING_OPENMP_RUNTIME_LIB}" DESTINATION lib)
+elseif (APPLE OR (UNIX AND NOT WIN32))
+    message(NOTICE "SPRING: OpenMP runtime library not found for install bundling")
+endif()
+
 if (WIN32 AND NOT SPRING_STATIC_RUNTIMES)
-    get_filename_component(SPRING_GCC_BIN_DIR "${CMAKE_C_COMPILER}" DIRECTORY)
-    foreach(_dll IN LISTS SPRING_RUNTIME_DLLS)
-        set(_src "${SPRING_GCC_BIN_DIR}/${_dll}")
+    foreach(_src IN LISTS SPRING_RUNTIME_DLL_PATHS)
         if (EXISTS "${_src}")
             install(FILES "${_src}" DESTINATION bin)
         endif()

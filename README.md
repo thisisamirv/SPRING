@@ -154,3 +154,23 @@ For a comprehensive list of all options, quality modes, and multi-threaded examp
 - QVZ: <https://github.com/mikelhernaez/qvz/>
 - [Bioinformatics publication](https://academic.oup.com/bioinformatics/advance-article/doi/10.1093/bioinformatics/bty1015/5232998?guestAccessKey=266a1378-4684-4f04-bb99-6febdf9d1fb9)
 - Specialized tool for nanopore long reads: <https://github.com/qm2/NanoSpring>
+
+## Reporting Bugs and Errors
+
+If you encounter a bug, crash, or unexpected behavior, please open an issue at:
+
+<https://github.com/thisisamirv/SPRING2/issues>
+
+To help us reproduce and diagnose problems quickly, include:
+
+- SPRING2 version (`spring2 --version`)
+- Platform details (OS, architecture, shell/environment)
+- Exact command you ran
+
+For diagnostics, please also provide logs from debug verbosity:
+
+```bash
+spring2 ... --verbose debug
+```
+
+If your command includes sensitive paths or data, redact private information before posting logs.

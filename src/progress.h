@@ -9,14 +9,22 @@
 
 namespace spring {
 
+enum class log_level : uint8_t { quiet = 0, info = 1, debug = 2 };
+
 class Logger {
 public:
+  static void set_level(log_level level);
+  static log_level level();
+  static bool is_info_enabled();
+  static bool is_debug_enabled();
+
   static void set_verbose(bool verbose);
   static bool is_verbose();
 
   template <typename T> static void log(const T &msg);
 
   static void log_info(const std::string &msg);
+  static void log_debug(const std::string &msg);
   static void log_warning(const std::string &msg);
   static void log_error(const std::string &msg);
 };

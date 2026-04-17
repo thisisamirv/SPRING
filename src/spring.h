@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include "progress.h"
+
 namespace spring {
 
 using string_list = std::vector<std::string>;
@@ -20,11 +22,13 @@ void compress(const std::string &temp_dir, const string_list &input_paths,
               const bool pairing_only_flag, const bool no_quality_flag,
               const bool no_ids_flag, const string_list &quality_options,
               const int compression_level, const std::string &note,
-              const bool verbose = true, const bool audit_flag = false);
+                            const log_level log_level = log_level::info,
+                            const bool audit_flag = false);
 
 void decompress(const std::string &temp_dir, const string_list &input_paths,
                 const string_list &output_paths, const int num_thr,
-                const int compression_level, const bool verbose = true,
+                                const int compression_level,
+                                const log_level log_level = log_level::info,
                 const bool unzip_flag = false);
 
 void perform_audit(const std::string &archive_path,
