@@ -707,23 +707,55 @@ void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
                     const encoder_global_b<bitset_size> &egb) {
   std::ifstream f(eg.infile + ".singleton",
                   std::ifstream::in | std::ios::binary);
+  std::vector<char> singleton_io_buffer(1 << 20);
+  f.rdbuf()->pubsetbuf(singleton_io_buffer.data(),
+                       singleton_io_buffer.size());
   std::string s;
+  s.reserve(static_cast<size_t>(eg.max_readlen));
+  auto **const basemask_ptrs =
+      const_cast<std::bitset<bitset_size> **>(egb.basemask_ptrs.data());
   for (uint32_t i = 0; i < eg.numreads_s; i++) {
     read_dna_from_bits(s, f);
-    read_lengths_s[i] = s.length();
-    stringtobitset<bitset_size>(
-        s, read_lengths_s[i], read[i],
-        const_cast<std::bitset<bitset_size> **>(egb.basemask_ptrs.data()));
+    read_lengths_s[i] = static_cast<uint16_t>(s.size());
+    stringtobitset<bitset_size>(s, read_lengths_s[i], read[i], basemask_ptrs);
   }
   f.close();
   safe_remove_file(eg.infile + ".singleton");
   f.open(eg.infile_N, std::ios::binary);
+  std::vector<char> singleton_n_io_buffer(1 << 20);
+  f.rdbuf()->pubsetbuf(singleton_n_io_buffer.data(),
+                       singleton_n_io_buffer.size());
+  static constexpr std::array<char, 16> int_to_dna_n = {
+      'A', 'G', 'C', 'T', 'N', 'N', 'N', 'N',
+      'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N'};
+  uint8_t encoded_read_bytes[256];
   for (uint32_t i = eg.numreads_s; i < eg.numreads_s + eg.numreads_N; i++) {
-    read_dnaN_from_bits(s, f);
-    read_lengths_s[i] = s.length();
-    stringtobitset<bitset_size>(
-        s, read_lengths_s[i], read[i],
-        const_cast<std::bitset<bitset_size> **>(egb.basemask_ptrs.data()));
+    uint16_t readlen = 0;
+    if (!f.read(byte_ptr(&readlen), sizeof(uint16_t))) {
+      throw std::runtime_error("Failed reading readlen from DNA+N stream.");
+    }
+
+    const uint16_t encoded_byte_count =
+        static_cast<uint16_t>((readlen + 1U) / 2U);
+    if (encoded_byte_count > sizeof(encoded_read_bytes)) {
+      throw std::runtime_error(
+          "Corrupted DNA+N stream: record length exceeds decoder buffer.");
+    }
+    if (!f.read(byte_ptr(encoded_read_bytes), encoded_byte_count)) {
+      throw std::runtime_error(
+          "Failed reading encoded DNA+N payload from stream.");
+    }
+
+    s.resize(readlen);
+    for (uint16_t base_index = 0; base_index < readlen; ++base_index) {
+      const uint8_t packed = encoded_read_bytes[base_index / 2];
+      const uint8_t code =
+          (base_index % 2 == 0) ? (packed & 0x0F) : (packed >> 4);
+      s[base_index] = int_to_dna_n[code & 0x0F];
+    }
+
+    read_lengths_s[i] = readlen;
+    stringtobitset<bitset_size>(s, readlen, read[i], basemask_ptrs);
   }
   std::ifstream f_order_s(eg.infile_order + ".singleton", std::ios::binary);
   for (uint32_t i = 0; i < eg.numreads_s; i++)
