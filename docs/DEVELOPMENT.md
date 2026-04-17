@@ -49,6 +49,23 @@ ctest --test-dir build --output-on-failure
 - **Streaming API Integration Tests**: `tests/reader_test.cpp` (Verifies end-to-end archive streaming).
 - **Smoke Tests**: `tests/smoke_test.sh` (CLI behavioral validation).
 
+### Diagnostic Key Legend
+
+Many debug logs use a normalized key schema for fast triage:
+
+- `block_id`: Pipeline stage or thread/block identifier that emitted the log.
+- `path`: File path or logical input source being checked.
+- `expected_bytes`: Expected size/count/bound for the check.
+- `actual_bytes`: Observed size/count/value at runtime.
+- `index`: Loop position, record number, or block-local offset where the check failed.
+
+Interpretation tips:
+
+- `expected_bytes=1, actual_bytes=0`: Usually open/availability failure (resource not usable).
+- `actual_bytes < expected_bytes`: Typical short read/truncation signal.
+- `actual_bytes > expected_bytes`: Often out-of-range metadata/value for bound checks.
+- `index` pinpoints the offending element; combine with `block_id` to locate the stage.
+
 ## Release Pipeline
 
 The project uses GitHub Actions for automated multi-architecture releases.

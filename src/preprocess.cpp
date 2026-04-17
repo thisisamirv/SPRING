@@ -337,6 +337,22 @@ uint32_t detect_max_read_length(const std::string &infile_1,
 void preprocess(const std::string &infile_1, const std::string &infile_2,
                 const std::string &temp_dir, compression_params &cp,
                 const bool &fasta_input, ProgressBar *progress) {
+  Logger::log_debug("Preprocess start: temp_dir=" + temp_dir +
+                    ", input1=" + infile_1 +
+                    (cp.encoding.paired_end ? (", input2=" + infile_2)
+                                           : std::string()) +
+                    ", long_mode=" +
+                    std::string(cp.encoding.long_flag ? "true" : "false") +
+                    ", paired_end=" +
+                    std::string(cp.encoding.paired_end ? "true" : "false") +
+                    ", preserve_order=" +
+                    std::string(cp.encoding.preserve_order ? "true" : "false") +
+                    ", preserve_id=" +
+                    std::string(cp.encoding.preserve_id ? "true" : "false") +
+                    ", preserve_quality=" +
+                    std::string(cp.encoding.preserve_quality ? "true" : "false") +
+                    ", fasta_input=" +
+                    std::string(fasta_input ? "true" : "false"));
   const preprocess_paths paths =
       build_preprocess_paths(infile_1, infile_2, temp_dir);
   std::array<std::ifstream, 2> input_files;
@@ -389,6 +405,12 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   }
   detect_paired_id_pattern(input_files, input_streams, gzip_streams, paths, cp,
                            false, paired_id_code, paired_id_match);
+  if (cp.encoding.paired_end && cp.encoding.preserve_id) {
+    Logger::log_debug("Paired ID pattern detection: code=" +
+                      std::to_string(static_cast<int>(paired_id_code)) +
+                      ", match=" +
+                      std::string(paired_id_match ? "true" : "false"));
+  }
 
   // Initialize integrity digests
   for (int i = 0; i < 2; ++i) {
@@ -425,6 +447,10 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       uint32_t reads_in_step = read_fastq_block(
           input_streams[stream_index], id_array, read_array.data(),
           quality_array.data(), num_reads_per_step, fasta_input);
+        Logger::log_debug("Preprocess step: stream=" +
+                std::to_string(stream_index + 1) +
+                ", reads_in_step=" + std::to_string(reads_in_step) +
+                ", blocks_done=" + std::to_string(num_blocks_done));
       if (reads_in_step < num_reads_per_step)
         done[stream_index] = true;
       if (reads_in_step == 0)
@@ -644,6 +670,18 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   cp.read_info.num_reads_clean[0] = num_reads_clean[0];
   cp.read_info.num_reads_clean[1] = num_reads_clean[1];
   cp.read_info.max_readlen = max_readlen;
+
+  Logger::log_debug(
+      "Preprocess complete: num_reads=" + std::to_string(cp.read_info.num_reads) +
+      ", num_reads_clean_1=" + std::to_string(cp.read_info.num_reads_clean[0]) +
+      ", num_reads_clean_2=" + std::to_string(cp.read_info.num_reads_clean[1]) +
+      ", max_readlen=" + std::to_string(cp.read_info.max_readlen) +
+      ", sequence_crc_1=" + std::to_string(cp.read_info.sequence_crc[0]) +
+      ", sequence_crc_2=" + std::to_string(cp.read_info.sequence_crc[1]) +
+      ", quality_crc_1=" + std::to_string(cp.read_info.quality_crc[0]) +
+      ", quality_crc_2=" + std::to_string(cp.read_info.quality_crc[1]) +
+      ", id_crc_1=" + std::to_string(cp.read_info.id_crc[0]) +
+      ", id_crc_2=" + std::to_string(cp.read_info.id_crc[1]));
 
   Logger::log_info("Max Read length: " +
                    std::to_string(cp.read_info.max_readlen));

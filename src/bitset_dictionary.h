@@ -175,6 +175,14 @@ inline void write_hash_chunks(const bbhashdict &dictionary,
 
     for (uint64_t key_index = range.begin; key_index < range.end; key_index++) {
       if (!key_input.read(byte_ptr(&current_key), sizeof(uint64_t))) {
+        Logger::log_debug("block_id=dict-hash-write:" +
+              std::to_string(local_dict_index) +
+                          ", write_hash_chunks short read: path=" + key_path +
+                          ", expected_bytes=" +
+                          std::to_string(sizeof(uint64_t)) +
+                          ", actual_bytes=" +
+                          std::to_string(key_input.gcount()) +
+                          ", index=" + std::to_string(key_index));
         std::cerr << "Error reading key at index " << key_index << " from "
                   << key_path << std::endl;
         break;
@@ -202,6 +210,17 @@ inline void count_bucket_sizes(bbhashdict &dictionary,
     }
 
     while (hash_input.read(byte_ptr(&current_hash), sizeof(uint64_t))) {
+      if (current_hash >= dictionary.numkeys) {
+        Logger::log_debug("block_id=dict-bucket-count:" +
+              std::to_string(dict_index) +
+                          ", count_bucket_sizes hash out-of-range: path=" +
+                          path +
+                          ", expected_bytes=" +
+                          std::to_string(dictionary.numkeys) +
+                          ", actual_bytes=" + std::to_string(current_hash) +
+                          ", index=" + std::to_string(thread_id));
+        continue;
+      }
       dictionary.startpos[current_hash + 1]++;
     }
   }
@@ -236,12 +255,30 @@ populate_bucket_read_ids(bbhashdict &dictionary, uint16_t *read_lengths,
       continue;
     }
     while (hash_input.read(byte_ptr(&current_hash), sizeof(uint64_t))) {
+      if (current_hash >= dictionary.numkeys) {
+        Logger::log_debug(
+          "block_id=dict-bucket-populate:" + std::to_string(dict_index) +
+            ", populate_bucket_read_ids hash out-of-range: path=" +
+            hash_path +
+          ", expected_bytes=" + std::to_string(dictionary.numkeys) +
+          ", actual_bytes=" + std::to_string(current_hash) +
+          ", index=" + std::to_string(thread_id));
+        continue;
+      }
       while (read_index < numreads &&
              read_lengths[read_index] <= dictionary.end)
         read_index++;
       if (read_index < numreads) {
         dictionary.read_id[dictionary.startpos[current_hash]++] = read_index;
         read_index++;
+      } else {
+        Logger::log_debug(
+          "block_id=dict-bucket-populate:" + std::to_string(dict_index) +
+            ", populate_bucket_read_ids exhausted source reads: path=" +
+            hash_path +
+          ", expected_bytes=1, actual_bytes=0, index=" +
+          std::to_string(thread_id));
+        break;
       }
     }
     hash_input.close();

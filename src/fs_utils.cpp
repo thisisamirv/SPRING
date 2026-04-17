@@ -114,6 +114,11 @@ void create_tar_archive(const std::string &archive_path,
   char buff[65536];
   int len;
   int fd;
+  uint64_t archived_file_count = 0;
+  uint64_t archived_total_bytes = 0;
+
+  Logger::log_debug("create_tar_archive start: source_dir=" + source_dir +
+                    ", archive_path=" + archive_path);
 
   a = archive_write_new();
   archive_write_set_format_pax_restricted(a);
@@ -136,6 +141,8 @@ void create_tar_archive(const std::string &archive_path,
     entry = archive_entry_new();
     archive_entry_set_pathname(entry, rel_path.c_str());
     archive_entry_set_size(entry, st.st_size);
+    archived_file_count++;
+    archived_total_bytes += static_cast<uint64_t>(st.st_size);
     archive_entry_set_filetype(entry, AE_IFREG);
     archive_entry_set_perm(entry, 0644);
     archive_write_header(a, entry);
@@ -173,6 +180,10 @@ void create_tar_archive(const std::string &archive_path,
 
   archive_write_close(a);
   archive_write_free(a);
+  Logger::log_debug("create_tar_archive complete: files=" +
+                    std::to_string(archived_file_count) +
+                    ", total_input_bytes=" +
+                    std::to_string(archived_total_bytes));
 }
 
 void extract_tar_archive(const std::string &archive_path,
@@ -182,6 +193,11 @@ void extract_tar_archive(const std::string &archive_path,
   struct archive_entry *entry;
   int flags;
   int r;
+  uint64_t extracted_entry_count = 0;
+  uint64_t extracted_data_bytes = 0;
+
+  Logger::log_debug("extract_tar_archive start: archive_path=" + archive_path +
+                    ", target_dir=" + target_dir);
 
   flags = ARCHIVE_EXTRACT_PERM;
   flags |= ARCHIVE_EXTRACT_SECURE_NODOTDOT;
@@ -220,6 +236,7 @@ void extract_tar_archive(const std::string &archive_path,
     archive_entry_set_pathname(entry, dest_path.string().c_str());
 
     r = archive_write_header(ext, entry);
+    extracted_entry_count++;
     if (r >= ARCHIVE_OK && archive_entry_size(entry) > 0) {
       const void *buff;
       size_t size;
@@ -232,6 +249,7 @@ void extract_tar_archive(const std::string &archive_path,
           throw std::runtime_error("Error reading archive data: " +
                                    std::string(archive_error_string(a)));
         r = archive_write_data_block(ext, buff, size, offset);
+        extracted_data_bytes += static_cast<uint64_t>(size);
         if (r < ARCHIVE_OK)
           throw std::runtime_error("Error writing disk data: " +
                                    std::string(archive_error_string(ext)));
@@ -247,6 +265,10 @@ void extract_tar_archive(const std::string &archive_path,
   archive_read_free(a);
   archive_write_close(ext);
   archive_write_free(ext);
+  Logger::log_debug("extract_tar_archive complete: entries=" +
+                    std::to_string(extracted_entry_count) +
+                    ", extracted_bytes=" +
+                    std::to_string(extracted_data_bytes));
 }
 
 } // namespace spring

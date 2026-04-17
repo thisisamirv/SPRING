@@ -167,10 +167,18 @@ To help us reproduce and diagnose problems quickly, include:
 - Platform details (OS, architecture, shell/environment)
 - Exact command you ran
 
-For diagnostics, please also provide logs from debug verbosity:
+For diagnostics, please also provide logs from debug verbosity. Capture both stdout and stderr into a file:
 
 ```bash
-spring2 ... --verbose debug
+spring2 ... --verbose debug > spring2-debug.log 2>&1
 ```
+
+PowerShell equivalent:
+
+```powershell
+spring2 ... --verbose debug *> spring2-debug.log
+```
+
+Please upload `spring2-debug.log` to the issue so we can diagnose the problem quickly.
 
 If your command includes sensitive paths or data, redact private information before posting logs.

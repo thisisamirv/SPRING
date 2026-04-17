@@ -15,6 +15,7 @@
 #include "dna_utils.h"
 #include "fs_utils.h"
 #include "libbsc/bsc.h"
+#include "progress.h"
 #include "reordered_streams.h"
 
 namespace spring {
@@ -237,6 +238,13 @@ void compress_output_block(const temporary_stream_paths &temp_paths,
 void reorder_compress_streams(const std::string &temp_dir,
                               const compression_params &cp) {
   const reordered_stream_paths paths = build_reordered_stream_paths(temp_dir);
+  Logger::log_debug("reorder_compress_streams start: temp_dir=" + temp_dir +
+                    ", num_reads=" + std::to_string(cp.read_info.num_reads) +
+                    ", paired_end=" +
+                    std::string(cp.encoding.paired_end ? "true" : "false") +
+                    ", preserve_order=" +
+                    std::string(cp.encoding.preserve_order ? "true" : "false") +
+                    ", threads=" + std::to_string(cp.encoding.num_thr));
 
   uint32_t num_reads = cp.read_info.num_reads;
   uint32_t aligned_read_count = 0;
@@ -316,6 +324,10 @@ void reorder_compress_streams(const std::string &temp_dir,
   position_input.close();
 
   unaligned_read_count = num_reads - aligned_read_count;
+  Logger::log_debug("reorder_compress_streams parsed input streams: aligned_reads=" +
+                    std::to_string(aligned_read_count) +
+                    ", unaligned_reads=" + std::to_string(unaligned_read_count) +
+                    ", noise_entries=" + std::to_string(noise_entry_count));
   std::string unaligned_count_path = paths.unaligned_path + ".count";
   std::ifstream unaligned_count_input(unaligned_count_path, std::ios::binary);
   uint64_t unaligned_char_count;
@@ -363,6 +375,16 @@ void reorder_compress_streams(const std::string &temp_dir,
   const temporary_stream_paths temp_paths =
       build_temporary_stream_paths(temp_dir);
   const uint64_t read_limit = paired_end ? half_read_count : num_reads;
+    const uint64_t output_blocks =
+      (read_limit == 0)
+        ? 0
+        : (read_limit + static_cast<uint64_t>(num_reads_per_block) - 1) /
+          static_cast<uint64_t>(num_reads_per_block);
+    Logger::log_debug("reorder_compress_streams output planning: read_limit=" +
+            std::to_string(read_limit) +
+            ", num_reads_per_block=" +
+            std::to_string(num_reads_per_block) +
+            ", output_blocks=" + std::to_string(output_blocks));
 
   // In paired-end mode, the block indices count read pairs rather than reads.
 #pragma omp parallel
@@ -515,6 +537,9 @@ void reorder_compress_streams(const std::string &temp_dir,
       block_num += num_thr;
     }
   }
+
+  Logger::log_debug("reorder_compress_streams complete: blocks_written=" +
+                    std::to_string(output_blocks));
 
   return;
 }
