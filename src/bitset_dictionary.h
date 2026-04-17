@@ -139,9 +139,70 @@ inline void write_key_chunks(const uint64_t *dictionary_keys,
   }
 }
 
+inline void merge_sorted_key_ranges(const uint64_t *source_keys,
+                                    uint64_t *destination_keys,
+                                    const uint64_t left_begin,
+                                    const uint64_t left_end,
+                                    const uint64_t right_end) {
+  std::merge(source_keys + left_begin, source_keys + left_end,
+             source_keys + left_end, source_keys + right_end,
+             destination_keys + left_begin);
+}
+
 inline uint32_t sort_and_deduplicate_keys(uint64_t *dictionary_keys,
                                           const uint32_t key_count) {
-  std::sort(dictionary_keys, dictionary_keys + key_count);
+  if (key_count < 2) {
+    return key_count;
+  }
+
+  const int chunk_count = std::max(1, std::min<int>(omp_get_max_threads(), key_count));
+  if (chunk_count == 1) {
+    std::sort(dictionary_keys, dictionary_keys + key_count);
+  } else {
+    std::vector<uint64_t> scratch(key_count);
+    std::vector<uint64_t> chunk_boundaries(static_cast<size_t>(chunk_count) + 1);
+    for (int chunk_index = 0; chunk_index < chunk_count; ++chunk_index) {
+      chunk_boundaries[static_cast<size_t>(chunk_index)] =
+          split_thread_range(key_count, chunk_index, chunk_count).begin;
+    }
+    chunk_boundaries[static_cast<size_t>(chunk_count)] = key_count;
+
+#pragma omp parallel for schedule(static)
+    for (int chunk_index = 0; chunk_index < chunk_count; ++chunk_index) {
+      const uint64_t begin = chunk_boundaries[static_cast<size_t>(chunk_index)];
+      const uint64_t end = chunk_boundaries[static_cast<size_t>(chunk_index + 1)];
+      if (begin < end) {
+        std::sort(dictionary_keys + begin, dictionary_keys + end);
+      }
+    }
+
+    uint64_t *source_keys = dictionary_keys;
+    uint64_t *destination_keys = scratch.data();
+    for (int merge_width = 1; merge_width < chunk_count; merge_width *= 2) {
+      const int merge_count = (chunk_count + 2 * merge_width - 1) / (2 * merge_width);
+#pragma omp parallel for schedule(static)
+      for (int merge_index = 0; merge_index < merge_count; ++merge_index) {
+        const int left_chunk = merge_index * 2 * merge_width;
+        const int middle_chunk = std::min(left_chunk + merge_width, chunk_count);
+        const int right_chunk = std::min(left_chunk + 2 * merge_width, chunk_count);
+        const uint64_t left_begin = chunk_boundaries[static_cast<size_t>(left_chunk)];
+        const uint64_t middle_end = chunk_boundaries[static_cast<size_t>(middle_chunk)];
+        const uint64_t right_end = chunk_boundaries[static_cast<size_t>(right_chunk)];
+        if (middle_chunk == right_chunk) {
+          std::copy(source_keys + left_begin, source_keys + right_end,
+                    destination_keys + left_begin);
+        } else {
+          merge_sorted_key_ranges(source_keys, destination_keys, left_begin,
+                                  middle_end, right_end);
+        }
+      }
+      std::swap(source_keys, destination_keys);
+    }
+
+    if (source_keys != dictionary_keys) {
+      std::copy(source_keys, source_keys + key_count, dictionary_keys);
+    }
+  }
 
   uint32_t unique_key_index = 0;
   for (uint32_t key_index = 1; key_index < key_count; key_index++) {

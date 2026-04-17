@@ -468,6 +468,14 @@ void reorder_compress_quality_id(const std::string &temp_dir,
                        num_reads_per_block, reordered_strings, batch_size,
                        reordered_positions, reorder_compress_mode::id, cp);
 
+      if (paired_end) {
+        Logger::log_debug("block_id=id-stream-" + std::to_string(stream_index) +
+                          ", Skipping monolithic ID merge for paired-end mode; "
+                          "keeping per-block compressed ID files.");
+        safe_remove_file(id_paths[stream_index]);
+        continue;
+      }
+
       // Monolithic ID merge phase: Merge blocks into one file and BSC compress.
       const uint32_t num_blocks =
           (file_read_count + num_reads_per_block - 1) / num_reads_per_block;

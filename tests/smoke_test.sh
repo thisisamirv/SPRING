@@ -113,6 +113,25 @@ run_spring() {
 	if [[ "$has_verbose" -eq 0 ]]; then
 		cmd=("${SPRING_BIN_CMD[@]}" -v debug "${SPRING_TEST_ARGS_CMD[@]}" "$@")
 	fi
+	local is_compress=0
+	for arg in "${cmd[@]}"; do
+		if [[ "$arg" == "-c" || "$arg" == "--compress" ]]; then
+			is_compress=1
+			break
+		fi
+	done
+	if [[ "$is_compress" -eq 1 ]]; then
+		local output_path=""
+		for ((i = 0; i < ${#cmd[@]} - 1; ++i)); do
+			if [[ "${cmd[$i]}" == "-o" || "${cmd[$i]}" == "--output" ]]; then
+				output_path="${cmd[$((i + 1))]}"
+				break
+			fi
+		done
+		if [[ -n "$output_path" && -e "$output_path" ]]; then
+			rm -f -- "$output_path"
+		fi
+	fi
 	if [[ "$SPRING_COMMAND_TIMEOUT_SECONDS" -gt 0 ]] && command -v timeout >/dev/null 2>&1; then
 		timeout "$SPRING_COMMAND_TIMEOUT_SECONDS" "${cmd[@]}"
 	else

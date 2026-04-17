@@ -423,8 +423,8 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
 #pragma omp parallel default(none)                                             \
     shared(rg, read, read_lengths, dict, dict_locks, read_locks,               \
                remaining_read_lock, length_masks_ptrs, index_masks,            \
-               remaining_reads, unmatched_counts, std::cerr, std::cout)        \
-    firstprivate(first_read)
+               remaining_reads, unmatched_counts, std::cerr, std::cout,        \
+               first_read)
   {
     bool done = false;
     int thread_id = omp_get_thread_num();
@@ -493,18 +493,20 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
     int64_t reference_position;
     int64_t current_read_position;
 
-#pragma omp critical
+    const uint32_t seed_step = std::max<uint32_t>(
+        1, rg.numreads / static_cast<uint32_t>(omp_get_num_threads()));
+#pragma omp atomic capture
     {
       current_read_id = first_read;
-      if (rg.numreads == 0) {
-        done = true;
-      } else if (remaining_reads[current_read_id] == 0) {
-        done = true;
-      } else {
-        remaining_reads[current_read_id] = 0;
-        unmatched_counts[thread_id]++;
-      }
-      first_read += rg.numreads / omp_get_num_threads();
+      first_read += seed_step;
+    }
+    if (rg.numreads == 0 || current_read_id >= static_cast<int64_t>(rg.numreads)) {
+      done = true;
+    } else if (remaining_reads[current_read_id] == 0) {
+      done = true;
+    } else {
+      remaining_reads[current_read_id] = 0;
+      unmatched_counts[thread_id]++;
     }
 #pragma omp barrier
     if (!done) {

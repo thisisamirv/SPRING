@@ -122,6 +122,17 @@ function Invoke-Spring {
         }
     }
 
+    $isCompress = $cmdArgs -contains "-c" -or $cmdArgs -contains "--compress"
+    if ($isCompress) {
+        $outputIndex = [Array]::IndexOf($cmdArgs, "-o")
+        if ($outputIndex -ge 0 -and $outputIndex + 1 -lt $cmdArgs.Count) {
+            $outputPath = $cmdArgs[$outputIndex + 1]
+            if (Test-Path $outputPath) {
+                Remove-Item $outputPath -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
     if (-not $exe) { 
         Write-Error "No Spring binary specified or found."
         return 
