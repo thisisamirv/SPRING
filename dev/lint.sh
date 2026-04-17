@@ -185,9 +185,9 @@ import shlex
 import sys
 
 
-def _is_pch_flag(arg: str) -> bool:
+def _is_pch_path(arg: str) -> bool:
 	lower = arg.lower()
-	return "cmake_pch.h" in lower
+	return "cmake_pch.h" in lower or "cmake_pch.hxx" in lower
 
 
 def _sanitize_args(args):
@@ -197,15 +197,33 @@ def _sanitize_args(args):
 		arg = args[i]
 
 		if arg in ("-include", "-include-pch") and i + 1 < len(args):
-			if _is_pch_flag(args[i + 1]):
+			if _is_pch_path(args[i + 1]):
 				i += 2
 				continue
 
-		if arg.startswith("-include-pch") and _is_pch_flag(arg):
+		# Clang sometimes emits PCH args as:
+		#   -Xclang -include-pch -Xclang /path/to/cmake_pch.hxx.pch
+		if arg == "-Xclang" and i + 1 < len(args):
+			next_arg = args[i + 1]
+			if next_arg in ("-include", "-include-pch"):
+				if i + 3 < len(args) and args[i + 2] == "-Xclang" and _is_pch_path(args[i + 3]):
+					i += 4
+					continue
+				i += 2
+				continue
+			if _is_pch_path(next_arg):
+				i += 2
+				continue
+
+		if arg.startswith("-include-pch") and _is_pch_path(arg):
 			i += 1
 			continue
 
-		if arg.startswith("-include") and _is_pch_flag(arg):
+		if arg.startswith("-include") and _is_pch_path(arg):
+			i += 1
+			continue
+
+		if _is_pch_path(arg):
 			i += 1
 			continue
 
