@@ -69,9 +69,20 @@ if ($null -eq $cppFiles -and $null -eq $pythonFiles) {
 $testsDirPath = [System.IO.Path]::GetFullPath((Join-Path $ROOT_DIR "tests"))
 
 if ($cppFiles) {
-    # On Windows, we'll try to find compile_commands.json
+    Assert-BuildDir
+
+    # Prefer compilation database when available; generate it if missing.
     $hasCompileCommands = $false
     $tidyDbDir = $BUILD_DIR
+
+    if (-not (Test-Path $COMPILE_COMMANDS)) {
+        Write-Host "compile_commands.json not found; re-running CMake configure with export enabled..." -ForegroundColor Yellow
+        $cmakeResult = & cmake -S $ROOT_DIR -B $BUILD_DIR -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Failed to generate compile_commands.json via CMake.`n$cmakeResult"
+            exit 1
+        }
+    }
 
     if (Test-Path $COMPILE_COMMANDS) {
         Write-Host "Sanitizing compilation database for clang-tidy..." -ForegroundColor Gray
@@ -95,6 +106,9 @@ if ($cppFiles) {
         $sanitizedContent | Set-Content (Join-Path $tidyDbDir "compile_commands.json") -Encoding UTF8
         $hasCompileCommands = $true
         Write-Host "Using sanitized compilation database at: $tidyDbDir" -ForegroundColor Gray
+    } else {
+        Write-Error "Expected compilation database at $COMPILE_COMMANDS"
+        exit 1
     }
 
     $compileDbFiles = @()
@@ -112,6 +126,12 @@ if ($cppFiles) {
         else {
             $standaloneFiles += $file
         }
+    }
+
+    if ($hasCompileCommands -and -not $compileDbFiles -and $standaloneFiles) {
+        Write-Host "No files matched compile_commands.json directly; falling back to compilation-database mode for all files." -ForegroundColor Yellow
+        $compileDbFiles = @($standaloneFiles)
+        $standaloneFiles = @()
     }
 
     if ($compileDbFiles) {

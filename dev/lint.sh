@@ -259,24 +259,37 @@ compile_db_files=()
 standalone_files=()
 
 if [[ ${#files[@]} -gt 0 ]]; then
-	if $is_msys_windows; then
-		standalone_files=("${files[@]}")
-	else
-		require_compile_commands
+	require_build_dir
 
-		tidy_db_dir="$BUILD_DIR/tidy_db"
-		tidy_compile_commands="$tidy_db_dir/compile_commands.json"
-		echo "Sanitizing compilation database for clang-tidy..."
-		sanitize_compile_commands_for_tidy "$COMPILE_COMMANDS" "$tidy_compile_commands"
-		COMPILE_COMMANDS="$tidy_compile_commands"
+	if [[ ! -f "$COMPILE_COMMANDS" ]]; then
+		echo "compile_commands.json not found; re-running CMake configure with export enabled..." >&2
+		cmake -S "$ROOT_DIR" -B "$BUILD_DIR" -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+	fi
 
-		for file in "${files[@]}"; do
-			if compile_commands_contains "$file"; then
-				compile_db_files+=("$file")
-			else
-				standalone_files+=("$file")
-			fi
-		done
+	if [[ ! -f "$COMPILE_COMMANDS" ]]; then
+		echo "Expected compilation database at $COMPILE_COMMANDS" >&2
+		exit 1
+	fi
+
+	tidy_db_dir="$BUILD_DIR/tidy_db"
+	tidy_compile_commands="$tidy_db_dir/compile_commands.json"
+	echo "Sanitizing compilation database for clang-tidy..."
+	sanitize_compile_commands_for_tidy "$COMPILE_COMMANDS" "$tidy_compile_commands"
+	COMPILE_COMMANDS="$tidy_compile_commands"
+	COMPILE_COMMANDS_FILE_SET_INITIALIZED=false
+
+	for file in "${files[@]}"; do
+		if compile_commands_contains "$file"; then
+			compile_db_files+=("$file")
+		else
+			standalone_files+=("$file")
+		fi
+	done
+
+	if [[ ${#compile_db_files[@]} -eq 0 && ${#standalone_files[@]} -gt 0 ]]; then
+		echo "No files matched compile_commands.json directly; falling back to compilation-database mode for all files." >&2
+		compile_db_files=("${standalone_files[@]}")
+		standalone_files=()
 	fi
 fi
 

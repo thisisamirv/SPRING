@@ -10,6 +10,79 @@ COMPILE_COMMANDS="$BUILD_DIR/compile_commands.json"
 readonly DEFAULT_CPP_ROOTS=("$ROOT_DIR/src" "$ROOT_DIR/experimental" "$ROOT_DIR/tests")
 readonly DEFAULT_PY_ROOTS=("$ROOT_DIR/experimental" "$ROOT_DIR/tests" "$ROOT_DIR/dev")
 readonly VENDOR_ROOT="$ROOT_DIR/vendor"
+declare -A COMPILE_COMMANDS_FILE_SET=()
+COMPILE_COMMANDS_FILE_SET_INITIALIZED=false
+
+is_windows_host() {
+	if [[ -n "${MSYSTEM:-}" ]]; then
+		return 0
+	fi
+	case "$(uname -s)" in
+	MSYS_* | MINGW* | CYGWIN*) return 0 ;;
+	*) return 1 ;;
+	esac
+}
+
+normalize_compile_db_path() {
+	local raw_path="$1"
+	local normalized_path=""
+
+	if [[ -z "$raw_path" ]]; then
+		printf ''
+		return
+	fi
+
+	normalized_path=$(realpath -m -- "$raw_path" 2>/dev/null || printf '%s' "$raw_path")
+	normalized_path=${normalized_path//\\//}
+
+	if is_windows_host; then
+		normalized_path=$(printf '%s' "$normalized_path" | tr '[:upper:]' '[:lower:]')
+	fi
+
+	printf '%s' "$normalized_path"
+}
+
+initialize_compile_commands_file_set() {
+	if $COMPILE_COMMANDS_FILE_SET_INITIALIZED; then
+		return
+	fi
+
+	require_compile_commands
+	COMPILE_COMMANDS_FILE_SET=()
+
+	while IFS= read -r normalized_entry; do
+		if [[ -n "$normalized_entry" ]]; then
+			COMPILE_COMMANDS_FILE_SET["$normalized_entry"]=1
+		fi
+	done < <(
+		python3 - "$COMPILE_COMMANDS" <<'PY'
+import json
+import os
+import sys
+
+
+def normalize(path: str) -> str:
+    path = os.path.abspath(os.path.normpath(path)).replace('\\', '/')
+    if os.name == 'nt' or (len(path) >= 2 and path[1] == ':'):
+        path = path.lower()
+    return path
+
+
+entries = json.loads(open(sys.argv[1], encoding='utf-8').read())
+for entry in entries:
+    entry_file = entry.get('file', '')
+    if not entry_file:
+        continue
+    entry_dir = entry.get('directory', '')
+    if not os.path.isabs(entry_file):
+        if entry_dir:
+            entry_file = os.path.join(entry_dir, entry_file)
+    print(normalize(entry_file))
+PY
+	)
+
+	COMPILE_COMMANDS_FILE_SET_INITIALIZED=true
+}
 
 require_command() {
 	if ! command -v "$1" >/dev/null 2>&1; then
@@ -156,16 +229,8 @@ collect_python_sources() {
 
 compile_commands_contains() {
 	local path="$1"
-	if grep -F -- "\"file\": \"$path\"" "$COMPILE_COMMANDS" >/dev/null 2>&1; then
-		return 0
-	fi
-
-	if command -v cygpath >/dev/null 2>&1; then
-		local windows_path
-		windows_path=$(cygpath -m -- "$path")
-		grep -F -- "\"file\": \"$windows_path\"" "$COMPILE_COMMANDS" >/dev/null 2>&1
-		return $?
-	fi
-
-	return 1
+	local normalized_target
+	initialize_compile_commands_file_set
+	normalized_target=$(normalize_compile_db_path "$path")
+	[[ -n "${COMPILE_COMMANDS_FILE_SET[$normalized_target]+x}" ]]
 }

@@ -20,6 +20,46 @@ $DEFAULT_PY_ROOTS = @(
 )
 
 $VENDOR_ROOT = Join-Path $ROOT_DIR "vendor"
+$global:CompileCommandsFileSet = $null
+
+function Normalize-CompileDbPath {
+    param ([string]$path)
+    if ([string]::IsNullOrWhiteSpace($path)) {
+        return ""
+    }
+    return [System.IO.Path]::GetFullPath($path).Replace("\", "/").ToLowerInvariant()
+}
+
+function Initialize-CompileCommandsFileSet {
+    if ($null -ne $global:CompileCommandsFileSet) {
+        return
+    }
+
+    Assert-CompileCommands
+
+    $global:CompileCommandsFileSet = [System.Collections.Generic.HashSet[string]]::new()
+    $entries = Get-Content -Path $COMPILE_COMMANDS -Raw | ConvertFrom-Json
+
+    foreach ($entry in $entries) {
+        $entryFile = [string]$entry.file
+        $entryDir = [string]$entry.directory
+        if ([string]::IsNullOrWhiteSpace($entryFile)) {
+            continue
+        }
+
+        $resolvedPath = if ([System.IO.Path]::IsPathRooted($entryFile)) {
+            $entryFile
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace($entryDir)) {
+            Join-Path $entryDir $entryFile
+        }
+        else {
+            Join-Path $ROOT_DIR $entryFile
+        }
+
+        [void]$global:CompileCommandsFileSet.Add((Normalize-CompileDbPath $resolvedPath))
+    }
+}
 
 function Test-Command {
     param ($commandName)
@@ -134,14 +174,7 @@ function Get-PythonSources {
 
 function Test-CompileCommandsContains {
     param ($filePath)
-    # Use direct text search for performance, handling both forward and backslashes
-    $normalized = $filePath.Replace("\", "/")
-    $altNormalized = $filePath.Replace("/", "\")
-    $searchString = """file"": ""$normalized"""
-    $altSearchString = """file"": ""$altNormalized"""
-    
-    $found = Select-String -Path $COMPILE_COMMANDS -Pattern ([regex]::Escape($searchString)) -Quiet
-    if ($found) { return $true }
-    
-    return Select-String -Path $COMPILE_COMMANDS -Pattern ([regex]::Escape($altSearchString)) -Quiet
+    Initialize-CompileCommandsFileSet
+    $normalizedTarget = Normalize-CompileDbPath $filePath
+    return $global:CompileCommandsFileSet.Contains($normalizedTarget)
 }
