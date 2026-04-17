@@ -61,6 +61,29 @@ Check cache stats:
 - `ccache -s` (Linux/macOS)
 - `sccache --show-stats` (Windows, or any platform using `sccache`)
 
+### Faster Linker (Where Supported)
+
+SPRING2 can also select a faster linker during CMake configure, enabled by default with `-DSPRING_ENABLE_FAST_LINKER=ON`.
+
+Selection order:
+
+- Linux: tries `mold` first (`-fuse-ld=mold`), then `lld` (`-fuse-ld=lld`)
+- macOS/Windows (GNU/Clang toolchains): tries `lld` when supported
+
+Install suggestions:
+
+- Linux (Debian/Ubuntu): `sudo apt-get install -y mold lld`
+- macOS (Homebrew): `brew install lld`
+- Windows (MSYS2/MinGW-w64 UCRT): `pacman -S --needed mingw-w64-ucrt-x86_64-lld`
+
+If no compatible fast linker is available, the build falls back to the platform default linker automatically.
+
+Disable this behavior explicitly (if needed):
+
+```bash
+cmake -S . -B build -G Ninja -DSPRING_ENABLE_FAST_LINKER=OFF
+```
+
 ### Unit and Integration Tests
 
 We use the **doctest** framework for both granular unit testing and high-level integration testing. You can build and run all tests using standard CMake/CTest workflows:
