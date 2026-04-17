@@ -26,7 +26,7 @@ void load_reordered_positions(const std::string &read_order_path,
                               std::vector<uint32_t> &read_index_by_order) {
   std::ifstream order_input(read_order_path, std::ios::binary);
   if (!order_input.is_open()) {
-    Logger::log_debug("block_id=" + block_id +
+    SPRING_LOG_DEBUG("block_id=" + block_id +
                       ", pe_encode read-order open failure: path=" +
                       read_order_path +
                       ", expected_bytes=1, actual_bytes=0, index=0");
@@ -38,7 +38,7 @@ void load_reordered_positions(const std::string &read_order_path,
   const uint64_t expected_bytes =
       static_cast<uint64_t>(reordered_positions.size()) * sizeof(uint32_t);
   if (file_ec || actual_bytes < expected_bytes) {
-    Logger::log_debug("block_id=" + block_id +
+    SPRING_LOG_DEBUG("block_id=" + block_id +
               ", pe_encode read-order size mismatch: path=" +
                       read_order_path +
                       ", expected_bytes=" + std::to_string(expected_bytes) +
@@ -50,7 +50,7 @@ void load_reordered_positions(const std::string &read_order_path,
   for (uint32_t read_index = 0; read_index < reordered_positions.size();
        read_index++) {
     if (!order_input.read(byte_ptr(&current_order), sizeof(uint32_t))) {
-      Logger::log_debug("block_id=" + block_id +
+      SPRING_LOG_DEBUG("block_id=" + block_id +
                         ", pe_encode read-order short read: path=" +
                         read_order_path + ", expected_bytes=" +
                         std::to_string(sizeof(uint32_t)) + ", actual_bytes=" +
@@ -59,7 +59,7 @@ void load_reordered_positions(const std::string &read_order_path,
       throw std::runtime_error("Failed to read paired-end order record.");
     }
     if (current_order >= reordered_positions.size()) {
-      Logger::log_debug("block_id=" + block_id +
+      SPRING_LOG_DEBUG("block_id=" + block_id +
                         ", pe_encode read-order out-of-range value: path=" +
                         read_order_path +
                         ", expected_bytes=" +
@@ -69,7 +69,7 @@ void load_reordered_positions(const std::string &read_order_path,
       throw std::runtime_error("Paired-end order value out of range.");
     }
     if (read_index_by_order[current_order] != UINT32_MAX) {
-      Logger::log_debug("block_id=" + block_id +
+      SPRING_LOG_DEBUG("block_id=" + block_id +
                         ", pe_encode read-order duplicate value: path=" +
                         read_order_path + ", expected_bytes=" +
                         std::to_string(reordered_positions.size()) +
@@ -115,7 +115,7 @@ void persist_reordered_positions(
   const std::string temporary_output_path = read_order_path + ".tmp";
   std::ofstream order_output(temporary_output_path, std::ios::binary);
   if (!order_output.is_open()) {
-    Logger::log_debug("block_id=" + block_id +
+    SPRING_LOG_DEBUG("block_id=" + block_id +
                       ", pe_encode write open failure: path=" +
                       temporary_output_path +
                       ", expected_bytes=1, actual_bytes=0, index=0");
@@ -125,7 +125,7 @@ void persist_reordered_positions(
        read_index++) {
     order_output.write(byte_ptr(&reordered_positions[read_index]), sizeof(uint32_t));
     if (!order_output.good()) {
-      Logger::log_debug("block_id=" + block_id +
+      SPRING_LOG_DEBUG("block_id=" + block_id +
                         ", pe_encode write failure: path=" + temporary_output_path +
                         ", expected_bytes=" +
                         std::to_string(sizeof(uint32_t)) +
@@ -141,7 +141,7 @@ void persist_reordered_positions(
   const uint64_t expected_bytes =
       static_cast<uint64_t>(reordered_positions.size()) * sizeof(uint32_t);
   if (file_ec || actual_bytes != expected_bytes) {
-    Logger::log_debug("block_id=" + block_id +
+    SPRING_LOG_DEBUG("block_id=" + block_id +
               ", pe_encode write size mismatch: path=" +
               temporary_output_path +
                       ", expected_bytes=" + std::to_string(expected_bytes) +
@@ -158,7 +158,7 @@ void pe_encode(const std::string &temp_dir, const compression_params &cp) {
   const std::string block_id = "pe-order-main";
   const uint32_t num_reads = cp.read_info.num_reads;
   if (num_reads % 2 != 0) {
-    Logger::log_debug("block_id=" + block_id +
+    SPRING_LOG_DEBUG("block_id=" + block_id +
                       ", pe_encode invalid read count:" +
                       ", expected_bytes=0, actual_bytes=" +
                       std::to_string(num_reads) + ", index=0");
@@ -174,7 +174,7 @@ void pe_encode(const std::string &temp_dir, const compression_params &cp) {
 
   for (uint32_t order = 0; order < num_reads; order++) {
     if (read_index_by_order[order] == UINT32_MAX) {
-      Logger::log_debug("block_id=" + block_id +
+      SPRING_LOG_DEBUG("block_id=" + block_id +
                         ", pe_encode missing order entry: path=" +
                         read_order_path + ", expected_bytes=" +
                         std::to_string(num_reads) + ", actual_bytes=" +
@@ -192,3 +192,4 @@ void pe_encode(const std::string &temp_dir, const compression_params &cp) {
 }
 
 } // namespace spring
+

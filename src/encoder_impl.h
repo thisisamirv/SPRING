@@ -51,7 +51,7 @@ inline void append_thread_stream(
     const std::ios::openmode mode = std::ios::in | std::ios::binary) {
   std::ifstream thread_input(thread_output_path, mode);
   if (!thread_input.is_open()) {
-    Logger::log_debug("block_id=" + block_id +
+    SPRING_LOG_DEBUG("block_id=" + block_id +
                       ", Encoder merge stream open failure: path=" +
                       thread_output_path +
                       ", expected_bytes=1, actual_bytes=0, index=0");
@@ -92,7 +92,7 @@ inline void cleanup_thread_encode_files(const encoder_global &encoder_state,
 }
 
 inline void merge_thread_encoded_outputs(const encoder_global &encoder_state) {
-  Logger::log_debug("block_id=enc-merge-main, Merging per-thread encoder outputs: threads=" +
+  SPRING_LOG_DEBUG("block_id=enc-merge-main, Merging per-thread encoder outputs: threads=" +
                     std::to_string(encoder_state.num_thr));
   std::ofstream order_output(encoder_state.infile_order,
                              std::ios::binary | std::ios::app);
@@ -230,8 +230,8 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
     length_masks_ptrs.push_back(length_masks[static_cast<size_t>(i)].data());
   generatemasks<bitset_size>(length_masks_ptrs.data(), eg.max_readlen, 3);
 
-  Logger::log_info("Encoding reads");
-  Logger::log_debug("block_id=enc-main, Encoder start: numreads=" + std::to_string(eg.numreads) +
+  SPRING_LOG_INFO("Encoding reads");
+  SPRING_LOG_DEBUG("block_id=enc-main, Encoder start: numreads=" + std::to_string(eg.numreads) +
                     ", singleton_pool=" +
                     std::to_string(eg.numreads_s + eg.numreads_N) +
                     ", threads=" + std::to_string(eg.num_thr) +
@@ -320,7 +320,7 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                               ": Failed to open one or more temporary "
                               "files in encoder. Working directory: " +
                               eg.basedir;
-      Logger::log_debug(
+      SPRING_LOG_DEBUG(
           "block_id=" + block_id +
         ", Encoder stream open failure: path=" + first_failed_path +
         ", expected_bytes=13, actual_bytes=" +
@@ -355,7 +355,7 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
         contig_read_count++;
         read_dna_from_bits(current_read, read_input);
         if (!orientation_stream.get(orientation)) {
-          Logger::log_debug(
+          SPRING_LOG_DEBUG(
               "block_id=" + block_id +
               ", Encoder orientation read failure: path=" +
               orientation_in_path + ", expected_bytes=1, actual_bytes=0" +
@@ -366,7 +366,7 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
         }
         if (!position_stream.read(byte_ptr(&relative_position),
                                   sizeof(int64_t))) {
-          Logger::log_debug("block_id=" + block_id +
+          SPRING_LOG_DEBUG("block_id=" + block_id +
                             ", Encoder position read failure: path=" +
                             pos_path +
                             ", expected_bytes=" +
@@ -380,7 +380,7 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
               std::to_string(contig_read_count));
         }
         if (!order_input.read(byte_ptr(&read_order), sizeof(uint32_t))) {
-          Logger::log_debug("block_id=" + block_id +
+          SPRING_LOG_DEBUG("block_id=" + block_id +
                             ", Encoder order read failure: path=" +
                             order_in_path + ", expected_bytes=" +
                             std::to_string(sizeof(uint32_t)) +
@@ -400,7 +400,7 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
             }
           }
         } else {
-          Logger::log_debug("block_id=" + block_id +
+          SPRING_LOG_DEBUG("block_id=" + block_id +
                             ", Encoder read-length read failure: path=" +
                             read_len_in_path +
                             ", expected_bytes=" +
@@ -639,7 +639,7 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
     order_output.close();
     read_length_output.close();
     orientation_output.close();
-    Logger::log_debug("block_id=" + block_id + ", Encoder thread " + std::to_string(thread_id) +
+    SPRING_LOG_DEBUG("block_id=" + block_id + ", Encoder thread " + std::to_string(thread_id) +
                       " summary: contig_flushes=" +
                       std::to_string(thread_contig_flush_count) +
                       ", forced_breaks=" +
@@ -812,27 +812,27 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   read.resize(static_cast<size_t>(singleton_pool_size));
   order_s.resize(static_cast<size_t>(singleton_pool_size));
   read_lengths_s.resize(static_cast<size_t>(singleton_pool_size));
-  Logger::log_info("Reading singletons...");
+  SPRING_LOG_INFO("Reading singletons...");
   readsingletons<bitset_size>(read.data(), order_s.data(),
                               read_lengths_s.data(), eg, egb);
-  Logger::log_debug("block_id=enc-main, Singleton read pools loaded: clean_singletons=" +
+  SPRING_LOG_DEBUG("block_id=enc-main, Singleton read pools loaded: clean_singletons=" +
                     std::to_string(eg.numreads_s) +
                     ", N_reads=" + std::to_string(eg.numreads_N));
 
   safe_remove_file(eg.infile_N);
-  Logger::log_info("Correcting order...");
+  SPRING_LOG_INFO("Correcting order...");
   correct_order(order_s.data(), eg);
 
   std::array<bbhashdict, NUM_DICT_ENCODER> dict;
   initialize_encoder_dict_ranges(dict, eg.max_readlen);
   if (singleton_pool_size > 0) {
-    Logger::log_info("Building encoder dictionary for " +
+    SPRING_LOG_INFO("Building encoder dictionary for " +
                      std::to_string(singleton_pool_size) + " singletons...");
     constructdictionary<bitset_size>(
         read.data(), dict.data(), read_lengths_s.data(), eg.numdict_s,
         singleton_pool_size, 3, eg.basedir, eg.num_thr);
   }
-  Logger::log_info("Starting main encoding loop...");
+  SPRING_LOG_INFO("Starting main encoding loop...");
 
   std::vector<uint16_t> all_read_lengths;
   {
@@ -880,7 +880,7 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   order_output.close();
   read_length_output.close();
   unaligned_output.close();
-  Logger::log_debug("block_id=enc-main, Encoder residual unaligned writes: singleton_reads=" +
+  SPRING_LOG_DEBUG("block_id=enc-main, Encoder residual unaligned writes: singleton_reads=" +
                     std::to_string(remaining_singleton_reads) +
                     ", N_reads=" + std::to_string(remaining_n_reads) +
                     ", unaligned_bases=" + std::to_string(len_unaligned));
@@ -930,12 +930,12 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   for (int tid = 0; tid < cp.encoding.num_thr; tid++) {
     total_seq_bases += file_len_seq_thr[tid];
   }
-  Logger::log_debug("block_id=enc-main, Encoder sequence packing summary: threads=" +
+  SPRING_LOG_DEBUG("block_id=enc-main, Encoder sequence packing summary: threads=" +
                     std::to_string(cp.encoding.num_thr) +
                     ", total_seq_bases=" + std::to_string(total_seq_bases));
 
   if (total_seq_bases == 0) {
-    Logger::log_debug("block_id=enc-main, Skipping sequence packing: no sequence bases to compress.");
+    SPRING_LOG_DEBUG("block_id=enc-main, Skipping sequence packing: no sequence bases to compress.");
     std::ofstream empty_seq_output(eg.outfile_seq + ".bsc",
                                    std::ios::binary | std::ios::trunc);
     if (!empty_seq_output.is_open()) {
@@ -955,3 +955,4 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
 } // namespace spring
 
 #endif // SPRING_ENCODER_IMPL_H_
+

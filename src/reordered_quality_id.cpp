@@ -112,7 +112,7 @@ void partition_reordered_batches(
     std::vector<std::string> &batch_paths) {
   const uint32_t num_batches = batch_count_for_reads(
       static_cast<uint32_t>(reordered_positions.size()), batch_size);
-  Logger::log_debug("block_id=reorder-partition, Partitioning reordered stream: path=" + input_path +
+  SPRING_LOG_DEBUG("block_id=reorder-partition, Partitioning reordered stream: path=" + input_path +
                     ", reads=" + std::to_string(reordered_positions.size()) +
                     ", batch_size=" + std::to_string(batch_size) +
                     ", num_batches=" + std::to_string(num_batches));
@@ -188,7 +188,7 @@ void compress_block_batch(const std::string &input_path,
                           const int num_threads) {
   const char *mode_name =
       (mode == reorder_compress_mode::id) ? "id" : "quality";
-  Logger::log_debug("block_id=reorder-batch-compress, Compressing batch blocks: mode=" + std::string(mode_name) +
+  SPRING_LOG_DEBUG("block_id=reorder-batch-compress, Compressing batch blocks: mode=" + std::string(mode_name) +
                     ", input=" + input_path +
                     ", begin=" + std::to_string(batch.begin) +
                     ", end=" + std::to_string(batch.end) +
@@ -224,7 +224,7 @@ void compress_block_batch(const std::string &input_path,
             compression_params::ReadMetadata::kFileLenThrSize) {
           cp.read_info.file_len_id_thr[global_block_idx] =
               std::filesystem::file_size(output_path);
-          Logger::log_debug("block_id=id-block-" + std::to_string(global_block_idx) +
+          SPRING_LOG_DEBUG("block_id=id-block-" + std::to_string(global_block_idx) +
                             ", Compressed id block=" +
                             std::to_string(global_block_idx) +
                             ", reads=" + std::to_string(reads_in_block) +
@@ -248,7 +248,7 @@ void compress_block_batch(const std::string &input_path,
           quantize_quality_qvz(reordered_strings.data() + block_begin,
                                reads_in_block, read_lengths.data(),
                                cp.quality.qvz_ratio);
-          Logger::log_debug("block_id=quality-block-" + std::to_string(global_block_idx) +
+          SPRING_LOG_DEBUG("block_id=quality-block-" + std::to_string(global_block_idx) +
                             ", Applied QVZ quantization: block=" +
                             std::to_string(global_block_idx) +
                             ", reads=" + std::to_string(reads_in_block) +
@@ -258,7 +258,7 @@ void compress_block_batch(const std::string &input_path,
         bsc::BSC_str_array_compress(output_path.c_str(),
                                     reordered_strings.data() + block_begin,
                                     reads_in_block, read_lengths.data());
-        Logger::log_debug("block_id=quality-block-" + std::to_string(global_block_idx) +
+        SPRING_LOG_DEBUG("block_id=quality-block-" + std::to_string(global_block_idx) +
               ", Compressed quality block=" +
                           std::to_string(global_block_idx) +
                           ", reads=" + std::to_string(reads_in_block));
@@ -372,7 +372,7 @@ void reorder_compress(const std::string &input_path,
   std::vector<std::string> batch_paths;
   partition_reordered_batches(input_path, reordered_positions, batch_size,
                               batch_paths);
-  Logger::log_debug("block_id=reorder-stream, Reorder/compress stream start: path=" + input_path +
+  SPRING_LOG_DEBUG("block_id=reorder-stream, Reorder/compress stream start: path=" + input_path +
                     ", total_reads=" + std::to_string(num_reads_per_file) +
                     ", batches=" + std::to_string(batch_paths.size()));
 
@@ -387,7 +387,7 @@ void reorder_compress(const std::string &input_path,
     compress_block_batch(input_path, mode, cp, reordered_strings, batch,
                          num_reads_per_block, num_thr);
     safe_remove_file(batch_paths[batch_index]);
-    Logger::log_debug("block_id=reorder-batch-" + std::to_string(batch_index) +
+    SPRING_LOG_DEBUG("block_id=reorder-batch-" + std::to_string(batch_index) +
               ", Reorder/compress batch done: path=" + input_path +
                       ", batch_index=" + std::to_string(batch_index) +
                       ", begin=" + std::to_string(batch.begin) +
@@ -420,12 +420,12 @@ void reorder_compress_quality_id(const std::string &temp_dir,
   if (paired_end) {
     reordered_positions.resize(num_reads / 2);
     generate_order_pe(base_dir, reordered_positions, num_reads);
-    Logger::log_debug("block_id=reorder-map-pe, Quality/ID reorder map generated for paired-end reads: spots=" +
+    SPRING_LOG_DEBUG("block_id=reorder-map-pe, Quality/ID reorder map generated for paired-end reads: spots=" +
                       std::to_string(reordered_positions.size()));
   } else {
     reordered_positions.resize(num_reads);
     generate_order_se(base_dir, reordered_positions, num_reads);
-    Logger::log_debug("block_id=reorder-map-se, Quality/ID reorder map generated for single-end reads: reads=" +
+    SPRING_LOG_DEBUG("block_id=reorder-map-se, Quality/ID reorder map generated for single-end reads: reads=" +
                       std::to_string(reordered_positions.size()));
   }
 
@@ -437,11 +437,11 @@ void reorder_compress_quality_id(const std::string &temp_dir,
   // Bound the working set so this stage stays within the reorder memory budget.
 
   if (preserve_quality) {
-    Logger::log_info("Compressing qualities");
+    SPRING_LOG_INFO("Compressing qualities");
     for (int stream_index = 0; stream_index < 2; stream_index++) {
       if (!should_process_stream(stream_index, paired_end, false))
         continue;
-      Logger::log_debug("block_id=quality-stream-" + std::to_string(stream_index) +
+      SPRING_LOG_DEBUG("block_id=quality-stream-" + std::to_string(stream_index) +
             ", Quality stream selected: index=" +
                         std::to_string(stream_index) +
                         ", path=" + quality_paths[stream_index]);
@@ -453,11 +453,11 @@ void reorder_compress_quality_id(const std::string &temp_dir,
     }
   }
   if (preserve_id) {
-    Logger::log_info("Compressing ids");
+    SPRING_LOG_INFO("Compressing ids");
     for (int stream_index = 0; stream_index < 2; stream_index++) {
       if (!should_process_stream(stream_index, paired_end, paired_id_match))
         continue;
-      Logger::log_debug("block_id=id-stream-" + std::to_string(stream_index) +
+      SPRING_LOG_DEBUG("block_id=id-stream-" + std::to_string(stream_index) +
             ", ID stream selected: index=" +
                         std::to_string(stream_index) +
                         ", path=" + id_paths[stream_index] +
@@ -469,7 +469,7 @@ void reorder_compress_quality_id(const std::string &temp_dir,
                        reordered_positions, reorder_compress_mode::id, cp);
 
       if (paired_end) {
-        Logger::log_debug("block_id=id-stream-" + std::to_string(stream_index) +
+        SPRING_LOG_DEBUG("block_id=id-stream-" + std::to_string(stream_index) +
                           ", Skipping monolithic ID merge for paired-end mode; "
                           "keeping per-block compressed ID files.");
         safe_remove_file(id_paths[stream_index]);
@@ -505,7 +505,7 @@ void reorder_compress_quality_id(const std::string &temp_dir,
       merged_out.close();
 
       bsc::BSC_compress(merged_packed_path.c_str(), monolithic_path.c_str());
-      Logger::log_debug("block_id=id-merge-stream-" + std::to_string(stream_index) +
+      SPRING_LOG_DEBUG("block_id=id-merge-stream-" + std::to_string(stream_index) +
             ", Monolithic ID block merge/compress complete: stream=" +
                         std::to_string(stream_index) +
                         ", blocks=" + std::to_string(num_blocks) +
@@ -517,3 +517,4 @@ void reorder_compress_quality_id(const std::string &temp_dir,
 }
 
 } // namespace spring
+

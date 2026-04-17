@@ -61,6 +61,18 @@ $SPRING_BIN_NAME = if ($IsWindows) { "spring2.exe" } else { "spring2" }
 $SPRING_BIN_DEFAULT = Join-Path $BUILD_DIR $SPRING_BIN_NAME
 $SPRING_BIN = if ($env:SPRING_BIN) { $env:SPRING_BIN } else { $SPRING_BIN_DEFAULT }
 $THREADS = if ($env:THREADS) { $env:THREADS } else { 8 }
+$NO_DEBUG = $false
+
+foreach ($arg in $args) {
+    if ($arg -ieq '--no_debug') {
+        $NO_DEBUG = $true
+    }
+    else {
+        throw "Unknown argument: $arg"
+    }
+}
+
+$SPRING_VERBOSE_ARGS = if ($NO_DEBUG) { @() } else { @('-v', 'debug') }
 
 $TMP_DIR = Join-Path $SCRIPT_DIR "output"
 $TMP_INPUT_DIR = Join-Path $TMP_DIR "input"
@@ -105,7 +117,14 @@ function Invoke-ResourceLoggedProcess($binary, $arguments) {
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $binary
-    $psi.Arguments = $arguments
+    if ($arguments -is [System.Array]) {
+        $psi.Arguments = ($arguments | ForEach-Object {
+            if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '""') + '"' } else { $_ }
+        }) -join ' '
+    }
+    else {
+        $psi.Arguments = $arguments
+    }
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $false
     $psi.RedirectStandardError = $false
@@ -180,12 +199,12 @@ Write-Host "  R1:      $PATH_R1"
 Write-Host "  R2:      $PATH_R2"
 Write-Host "  threads: $THREADS"
 
-$compArgs = "-v debug -c -i `"$PATH_R1`" `"$PATH_R2`" -o `"$global:OUTPUT_FILE`" -w `"$global:WORK_DIR`" -t $THREADS -q lossless -n `"Big Benchmark SRR2990433`""
+$compArgs = @($SPRING_VERBOSE_ARGS + @('-c', '-i', $PATH_R1, $PATH_R2, '-o', $global:OUTPUT_FILE, '-w', $global:WORK_DIR, '-t', $THREADS, '-q', 'lossless', '-n', 'Big Benchmark SRR2990433'))
 $compResults = Invoke-ResourceLoggedProcess $SPRING_BIN $compArgs
 
 # --- Decompression ---
 Write-Host "`nRunning Spring decompression" -ForegroundColor Cyan
-$decompArgs = "-v debug -d -i `"$global:OUTPUT_FILE`" -o `"$global:DECOMP_BASE`" -w `"$global:WORK_DIR`""
+$decompArgs = @($SPRING_VERBOSE_ARGS + @('-d', '-i', $global:OUTPUT_FILE, '-o', $global:DECOMP_BASE, '-w', $global:WORK_DIR))
 $decompResults = Invoke-ResourceLoggedProcess $SPRING_BIN $decompArgs
 
 # --- Results ---
@@ -227,6 +246,8 @@ Write-Output "`nBenchmark result (Paired-End combined)"
 Write-Output ("  original bytes:   {0:N0}" -f $inputSize)
 Write-Output ("  compressed bytes: {0:N0}" -f $outputSize)
 Write-Output ("  decompressed bytes: {0:N0}" -f $decompSize)
+Write-Output ("  compression pass time:    {0:N3}s" -f $compResults.elapsed_seconds)
+Write-Output ("  decompression pass time:  {0:N3}s" -f $decompResults.elapsed_seconds)
 Write-Output ("  size reduction:   {0:N2}%" -f $reduction)
 Write-Output ("  compression ratio {0:N3}x" -f $ratio)
 

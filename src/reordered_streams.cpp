@@ -307,7 +307,7 @@ void compress_output_block(const temporary_stream_paths &temp_paths,
 void reorder_compress_streams(const std::string &temp_dir,
                               const compression_params &cp) {
   const reordered_stream_paths paths = build_reordered_stream_paths(temp_dir);
-  Logger::log_debug("reorder_compress_streams start: temp_dir=" + temp_dir +
+  SPRING_LOG_DEBUG("reorder_compress_streams start: temp_dir=" + temp_dir +
                     ", num_reads=" + std::to_string(cp.read_info.num_reads) +
                     ", paired_end=" +
                     std::string(cp.encoding.paired_end ? "true" : "false") +
@@ -437,7 +437,7 @@ void reorder_compress_streams(const std::string &temp_dir,
   }
 
   unaligned_read_count = num_reads - aligned_read_count;
-  Logger::log_debug("reorder_compress_streams parsed input streams: aligned_reads=" +
+  SPRING_LOG_DEBUG("reorder_compress_streams parsed input streams: aligned_reads=" +
                     std::to_string(aligned_read_count) +
                     ", unaligned_reads=" + std::to_string(unaligned_read_count) +
                     ", noise_entries=" +
@@ -491,7 +491,7 @@ void reorder_compress_streams(const std::string &temp_dir,
         ? 0
         : (read_limit + static_cast<uint64_t>(num_reads_per_block) - 1) /
           static_cast<uint64_t>(num_reads_per_block);
-    Logger::log_debug("reorder_compress_streams output planning: read_limit=" +
+    SPRING_LOG_DEBUG("reorder_compress_streams output planning: read_limit=" +
             std::to_string(read_limit) +
             ", num_reads_per_block=" +
             std::to_string(num_reads_per_block) +
@@ -649,10 +649,11 @@ void reorder_compress_streams(const std::string &temp_dir,
     }
   }
 
-  Logger::log_debug("reorder_compress_streams complete: blocks_written=" +
+  SPRING_LOG_DEBUG("reorder_compress_streams complete: blocks_written=" +
                     std::to_string(output_blocks));
 
   return;
 }
 
 } // namespace spring
+

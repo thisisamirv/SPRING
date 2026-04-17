@@ -8,7 +8,7 @@ This guide is for developers who want to contribute to SPRING2 or maintain the b
 - `vendor/`: Bundled third-party dependencies as `.tar.xz` archives.
 - `docs/`: Project documentation.
 - `dev/`: Helper scripts for linting and development-time checks.
-- `tests/`: Integration and smoke tests.
+- `tests/`: Unit tests, integration tests, smoke tests, and benchmark scripts.
 
 ## Build System Architecture
 
@@ -116,6 +116,17 @@ ctest --test-dir build --output-on-failure
 - **Unit Tests**: `tests/unit_tests.cpp` (Utility functions, parsing, DNA manipulation).
 - **Streaming API Integration Tests**: `tests/reader_test.cpp` (Verifies end-to-end archive streaming).
 - **Smoke Tests**: `tests/smoke_test.sh` (CLI behavioral validation).
+
+### Benchmark/Test Scripts
+
+The `tests/` directory also includes benchmark and comparison scripts used for manual performance checks:
+
+- `tests/big_bench.sh` and `tests/big_bench.ps1`: End-to-end paired-end benchmark on the larger SRR2990433 dataset. Pass `--no_debug` to suppress SPRING's `-v debug` output during the run.
+- `tests/small_bench.sh` and `tests/small_bench.ps1`: Faster benchmark variants for quick local performance checks.
+- `tests/comparison_bench.sh`: Compares SPRING2 against SPRING1.
+- `tests/smoke_test.sh` and `tests/smoke_test.ps1`: Lightweight CLI sanity checks.
+- `tests/integration_tests.cpp`: Archive round-trip and API-level integration coverage.
+- `tests/unit_tests.cpp`: Focused tests for low-level helpers and core data handling.
 
 ### Diagnostic Key Legend
 

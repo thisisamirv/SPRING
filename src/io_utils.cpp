@@ -36,7 +36,7 @@ struct read_range {
 
 std::vector<read_range> compute_read_ranges(uint32_t num_reads, int num_thr) {
   if (num_thr <= 0) {
-    Logger::log_debug("block_id=io-utils:ranges, compute_read_ranges invalid threads: path=compute_read_ranges" +
+    SPRING_LOG_DEBUG("block_id=io-utils:ranges, compute_read_ranges invalid threads: path=compute_read_ranges" +
                       std::string(", expected_bytes=1, actual_bytes=") +
                       std::to_string(num_thr) + ", index=" +
                       std::to_string(num_reads));
@@ -202,7 +202,7 @@ bool gzip_ostream::open(const std::string &path, int level) {
 
 void gzip_ostream::write(const char *data, std::streamsize size) {
   if (!is_open()) {
-    Logger::log_debug("block_id=io-utils:gzip-ostream, gzip_ostream::write failure: path=gzip_ostream::write" +
+    SPRING_LOG_DEBUG("block_id=io-utils:gzip-ostream, gzip_ostream::write failure: path=gzip_ostream::write" +
                       std::string(", expected_bytes=") + std::to_string(size) +
                       ", actual_bytes=0, index=0");
     throw std::runtime_error("gzip_ostream is not open for writing.");
@@ -212,7 +212,7 @@ void gzip_ostream::write(const char *data, std::streamsize size) {
 
 void gzip_ostream::put(char value) {
   if (!is_open()) {
-    Logger::log_debug("block_id=io-utils:gzip-ostream, gzip_ostream::put failure: path=gzip_ostream::put, expected_bytes=1, actual_bytes=0, index=0");
+    SPRING_LOG_DEBUG("block_id=io-utils:gzip-ostream, gzip_ostream::put failure: path=gzip_ostream::put, expected_bytes=1, actual_bytes=0, index=0");
     throw std::runtime_error("gzip_ostream is not open for writing.");
   }
   if (gzputc(file_, value) == -1) {
@@ -231,12 +231,12 @@ void gzip_ostream::close() {
 bool gzip_ostream::is_open() const { return file_ != nullptr; }
 
 std::string gzip_compress_string(const std::string &input, int level) {
-  Logger::log_debug("block_id=io-utils:gzip-compress, gzip_compress_string start: input_bytes=" +
+  SPRING_LOG_DEBUG("block_id=io-utils:gzip-compress, gzip_compress_string start: input_bytes=" +
                     std::to_string(input.size()) +
                     ", level=" + std::to_string(level));
   libdeflate_compressor *compressor = libdeflate_alloc_compressor(level);
   if (!compressor) {
-    Logger::log_debug("block_id=io-utils:gzip-compress, gzip_compress_string alloc failure: input_bytes=" +
+    SPRING_LOG_DEBUG("block_id=io-utils:gzip-compress, gzip_compress_string alloc failure: input_bytes=" +
                       std::to_string(input.size()) +
                       ", level=" + std::to_string(level));
     throw std::runtime_error("Failed allocating libdeflate gzip compressor.");
@@ -250,13 +250,13 @@ std::string gzip_compress_string(const std::string &input, int level) {
   libdeflate_free_compressor(compressor);
 
   if (compressed_size == 0) {
-    Logger::log_debug("block_id=io-utils:gzip-compress, gzip_compress_string compression failure: input_bytes=" +
+    SPRING_LOG_DEBUG("block_id=io-utils:gzip-compress, gzip_compress_string compression failure: input_bytes=" +
                       std::to_string(input.size()) +
                       ", output_capacity=" + std::to_string(output.size()));
     throw std::runtime_error("Failed compressing gzip payload.");
   }
   output.resize(compressed_size);
-  Logger::log_debug("block_id=io-utils:gzip-compress, gzip_compress_string done: output_bytes=" +
+  SPRING_LOG_DEBUG("block_id=io-utils:gzip-compress, gzip_compress_string done: output_bytes=" +
                     std::to_string(output.size()));
   return output;
 }
@@ -270,7 +270,7 @@ uint32_t read_fastq_block(std::istream *input_stream, std::string *id_array,
       break;
     remove_CR_from_end(id_array[reads_processed]);
     if (!std::getline(*input_stream, read_array[reads_processed])) {
-      Logger::log_debug("block_id=io-utils:fastq-read, read_fastq_block parse failure: path=sequence, expected_bytes=1, actual_bytes=0, index=" +
+      SPRING_LOG_DEBUG("block_id=io-utils:fastq-read, read_fastq_block parse failure: path=sequence, expected_bytes=1, actual_bytes=0, index=" +
                         std::to_string(reads_processed));
       throw std::runtime_error(kInvalidFastqError);
     }
@@ -279,26 +279,26 @@ uint32_t read_fastq_block(std::istream *input_stream, std::string *id_array,
       continue;
     std::string plus_line;
     if (!std::getline(*input_stream, plus_line)) {
-      Logger::log_debug("block_id=io-utils:fastq-read, read_fastq_block parse failure: path=plus, expected_bytes=43, actual_bytes=0, index=" +
+      SPRING_LOG_DEBUG("block_id=io-utils:fastq-read, read_fastq_block parse failure: path=plus, expected_bytes=43, actual_bytes=0, index=" +
                         std::to_string(reads_processed));
       throw std::runtime_error(kInvalidFastqError);
     }
     if (plus_line.empty() || plus_line[0] != '+') {
       const int actual_plus_char =
           plus_line.empty() ? 0 : static_cast<unsigned char>(plus_line[0]);
-      Logger::log_debug("block_id=io-utils:fastq-read, read_fastq_block parse failure: path=plus, expected_bytes=43, actual_bytes=" +
+      SPRING_LOG_DEBUG("block_id=io-utils:fastq-read, read_fastq_block parse failure: path=plus, expected_bytes=43, actual_bytes=" +
                         std::to_string(actual_plus_char) + ", index=" +
                         std::to_string(reads_processed));
       throw std::runtime_error(kInvalidFastqError);
     }
     if (!std::getline(*input_stream, quality_array[reads_processed])) {
-      Logger::log_debug("block_id=io-utils:fastq-read, read_fastq_block parse failure: path=quality, expected_bytes=1, actual_bytes=0, index=" +
+      SPRING_LOG_DEBUG("block_id=io-utils:fastq-read, read_fastq_block parse failure: path=quality, expected_bytes=1, actual_bytes=0, index=" +
                         std::to_string(reads_processed));
       throw std::runtime_error(kInvalidFastqError);
     }
     remove_CR_from_end(quality_array[reads_processed]);
   }
-  Logger::log_debug("block_id=io-utils:fastq-read, read_fastq_block summary: requested_reads=" +
+  SPRING_LOG_DEBUG("block_id=io-utils:fastq-read, read_fastq_block summary: requested_reads=" +
                     std::to_string(num_reads) +
                     ", processed_reads=" + std::to_string(reads_processed) +
                     ", fasta_mode=" +
@@ -316,7 +316,7 @@ void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
   if (num_reads == 0)
     return;
 
-  Logger::log_debug("block_id=io-utils:fastq-write, write_fastq_block start: reads=" + std::to_string(num_reads) +
+  SPRING_LOG_DEBUG("block_id=io-utils:fastq-write, write_fastq_block start: reads=" + std::to_string(num_reads) +
                     ", threads=" + std::to_string(num_thr) +
                     ", gzip=" + std::string(gzip_flag ? "true" : "false") +
                     ", bgzf=" + std::string(bgzf_flag ? "true" : "false") +
@@ -349,7 +349,7 @@ void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
       total_compressed_bytes += compressed[i].size();
     for (int i = 0; i < num_thr; i++)
       output_stream.write(compressed[i].data(), compressed[i].size());
-    Logger::log_debug("block_id=io-utils:fastq-write, write_fastq_block gzip summary: chunks=" +
+    SPRING_LOG_DEBUG("block_id=io-utils:fastq-write, write_fastq_block gzip summary: chunks=" +
                       std::to_string(num_thr) +
                       ", total_compressed_bytes=" +
                       std::to_string(total_compressed_bytes));
@@ -363,7 +363,7 @@ void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
       total_plain_bytes += rec.size();
       output_stream.write(rec.data(), rec.size());
     }
-    Logger::log_debug("block_id=io-utils:fastq-write, write_fastq_block plain summary: total_plain_bytes=" +
+    SPRING_LOG_DEBUG("block_id=io-utils:fastq-write, write_fastq_block plain summary: total_plain_bytes=" +
                       std::to_string(total_plain_bytes));
   }
 }
@@ -398,7 +398,7 @@ void write_bgzf_fastq_block(std::ofstream &output_stream, std::string *id_array,
       thread_bytes += block.size();
       output_stream.write(block.data(), block.size());
     }
-    Logger::log_debug("block_id=io-utils:bgzf-write:thread-" + std::to_string(i) +
+    SPRING_LOG_DEBUG("block_id=io-utils:bgzf-write:thread-" + std::to_string(i) +
             ", write_bgzf_fastq_block thread summary: index=" +
                       std::to_string(i) +
                       ", blocks=" + std::to_string(bgzf_blocks[i].size()) +
@@ -413,7 +413,7 @@ void compress_id_block(const char *output_path, std::string *id_array,
   if (num_ids == 0)
     return;
 
-  Logger::log_debug("block_id=io-utils:id-compress, compress_id_block start: output=" +
+  SPRING_LOG_DEBUG("block_id=io-utils:id-compress, compress_id_block start: output=" +
                     std::string(output_path) +
                     ", num_ids=" + std::to_string(num_ids) +
                     ", pack_only=" +
@@ -422,7 +422,7 @@ void compress_id_block(const char *output_path, std::string *id_array,
   if (pack_only) {
     std::ofstream output(output_path, std::ios::binary);
     if (!output) {
-      Logger::log_debug("block_id=io-utils:id-compress, compress_id_block open failure: path=" +
+      SPRING_LOG_DEBUG("block_id=io-utils:id-compress, compress_id_block open failure: path=" +
                         std::string(output_path) +
                         ", expected_bytes=1, actual_bytes=0, index=0");
       throw std::runtime_error("Failed to open raw ID output file.");
@@ -433,7 +433,7 @@ void compress_id_block(const char *output_path, std::string *id_array,
       output.put('\n');
     }
     output.close();
-    Logger::log_debug("block_id=io-utils:id-compress, compress_id_block pack-only done: output=" +
+    SPRING_LOG_DEBUG("block_id=io-utils:id-compress, compress_id_block pack-only done: output=" +
                       std::string(output_path));
     return;
   }
@@ -590,7 +590,7 @@ void compress_id_block(const char *output_path, std::string *id_array,
     const std::string temp_id_path = std::string(output_path) + ".tmp_id_enc";
     std::ofstream out(temp_id_path, std::ios::binary);
     if (!out) {
-      Logger::log_debug("block_id=io-utils:id-compress, compress_id_block temp open failure: path=" +
+      SPRING_LOG_DEBUG("block_id=io-utils:id-compress, compress_id_block temp open failure: path=" +
                         temp_id_path + ", expected_bytes=1, actual_bytes=0, index=0");
       throw std::runtime_error("Failed to open temporary ID encoding file.");
     }
@@ -600,7 +600,7 @@ void compress_id_block(const char *output_path, std::string *id_array,
     try {
       bsc::BSC_compress(temp_id_path.c_str(), output_path);
     } catch (const std::exception &e) {
-      Logger::log_debug("block_id=io-utils:id-compress, compress_id_block bsc failure: input_path=" + temp_id_path +
+      SPRING_LOG_DEBUG("block_id=io-utils:id-compress, compress_id_block bsc failure: input_path=" + temp_id_path +
                         ", output_path=" + std::string(output_path) +
                         ", encoded_bytes=" + std::to_string(buffer.size()));
       std::filesystem::remove(temp_id_path);
@@ -608,7 +608,7 @@ void compress_id_block(const char *output_path, std::string *id_array,
                                e.what());
     }
     const uint64_t output_size = std::filesystem::file_size(output_path);
-    Logger::log_debug("block_id=io-utils:id-compress, compress_id_block bsc done: output=" +
+    SPRING_LOG_DEBUG("block_id=io-utils:id-compress, compress_id_block bsc done: output=" +
                       std::string(output_path) +
                       ", encoded_bytes=" + std::to_string(buffer.size()) +
                       ", compressed_bytes=" + std::to_string(output_size));
@@ -621,7 +621,7 @@ void decompress_id_block(const char *input_path, std::string *id_array,
   if (num_ids == 0)
     return;
 
-  Logger::log_debug("block_id=io-utils:id-decompress, decompress_id_block start: input=" +
+  SPRING_LOG_DEBUG("block_id=io-utils:id-decompress, decompress_id_block start: input=" +
                     std::string(input_path) +
                     ", num_ids=" + std::to_string(num_ids) +
                     ", pack_only=" +
@@ -630,14 +630,14 @@ void decompress_id_block(const char *input_path, std::string *id_array,
   if (pack_only) {
     std::ifstream input(input_path, std::ios::binary);
     if (!input) {
-      Logger::log_debug("block_id=io-utils:id-decompress, decompress_id_block pack-only open failure: path=" +
+      SPRING_LOG_DEBUG("block_id=io-utils:id-decompress, decompress_id_block pack-only open failure: path=" +
                         std::string(input_path) +
                         ", expected_bytes=1, actual_bytes=0, index=0");
       throw std::runtime_error("Failed to open raw ID input file.");
     }
     for (uint32_t i = 0; i < num_ids; i++) {
       if (!std::getline(input, id_array[i])) {
-        Logger::log_debug("block_id=io-utils:id-decompress, decompress_id_block pack-only decode failure: path=" +
+        SPRING_LOG_DEBUG("block_id=io-utils:id-decompress, decompress_id_block pack-only decode failure: path=" +
                           std::string(input_path) +
                           ", expected_bytes=" + std::to_string(num_ids) +
                           ", actual_bytes=" + std::to_string(i) +
@@ -645,7 +645,7 @@ void decompress_id_block(const char *input_path, std::string *id_array,
         throw std::runtime_error("Failed to decode raw ID block.");
       }
     }
-    Logger::log_debug("block_id=io-utils:id-decompress, decompress_id_block pack-only done: input=" +
+    SPRING_LOG_DEBUG("block_id=io-utils:id-decompress, decompress_id_block pack-only done: input=" +
                       std::string(input_path));
     return;
   }
@@ -656,7 +656,7 @@ void decompress_id_block(const char *input_path, std::string *id_array,
 
   std::ifstream id_in(temp_id_path, std::ios::binary | std::ios::ate);
   if (!id_in) {
-    Logger::log_debug("block_id=io-utils:id-decompress, decompress_id_block temp open failure: path=" +
+    SPRING_LOG_DEBUG("block_id=io-utils:id-decompress, decompress_id_block temp open failure: path=" +
                       temp_id_path +
                       ", expected_bytes=1, actual_bytes=0, index=0");
     std::filesystem::remove(temp_id_path);
@@ -666,7 +666,7 @@ void decompress_id_block(const char *input_path, std::string *id_array,
   id_in.seekg(0, std::ios::beg);
   std::vector<uint8_t> buffer(r_size);
   if (!id_in.read(reinterpret_cast<char *>(buffer.data()), r_size)) {
-    Logger::log_debug("block_id=io-utils:id-decompress, decompress_id_block temp read failure: path=" +
+    SPRING_LOG_DEBUG("block_id=io-utils:id-decompress, decompress_id_block temp read failure: path=" +
                       temp_id_path +
                       ", expected_bytes=" + std::to_string(r_size) +
                       ", actual_bytes=" + std::to_string(id_in.gcount()) +
@@ -684,7 +684,7 @@ void decompress_id_block(const char *input_path, std::string *id_array,
   auto read_u32 = [&]() {
     if (curr + 4 > end) {
       const auto remaining = static_cast<uint64_t>(end - curr);
-      Logger::log_debug("block_id=io-utils:id-decompress, decompress_id_block metadata truncation: path=" +
+      SPRING_LOG_DEBUG("block_id=io-utils:id-decompress, decompress_id_block metadata truncation: path=" +
                         block_path + ", expected_bytes=4, actual_bytes=" +
                         std::to_string(remaining) + ", index=0");
       throw std::runtime_error("Truncated ID block metadata");
@@ -699,7 +699,7 @@ void decompress_id_block(const char *input_path, std::string *id_array,
   uint32_t num_alpha = read_u32();
   uint32_t count_sz = read_u32();
   if (count_sz != num_ids) {
-    Logger::log_debug("block_id=io-utils:id-decompress, decompress_id_block count mismatch: path=" +
+    SPRING_LOG_DEBUG("block_id=io-utils:id-decompress, decompress_id_block count mismatch: path=" +
                       block_path + ", expected_bytes=" +
                       std::to_string(num_ids) +
                       ", actual_bytes=" + std::to_string(count_sz) +
@@ -709,7 +709,7 @@ void decompress_id_block(const char *input_path, std::string *id_array,
 
   if (curr + count_sz > end) {
     const auto remaining = static_cast<uint64_t>(end - curr);
-    Logger::log_debug("block_id=io-utils:id-decompress, decompress_id_block counts truncation: path=" +
+    SPRING_LOG_DEBUG("block_id=io-utils:id-decompress, decompress_id_block counts truncation: path=" +
                       block_path + ", expected_bytes=" +
                       std::to_string(count_sz) +
                       ", actual_bytes=" + std::to_string(remaining) +
@@ -724,7 +724,7 @@ void decompress_id_block(const char *input_path, std::string *id_array,
     uint32_t len = read_u32();
     if (curr + len > end) {
       const auto remaining = static_cast<uint64_t>(end - curr);
-      Logger::log_debug("block_id=io-utils:id-decompress, decompress_id_block non-alpha truncation: path=" +
+      SPRING_LOG_DEBUG("block_id=io-utils:id-decompress, decompress_id_block non-alpha truncation: path=" +
                         block_path + ", expected_bytes=" +
                         std::to_string(len) + ", actual_bytes=" +
                         std::to_string(remaining) + ", index=" +
@@ -744,7 +744,7 @@ void decompress_id_block(const char *input_path, std::string *id_array,
   for (uint32_t i = 0; i < num_alpha; ++i) {
     if (curr + 1 > end) {
       const auto remaining = static_cast<uint64_t>(end - curr);
-      Logger::log_debug("block_id=io-utils:id-decompress, decompress_id_block alpha fmt truncation: path=" +
+      SPRING_LOG_DEBUG("block_id=io-utils:id-decompress, decompress_id_block alpha fmt truncation: path=" +
                         block_path + ", expected_bytes=1, actual_bytes=" +
                         std::to_string(remaining) + ", index=" +
                         std::to_string(i));
@@ -754,7 +754,7 @@ void decompress_id_block(const char *input_path, std::string *id_array,
     uint32_t len = read_u32();
     if (curr + len > end) {
       const auto remaining = static_cast<uint64_t>(end - curr);
-      Logger::log_debug("block_id=io-utils:id-decompress, decompress_id_block alpha truncation: path=" +
+      SPRING_LOG_DEBUG("block_id=io-utils:id-decompress, decompress_id_block alpha truncation: path=" +
                         block_path + ", expected_bytes=" +
                         std::to_string(len) + ", actual_bytes=" +
                         std::to_string(remaining) + ", index=" +
@@ -808,7 +808,7 @@ void decompress_id_block(const char *input_path, std::string *id_array,
       }
     }
   }
-  Logger::log_debug("block_id=io-utils:id-decompress, decompress_id_block done: decoded_ids=" +
+  SPRING_LOG_DEBUG("block_id=io-utils:id-decompress, decompress_id_block done: decoded_ids=" +
                     std::to_string(num_ids));
 }
 
@@ -836,20 +836,20 @@ void quantize_quality_qvz(std::string *quality_array, const uint32_t &num_lines,
     if (str_len_array[i] > max_readlen)
       max_readlen = str_len_array[i];
   }
-  Logger::log_debug("block_id=io-utils:qvz, quantize_quality_qvz start: lines=" +
+  SPRING_LOG_DEBUG("block_id=io-utils:qvz, quantize_quality_qvz start: lines=" +
                     std::to_string(num_lines) +
                     ", max_readlen=" + std::to_string(max_readlen) +
                     ", ratio=" + std::to_string(qv_ratio));
   qvz::encode(&opts, static_cast<uint32_t>(max_readlen), num_lines,
               quality_array, str_len_array);
-  Logger::log_debug("block_id=io-utils:qvz, quantize_quality_qvz done");
+  SPRING_LOG_DEBUG("block_id=io-utils:qvz, quantize_quality_qvz done");
 }
 
 void safe_bsc_decompress(const std::string &input_path,
                          const std::string &output_path) {
   std::ifstream input(input_path, std::ios::binary | std::ios::ate);
   if (!input.is_open()) {
-    Logger::log_debug("block_id=io-utils:bsc-file, safe_bsc_decompress input open failure: path=" +
+    SPRING_LOG_DEBUG("block_id=io-utils:bsc-file, safe_bsc_decompress input open failure: path=" +
                       input_path +
                       ", expected_bytes=1, actual_bytes=0, index=0");
     throw std::runtime_error("Can't open compressed file for validation: " +
@@ -857,13 +857,13 @@ void safe_bsc_decompress(const std::string &input_path,
   }
 
   const std::streampos file_size = input.tellg();
-  Logger::log_debug("block_id=io-utils:bsc-file, safe_bsc_decompress start: input=" + input_path +
+  SPRING_LOG_DEBUG("block_id=io-utils:bsc-file, safe_bsc_decompress start: input=" + input_path +
                     ", output=" + output_path +
                     ", compressed_bytes=" + std::to_string(file_size));
   if (file_size == 0) {
     std::ofstream output(output_path, std::ios::binary);
     if (!output.is_open()) {
-      Logger::log_debug("block_id=io-utils:bsc-file, safe_bsc_decompress output open failure: path=" +
+      SPRING_LOG_DEBUG("block_id=io-utils:bsc-file, safe_bsc_decompress output open failure: path=" +
                         output_path +
                         ", expected_bytes=1, actual_bytes=0, index=0");
       throw std::runtime_error("Can't open output file for empty BSC stream: " +
@@ -873,7 +873,7 @@ void safe_bsc_decompress(const std::string &input_path,
   }
 
   if (file_size < 4) {
-    Logger::log_debug("block_id=io-utils:bsc-file, safe_bsc_decompress size check failure: path=" +
+    SPRING_LOG_DEBUG("block_id=io-utils:bsc-file, safe_bsc_decompress size check failure: path=" +
                       input_path +
                       ", expected_bytes=4, actual_bytes=" +
                       std::to_string(file_size) + ", index=0");
@@ -885,14 +885,14 @@ void safe_bsc_decompress(const std::string &input_path,
   try {
     bsc::BSC_decompress(input_path.c_str(), output_path.c_str());
   } catch (const std::exception &e) {
-    Logger::log_debug("block_id=io-utils:bsc-file, safe_bsc_decompress backend failure: path=" +
+    SPRING_LOG_DEBUG("block_id=io-utils:bsc-file, safe_bsc_decompress backend failure: path=" +
                       input_path + ", expected_bytes=" +
                       std::to_string(file_size) +
                       ", actual_bytes=0, index=0");
     throw std::runtime_error("BSC decompression failed for " + input_path +
                              ": " + e.what());
   }
-  Logger::log_debug("block_id=io-utils:bsc-file, safe_bsc_decompress done: path=" + input_path +
+  SPRING_LOG_DEBUG("block_id=io-utils:bsc-file, safe_bsc_decompress done: path=" + input_path +
                     ", output=" + output_path);
 }
 
@@ -900,19 +900,19 @@ void safe_bsc_str_array_decompress(const std::string &input_path,
                                    std::string *string_array,
                                    uint32_t num_strings,
                                    uint32_t *string_lengths) {
-  Logger::log_debug("block_id=io-utils:bsc-array, safe_bsc_str_array_decompress start: input=" + input_path +
+  SPRING_LOG_DEBUG("block_id=io-utils:bsc-array, safe_bsc_str_array_decompress start: input=" + input_path +
                     ", num_strings=" + std::to_string(num_strings));
   try {
     bsc::BSC_str_array_decompress(input_path.c_str(), string_array, num_strings,
                                   string_lengths);
   } catch (const std::exception &e) {
-    Logger::log_debug("block_id=io-utils:bsc-array, safe_bsc_str_array_decompress backend failure: path=" +
+    SPRING_LOG_DEBUG("block_id=io-utils:bsc-array, safe_bsc_str_array_decompress backend failure: path=" +
                       input_path + ", expected_bytes=" +
                       std::to_string(num_strings) + ", actual_bytes=0, index=0");
     throw std::runtime_error("BSC string array decompression failed for " +
                              input_path + ": " + e.what());
   }
-  Logger::log_debug("block_id=io-utils:bsc-array, safe_bsc_str_array_decompress done: input=" + input_path);
+  SPRING_LOG_DEBUG("block_id=io-utils:bsc-array, safe_bsc_str_array_decompress done: input=" + input_path);
 }
 
 void generate_illumina_binning_table(char *illumina_binning_table) {
@@ -1056,3 +1056,4 @@ int64_t read_var_int64(std::ifstream &input_stream) {
 }
 
 } // namespace spring
+

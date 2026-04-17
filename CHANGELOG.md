@@ -101,7 +101,7 @@
 * Renamed several core CLI flags for clarity and standard usage: `--num-threads` to `--threads` (`-t`), `--input-file` to `--input` (`-i`), `--output-file` to `--output` (`-o`), `--working-dir` to `--tmp-dir` (`-w`), and `--quality-opts` to `--qmod` (`-q`).
 * Transitioned the recommended archive file extension from `.spring` to `.sp`.
 * Removed the obsolete `--gzipped-fastq`, `--fasta-input`, and manual `-l` (long-read) flags.
-* Repackaged `indexed_bzip2` into a smaller Spring-specific archive payload that retains only the pieces needed for the current gzip workflow.
+* Repackaged `indexed_bzip2` into a smaller SPRING-specific archive payload that retains only the pieces needed for the current gzip workflow.
 * Removed the final Boost dependency from the build and runtime path by replacing the remaining Boost-based gzip and mapped-file usage with local implementations.
 * Upgraded the project toolchain baseline to C++20 and CMake 4.2.
 * Refreshed the vendored dependency set used by the current tree, including `libbsc`, Cloudflare zlib, `libdeflate`, `qvz`, and the pruned `indexed_bzip2` payload.

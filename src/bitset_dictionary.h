@@ -236,7 +236,7 @@ inline void write_hash_chunks(const bbhashdict &dictionary,
 
     for (uint64_t key_index = range.begin; key_index < range.end; key_index++) {
       if (!key_input.read(byte_ptr(&current_key), sizeof(uint64_t))) {
-        Logger::log_debug("block_id=dict-hash-write:" +
+        SPRING_LOG_DEBUG("block_id=dict-hash-write:" +
               std::to_string(local_dict_index) +
                           ", write_hash_chunks short read: path=" + key_path +
                           ", expected_bytes=" +
@@ -272,7 +272,7 @@ inline void count_bucket_sizes(bbhashdict &dictionary,
 
     while (hash_input.read(byte_ptr(&current_hash), sizeof(uint64_t))) {
       if (current_hash >= dictionary.numkeys) {
-        Logger::log_debug("block_id=dict-bucket-count:" +
+        SPRING_LOG_DEBUG("block_id=dict-bucket-count:" +
               std::to_string(dict_index) +
                           ", count_bucket_sizes hash out-of-range: path=" +
                           path +
@@ -317,7 +317,7 @@ populate_bucket_read_ids(bbhashdict &dictionary, uint16_t *read_lengths,
     }
     while (hash_input.read(byte_ptr(&current_hash), sizeof(uint64_t))) {
       if (current_hash >= dictionary.numkeys) {
-        Logger::log_debug(
+        SPRING_LOG_DEBUG(
           "block_id=dict-bucket-populate:" + std::to_string(dict_index) +
             ", populate_bucket_read_ids hash out-of-range: path=" +
             hash_path +
@@ -333,7 +333,7 @@ populate_bucket_read_ids(bbhashdict &dictionary, uint16_t *read_lengths,
         dictionary.read_id[dictionary.startpos[current_hash]++] = read_index;
         read_index++;
       } else {
-        Logger::log_debug(
+        SPRING_LOG_DEBUG(
           "block_id=dict-bucket-populate:" + std::to_string(dict_index) +
             ", populate_bucket_read_ids exhausted source reads: path=" +
             hash_path +
@@ -404,7 +404,7 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
     current_dict.numkeys = detail::sort_and_deduplicate_keys(
         dictionary_keys_data, current_dict.dict_numreads);
 
-    Logger::log_info(std::string("Dictionary ") +
+    SPRING_LOG_INFO(std::string("Dictionary ") +
                      std::to_string(dict_index + 1) + " of " +
                      std::to_string(numdict) + ": Building MPHF for " +
                      std::to_string(current_dict.numkeys) + " keys...");
@@ -413,21 +413,21 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
     config.minimal = false;
     config.verbose = false;
     current_dict.bphf = std::make_unique<boophf_t>();
-    Logger::log_info("  Building MPHF... threads=" +
+    SPRING_LOG_INFO("  Building MPHF... threads=" +
                      std::to_string(config.num_threads));
     current_dict.bphf->build_in_internal_memory(dictionary_keys_data,
                                                 current_dict.numkeys, config);
     current_dict.numkeys = current_dict.bphf->table_size();
-    Logger::log_info(std::string("Done. (T=") +
+    SPRING_LOG_INFO(std::string("Done. (T=") +
                      std::to_string(current_dict.numkeys) + ")");
 
     // Re-read the stored keys and materialize their hash buckets.
-    Logger::log_info("  Writing hash chunks... ");
+    SPRING_LOG_INFO("  Writing hash chunks... ");
     detail::write_hash_chunks(current_dict, basedir, dict_index);
-    Logger::log_info("Done.");
+    SPRING_LOG_INFO("Done.");
   }
 
-  Logger::log_info("  Finalizing dictionaries (sequentially)...");
+  SPRING_LOG_INFO("  Finalizing dictionaries (sequentially)...");
   for (int dict_index = 0; dict_index < numdict; dict_index++) {
     bbhashdict &current_dict = dict[dict_index];
     current_dict.startpos =
@@ -439,7 +439,7 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
                                      dict_index, numreads, num_thr);
     detail::restore_bucket_starts(current_dict);
   }
-  Logger::log_info("  Done finalization.");
+  SPRING_LOG_INFO("  Done finalization.");
   return;
 }
 
@@ -469,3 +469,4 @@ void chartobitset(char *s, const int readlen, std::bitset<bitset_size> &b,
 } // namespace spring
 
 #endif // SPRING_BITSET_DICTIONARY_H_
+

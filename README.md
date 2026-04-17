@@ -2,8 +2,8 @@
 # SPRING2
 
 <p align="center">
-  <a href="https://github.com/thisisamirv/Spring/actions/workflows/ci.yml">
-    <img src="https://github.com/thisisamirv/Spring/actions/workflows/ci.yml/badge.svg" alt="CI">
+  <a href="https://github.com/thisisamirv/SPRING2/actions/workflows/ci.yml">
+    <img src="https://github.com/thisisamirv/SPRING2/actions/workflows/ci.yml/badge.svg" alt="CI">
   </a>
 </p>
 

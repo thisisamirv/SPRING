@@ -508,7 +508,7 @@ void set_dec_noise_array(std::array<std::array<char, 128>, 128> &dec_noise);
 
 void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
                       compression_params &cp) {
-  Logger::log_debug("decompress_short start: temp_dir=" + temp_dir +
+  SPRING_LOG_DEBUG("decompress_short start: temp_dir=" + temp_dir +
                     ", num_reads=" + std::to_string(cp.read_info.num_reads) +
                     ", paired_end=" +
                     std::string(cp.encoding.paired_end ? "true" : "false") +
@@ -554,7 +554,7 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
                                   cp.encoding.num_reads_per_block);
     }
   }
-  Logger::log_debug("decompress_short ID block mode: stream1_monolithic=" +
+  SPRING_LOG_DEBUG("decompress_short ID block mode: stream1_monolithic=" +
                     std::string(monolithic_id[0] ? "true" : "false") +
                     ", stream2_monolithic=" +
                     std::string(monolithic_id[1] ? "true" : "false"));
@@ -603,7 +603,7 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
         num_reads, num_reads_done, num_reads_per_step, paired_end);
     if (num_reads_cur_step == 0)
       break;
-    Logger::log_debug("decompress_short step: num_reads_done=" +
+    SPRING_LOG_DEBUG("decompress_short step: num_reads_done=" +
                       std::to_string(num_reads_done) +
                       ", reads_this_step=" +
                       std::to_string(num_reads_cur_step) +
@@ -889,13 +889,13 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
     }
     num_blocks_done += cp.encoding.num_thr;
   }
-  Logger::log_debug("decompress_short complete: total_reads_done=" +
+  SPRING_LOG_DEBUG("decompress_short complete: total_reads_done=" +
                     std::to_string(num_reads_done));
 }
 
 void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
                      compression_params &cp) {
-  Logger::log_debug("decompress_long start: temp_dir=" + temp_dir +
+  SPRING_LOG_DEBUG("decompress_long start: temp_dir=" + temp_dir +
                     ", num_reads=" + std::to_string(cp.read_info.num_reads) +
                     ", paired_end=" +
                     std::string(cp.encoding.paired_end ? "true" : "false") +
@@ -947,7 +947,7 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
         num_reads, num_reads_done, num_reads_per_step, paired_end);
     if (num_reads_cur_step == 0)
       break;
-    Logger::log_debug("decompress_long step: num_reads_done=" +
+    SPRING_LOG_DEBUG("decompress_long step: num_reads_done=" +
                       std::to_string(num_reads_done) +
                       ", reads_this_step=" +
                       std::to_string(num_reads_cur_step) +
@@ -1021,14 +1021,14 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
     }
     num_blocks_done += cp.encoding.num_thr;
   }
-  Logger::log_debug("decompress_long complete: total_reads_done=" +
+  SPRING_LOG_DEBUG("decompress_long complete: total_reads_done=" +
                     std::to_string(num_reads_done));
 }
 
 void decompress_unpack_seq(const std::string &packed_seq_base_path,
                            int encoding_thread_count, int decoding_thread_count,
                            const compression_params &cp) {
-  Logger::log_debug("decompress_unpack_seq start: base_path=" +
+  SPRING_LOG_DEBUG("decompress_unpack_seq start: base_path=" +
                     packed_seq_base_path +
                     ", encoding_threads=" +
                     std::to_string(encoding_thread_count) +
@@ -1089,7 +1089,7 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
   }
   monolithic_in.close();
   safe_remove_file(monolithic_packed_path);
-  Logger::log_debug("decompress_unpack_seq slicing complete; starting per-chunk decode.");
+  SPRING_LOG_DEBUG("decompress_unpack_seq slicing complete; starting per-chunk decode.");
 
 #pragma omp parallel
   {
@@ -1103,7 +1103,7 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
           cp.read_info.file_len_seq_thr[encoding_thread_id]);
     }
   }
-  Logger::log_debug("decompress_unpack_seq complete.");
+  SPRING_LOG_DEBUG("decompress_unpack_seq complete.");
 }
 
 void set_dec_noise_array(std::array<std::array<char, 128>, 128> &dec_noise) {
@@ -1130,3 +1130,4 @@ void set_dec_noise_array(std::array<std::array<char, 128>, 128> &dec_noise) {
 }
 
 } // namespace spring
+

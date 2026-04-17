@@ -117,7 +117,7 @@ void create_tar_archive(const std::string &archive_path,
   uint64_t archived_file_count = 0;
   uint64_t archived_total_bytes = 0;
 
-  Logger::log_debug("create_tar_archive start: source_dir=" + source_dir +
+  SPRING_LOG_DEBUG("create_tar_archive start: source_dir=" + source_dir +
                     ", archive_path=" + archive_path);
 
   a = archive_write_new();
@@ -180,7 +180,7 @@ void create_tar_archive(const std::string &archive_path,
 
   archive_write_close(a);
   archive_write_free(a);
-  Logger::log_debug("create_tar_archive complete: files=" +
+  SPRING_LOG_DEBUG("create_tar_archive complete: files=" +
                     std::to_string(archived_file_count) +
                     ", total_input_bytes=" +
                     std::to_string(archived_total_bytes));
@@ -196,7 +196,7 @@ void extract_tar_archive(const std::string &archive_path,
   uint64_t extracted_entry_count = 0;
   uint64_t extracted_data_bytes = 0;
 
-  Logger::log_debug("extract_tar_archive start: archive_path=" + archive_path +
+  SPRING_LOG_DEBUG("extract_tar_archive start: archive_path=" + archive_path +
                     ", target_dir=" + target_dir);
 
   flags = ARCHIVE_EXTRACT_PERM;
@@ -265,10 +265,11 @@ void extract_tar_archive(const std::string &archive_path,
   archive_read_free(a);
   archive_write_close(ext);
   archive_write_free(ext);
-  Logger::log_debug("extract_tar_archive complete: entries=" +
+  SPRING_LOG_DEBUG("extract_tar_archive complete: entries=" +
                     std::to_string(extracted_entry_count) +
                     ", extracted_bytes=" +
                     std::to_string(extracted_data_bytes));
 }
 
 } // namespace spring
+

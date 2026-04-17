@@ -72,7 +72,7 @@ public:
     remove_working_dir_ = !working_dir_exists;
 
     temp_dir_ = create_temp_dir(working_dir_path);
-    spring::Logger::log_info("Temporary directory: " +
+    SPRING_LOG_INFO("Temporary directory: " +
                              temp_dir_.generic_string());
   }
 
@@ -80,7 +80,7 @@ public:
 
   void cleanup() noexcept {
     if (!temp_dir_.empty()) {
-      spring::Logger::log_info("Deleting temporary directory: " +
+      SPRING_LOG_INFO("Deleting temporary directory: " +
                                temp_dir_.generic_string());
       std::error_code ec;
       std::filesystem::remove_all(temp_dir_, ec);
@@ -90,7 +90,7 @@ public:
       std::error_code ec;
       if (std::filesystem::is_directory(working_dir_, ec) &&
           std::filesystem::is_empty(working_dir_, ec)) {
-        spring::Logger::log_info("Deleting working directory...");
+        SPRING_LOG_INFO("Deleting working directory...");
         std::filesystem::remove(working_dir_, ec);
       }
       remove_working_dir_ = false;
@@ -401,10 +401,10 @@ void log_options_for_debugging(const command_line_options &options) {
   if (!spring::Logger::is_debug_enabled())
     return;
 
-  spring::Logger::log_debug(
+  SPRING_LOG_DEBUG(
       "CLI mode: " +
       std::string(options.compress_flag ? "compress" : "decompress"));
-  spring::Logger::log_debug(
+  SPRING_LOG_DEBUG(
       "CLI settings: threads=" + std::to_string(options.num_threads) +
       ", memory_cap_gb=" + std::to_string(options.memory_cap_gb) +
       ", level=" + std::to_string(options.compression_level) +
@@ -414,13 +414,13 @@ void log_options_for_debugging(const command_line_options &options) {
       ", audit=" + std::string(options.audit_flag ? "true" : "false") +
       ", unzip=" + std::string(options.unzip_flag ? "true" : "false"));
 
-  spring::Logger::log_debug(
+  SPRING_LOG_DEBUG(
       "CLI strip flags: order=" +
       std::string(options.pairing_only_flag ? "true" : "false") +
       ", quality=" + std::string(options.no_quality_flag ? "true" : "false") +
       ", ids=" + std::string(options.no_ids_flag ? "true" : "false"));
 
-  spring::Logger::log_debug("CLI paths: inputs=" +
+  SPRING_LOG_DEBUG("CLI paths: inputs=" +
                             std::to_string(options.input_paths.size()) +
                             ", outputs=" +
                             std::to_string(options.output_paths.size()) +
@@ -494,3 +494,4 @@ int main(int argc, char **argv) {
   g_context = nullptr;
   return 0;
 }
+

@@ -68,8 +68,8 @@ enum class input_record_format : uint8_t { fastq, fasta };
 void print_step_summary(const char *step_name,
                         const clock_type::time_point &step_start,
                         const clock_type::time_point &step_end) {
-  Logger::log_info(std::string(step_name) + " done!");
-  Logger::log_info(
+  SPRING_LOG_INFO(std::string(step_name) + " done!");
+  SPRING_LOG_INFO(
       "Time for this step: " +
       std::to_string(std::chrono::duration_cast<std::chrono::seconds>(
                          step_end - step_start)
@@ -80,7 +80,7 @@ void print_step_summary(const char *step_name,
 template <typename Func>
 void run_timed_step(const char *start_message, const char *step_name,
                     Func &&step) {
-  Logger::log_info(start_message);
+  SPRING_LOG_INFO(start_message);
   const auto step_start = clock_type::now();
   std::forward<Func>(step)();
   const auto step_end = clock_type::now();
@@ -89,7 +89,7 @@ void run_timed_step(const char *start_message, const char *step_name,
 
 void run_system_command_or_throw(const std::string &command,
                                  const char *error_message) {
-  Logger::log_debug("Executing system command: " + command);
+  SPRING_LOG_DEBUG("Executing system command: " + command);
 #ifdef _WIN32
   std::string wrapped_command = "\"" + command + "\"";
   const int command_status = std::system(wrapped_command.c_str());
@@ -148,7 +148,7 @@ std::string build_rapidgzip_command(const std::string &input_path,
 
 void decompress_gzip_input_file_with_zlib(const std::string &input_path,
                                           const std::string &output_path) {
-  Logger::log_debug("Using zlib fallback to decompress staged input: " +
+  SPRING_LOG_DEBUG("Using zlib fallback to decompress staged input: " +
                     input_path + " -> " + output_path);
   std::ifstream fin(input_path, std::ios::binary);
   std::ofstream fout(output_path, std::ios::binary);
@@ -226,22 +226,22 @@ void decompress_gzip_input_file(const std::string &input_path,
                                 const int num_thr) {
   if (kRapidgzipExecutable[0] != '\0' &&
       std::filesystem::exists(kRapidgzipExecutable)) {
-    Logger::log_debug("Attempting staged gzip decompression with rapidgzip.");
+    SPRING_LOG_DEBUG("Attempting staged gzip decompression with rapidgzip.");
     const std::string rapidgzip_command =
         build_rapidgzip_command(input_path, output_path, num_thr);
 #ifdef _WIN32
     std::string wrapped_command = "\"" + rapidgzip_command + "\"";
     if (std::system(wrapped_command.c_str()) == 0) {
-      Logger::log_debug("Staged gzip decompression completed via rapidgzip.");
+      SPRING_LOG_DEBUG("Staged gzip decompression completed via rapidgzip.");
       return;
     }
 #else
     if (std::system(rapidgzip_command.c_str()) == 0) {
-      Logger::log_debug("Staged gzip decompression completed via rapidgzip.");
+      SPRING_LOG_DEBUG("Staged gzip decompression completed via rapidgzip.");
       return;
     }
 #endif
-    Logger::log_debug("rapidgzip invocation failed; falling back to zlib.");
+    SPRING_LOG_DEBUG("rapidgzip invocation failed; falling back to zlib.");
   }
 
   decompress_gzip_input_file_with_zlib(input_path, output_path);
@@ -250,7 +250,7 @@ void decompress_gzip_input_file(const std::string &input_path,
 prepared_compression_inputs
 prepare_compression_inputs(const compression_io_config &io_config,
                            const std::string &temp_dir, const int num_thr) {
-  Logger::log_debug("Preparing compression inputs in temp directory: " +
+  SPRING_LOG_DEBUG("Preparing compression inputs in temp directory: " +
                     temp_dir);
   prepared_compression_inputs prepared_inputs{
       .input_path_1 = io_config.input_path_1,
@@ -264,7 +264,7 @@ prepare_compression_inputs(const compression_io_config &io_config,
   if (input_1_is_gzipped) {
     prepared_inputs.input_path_1 =
         decompressed_input_path(temp_dir, io_config.input_path_1, 1);
-    Logger::log_debug("Input 1 is gzip-compressed; staging to: " +
+    SPRING_LOG_DEBUG("Input 1 is gzip-compressed; staging to: " +
                       prepared_inputs.input_path_1);
     decompress_gzip_input_file(io_config.input_path_1,
                                prepared_inputs.input_path_1, num_thr);
@@ -276,7 +276,7 @@ prepare_compression_inputs(const compression_io_config &io_config,
     if (input_2_is_gzipped) {
       prepared_inputs.input_path_2 =
           decompressed_input_path(temp_dir, io_config.input_path_2, 2);
-      Logger::log_debug("Input 2 is gzip-compressed; staging to: " +
+      SPRING_LOG_DEBUG("Input 2 is gzip-compressed; staging to: " +
                         prepared_inputs.input_path_2);
       decompress_gzip_input_file(io_config.input_path_2,
                                  prepared_inputs.input_path_2, num_thr);
@@ -292,12 +292,12 @@ void cleanup_prepared_compression_inputs(
     bool pairing_only_flag) {
   if (!pairing_only_flag) {
     if (prepared_inputs.input_1_actual_was_gzipped) {
-      Logger::log_debug("Removing staged input 1 file: " +
+      SPRING_LOG_DEBUG("Removing staged input 1 file: " +
                         prepared_inputs.input_path_1);
       std::filesystem::remove(prepared_inputs.input_path_1);
     }
     if (prepared_inputs.input_2_actual_was_gzipped) {
-      Logger::log_debug("Removing staged input 2 file: " +
+      SPRING_LOG_DEBUG("Removing staged input 2 file: " +
                         prepared_inputs.input_path_2);
       std::filesystem::remove(prepared_inputs.input_path_2);
     }
@@ -436,7 +436,7 @@ compression_io_config resolve_compression_io(const string_list &input_paths,
     throw std::runtime_error("Number of output files not equal to 1");
   }
 
-  Logger::log_debug("Resolved compression I/O: paired_end=" +
+  SPRING_LOG_DEBUG("Resolved compression I/O: paired_end=" +
                     std::string(io_config.paired_end ? "true" : "false") +
                     ", input1=" + io_config.input_path_1 +
                     (io_config.paired_end
@@ -452,7 +452,7 @@ void configure_quality_options(compression_params &compression_params,
     compression_params.quality.qvz_flag = false;
     compression_params.quality.ill_bin_flag = false;
     compression_params.quality.bin_thr_flag = false;
-    Logger::log_debug("Quality mode set to lossless.");
+    SPRING_LOG_DEBUG("Quality mode set to lossless.");
     return;
   }
 
@@ -468,7 +468,7 @@ void configure_quality_options(compression_params &compression_params,
     compression_params.quality.qvz_flag = true;
     compression_params.quality.ill_bin_flag = false;
     compression_params.quality.bin_thr_flag = false;
-    Logger::log_debug("Quality mode set to qvz with ratio=" +
+    SPRING_LOG_DEBUG("Quality mode set to qvz with ratio=" +
                       std::to_string(compression_params.quality.qvz_ratio));
     return;
   }
@@ -477,7 +477,7 @@ void configure_quality_options(compression_params &compression_params,
     compression_params.quality.ill_bin_flag = true;
     compression_params.quality.qvz_flag = false;
     compression_params.quality.bin_thr_flag = false;
-    Logger::log_debug("Quality mode set to ill_bin.");
+    SPRING_LOG_DEBUG("Quality mode set to ill_bin.");
     return;
   }
 
@@ -509,7 +509,7 @@ void configure_quality_options(compression_params &compression_params,
     compression_params.quality.qvz_flag = false;
     compression_params.quality.ill_bin_flag = false;
     compression_params.quality.bin_thr_flag = true;
-    Logger::log_debug(
+    SPRING_LOG_DEBUG(
       "Quality mode set to binary (thr=" +
       std::to_string(compression_params.quality.bin_thr_thr) +
       ", high=" + std::to_string(compression_params.quality.bin_thr_high) +
@@ -523,7 +523,7 @@ void configure_quality_options(compression_params &compression_params,
 
 void print_temp_dir_size(const std::string &temp_dir,
                          const char *label = "Temporary directory size") {
-  Logger::log_info(std::string(label) + ": " +
+  SPRING_LOG_INFO(std::string(label) + ": " +
                    std::to_string(get_directory_size(temp_dir)));
 }
 
@@ -550,11 +550,11 @@ void print_compressed_stream_sizes(const std::string &temp_dir) {
     }
   }
 
-  Logger::log_info("");
-  Logger::log_info("Sizes of streams after compression: ");
-  Logger::log_info("Reads:      " + std::to_string(size_read) + " bytes");
-  Logger::log_info("Quality:    " + std::to_string(size_quality) + " bytes");
-  Logger::log_info("ID:         " + std::to_string(size_id) + " bytes");
+  SPRING_LOG_INFO("");
+  SPRING_LOG_INFO("Sizes of streams after compression: ");
+  SPRING_LOG_INFO("Reads:      " + std::to_string(size_read) + " bytes");
+  SPRING_LOG_INFO("Quality:    " + std::to_string(size_quality) + " bytes");
+  SPRING_LOG_INFO("ID:         " + std::to_string(size_id) + " bytes");
 }
 
 decompression_io_config
@@ -592,7 +592,7 @@ resolve_decompression_io(const string_list &input_paths,
     throw std::runtime_error("Too many (>2) output files specified");
   }
 
-  Logger::log_debug("Resolved decompression I/O: archive=" +
+  SPRING_LOG_DEBUG("Resolved decompression I/O: archive=" +
                     io_config.archive_path + ", output1=" +
                     io_config.output_path_1 +
                     (paired_end ? (", output2=" + io_config.output_path_2)
@@ -609,7 +609,7 @@ void perform_audit(const std::string &archive_path,
   // temp files
   std::string audit_dir = temp_dir + "/audit_extract";
   std::filesystem::create_directories(audit_dir);
-  Logger::log_debug("Audit started for archive: " + archive_path +
+  SPRING_LOG_DEBUG("Audit started for archive: " + archive_path +
                     " (extract dir: " + audit_dir + ")");
 
   try {
@@ -703,8 +703,8 @@ void compress(const std::string &temp_dir,
   ProgressBar::SetGlobalInstance(&progress);
   omp_set_dynamic(0);
 
-  Logger::log_info("Starting compression...");
-  Logger::log_debug("Compression request: temp_dir=" + temp_dir +
+  SPRING_LOG_INFO("Starting compression...");
+  SPRING_LOG_DEBUG("Compression request: temp_dir=" + temp_dir +
                     ", num_threads=" + std::to_string(num_thr) +
                     ", level=" + std::to_string(compression_level) +
                     ", strip_order=" +
@@ -743,15 +743,15 @@ void compress(const std::string &temp_dir,
       prepared_inputs.input_path_1, prepared_inputs.input_path_2,
       io_config.paired_end, fasta_input, use_crlf);
   const bool long_flag = max_read_length > MAX_READ_LEN;
-  Logger::log_debug("Detected maximum read length=" +
+  SPRING_LOG_DEBUG("Detected maximum read length=" +
                     std::to_string(max_read_length) +
                     ", use_crlf=" + std::string(use_crlf ? "true" : "false") +
                     ", long_mode=" + std::string(long_flag ? "true" : "false"));
 
   if (long_flag) {
-    Logger::log_info("Auto-detected long-read mode.");
+    SPRING_LOG_INFO("Auto-detected long-read mode.");
   } else {
-    Logger::log_info("Auto-detected short-read mode.");
+    SPRING_LOG_INFO("Auto-detected short-read mode.");
   }
 
   compression_params cp{};
@@ -774,7 +774,7 @@ void compress(const std::string &temp_dir,
         std::filesystem::path(io_config.input_path_2).filename().string();
   }
 
-  Logger::log_debug(
+  SPRING_LOG_DEBUG(
       "Archive metadata inputs: name1='" + cp.read_info.input_filename_1 +
       "'" +
       (cp.encoding.paired_end
@@ -804,20 +804,20 @@ void compress(const std::string &temp_dir,
   if (preserve_quality)
     configure_quality_options(cp, quality_options);
 
-  Logger::log_info(std::string("Detected input format: ") +
+  SPRING_LOG_INFO(std::string("Detected input format: ") +
                    input_format_name(input_format));
   if (fasta_input) {
-    Logger::log_info(
+    SPRING_LOG_INFO(
         "FASTA input detected; quality values will not be stored.");
   }
 
   if (prepared_inputs.input_1_actual_was_gzipped ||
       prepared_inputs.input_2_actual_was_gzipped) {
-    Logger::log_info("Detected gzipped input; decompressing to temporary input "
+    SPRING_LOG_INFO("Detected gzipped input; decompressing to temporary input "
                      "files before compression.");
   }
 
-  Logger::log_debug("Effective encoding options: paired_end=" +
+  SPRING_LOG_DEBUG("Effective encoding options: paired_end=" +
                     std::string(cp.encoding.paired_end ? "true" : "false") +
                     ", preserve_order=" +
                     std::string(cp.encoding.preserve_order ? "true" : "false") +
@@ -885,7 +885,7 @@ void compress(const std::string &temp_dir,
     progress.set_stage("Creating archive", 0.95F, 1.0F);
     create_tar_archive(io_config.archive_path, temp_dir);
   });
-  Logger::log_debug("Archive created at: " + io_config.archive_path);
+  SPRING_LOG_DEBUG("Archive created at: " + io_config.archive_path);
 
   const auto compression_end = clock_type::now();
   if (Logger::is_info_enabled()) {
@@ -909,7 +909,7 @@ void compress(const std::string &temp_dir,
   ProgressBar::SetGlobalInstance(nullptr);
 
   if (audit_flag) {
-    Logger::log_debug("Running post-compression audit.");
+    SPRING_LOG_DEBUG("Running post-compression audit.");
     perform_audit(io_config.archive_path, temp_dir);
   }
 }
@@ -924,8 +924,8 @@ void decompress(const std::string &temp_dir,
   ProgressBar::SetGlobalInstance(&progress);
   omp_set_dynamic(0);
 
-  Logger::log_info("Starting decompression...");
-  Logger::log_debug("Decompression request: temp_dir=" + temp_dir +
+  SPRING_LOG_INFO("Starting decompression...");
+  SPRING_LOG_DEBUG("Decompression request: temp_dir=" + temp_dir +
                     ", unzip=" + std::string(unzip_flag ? "true" : "false"));
   const auto decompression_start = clock_type::now();
   compression_params cp{};
@@ -949,7 +949,7 @@ void decompress(const std::string &temp_dir,
   compression_params_input.close();
 
   bool paired_end = cp.encoding.paired_end;
-  Logger::log_debug("Archive metadata: paired_end=" +
+  SPRING_LOG_DEBUG("Archive metadata: paired_end=" +
                     std::string(cp.encoding.paired_end ? "true" : "false") +
                     ", long_mode=" +
                     std::string(cp.encoding.long_flag ? "true" : "false") +
@@ -1023,7 +1023,7 @@ void decompress(const std::string &temp_dir,
     }
   }
 
-  Logger::log_debug("Resolved " +
+  SPRING_LOG_DEBUG("Resolved " +
                     std::to_string(resolved_output_paths.size()) +
                     " output path(s) after unzip handling.");
 
@@ -1069,7 +1069,7 @@ void decompress(const std::string &temp_dir,
             "ARCHIVE INTEGRITY CHECK FAILED: Reconstructed data does not match "
             "original digests. The archive may be corrupted.");
       }
-      Logger::log_debug("Integrity check passed for lossless archive.");
+      SPRING_LOG_DEBUG("Integrity check passed for lossless archive.");
     }
   });
 
@@ -1102,3 +1102,4 @@ std::string random_string(size_t length) {
 }
 
 } // namespace spring
+

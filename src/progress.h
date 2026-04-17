@@ -55,4 +55,17 @@ private:
 
 } // namespace spring
 
+#define SPRING_LOG_INFO(msg)                                                   \
+  do {                                                                         \
+    if (spring::Logger::is_info_enabled())                                     \
+      spring::Logger::log_info((msg));                                         \
+  } while (false)
+
+#define SPRING_LOG_DEBUG(msg)                                                  \
+  do {                                                                         \
+    if (spring::Logger::is_debug_enabled())                                    \
+      spring::Logger::log_debug((msg));                                        \
+  } while (false)
+
 #endif // SPRING_PROGRESS_H
+

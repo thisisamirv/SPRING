@@ -411,14 +411,14 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
   generatemasks<bitset_size>(length_masks_ptrs.data(), rg.max_readlen, 2);
   std::vector<std::bitset<bitset_size>> index_masks(
       static_cast<size_t>(rg.numdict));
-  Logger::log_info("Constructing dictionaries");
+  SPRING_LOG_INFO("Constructing dictionaries");
   generateindexmasks<bitset_size>(index_masks.data(), dict, rg.numdict, 2);
   auto remaining_reads_storage = std::make_unique<bool[]>(rg.numreads);
   bool *remaining_reads = remaining_reads_storage.get();
   std::fill(remaining_reads, remaining_reads + rg.numreads, true);
 
   uint32_t first_read = 0;
-  Logger::log_info("Reordering reads");
+  SPRING_LOG_INFO("Reordering reads");
   std::vector<uint32_t> unmatched_counts(static_cast<size_t>(rg.num_thr));
   std::vector<std::string> open_stream_errors(static_cast<size_t>(rg.num_thr));
 #pragma omp parallel default(none)                                             \
@@ -755,7 +755,7 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
     }
   }
   // remaining_reads_storage RAII will free the remaining_reads buffer
-  Logger::log_info("Reordering done, " +
+  SPRING_LOG_INFO("Reordering done, " +
                    std::to_string(std::accumulate(unmatched_counts.begin(),
                                                   unmatched_counts.end(), 0)) +
                    " were unmatched");
@@ -879,22 +879,23 @@ void reorder_main(const std::string &temp_dir, const compression_params &cp) {
   std::vector<uint16_t> read_lengths;
   read.resize(static_cast<size_t>(rg.numreads));
   read_lengths.resize(static_cast<size_t>(rg.numreads));
-  Logger::log_info("Reading file");
+  SPRING_LOG_INFO("Reading file");
   readDnaFile<bitset_size>(read.data(), read_lengths.data(), rg);
 
   if (rg.numreads > 0) {
-    Logger::log_info("Constructing dictionaries");
+    SPRING_LOG_INFO("Constructing dictionaries");
     constructdictionary<bitset_size>(read.data(), dict.data(),
                                      read_lengths.data(), rg.numdict,
                                      rg.numreads, 2, rg.basedir, rg.num_thr);
   }
-  Logger::log_info("Reordering reads");
+  SPRING_LOG_INFO("Reordering reads");
   reorder<bitset_size>(read.data(), dict.data(), read_lengths.data(), rg);
-  Logger::log_info("Writing to file");
+  SPRING_LOG_INFO("Writing to file");
   writetofile<bitset_size>(read.data(), read_lengths.data(), rg);
-  Logger::log_info("Done!");
+  SPRING_LOG_INFO("Done!");
 }
 
 } // namespace spring
 
 #endif // SPRING_REORDER_IMPL_H_
+
