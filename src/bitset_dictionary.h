@@ -409,11 +409,12 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
                      std::to_string(numdict) + ": Building MPHF for " +
                      std::to_string(current_dict.numkeys) + " keys...");
     pthash::build_configuration config;
-    config.num_threads = 1;
+    config.num_threads = std::max(1, num_thr);
     config.minimal = false;
     config.verbose = false;
     current_dict.bphf = std::make_unique<boophf_t>();
-    Logger::log_info("  Building MPHF... ");
+    Logger::log_info("  Building MPHF... threads=" +
+                     std::to_string(config.num_threads));
     current_dict.bphf->build_in_internal_memory(dictionary_keys_data,
                                                 current_dict.numkeys, config);
     current_dict.numkeys = current_dict.bphf->table_size();

@@ -603,12 +603,25 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
           paired_id_code = 0;
       }
       if (!cp.encoding.long_flag) {
+        // Parallelize N-read classification
+        std::vector<bool> is_n_read(reads_in_step);
+        uint32_t thread_local_clean_count = 0;
+
+#pragma omp parallel for schedule(static) reduction(+:thread_local_clean_count)
         for (uint32_t read_index = 0; read_index < reads_in_step;
              read_index++) {
-          if (!read_contains_N_array[read_index]) {
+          is_n_read[read_index] = read_contains_N_array[read_index];
+          if (!is_n_read[read_index]) {
+            thread_local_clean_count++;
+          }
+        }
+
+        // Write encoded reads sequentially to avoid file stream corruption
+        for (uint32_t read_index = 0; read_index < reads_in_step;
+             read_index++) {
+          if (!is_n_read[read_index]) {
             write_dna_in_bits(read_array[read_index],
                               clean_outputs[stream_index]);
-            num_reads_clean[stream_index]++;
           } else {
             uint32_t n_read_position = num_reads[stream_index] + read_index;
             n_read_order_outputs[stream_index].write(byte_ptr(&n_read_position),
@@ -617,6 +630,8 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                                n_read_outputs[stream_index]);
           }
         }
+        num_reads_clean[stream_index] += thread_local_clean_count;
+
         if (!cp.encoding.preserve_order) {
           for (uint32_t read_index = 0; read_index < reads_in_step;
                read_index++)

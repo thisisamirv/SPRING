@@ -28,6 +28,8 @@
 ### Changed
 
 * Optimized `reference_sequence_store::find_chunk_index` in `src/decompress.cpp` by replacing the linear scan with a binary search on chunk start offsets.
+* **Improved compression parallelism** by restoring parallel sequence chunk packing in `src/encoder.cpp`, removing OpenMP critical sections from error logging in `src/encoder_impl.h` and `src/reorder_impl.h` (replaced with thread-local error aggregation), removing redundant startup barrier in `src/reorder_impl.h`, and unlocking MPHF dictionary thread count in `src/bitset_dictionary.h` (was hardcoded to 1).
+* **Parallelized preprocessing N-read classification** in `src/preprocess.cpp` by adding `#pragma omp parallel for` loop for N-read detection to reduce preprocessing bottleneck on large inputs.
 * Reduced sequential bottlenecks in `src/reordered_streams.cpp` by introducing safe bulk metadata loading (orientation/position/noise/read-length/order streams) with deterministic in-memory parsing, and by replacing per-read unaligned bit unpacking with boundary-validated parallel decode into disjoint output ranges.
 * Reduced synchronization and sorting overhead in the dictionary and reorder paths: `src/bitset_dictionary.h` now uses parallel chunk sorts with deterministic merges before the existing dedup pass, and `src/reorder_impl.h` assigns seed reads with OpenMP atomic capture instead of the initial cross-thread critical section.
 * Optimized singleton DNA+N decoding in `src/encoder_impl.h` by replacing per-read `read_dnaN_from_bits()` calls with an inlined decoder loop and larger buffered stream I/O in the hot path.
