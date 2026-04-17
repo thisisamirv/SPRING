@@ -294,12 +294,12 @@ void cleanup_prepared_compression_inputs(
     if (prepared_inputs.input_1_actual_was_gzipped) {
       SPRING_LOG_DEBUG("Removing staged input 1 file: " +
                         prepared_inputs.input_path_1);
-      std::filesystem::remove(prepared_inputs.input_path_1);
+      safe_remove_file(prepared_inputs.input_path_1);
     }
     if (prepared_inputs.input_2_actual_was_gzipped) {
       SPRING_LOG_DEBUG("Removing staged input 2 file: " +
                         prepared_inputs.input_path_2);
-      std::filesystem::remove(prepared_inputs.input_path_2);
+      safe_remove_file(prepared_inputs.input_path_2);
     }
   }
 }

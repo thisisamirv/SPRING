@@ -180,6 +180,16 @@ compare_lines() {
 	fi
 }
 
+compare_with_gzip_source() {
+	local output_path="$1"
+	local gzip_source_path="$2"
+	local expected_path
+	expected_path=$(mktemp "$WORK_DIR/expected-from-gz.XXXXXX")
+	gzip -dc "$gzip_source_path" >"$expected_path"
+	compare_files "$output_path" "$expected_path"
+	rm -f "$expected_path"
+}
+
 prepare_local_input() {
 	local source_path="$1"
 	local target_name="$2"
@@ -232,37 +242,37 @@ compare_files tmp.2 "$ASSET_DIR/test_2.fastq"
 announce_case "paired fastq gzipped input round-trip"
 run_spring -c -i "$ASSET_DIR/test_1.fastq.gz" "$ASSET_DIR/test_2.fastq.gz" -o abcd
 run_spring -d -i abcd -o tmp -u
-compare_files tmp.1 "$ASSET_DIR/test_1.fastq"
-compare_files tmp.2 "$ASSET_DIR/test_2.fastq"
+compare_with_gzip_source tmp.1 "$ASSET_DIR/test_1.fastq.gz"
+compare_with_gzip_source tmp.2 "$ASSET_DIR/test_2.fastq.gz"
 
 announce_case "paired fasta gzipped input round-trip"
 run_spring -c -i "$ASSET_DIR/test_1.fasta.gz" "$ASSET_DIR/test_2.fasta.gz" -o abcd
 run_spring -d -i abcd -o tmp -u
-compare_files tmp.1 "$ASSET_DIR/test_1.fasta"
-compare_files tmp.2 "$ASSET_DIR/test_2.fasta"
+compare_with_gzip_source tmp.1 "$ASSET_DIR/test_1.fasta.gz"
+compare_with_gzip_source tmp.2 "$ASSET_DIR/test_2.fasta.gz"
 
 announce_case "single gzipped fastq round-trip"
 run_spring -c -i "$ASSET_DIR/test_1.fastq.gz" -o abcd
 run_spring -d -i abcd -o tmp -u
-compare_files tmp "$ASSET_DIR/test_1.fastq"
+compare_with_gzip_source tmp "$ASSET_DIR/test_1.fastq.gz"
 
 announce_case "single gzipped fastq to gzipped output"
 run_spring -d -i abcd -o tmp.gz
 gunzip -f tmp.gz
-compare_files tmp "$ASSET_DIR/test_1.fastq"
+compare_with_gzip_source tmp "$ASSET_DIR/test_1.fastq.gz"
 
 announce_case "paired fastq gzipped input round-trip redundant"
 run_spring -c -i "$ASSET_DIR/test_1.fastq.gz" "$ASSET_DIR/test_2.fastq.gz" -o abcd
 run_spring -d -i abcd -o tmp -u
-compare_files tmp.1 "$ASSET_DIR/test_1.fastq"
-compare_files tmp.2 "$ASSET_DIR/test_2.fastq"
+compare_with_gzip_source tmp.1 "$ASSET_DIR/test_1.fastq.gz"
+compare_with_gzip_source tmp.2 "$ASSET_DIR/test_2.fastq.gz"
 
 announce_case "paired fastq gzipped input to gzipped outputs"
 run_spring -d -i abcd -o tmp.1.gz tmp.2.gz
 gunzip -f tmp.1.gz
 gunzip -f tmp.2.gz
-compare_files tmp.1 "$ASSET_DIR/test_1.fastq"
-compare_files tmp.2 "$ASSET_DIR/test_2.fastq"
+compare_with_gzip_source tmp.1 "$ASSET_DIR/test_1.fastq.gz"
+compare_with_gzip_source tmp.2 "$ASSET_DIR/test_2.fastq.gz"
 
 announce_case "multi-threaded round-trip single"
 run_spring -c -i "$ASSET_DIR/test_1.fastq" -o abcd -t 8
