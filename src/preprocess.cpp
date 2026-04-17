@@ -579,11 +579,15 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
             if (cp.encoding.preserve_quality) {
               std::string output_path = block_file_path(
                   paths.quality_output_paths[stream_index], block_num);
+              std::string raw_quality_path = output_path + ".raw";
               write_raw_string_block(
-                  output_path,
+                raw_quality_path,
                   quality_array.data() + thread_id * num_reads_per_block,
                   thread_read_count,
                   read_lengths_array.data() + thread_id * num_reads_per_block);
+              bsc::BSC_compress(raw_quality_path.c_str(),
+                      output_path.c_str());
+              remove(raw_quality_path.c_str());
             }
             std::string output_path = block_file_path(
                 paths.read_block_paths[stream_index], block_num);

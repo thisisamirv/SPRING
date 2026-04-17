@@ -261,7 +261,13 @@ void decompress_bsc_block(const std::string &base_path,
   const std::string input_path =
       compressed_block_file_path(base_path, block_num);
   if (is_unaligned_block_path(input_path)) {
-    copy_binary_file(input_path, output_path);
+    // Backward compatibility: older archives may store unaligned blocks as raw
+    // bytes with a .bsc suffix, while newer archives store proper BSC blocks.
+    try {
+      safe_bsc_decompress(input_path, output_path);
+    } catch (const std::exception &) {
+      copy_binary_file(input_path, output_path);
+    }
   } else {
     safe_bsc_decompress(input_path, output_path);
   }
