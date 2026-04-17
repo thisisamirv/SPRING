@@ -428,7 +428,6 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
   {
     bool done = false;
     int thread_id = omp_get_thread_num();
-    uint32_t thread_local_unmatched_count = 0;  // Avoid lock contention
     int64_t remaining_read_scan = rg.numreads - 1;
     std::ofstream orientation_output(
         detail::thread_output_path(rg.outfileRC, thread_id), std::ios::binary);
@@ -503,7 +502,7 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
         done = true;
       } else {
         remaining_reads[current_read_id] = 0;
-        thread_local_unmatched_count++;  // Increment in critical but before barrier
+        unmatched_counts[thread_id]++;
       }
       first_read += rg.numreads / omp_get_num_threads();
     }
@@ -708,7 +707,7 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
                 remaining_read_scan = read_id - 1;
                 remaining_reads[read_id] = 0;
                 found_match = 1;
-                thread_local_unmatched_count++;
+                unmatched_counts[thread_id]++;
               }
               omp_unset_lock(read_locks[detail::lock_shard(read_id)].get());
               omp_unset_lock(
@@ -748,13 +747,6 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
     position_output.close();
     singleton_order_output.close();
     read_length_output.close();
-    
-    // Accumulate thread-local unmatched counts after work is done
-    // This avoids lock contention in the hot loop
-#pragma omp critical
-    {
-      unmatched_counts[thread_id] = thread_local_unmatched_count;
-    }
     // base_counts_storage RAII will free the per-thread buffers
   }
   // remaining_reads_storage RAII will free the remaining_reads buffer
