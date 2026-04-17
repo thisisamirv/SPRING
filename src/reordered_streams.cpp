@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <array>
 #include <fstream>
 #include <iostream>
 #include <filesystem>
@@ -146,6 +147,100 @@ block_range block_read_range(const uint64_t block_num,
   return {.begin = begin, .end = end, .valid = true};
 }
 
+std::vector<char> read_binary_file_all(const std::string &path) {
+  std::ifstream input(path, std::ios::binary | std::ios::ate);
+  if (!input.is_open()) {
+    throw std::runtime_error("Failed to open binary file: " + path);
+  }
+  const std::streamsize file_size = input.tellg();
+  if (file_size < 0) {
+    throw std::runtime_error("Failed to determine file size: " + path);
+  }
+  std::vector<char> data(static_cast<size_t>(file_size));
+  input.seekg(0, std::ios::beg);
+  if (file_size > 0 && !input.read(data.data(), file_size)) {
+    throw std::runtime_error("Failed to read binary file: " + path);
+  }
+  return data;
+}
+
+template <typename T>
+std::vector<T> read_binary_records_all(const std::string &path) {
+  const std::vector<char> raw = read_binary_file_all(path);
+  if (raw.size() % sizeof(T) != 0) {
+    throw std::runtime_error("Corrupted record stream (size mismatch): " +
+                             path);
+  }
+  std::vector<T> records(raw.size() / sizeof(T));
+  if (!raw.empty()) {
+    std::memcpy(records.data(), raw.data(), raw.size());
+  }
+  return records;
+}
+
+void decode_unaligned_reads(const std::string &path,
+                            const uint32_t expected_read_count,
+                            std::vector<char> &decoded_chars,
+                            std::vector<uint16_t> &decoded_lengths) {
+  const std::vector<char> encoded = read_binary_file_all(path);
+  decoded_lengths.assign(expected_read_count, 0);
+  std::vector<uint64_t> encoded_offsets(expected_read_count, 0);
+  std::vector<uint64_t> decoded_offsets(expected_read_count, 0);
+
+  uint64_t encoded_cursor = 0;
+  uint64_t decoded_total = 0;
+  for (uint32_t read_index = 0; read_index < expected_read_count; ++read_index) {
+    if (encoded_cursor + sizeof(uint16_t) > encoded.size()) {
+      throw std::runtime_error(
+          "Corrupted unaligned stream: truncated read length header.");
+    }
+
+    uint16_t read_length;
+    std::memcpy(&read_length, encoded.data() + encoded_cursor,
+                sizeof(uint16_t));
+    encoded_cursor += sizeof(uint16_t);
+
+    const uint64_t encoded_bytes =
+        (static_cast<uint64_t>(read_length) + 1) / 2;
+    if (encoded_cursor + encoded_bytes > encoded.size()) {
+      throw std::runtime_error(
+          "Corrupted unaligned stream: truncated encoded payload.");
+    }
+
+    decoded_lengths[read_index] = read_length;
+    encoded_offsets[read_index] = encoded_cursor;
+    decoded_offsets[read_index] = decoded_total;
+    decoded_total += read_length;
+    encoded_cursor += encoded_bytes;
+  }
+
+  if (encoded_cursor != encoded.size()) {
+    throw std::runtime_error(
+        "Corrupted unaligned stream: trailing bytes after expected records.");
+  }
+
+  decoded_chars.assign(decoded_total, 0);
+  static const std::array<char, 16> int_to_base = {
+      'A', 'G', 'C', 'T', 'N', 'N', 'N', 'N',
+      'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N'};
+
+#pragma omp parallel for schedule(static)
+  for (int read_index = 0; read_index < static_cast<int>(expected_read_count);
+       ++read_index) {
+    const uint16_t read_length = decoded_lengths[read_index];
+    const uint8_t *encoded_read = reinterpret_cast<const uint8_t *>(
+        encoded.data() + encoded_offsets[read_index]);
+    char *decoded_read = decoded_chars.data() + decoded_offsets[read_index];
+
+    for (uint16_t base_index = 0; base_index < read_length; ++base_index) {
+      const uint8_t packed_byte = encoded_read[base_index / 2];
+      const uint8_t base_code =
+          (base_index % 2 == 0) ? (packed_byte & 0x0F) : (packed_byte >> 4);
+      decoded_read[base_index] = int_to_base[base_code & 0x0F];
+    }
+  }
+}
+
 void write_noise_for_read(std::ofstream &noise_output,
                           std::ofstream &noise_position_output,
                           const std::vector<char> &noise_codes,
@@ -261,112 +356,154 @@ void reorder_compress_streams(const std::string &temp_dir,
   std::vector<uint64_t> position_by_read(num_reads);
   std::vector<uint16_t> noise_count_by_read(num_reads);
 
-  std::ifstream order_input;
-  if (paired_end || preserve_order)
-    order_input.open(paths.order_path, std::ios::binary);
-  std::ifstream orientation_input(paths.orientation_path, std::ios::binary);
-  std::ifstream read_length_input(paths.read_length_path, std::ios::binary);
-  std::ifstream noise_input(paths.noise_path, std::ios::binary);
-  std::ifstream noise_position_input(paths.noise_position_path,
-                                     std::ios::binary);
-  std::ifstream position_input(paths.position_path, std::ios::binary);
-  noise_position_input.seekg(0, noise_position_input.end);
-  uint64_t noise_entry_count = noise_position_input.tellg() / 2;
-  noise_position_input.seekg(0, noise_position_input.beg);
-  std::vector<char> noise_codes(noise_entry_count);
-  std::vector<uint16_t> noise_positions(noise_entry_count);
-  char orientation_char;
-  char noise_code;
-  uint32_t read_order = 0;
-  uint64_t next_noise_offset = 0;
-  uint64_t next_noise_position_offset = 0;
-  uint64_t read_position;
-  uint16_t noise_count_for_read;
-  uint16_t read_length;
-  uint16_t noise_position;
+  std::vector<char> orientation_entries;
+  std::vector<uint64_t> position_entries;
+  std::vector<uint16_t> read_length_entries;
+  std::vector<uint32_t> read_order_entries;
+  std::vector<char> noise_serialized;
+  std::vector<uint16_t> noise_positions;
 
-  while (orientation_input.get(orientation_char)) {
-    if (paired_end || preserve_order)
-      order_input.read(byte_ptr(&read_order), sizeof(uint32_t));
-    read_length_input.read(byte_ptr(&read_length), sizeof(uint16_t));
-    position_input.read(byte_ptr(&read_position), sizeof(uint64_t));
-    orientation_by_read[read_order] = orientation_char;
-    read_lengths_by_read[read_order] = read_length;
-    aligned_flags[read_order] = true;
-    position_by_read[read_order] = read_position;
-    noise_offset_by_read[read_order] = next_noise_offset;
-    noise_count_for_read = 0;
-    noise_input.get(noise_code);
-    while (noise_input.good() && noise_code != '\n') {
-      if (next_noise_offset >= noise_entry_count) {
-        throw std::runtime_error("Corruption in noise stream: excess codes "
-                                 "found beyond header limit.");
+#pragma omp parallel sections
+  {
+#pragma omp section
+    { orientation_entries = read_binary_file_all(paths.orientation_path); }
+#pragma omp section
+    { position_entries = read_binary_records_all<uint64_t>(paths.position_path); }
+#pragma omp section
+    { read_length_entries = read_binary_records_all<uint16_t>(paths.read_length_path); }
+#pragma omp section
+    { noise_serialized = read_binary_file_all(paths.noise_path); }
+#pragma omp section
+    { noise_positions = read_binary_records_all<uint16_t>(paths.noise_position_path); }
+#pragma omp section
+    {
+      if (paired_end || preserve_order) {
+        read_order_entries = read_binary_records_all<uint32_t>(paths.order_path);
       }
-      noise_codes[next_noise_offset++] = noise_code;
-      noise_count_for_read++;
-      if (!noise_input.get(noise_code))
-        break;
     }
-    for (uint16_t noise_index = 0; noise_index < noise_count_for_read;
-         noise_index++) {
-      noise_position_input.read(byte_ptr(&noise_position), sizeof(uint16_t));
-      noise_positions[next_noise_position_offset] = noise_position;
-      next_noise_position_offset++;
-    }
-    noise_count_by_read[read_order] = noise_count_for_read;
-    aligned_read_count++;
-    if (!(paired_end || preserve_order))
-      read_order++;
   }
-  noise_input.close();
-  noise_position_input.close();
-  orientation_input.close();
-  position_input.close();
+
+  if (orientation_entries.size() != position_entries.size()) {
+    throw std::runtime_error(
+        "Corruption in aligned streams: orientation/position size mismatch.");
+  }
+
+  aligned_read_count = static_cast<uint32_t>(orientation_entries.size());
+  if (aligned_read_count > num_reads) {
+    throw std::runtime_error(
+        "Corruption in aligned streams: aligned read count exceeds total reads.");
+  }
+
+  if (read_length_entries.size() != num_reads) {
+    throw std::runtime_error(
+        "Corruption in read length stream: entry count does not match reads.");
+  }
+
+  if ((paired_end || preserve_order) && read_order_entries.size() != num_reads) {
+    throw std::runtime_error(
+        "Corruption in read order stream: entry count does not match reads.");
+  }
+
+  uint64_t next_noise_offset = 0;
+  size_t noise_cursor = 0;
+  std::vector<char> noise_codes(noise_positions.size());
+
+  for (uint32_t entry_index = 0; entry_index < aligned_read_count;
+       ++entry_index) {
+    const uint32_t read_order =
+        (paired_end || preserve_order) ? read_order_entries[entry_index]
+                                       : entry_index;
+
+    orientation_by_read[read_order] = orientation_entries[entry_index];
+    read_lengths_by_read[read_order] = read_length_entries[entry_index];
+    aligned_flags[read_order] = true;
+    position_by_read[read_order] = position_entries[entry_index];
+    noise_offset_by_read[read_order] = next_noise_offset;
+
+    const char *line_begin = noise_serialized.data() + noise_cursor;
+    const size_t bytes_remaining = noise_serialized.size() - noise_cursor;
+    const void *line_end_ptr = std::memchr(line_begin, '\n', bytes_remaining);
+    const size_t line_len = line_end_ptr == nullptr
+                                ? bytes_remaining
+                                : static_cast<size_t>(
+                                      static_cast<const char *>(line_end_ptr) -
+                                      line_begin);
+
+    if (next_noise_offset + line_len > noise_positions.size()) {
+      throw std::runtime_error(
+          "Corruption in noise stream: excess codes found beyond position "
+          "metadata limit.");
+    }
+
+    if (line_len > 0) {
+      std::memcpy(noise_codes.data() + next_noise_offset, line_begin, line_len);
+    }
+    noise_count_by_read[read_order] = static_cast<uint16_t>(line_len);
+    next_noise_offset += line_len;
+    noise_cursor += line_len;
+    if (line_end_ptr != nullptr) {
+      noise_cursor += 1;
+    }
+  }
+
+  while (noise_cursor < noise_serialized.size() &&
+         noise_serialized[noise_cursor] == '\n') {
+    noise_cursor++;
+  }
+
+  if (noise_cursor != noise_serialized.size()) {
+    throw std::runtime_error(
+        "Corruption in noise stream: extra non-delimiter payload after "
+        "aligned entries.");
+  }
+
+  if (next_noise_offset != noise_positions.size()) {
+    throw std::runtime_error(
+        "Corruption in noise stream: code/position entry count mismatch.");
+  }
 
   unaligned_read_count = num_reads - aligned_read_count;
   Logger::log_debug("reorder_compress_streams parsed input streams: aligned_reads=" +
                     std::to_string(aligned_read_count) +
                     ", unaligned_reads=" + std::to_string(unaligned_read_count) +
-                    ", noise_entries=" + std::to_string(noise_entry_count));
+                    ", noise_entries=" +
+                    std::to_string(noise_positions.size()));
   std::string unaligned_count_path = paths.unaligned_path + ".count";
   std::ifstream unaligned_count_input(unaligned_count_path, std::ios::binary);
   uint64_t unaligned_char_count;
   unaligned_count_input.read(byte_ptr(&unaligned_char_count), sizeof(uint64_t));
   unaligned_count_input.close();
   remove(unaligned_count_path.c_str());
-  std::vector<char> unaligned_chars(unaligned_char_count);
-  std::ifstream unaligned_input(paths.unaligned_path, std::ios::binary);
-  std::string unaligned_read;
-  uint64_t next_unaligned_offset = 0;
-  for (uint32_t read_index = 0; read_index < unaligned_read_count;
-       read_index++) {
-    read_dnaN_from_bits(unaligned_read, unaligned_input);
-    std::memcpy(unaligned_chars.data() + next_unaligned_offset,
-                &unaligned_read[0], unaligned_read.size());
-    next_unaligned_offset += unaligned_read.size();
+  std::vector<char> unaligned_chars;
+  std::vector<uint16_t> unaligned_lengths;
+  decode_unaligned_reads(paths.unaligned_path, unaligned_read_count,
+                         unaligned_chars, unaligned_lengths);
+  if (unaligned_chars.size() != unaligned_char_count) {
+    throw std::runtime_error(
+        "Corruption in unaligned stream: decoded size does not match recorded "
+        "character count.");
   }
-
-  unaligned_input.close();
 
   // Both aligned and unaligned lengths live sequentially in read_length_input
   // (write_unaligned_range appends to the same file). Read them all in order.
   uint64_t current_unaligned_offset = 0;
   for (uint32_t read_index = 0; read_index < unaligned_read_count;
        read_index++) {
-    if (paired_end || preserve_order) {
-      order_input.read(byte_ptr(&read_order), sizeof(uint32_t));
+    const uint32_t read_order = (paired_end || preserve_order)
+                                    ? read_order_entries[aligned_read_count + read_index]
+                                    : (aligned_read_count + read_index);
+    const uint16_t read_length =
+        read_length_entries[aligned_read_count + read_index];
+    if (unaligned_lengths[read_index] != read_length) {
+      throw std::runtime_error(
+          "Corruption in unaligned stream: decoded read length does not match "
+          "read-length metadata.");
     }
-    read_length_input.read(byte_ptr(&read_length), sizeof(uint16_t));
     read_lengths_by_read[read_order] = read_length;
     position_by_read[read_order] = current_unaligned_offset;
     current_unaligned_offset += read_length;
     aligned_flags[read_order] = false;
-    if (!(paired_end || preserve_order))
-      read_order++;
   }
-  if (paired_end || preserve_order)
-    order_input.close();
-  read_length_input.close();
 
   remove_input_stream_files(paths);
 

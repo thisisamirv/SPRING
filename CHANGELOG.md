@@ -28,6 +28,7 @@
 ### Changed
 
 * Optimized `reference_sequence_store::find_chunk_index` in `src/decompress.cpp` by replacing the linear scan with a binary search on chunk start offsets.
+* Reduced sequential bottlenecks in `src/reordered_streams.cpp` by introducing safe bulk metadata loading (orientation/position/noise/read-length/order streams) with deterministic in-memory parsing, and by replacing per-read unaligned bit unpacking with boundary-validated parallel decode into disjoint output ranges.
 * Optimized parallel gzip FASTQ writing in `src/util.cpp` by implementing thread-local reusable buffers and a persistent `libdeflate_compressor` cache to reduce heap allocator pressure.
 * Optimized `merge_paired_n_reads` in `src/preprocess.cpp` to use buffered I/O, reducing the number of disk operations when merging N-read positions.
 * Modernized the monolithic `compression_params` struct by decomposing it into nested, cohesive component structures (`EncodingConfig`, `QualityConfig`, `GzipMetadata`, `ReadMetadata`). This improves type safety and clarifies field ownership across the compression and decompression pipelines.
