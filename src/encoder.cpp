@@ -164,9 +164,7 @@ void pack_compress_seq(const encoder_global &encoder_state,
     return;
   Logger::log_debug("block_id=enc-pack-main, pack_compress_seq start: threads=" +
                     std::to_string(encoder_state.num_thr));
-  // This stage is I/O-heavy and only processes one chunk per thread output
-  // file. Running it sequentially avoids rare OpenMP-runtime crashes on large
-  // Windows workloads while preserving deterministic behavior.
+#pragma omp parallel for schedule(static)
   for (int tid = 0; tid < encoder_state.num_thr; tid++) {
     pack_sequence_chunk(encoder_state, tid, thread_sequence_lengths);
   }

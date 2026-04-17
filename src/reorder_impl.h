@@ -420,10 +420,12 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
   uint32_t first_read = 0;
   Logger::log_info("Reordering reads");
   std::vector<uint32_t> unmatched_counts(static_cast<size_t>(rg.num_thr));
+  std::vector<std::string> open_stream_errors(static_cast<size_t>(rg.num_thr));
 #pragma omp parallel default(none)                                             \
     shared(rg, read, read_lengths, dict, dict_locks, read_locks,               \
                remaining_read_lock, length_masks_ptrs, index_masks,            \
-               remaining_reads, unmatched_counts, std::cerr, std::cout,        \
+               remaining_reads, unmatched_counts, open_stream_errors,          \
+               std::cerr, std::cout,                                            \
                first_read)
   {
     bool done = false;
@@ -452,10 +454,7 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
                               ": Failed to open one or more temporary "
                               "files in reorder. Working directory: " +
                               rg.basedir;
-#pragma omp critical
-      {
-        std::cerr << error_msg << std::endl;
-      }
+      open_stream_errors[static_cast<size_t>(thread_id)] = error_msg;
       done = true;
     }
 
@@ -508,7 +507,6 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
       remaining_reads[current_read_id] = 0;
       unmatched_counts[thread_id]++;
     }
-#pragma omp barrier
     if (!done) {
       updaterefcount<bitset_size>(read[current_read_id], reference_read,
                                   reverse_reference_read, base_counts.data(),
@@ -750,6 +748,11 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
     singleton_order_output.close();
     read_length_output.close();
     // base_counts_storage RAII will free the per-thread buffers
+  }
+  for (const std::string &error_msg : open_stream_errors) {
+    if (!error_msg.empty()) {
+      std::cerr << error_msg << std::endl;
+    }
   }
   // remaining_reads_storage RAII will free the remaining_reads buffer
   Logger::log_info("Reordering done, " +

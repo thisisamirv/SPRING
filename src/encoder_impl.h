@@ -236,6 +236,7 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                     std::to_string(eg.numreads_s + eg.numreads_N) +
                     ", threads=" + std::to_string(eg.num_thr) +
                     ", num_dict=" + std::to_string(eg.numdict_s));
+  std::vector<std::string> open_stream_errors(static_cast<size_t>(eg.num_thr));
 #pragma omp parallel
   {
     bool done = false;
@@ -325,10 +326,7 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
         ", expected_bytes=13, actual_bytes=" +
         std::to_string(open_stream_count) +
         ", index=" + std::to_string(thread_id));
-#pragma omp critical
-      {
-        std::cerr << error_msg << std::endl;
-      }
+      open_stream_errors[static_cast<size_t>(thread_id)] = error_msg;
       done = true;
     }
     int64_t bucket_range[2];
@@ -648,6 +646,12 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                       std::to_string(thread_forced_break_count) +
                       ", absorbed_singletons=" +
                       std::to_string(thread_singleton_absorbed));
+  }
+
+  for (const std::string &error_msg : open_stream_errors) {
+    if (!error_msg.empty()) {
+      std::cerr << error_msg << std::endl;
+    }
   }
 
   // length_masks and index_masks are RAII-managed and freed automatically
