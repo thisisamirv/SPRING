@@ -1,0 +1,78 @@
+---
+name: Comparison
+
+"on":
+  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+jobs:
+  comparison-bench:
+    name: Build, install, and compare
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libomp-dev \
+            nasm \
+            ninja-build \
+            python3 \
+            python3-pip \
+            python3-venv
+
+      - name: Install CMake on Linux
+        shell: bash
+        run: |
+          CMAKE_VENV="$RUNNER_TEMP/cmake-venv"
+          python3 -m venv "$CMAKE_VENV"
+          "$CMAKE_VENV/bin/python" -m pip install --upgrade pip
+          "$CMAKE_VENV/bin/python" -m pip install "cmake==4.2.0"
+          echo "$CMAKE_VENV/bin" >> "$GITHUB_PATH"
+          "$CMAKE_VENV/bin/cmake" --version
+
+      - name: Configure
+        env:
+          CC: gcc
+          CXX: g++
+        run: |
+          cmake -S . -B build -G Ninja
+
+      - name: Build and install
+        run: |
+          cmake --build build --parallel
+          cmake --install build --prefix spring2
+
+      - name: Install mamba
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: latest
+          auto-activate-base: false
+          use-mamba: true
+
+      - name: Create spring_v1 environment with bioconda::spring
+        shell: bash -el {0}
+        run: |
+          mamba --version
+          mamba create -y -n spring_v1 -c conda-forge -c bioconda bioconda::spring
+
+      - name: Run comparison benchmark
+        shell: bash -el {0}
+        run: |
+          chmod +x tests/comparison_bench.sh
+          tests/comparison_bench.sh --no_debug
