@@ -427,10 +427,10 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   std::vector<std::string> id_array_1(num_reads_per_step);
   std::vector<std::string> id_array_2(num_reads_per_step);
   std::vector<std::string> quality_array(num_reads_per_step);
-  std::vector<bool> read_contains_N_array(num_reads_per_step);
+    std::vector<uint8_t> read_contains_N_array(num_reads_per_step, 0);
   std::vector<uint32_t> read_lengths_array(num_reads_per_step);
-  std::vector<bool> paired_id_match_array(
-      static_cast<size_t>(cp.encoding.num_thr));
+    std::vector<uint8_t> paired_id_match_array(
+      static_cast<size_t>(cp.encoding.num_thr), 0);
 
   omp_set_num_threads(cp.encoding.num_thr);
 
@@ -478,7 +478,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
         bool thread_done = false;
         uint64_t thread_id = omp_get_thread_num();
         if (stream_index == 1)
-          paired_id_match_array[thread_id] = paired_id_match;
+          paired_id_match_array[thread_id] = paired_id_match ? 1 : 0;
         if (thread_id * num_reads_per_block >= reads_in_step)
           thread_done = true;
         const uint32_t block_num =
@@ -608,7 +608,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       }
       if (!cp.encoding.long_flag) {
         // Parallelize N-read classification
-        std::vector<bool> is_n_read(reads_in_step);
+        std::vector<uint8_t> is_n_read(reads_in_step, 0);
         uint32_t thread_local_clean_count = 0;
 
 #pragma omp parallel for schedule(static) reduction(+:thread_local_clean_count)

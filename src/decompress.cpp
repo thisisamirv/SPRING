@@ -842,13 +842,13 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
             input_path = input_quality_paths[stream_index] + "." +
                          std::to_string(num_blocks_done + thread_id);
             if (stream_index == 0) {
-              bsc::BSC_str_array_decompress(
-                  input_path.c_str(), quality_buffer.data() + buffer_offset,
+              safe_bsc_str_array_decompress(
+                  input_path, quality_buffer.data() + buffer_offset,
                   thread_read_count,
                   read_lengths_buffer_1.data() + buffer_offset);
             } else {
-              bsc::BSC_str_array_decompress(
-                  input_path.c_str(), quality_buffer.data() + buffer_offset,
+              safe_bsc_str_array_decompress(
+                  input_path, quality_buffer.data() + buffer_offset,
                   thread_read_count,
                   read_lengths_buffer_2.data() + buffer_offset);
             }
@@ -972,19 +972,22 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
 
           std::string input_path =
               input_read_paths[stream_index] + "." + std::to_string(block_num);
-            read_raw_string_block(input_path,
-                      read_buffer.data() + buffer_offset,
-                      thread_read_count,
-                      read_lengths_buffer.data() + buffer_offset);
+          read_raw_string_block(input_path,
+                                read_buffer.data() + buffer_offset,
+                                thread_read_count,
+                                read_lengths_buffer.data() + buffer_offset);
           safe_remove_file(input_path);
 
           if (preserve_quality) {
             input_path = input_quality_paths[stream_index] + "." +
                          std::to_string(block_num);
-            read_raw_string_block(input_path,
+            const std::string quality_raw_path = input_path + ".raw";
+            safe_bsc_decompress(input_path, quality_raw_path);
+            read_raw_string_block(quality_raw_path,
                                   quality_buffer.data() + buffer_offset,
                                   thread_read_count,
                                   read_lengths_buffer.data() + buffer_offset);
+            safe_remove_file(quality_raw_path);
             safe_remove_file(input_path);
           }
           if (!preserve_id) {

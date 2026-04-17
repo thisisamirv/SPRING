@@ -10,7 +10,7 @@ COMPILE_COMMANDS="$BUILD_DIR/compile_commands.json"
 readonly DEFAULT_CPP_ROOTS=("$ROOT_DIR/src" "$ROOT_DIR/experimental" "$ROOT_DIR/tests")
 readonly DEFAULT_PY_ROOTS=("$ROOT_DIR/experimental" "$ROOT_DIR/tests" "$ROOT_DIR/dev")
 readonly VENDOR_ROOT="$ROOT_DIR/vendor"
-declare -A COMPILE_COMMANDS_FILE_SET=()
+readonly COMPILE_COMMANDS_FILE_SET_PATH="$BUILD_DIR/.compile_commands_file_set"
 COMPILE_COMMANDS_FILE_SET_INITIALIZED=false
 
 is_windows_host() {
@@ -48,11 +48,11 @@ initialize_compile_commands_file_set() {
 	fi
 
 	require_compile_commands
-	COMPILE_COMMANDS_FILE_SET=()
+	: > "$COMPILE_COMMANDS_FILE_SET_PATH"
 
 	while IFS= read -r normalized_entry; do
 		if [[ -n "$normalized_entry" ]]; then
-			COMPILE_COMMANDS_FILE_SET["$normalized_entry"]=1
+			printf '%s\n' "$normalized_entry" >> "$COMPILE_COMMANDS_FILE_SET_PATH"
 		fi
 	done < <(
 		python3 - "$COMPILE_COMMANDS" <<'PY'
@@ -62,22 +62,22 @@ import sys
 
 
 def normalize(path: str) -> str:
-    path = os.path.abspath(os.path.normpath(path)).replace('\\', '/')
-    if os.name == 'nt' or (len(path) >= 2 and path[1] == ':'):
-        path = path.lower()
-    return path
+	path = os.path.abspath(os.path.normpath(path)).replace('\\', '/')
+	if os.name == 'nt' or (len(path) >= 2 and path[1] == ':'):
+		path = path.lower()
+	return path
 
 
 entries = json.loads(open(sys.argv[1], encoding='utf-8').read())
 for entry in entries:
-    entry_file = entry.get('file', '')
-    if not entry_file:
-        continue
-    entry_dir = entry.get('directory', '')
-    if not os.path.isabs(entry_file):
-        if entry_dir:
-            entry_file = os.path.join(entry_dir, entry_file)
-    print(normalize(entry_file))
+	entry_file = entry.get('file', '')
+	if not entry_file:
+		continue
+	entry_dir = entry.get('directory', '')
+	if not os.path.isabs(entry_file):
+		if entry_dir:
+			entry_file = os.path.join(entry_dir, entry_file)
+	print(normalize(entry_file))
 PY
 	)
 
@@ -232,5 +232,5 @@ compile_commands_contains() {
 	local normalized_target
 	initialize_compile_commands_file_set
 	normalized_target=$(normalize_compile_db_path "$path")
-	[[ -n "${COMPILE_COMMANDS_FILE_SET[$normalized_target]+x}" ]]
+	grep -Fx -- "$normalized_target" "$COMPILE_COMMANDS_FILE_SET_PATH" >/dev/null 2>&1
 }
