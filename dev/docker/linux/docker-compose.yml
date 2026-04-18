@@ -1,0 +1,13 @@
+services:
+  spring2-build-linux:
+    build:
+      context: ../../../
+      dockerfile: dev/docker/linux/Dockerfile
+    image: spring2-linux:latest
+    container_name: spring2-dev
+    volumes:
+      - ../../../:/spring2
+    working_dir: /spring2
+    command: /bin/bash
+    stdin_open: true
+    tty: true

@@ -45,6 +45,9 @@
 # Build and IDE artifacts
 out/
 build/
+build-linux/
+build-macos/
+build-windows/
 CMakeUserPresets.json
 .vscode/clangd_compat/
 .clangd

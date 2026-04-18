@@ -25,6 +25,99 @@ SPRING2 uses a modular CMake build system. Each vendor dependency in the `vendor
 3. If adding a new `CMakeLists.txt`, ensure it defines the necessary targets and sets PIC.
 4. Re-archive the folder: `tar -cJf my-lib.tar.xz my-lib/`.
 
+## Docker Development Environments
+
+SPRING2 provides pre-configured Docker environments that replicate the CI build environments. These are useful for local development without installing dependencies on your host machine.
+
+### Available Environments
+
+Three Docker environments are available in `dev/docker/`:
+
+- **Linux** (`dev/docker/linux/`) - Ubuntu-based build environment with GCC
+- **macOS** (`dev/docker/macos/`) - Clang-based environment approximating macOS toolchain (Linux-based)
+- **Windows** (`dev/docker/windows/`) - Native Windows Server Core container with MinGW-w64 toolchain
+
+All environments include:
+
+- CMake 4.2.0
+- Ninja build system
+- NASM assembler
+- Python 3 with pip
+- Compiler cache (`ccache` for Linux/macOS, `sccache` for Windows)
+- Fast linkers (`mold`/`lld` for Linux, `lld` for macOS/Windows)
+
+### Using Docker Environments
+
+Each Docker environment bind-mounts your host repository into the container at `/spring2` (Linux/macOS) or `C:\spring2` (Windows), so you work directly in your main checkout.
+
+**Build an image (Compose, recommended):**
+
+```bash
+docker compose -f dev/docker/linux/docker-compose.yml build
+# or:
+docker compose -f dev/docker/macos/docker-compose.yml build
+docker compose -f dev/docker/windows/docker-compose.yml build
+```
+
+**Build an image (plain Docker):**
+
+```bash
+docker build -f dev/docker/linux/Dockerfile -t spring2:linux .
+# or:
+docker build -f dev/docker/macos/Dockerfile -t spring2:macos .
+docker build -f dev/docker/windows/Dockerfile -t spring2:windows .
+```
+
+**Run interactively:**
+
+```bash
+docker compose -f dev/docker/linux/docker-compose.yml run --rm spring2-build-linux
+# or:
+docker compose -f dev/docker/macos/docker-compose.yml run --rm spring2-build-macos
+docker compose -f dev/docker/windows/docker-compose.yml run --rm spring2-build-windows
+```
+
+**Build SPRING2 inside the container:**
+
+```bash
+# Linux container
+cmake -S /spring2 -B /spring2/build-linux -G Ninja
+cmake --build /spring2/build-linux --parallel
+cmake --install /spring2/build-linux --prefix /spring2/install-linux
+
+# macOS container
+cmake -S /spring2 -B /spring2/build-macos -G Ninja
+cmake --build /spring2/build-macos --parallel
+cmake --install /spring2/build-macos --prefix /spring2/install-macos
+
+# Windows container
+cmake -S C:/spring2 -B C:/spring2/build-windows -G Ninja
+cmake --build C:/spring2/build-windows --parallel
+cmake --install C:/spring2/build-windows --prefix C:/spring2/install-windows
+```
+
+Source changes on the host are visible immediately inside the container; rebuild the image only when you change Docker dependencies/tooling.
+
+### Notes on macOS Environment
+
+The macOS Docker environment is **Linux-based with Clang**, not true macOS. It's useful for:
+
+- Local development matching the macOS CI compiler (Clang)
+- Testing platform-agnostic C++ code
+- Quick iteration without platform-specific behavior
+
+For actual macOS testing, use the existing GitHub Actions CI or a native macOS machine.
+
+### Notes on Windows Environment
+
+Windows containers require:
+
+- Windows 10/11 with Hyper-V or WSL2
+- Docker Desktop for Windows
+- Significantly more resources than Linux images (~2.5GB+)
+- Docker Desktop must be switched to Windows containers mode
+- Working directory is `C:\spring2` inside the image
+
 ## Quality Control
 
 ### Linting

@@ -76,7 +76,14 @@ function(extract_archive_if_needed archive_path destination_parent expected_path
             RESULT_VARIABLE tar_result
         )
         if (NOT tar_result EQUAL 0)
-            message(FATAL_ERROR "Failed to extract ${archive_path}")
+            execute_process(
+                COMMAND "${CMAKE_COMMAND}" -E tar xJf "${archive_path}"
+                WORKING_DIRECTORY "${destination_parent}"
+                RESULT_VARIABLE cmake_tar_result
+            )
+            if (NOT cmake_tar_result EQUAL 0)
+                message(FATAL_ERROR "Failed to extract ${archive_path}")
+            endif ()
         endif()
         file(WRITE "${stamp_path}" "${archive_hash}")
     endif()

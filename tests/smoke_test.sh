@@ -6,6 +6,38 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
 ASSET_DIR="$ROOT_DIR/assets/sample-data"
 BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/build}"
+
+usage() {
+	echo "Usage: $0 [--build <path>]"
+}
+
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+		--build|-b)
+			if [[ $# -lt 2 ]]; then
+				echo "Missing value for $1" >&2
+				usage >&2
+				exit 1
+			fi
+			BUILD_DIR="$2"
+			shift 2
+			;;
+		--build=*)
+			BUILD_DIR="${1#*=}"
+			shift
+			;;
+		-h|--help)
+			usage
+			exit 0
+			;;
+		*)
+			echo "Unknown argument: $1" >&2
+			usage >&2
+			exit 1
+			;;
+	esac
+done
+
 if [[ "$BUILD_DIR" != /* ]]; then
 	BUILD_DIR="$ROOT_DIR/$BUILD_DIR"
 fi

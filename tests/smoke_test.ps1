@@ -3,7 +3,33 @@ $ErrorActionPreference = "Stop"
 $SCRIPT_DIR = $PSScriptRoot
 $ROOT_DIR = (Get-Item "$SCRIPT_DIR\..").FullName
 $ASSET_DIR = Join-Path $ROOT_DIR "assets\sample-data"
-$BUILD_DIR = if ($env:BUILD_DIR) { $env:BUILD_DIR } else { Join-Path $ROOT_DIR "build" }
+$BUILD_DIR_OVERRIDE = $null
+
+for ($i = 0; $i -lt $args.Count; $i++) {
+    $arg = [string]$args[$i]
+    if ($arg -eq "--build" -or $arg -eq "-b" -or $arg -eq "-build") {
+        if ($i + 1 -ge $args.Count) {
+            throw "Missing value for $arg"
+        }
+        $BUILD_DIR_OVERRIDE = [string]$args[$i + 1]
+        $i++
+        continue
+    }
+
+    if ($arg.StartsWith("--build=")) {
+        $BUILD_DIR_OVERRIDE = $arg.Substring("--build=".Length)
+        continue
+    }
+
+    if ($arg -eq "-h" -or $arg -eq "--help") {
+        Write-Host "Usage: ./smoke_test.ps1 [--build <path>]"
+        exit 0
+    }
+
+    throw "Unknown argument: $arg"
+}
+
+$BUILD_DIR = if ($BUILD_DIR_OVERRIDE) { $BUILD_DIR_OVERRIDE } elseif ($env:BUILD_DIR) { $env:BUILD_DIR } else { Join-Path $ROOT_DIR "build" }
 if (-not [System.IO.Path]::IsPathRooted($BUILD_DIR)) {
     $BUILD_DIR = Join-Path $ROOT_DIR $BUILD_DIR
 }
