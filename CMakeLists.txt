@@ -45,6 +45,7 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 include(CheckLinkerFlag)
 include(CheckIPOSupported)
+include(CheckSymbolExists)
 
 function(extract_archive_if_needed archive_path destination_parent expected_path)
     file(SHA256 "${archive_path}" archive_hash)
@@ -349,6 +350,12 @@ extract_archive_if_needed(
     "${build_vendor_dir}"
     "${LIBARCHIVE_DIR}/CMakeLists.txt"
 )
+
+check_symbol_exists(wcrtomb wchar.h HAVE_WCRTOMB)
+if (HAVE_WCRTOMB)
+    set(HAVE_WCRTOMB 1 CACHE INTERNAL "Have wcrtomb" FORCE)
+    message(NOTICE "Detected wcrtomb; enabling libarchive's preferred wide-character conversion path.")
+endif()
 
 set(LIBDEFLATE_BUILD_STATIC_LIB ON CACHE BOOL "" FORCE)
 set(LIBDEFLATE_BUILD_SHARED_LIB OFF CACHE BOOL "" FORCE)
