@@ -139,7 +139,7 @@ if (SPRING_ENABLE_FAST_LINKER)
         endif ()
     endif ()
 
-    if (NOT SPRING_FAST_LINKER_FLAG)
+    if (NOT APPLE AND NOT SPRING_FAST_LINKER_FLAG)
         check_linker_flag(CXX "-fuse-ld=lld" SPRING_LINKER_SUPPORTS_LLD)
         if (SPRING_LINKER_SUPPORTS_LLD)
             set(SPRING_FAST_LINKER_FLAG "-fuse-ld=lld")

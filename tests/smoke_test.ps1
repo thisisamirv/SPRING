@@ -42,6 +42,39 @@ if (-not $SPRING_PREVIEW_BIN) { $SPRING_PREVIEW_BIN = Join-Path $BUILD_DIR "spri
 $SPRING_COMMAND_TIMEOUT_SECONDS = $env:SPRING_COMMAND_TIMEOUT_SECONDS
 if (-not $SPRING_COMMAND_TIMEOUT_SECONDS) { $SPRING_COMMAND_TIMEOUT_SECONDS = 0 }
 
+$SMOKE_THREADS_COMPRESS = if ($env:SMOKE_THREADS_COMPRESS) { [int]$env:SMOKE_THREADS_COMPRESS } else { 8 }
+$SMOKE_THREADS_DECOMPRESS = if ($env:SMOKE_THREADS_DECOMPRESS) { [int]$env:SMOKE_THREADS_DECOMPRESS } else { 5 }
+
+function Get-DetectedThreadCount {
+    $cpuCount = [Environment]::ProcessorCount
+    if (-not $cpuCount -or $cpuCount -lt 1) {
+        return 1
+    }
+    return [int]$cpuCount
+}
+
+function Get-CappedThreadCount {
+    param(
+        [int]$Requested,
+        [int]$Max
+    )
+
+    if ($Requested -lt 1) {
+        $Requested = 1
+    }
+    if ($Max -lt 1) {
+        $Max = 1
+    }
+    if ($Requested -gt $Max) {
+        return $Max
+    }
+    return $Requested
+}
+
+$DETECTED_THREADS = Get-DetectedThreadCount
+$SMOKE_THREADS_COMPRESS = Get-CappedThreadCount -Requested $SMOKE_THREADS_COMPRESS -Max $DETECTED_THREADS
+$SMOKE_THREADS_DECOMPRESS = Get-CappedThreadCount -Requested $SMOKE_THREADS_DECOMPRESS -Max $DETECTED_THREADS
+
 function Ensure-SmokeBinaries {
     if (-not (Get-Command "cmake" -ErrorAction SilentlyContinue)) {
         Write-Error "cmake is required to build smoke-test binaries"
@@ -410,13 +443,13 @@ try {
     if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
 
     Write-SmokeCase "multi-threaded round-trip single"
-    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" -o abcd -t 8
-    Invoke-Spring -d -i abcd -o tmp -t 5
+    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" -o abcd -t $SMOKE_THREADS_COMPRESS
+    Invoke-Spring -d -i abcd -o tmp -t $SMOKE_THREADS_DECOMPRESS
     if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
 
     Write-SmokeCase "multi-threaded round-trip paired"
-    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" "$ASSET_DIR\test_2.fastq" -o abcd -t 8
-    Invoke-Spring -d -i abcd -o tmp -t 5
+    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" "$ASSET_DIR\test_2.fastq" -o abcd -t $SMOKE_THREADS_COMPRESS
+    Invoke-Spring -d -i abcd -o tmp -t $SMOKE_THREADS_DECOMPRESS
     if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
     if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
 
@@ -430,8 +463,8 @@ try {
     if (-not (Compare-Files "tmp.sorted" "ref.sorted")) { exit 1 }
 
     Write-SmokeCase "sorted output round-trip paired"
-    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" "$ASSET_DIR\test_2.fastq" -o abcd -s o -t 8
-    Invoke-Spring -d -i abcd -o tmp -t 5
+    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" "$ASSET_DIR\test_2.fastq" -o abcd -s o -t $SMOKE_THREADS_COMPRESS
+    Invoke-Spring -d -i abcd -o tmp -t $SMOKE_THREADS_DECOMPRESS
 
     $ref1 = Get-Content "$ASSET_DIR\test_1.fastq" | ForEach-Object { $_.Trim() } | Sort-Object -CaseSensitive
     $act1 = Get-Content "tmp.1" | ForEach-Object { $_.Trim() } | Sort-Object -CaseSensitive

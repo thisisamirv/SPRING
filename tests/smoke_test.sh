@@ -47,6 +47,41 @@ SPRING_BIN_CMD=()
 SPRING_PREVIEW_BIN_CMD=()
 SPRING_TEST_ARGS_CMD=()
 SPRING_COMMAND_TIMEOUT_SECONDS="${SPRING_COMMAND_TIMEOUT_SECONDS:-0}"
+SMOKE_THREADS_COMPRESS="${SMOKE_THREADS_COMPRESS:-8}"
+SMOKE_THREADS_DECOMPRESS="${SMOKE_THREADS_DECOMPRESS:-5}"
+
+detect_cpu_threads() {
+	local detected=""
+	if command -v nproc >/dev/null 2>&1; then
+		detected=$(nproc 2>/dev/null || true)
+	elif command -v getconf >/dev/null 2>&1; then
+		detected=$(getconf _NPROCESSORS_ONLN 2>/dev/null || true)
+	elif command -v sysctl >/dev/null 2>&1; then
+		detected=$(sysctl -n hw.ncpu 2>/dev/null || true)
+	fi
+
+	if [[ ! "$detected" =~ ^[0-9]+$ ]] || [[ "$detected" -lt 1 ]]; then
+		detected=1
+	fi
+	echo "$detected"
+}
+
+cap_threads() {
+	local requested="$1"
+	local max_threads="$2"
+	if [[ ! "$requested" =~ ^[0-9]+$ ]] || [[ "$requested" -lt 1 ]]; then
+		requested=1
+	fi
+	if [[ "$requested" -gt "$max_threads" ]]; then
+		echo "$max_threads"
+	else
+		echo "$requested"
+	fi
+}
+
+CPU_THREADS=$(detect_cpu_threads)
+SMOKE_THREADS_COMPRESS=$(cap_threads "$SMOKE_THREADS_COMPRESS" "$CPU_THREADS")
+SMOKE_THREADS_DECOMPRESS=$(cap_threads "$SMOKE_THREADS_DECOMPRESS" "$CPU_THREADS")
 mkdir -p "$ROOT_DIR/tests/output"
 WORK_DIR=$(mktemp -d "$ROOT_DIR/tests/output/smoke-test.XXXXXX")
 CURRENT_SMOKE_CASE=""
@@ -354,13 +389,13 @@ compare_with_gzip_source tmp.1 "$ASSET_DIR/test_1.fastq.gz"
 compare_with_gzip_source tmp.2 "$ASSET_DIR/test_2.fastq.gz"
 
 announce_case "multi-threaded round-trip single"
-run_spring -c -i "$ASSET_DIR/test_1.fastq" -o abcd -t 8
-run_spring -d -i abcd -o tmp -t 5
+run_spring -c -i "$ASSET_DIR/test_1.fastq" -o abcd -t "$SMOKE_THREADS_COMPRESS"
+run_spring -d -i abcd -o tmp -t "$SMOKE_THREADS_DECOMPRESS"
 compare_files tmp "$ASSET_DIR/test_1.fastq"
 
 announce_case "multi-threaded round-trip paired"
-run_spring -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd -t 8
-run_spring -d -i abcd -o tmp -t 5
+run_spring -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd -t "$SMOKE_THREADS_COMPRESS"
+run_spring -d -i abcd -o tmp -t "$SMOKE_THREADS_DECOMPRESS"
 if ! cmp tmp.1 "$ASSET_DIR/test_1.fastq"; then
 	echo "MISMATCH FOUND"
 	head -c 20 tmp.1 | cat -A
@@ -378,8 +413,8 @@ sort "$ASSET_DIR/test_1.fastq" >tmp_1.sorted
 compare_files tmp.sorted tmp_1.sorted
 
 announce_case "sorted output round-trip paired"
-run_spring -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd -t 8
-run_spring -d -i abcd -o tmp -t 5
+run_spring -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd -t "$SMOKE_THREADS_COMPRESS"
+run_spring -d -i abcd -o tmp -t "$SMOKE_THREADS_DECOMPRESS"
 sort tmp.1 >tmp.sorted
 sort "$ASSET_DIR/test_1.fastq" >tmp_1.sorted
 compare_files tmp.sorted tmp_1.sorted
