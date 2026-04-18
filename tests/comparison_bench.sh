@@ -21,6 +21,37 @@ INPUT_FASTQ_2=${INPUT_FASTQ_2:-"$DEFAULT_PATH_R2"}
 BUILD_LOG="$TMP_LOG_DIR/build.log"
 SPRING_V1_ENV_NAME="spring_v1"
 
+detect_cpu_threads() {
+	local detected=""
+	if type -P nproc >/dev/null 2>&1; then
+		detected=$(nproc 2>/dev/null || true)
+	elif type -P getconf >/dev/null 2>&1; then
+		detected=$(getconf _NPROCESSORS_ONLN 2>/dev/null || true)
+	elif type -P sysctl >/dev/null 2>&1; then
+		detected=$(sysctl -n hw.ncpu 2>/dev/null || true)
+	fi
+
+	if [[ ! "$detected" =~ ^[0-9]+$ ]] || [[ "$detected" -lt 1 ]]; then
+		detected=1
+	fi
+	echo "$detected"
+}
+
+cap_threads() {
+	local requested="$1"
+	local max_threads="$2"
+	if [[ ! "$requested" =~ ^[0-9]+$ ]] || [[ "$requested" -lt 1 ]]; then
+		requested=1
+	fi
+	if [[ "$requested" -gt "$max_threads" ]]; then
+		echo "$max_threads"
+	else
+		echo "$requested"
+	fi
+}
+
+THREADS=$(cap_threads "$THREADS" "$(detect_cpu_threads)")
+
 remove_empty_dir_if_present() {
 	local dir_path="$1"
 
