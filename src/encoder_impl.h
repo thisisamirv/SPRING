@@ -62,40 +62,29 @@ inline void append_thread_stream(
   copy_stream_buffered(thread_input, merged_output);
 }
 
-inline void cleanup_thread_encode_files(const encoder_global &encoder_state,
-                                        const int thread_id) {
+inline void cleanup_thread_encoder_inputs(const encoder_global &encoder_state,
+                                          const int thread_id) {
   safe_remove_file(encoder_state.infile_order + '.' +
                    std::to_string(thread_id));
-  safe_remove_file(
-      thread_output_tmp_path(encoder_state.infile_order, thread_id));
   safe_remove_file(encoder_state.infile_readlength + '.' +
                    std::to_string(thread_id));
-  safe_remove_file(
-      thread_output_tmp_path(encoder_state.infile_readlength, thread_id));
-  safe_remove_file(encoder_state.outfile_noisepos + '.' +
-                   std::to_string(thread_id));
-  safe_remove_file(encoder_state.outfile_noise + '.' +
-                   std::to_string(thread_id));
-  safe_remove_file(thread_output_tmp_path(encoder_state.infile_RC, thread_id));
   safe_remove_file(encoder_state.infile_RC + '.' + std::to_string(thread_id));
   safe_remove_file(encoder_state.infile_flag + '.' + std::to_string(thread_id));
   safe_remove_file(encoder_state.infile_pos + '.' + std::to_string(thread_id));
   safe_remove_file(encoder_state.infile + '.' + std::to_string(thread_id));
 }
 
+inline void cleanup_thread_order_merge_artifacts(
+    const encoder_global &encoder_state, const int thread_id) {
+  safe_remove_file(
+      thread_output_tmp_path(encoder_state.infile_order, thread_id));
+}
+
 inline void merge_thread_encoded_outputs(const encoder_global &encoder_state) {
-  SPRING_LOG_DEBUG("block_id=enc-merge-main, Merging per-thread encoder outputs: threads=" +
+  SPRING_LOG_DEBUG("block_id=enc-merge-main, Merging required per-thread encoder outputs: threads=" +
                     std::to_string(encoder_state.num_thr));
   std::ofstream order_output(encoder_state.infile_order,
                              std::ios::binary | std::ios::app);
-  std::ofstream read_length_output(encoder_state.infile_readlength,
-                                   std::ios::binary | std::ios::app);
-  std::ofstream noise_position_output(encoder_state.outfile_noisepos,
-                                      std::ios::binary | std::ios::app);
-  std::ofstream noise_output(encoder_state.outfile_noise,
-                             std::ios::binary | std::ios::app);
-  std::ofstream orientation_output(encoder_state.infile_RC,
-                                   std::ios::binary | std::ios::app);
 
   for (int thread_id = 0; thread_id < encoder_state.num_thr; thread_id++) {
     const std::string block_id =
@@ -105,24 +94,8 @@ inline void merge_thread_encoded_outputs(const encoder_global &encoder_state) {
         thread_output_tmp_path(encoder_state.infile_order, thread_id),
       block_id,
         std::ios::binary);
-    append_thread_stream(
-        read_length_output,
-        thread_output_tmp_path(encoder_state.infile_readlength, thread_id),
-      block_id,
-        std::ios::binary);
-    append_thread_stream(
-        orientation_output,
-      thread_output_tmp_path(encoder_state.infile_RC, thread_id), block_id);
-    append_thread_stream(noise_position_output,
-                         encoder_state.outfile_noisepos + '.' +
-                             std::to_string(thread_id),
-               block_id,
-                         std::ios::binary);
-    append_thread_stream(noise_output, encoder_state.outfile_noise + '.' +
-                         std::to_string(thread_id),
-               block_id);
-
-    cleanup_thread_encode_files(encoder_state, thread_id);
+    cleanup_thread_order_merge_artifacts(encoder_state, thread_id);
+    cleanup_thread_encoder_inputs(encoder_state, thread_id);
   }
 }
 
@@ -852,10 +825,11 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   // Stitch the per-thread streams back into the final encoded outputs.
   detail::merge_thread_encoded_outputs(eg);
 
-  std::ofstream order_output(eg.infile_order,
-                             std::ios::out | std::ios::binary | std::ios::app);
-  std::ofstream read_length_output(
-      eg.infile_readlength, std::ios::out | std::ios::binary | std::ios::app);
+    std::ofstream order_output(eg.infile_order,
+                 std::ios::out | std::ios::binary | std::ios::app);
+    std::ofstream read_length_output(
+      eg.infile_readlength + ".unaligned",
+      std::ios::out | std::ios::binary | std::ios::trunc);
   std::ofstream unaligned_output(eg.outfile_unaligned, std::ios::binary);
 
   uint64_t len_unaligned = 0;

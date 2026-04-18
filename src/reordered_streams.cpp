@@ -62,6 +62,12 @@ std::string compressed_block_file_path(const std::string &base_path,
   return block_file_path(base_path, block_num) + ".bsc";
 }
 
+std::string thread_output_path(const std::string &base_path,
+                               const int thread_id,
+                               const std::string &suffix = std::string()) {
+  return base_path + '.' + std::to_string(thread_id) + suffix;
+}
+
 void compress_block_file(const std::string &input_path,
                          const std::string &output_path) {
   std::error_code ec;
@@ -137,6 +143,32 @@ std::vector<char> read_binary_file_all(const std::string &path) {
     throw std::runtime_error("Failed to read binary file: " + path);
   }
   return data;
+}
+
+std::vector<char>
+read_binary_file_all_sharded(const std::string &base_path,
+                             const int num_threads,
+                             const std::string &suffix = std::string()) {
+  std::vector<char> merged;
+  for (int thread_id = 0; thread_id < num_threads; thread_id++) {
+    const std::string shard_path =
+        thread_output_path(base_path, thread_id, suffix);
+    const std::vector<char> shard = read_binary_file_all(shard_path);
+    const size_t old_size = merged.size();
+    merged.resize(old_size + shard.size());
+    if (!shard.empty()) {
+      std::memcpy(merged.data() + old_size, shard.data(), shard.size());
+    }
+  }
+  return merged;
+}
+
+void remove_sharded_stream_files(const std::string &base_path,
+                                 const int num_threads,
+                                 const std::string &suffix = std::string()) {
+  for (int thread_id = 0; thread_id < num_threads; thread_id++) {
+    safe_remove_file(thread_output_path(base_path, thread_id, suffix));
+  }
 }
 
 template <typename T>
@@ -266,14 +298,21 @@ void write_aligned_position(std::ofstream &position_output,
   previous_position = current_position;
 }
 
-void remove_input_stream_files(const reordered_stream_paths &paths) {
+void remove_input_stream_files(const reordered_stream_paths &paths,
+                               const int num_threads) {
   safe_remove_file(paths.noise_path);
   safe_remove_file(paths.noise_position_path);
   safe_remove_file(paths.orientation_path);
   safe_remove_file(paths.order_path);
   safe_remove_file(paths.read_length_path);
+  safe_remove_file(paths.read_length_path + ".unaligned");
   safe_remove_file(paths.unaligned_path);
   safe_remove_file(paths.position_path);
+
+  remove_sharded_stream_files(paths.noise_path, num_threads);
+  remove_sharded_stream_files(paths.noise_position_path, num_threads);
+  remove_sharded_stream_files(paths.orientation_path, num_threads, ".tmp");
+  remove_sharded_stream_files(paths.read_length_path, num_threads, ".tmp");
 }
 
 void compress_output_block(const temporary_stream_paths &temp_paths,
@@ -340,15 +379,53 @@ void reorder_compress_streams(const std::string &temp_dir,
 #pragma omp parallel sections
   {
 #pragma omp section
-    { orientation_entries = read_binary_file_all(paths.orientation_path); }
+    { orientation_entries = read_binary_file_all_sharded(paths.orientation_path,
+                                                         num_thr, ".tmp"); }
 #pragma omp section
     { position_entries = read_binary_records_all<uint64_t>(paths.position_path); }
 #pragma omp section
-    { read_length_entries = read_binary_records_all<uint16_t>(paths.read_length_path); }
+    {
+      const std::vector<char> aligned_lengths =
+          read_binary_file_all_sharded(paths.read_length_path, num_thr,
+                                       ".tmp");
+      const std::vector<char> unaligned_lengths =
+          read_binary_file_all(paths.read_length_path + ".unaligned");
+      std::vector<char> merged_lengths;
+      merged_lengths.reserve(aligned_lengths.size() + unaligned_lengths.size());
+      merged_lengths.insert(merged_lengths.end(), aligned_lengths.begin(),
+                            aligned_lengths.end());
+      merged_lengths.insert(merged_lengths.end(), unaligned_lengths.begin(),
+                            unaligned_lengths.end());
+      if (merged_lengths.size() % sizeof(uint16_t) != 0) {
+        throw std::runtime_error(
+            "Corrupted read length stream: byte count is not divisible by "
+            "record width.");
+      }
+      read_length_entries.resize(merged_lengths.size() / sizeof(uint16_t));
+      if (!merged_lengths.empty()) {
+        std::memcpy(read_length_entries.data(), merged_lengths.data(),
+                    merged_lengths.size());
+      }
+    }
 #pragma omp section
-    { noise_serialized = read_binary_file_all(paths.noise_path); }
+    { noise_serialized = read_binary_file_all_sharded(paths.noise_path,
+                                                      num_thr); }
 #pragma omp section
-    { noise_positions = read_binary_records_all<uint16_t>(paths.noise_position_path); }
+    {
+      const std::vector<char> serialized_noise_positions =
+          read_binary_file_all_sharded(paths.noise_position_path, num_thr);
+      if (serialized_noise_positions.size() % sizeof(uint16_t) != 0) {
+        throw std::runtime_error(
+            "Corrupted noise-position stream: byte count is not divisible by "
+            "record width.");
+      }
+      noise_positions.resize(serialized_noise_positions.size() /
+                             sizeof(uint16_t));
+      if (!serialized_noise_positions.empty()) {
+        std::memcpy(noise_positions.data(), serialized_noise_positions.data(),
+                    serialized_noise_positions.size());
+      }
+    }
 #pragma omp section
     {
       if (paired_end || preserve_order) {
@@ -479,7 +556,7 @@ void reorder_compress_streams(const std::string &temp_dir,
     aligned_flags[read_order] = false;
   }
 
-  remove_input_stream_files(paths);
+  remove_input_stream_files(paths, num_thr);
 
   omp_set_num_threads(num_thr);
   const uint32_t num_reads_per_block = cp.encoding.num_reads_per_block;
