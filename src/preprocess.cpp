@@ -39,6 +39,13 @@ struct preprocess_paths {
   std::array<std::string, 2> read_length_paths;
 };
 
+struct short_read_thread_buffers {
+  std::string clean_read_bytes;
+  std::string n_read_bytes;
+  std::vector<uint32_t> n_read_positions;
+  uint32_t clean_read_count = 0;
+};
+
 std::string block_file_path(const std::string &base_path,
                             const uint32_t block_num) {
   return base_path + "." + std::to_string(block_num);
@@ -49,6 +56,101 @@ uint32_t block_count(const uint64_t num_reads,
   if (num_reads == 0)
     return 0;
   return 1 + (num_reads - 1) / num_reads_per_block;
+}
+
+void append_uint16(std::string &buffer, const uint16_t value) {
+  buffer.append(reinterpret_cast<const char *>(&value), sizeof(uint16_t));
+}
+
+void append_encoded_dna_bits(std::string &buffer, const std::string &read) {
+  static const std::array<uint8_t, 128> dna_to_int = []() {
+    std::array<uint8_t, 128> table{};
+    table[static_cast<uint8_t>('A')] = 0;
+    table[static_cast<uint8_t>('C')] = 2;
+    table[static_cast<uint8_t>('G')] = 1;
+    table[static_cast<uint8_t>('T')] = 3;
+    return table;
+  }();
+
+  const uint16_t readlen = static_cast<uint16_t>(read.size());
+  append_uint16(buffer, readlen);
+  const uint32_t encoded_bytes = (static_cast<uint32_t>(readlen) + 3U) / 4U;
+  const size_t old_size = buffer.size();
+  buffer.resize(old_size + encoded_bytes);
+  uint8_t *out = reinterpret_cast<uint8_t *>(&buffer[old_size]);
+
+  for (uint32_t byte_index = 0; byte_index < encoded_bytes; ++byte_index) {
+    uint8_t packed = 0;
+    for (uint32_t base_index = 0; base_index < 4; ++base_index) {
+      const uint32_t read_index = byte_index * 4U + base_index;
+      if (read_index >= readlen)
+        break;
+      const uint8_t encoded =
+          dna_to_int[static_cast<uint8_t>(read[read_index])] & 0x03;
+      packed |= static_cast<uint8_t>(encoded << (2U * base_index));
+    }
+    out[byte_index] = packed;
+  }
+}
+
+void append_encoded_dna_n_bits(std::string &buffer, const std::string &read) {
+  static const std::array<uint8_t, 128> dna_n_to_int = []() {
+    std::array<uint8_t, 128> table{};
+    table[static_cast<uint8_t>('A')] = 0;
+    table[static_cast<uint8_t>('C')] = 2;
+    table[static_cast<uint8_t>('G')] = 1;
+    table[static_cast<uint8_t>('T')] = 3;
+    table[static_cast<uint8_t>('N')] = 4;
+    return table;
+  }();
+
+  const uint16_t readlen = static_cast<uint16_t>(read.size());
+  append_uint16(buffer, readlen);
+  const uint32_t encoded_bytes = (static_cast<uint32_t>(readlen) + 1U) / 2U;
+  const size_t old_size = buffer.size();
+  buffer.resize(old_size + encoded_bytes);
+  uint8_t *out = reinterpret_cast<uint8_t *>(&buffer[old_size]);
+
+  for (uint32_t byte_index = 0; byte_index < encoded_bytes; ++byte_index) {
+    uint8_t packed = 0;
+    for (uint32_t base_index = 0; base_index < 2; ++base_index) {
+      const uint32_t read_index = byte_index * 2U + base_index;
+      if (read_index >= readlen)
+        break;
+      const uint8_t encoded =
+          dna_n_to_int[static_cast<uint8_t>(read[read_index])] & 0x0F;
+      packed |= static_cast<uint8_t>(encoded << (4U * base_index));
+    }
+    out[byte_index] = packed;
+  }
+}
+
+uint32_t flush_short_read_thread_buffers(
+    const std::vector<short_read_thread_buffers> &thread_buffers,
+    std::ofstream &clean_output, std::ofstream &n_read_output,
+    std::ofstream &n_read_order_output) {
+  uint32_t clean_read_count = 0;
+  for (const short_read_thread_buffers &thread_buffer : thread_buffers) {
+    if (!thread_buffer.clean_read_bytes.empty()) {
+      clean_output.write(thread_buffer.clean_read_bytes.data(),
+                         static_cast<std::streamsize>(
+                             thread_buffer.clean_read_bytes.size()));
+    }
+    if (!thread_buffer.n_read_bytes.empty()) {
+      n_read_output.write(thread_buffer.n_read_bytes.data(),
+                          static_cast<std::streamsize>(
+                              thread_buffer.n_read_bytes.size()));
+    }
+    if (!thread_buffer.n_read_positions.empty()) {
+      n_read_order_output.write(
+          byte_ptr(thread_buffer.n_read_positions.data()),
+          static_cast<std::streamsize>(thread_buffer.n_read_positions.size() *
+                                       sizeof(uint32_t)));
+    }
+    clean_read_count += thread_buffer.clean_read_count;
+  }
+
+  return clean_read_count;
 }
 
 void write_raw_string_block(const std::string &output_path,
@@ -596,42 +698,64 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
           paired_id_code = 0;
       }
       if (!cp.encoding.long_flag) {
-        // Parallelize N-read classification
-        std::vector<uint8_t> is_n_read(reads_in_step, 0);
-        uint32_t thread_local_clean_count = 0;
+        std::vector<short_read_thread_buffers> thread_buffers(
+            static_cast<size_t>(cp.encoding.num_thr));
 
-#pragma omp parallel for schedule(static) reduction(+:thread_local_clean_count)
-        for (uint32_t read_index = 0; read_index < reads_in_step;
-             read_index++) {
-          is_n_read[read_index] = read_contains_N_array[read_index];
-          if (!is_n_read[read_index]) {
-            thread_local_clean_count++;
+#pragma omp parallel for schedule(static)
+        for (int thread_id = 0; thread_id < cp.encoding.num_thr; thread_id++) {
+          const uint32_t begin_read =
+              static_cast<uint32_t>(thread_id) * num_reads_per_block;
+          if (begin_read >= reads_in_step)
+            continue;
+          const uint32_t end_read =
+              std::min(begin_read + num_reads_per_block, reads_in_step);
+
+          short_read_thread_buffers &thread_buffer =
+              thread_buffers[static_cast<size_t>(thread_id)];
+          const uint32_t thread_read_count = end_read - begin_read;
+          thread_buffer.n_read_positions.reserve(thread_read_count / 2 + 1);
+
+          for (uint32_t read_index = begin_read; read_index < end_read;
+               read_index++) {
+            if (read_contains_N_array[read_index] == 0) {
+              append_encoded_dna_bits(thread_buffer.clean_read_bytes,
+                                      read_array[read_index]);
+              thread_buffer.clean_read_count++;
+            } else {
+              thread_buffer.n_read_positions.push_back(
+                  num_reads[stream_index] + read_index);
+              append_encoded_dna_n_bits(thread_buffer.n_read_bytes,
+                                        read_array[read_index]);
+            }
           }
         }
 
-        // Write encoded reads sequentially to avoid file stream corruption
-        for (uint32_t read_index = 0; read_index < reads_in_step;
-             read_index++) {
-          if (!is_n_read[read_index]) {
-            write_dna_in_bits(read_array[read_index],
-                              clean_outputs[stream_index]);
-          } else {
-            uint32_t n_read_position = num_reads[stream_index] + read_index;
-            n_read_order_outputs[stream_index].write(byte_ptr(&n_read_position),
-                                                     sizeof(uint32_t));
-            write_dnaN_in_bits(read_array[read_index],
-                               n_read_outputs[stream_index]);
-          }
-        }
-        num_reads_clean[stream_index] += thread_local_clean_count;
+        num_reads_clean[stream_index] += flush_short_read_thread_buffers(
+            thread_buffers, clean_outputs[stream_index],
+            n_read_outputs[stream_index], n_read_order_outputs[stream_index]);
 
         if (!cp.encoding.preserve_order) {
+          std::string quality_chunk;
+          std::string id_chunk;
+          quality_chunk.reserve(static_cast<size_t>(reads_in_step) * 32U);
+          id_chunk.reserve(static_cast<size_t>(reads_in_step) * 32U);
           for (uint32_t read_index = 0; read_index < reads_in_step;
-               read_index++)
-            quality_outputs[stream_index] << quality_array[read_index] << "\n";
+               read_index++) {
+            quality_chunk.append(quality_array[read_index]);
+            quality_chunk.push_back('\n');
+          }
+          quality_outputs[stream_index].write(
+              quality_chunk.data(),
+              static_cast<std::streamsize>(quality_chunk.size()));
+
           for (uint32_t read_index = 0; read_index < reads_in_step;
-               read_index++)
-            id_outputs[stream_index] << id_array[read_index] << "\n";
+               read_index++) {
+            id_chunk.append(id_array[read_index]);
+            id_chunk.push_back('\n');
+          }
+          id_outputs[stream_index].write(id_chunk.data(),
+                                         static_cast<std::streamsize>(
+                                             id_chunk.size()));
         }
       }
       num_reads[stream_index] += reads_in_step;
