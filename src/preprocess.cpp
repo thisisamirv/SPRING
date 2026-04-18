@@ -444,9 +444,20 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       done[stream_index] = false;
       std::string *id_array =
           (stream_index == 0) ? id_array_1.data() : id_array_2.data();
+      uint8_t *contains_n_output =
+          cp.encoding.long_flag ? nullptr : read_contains_N_array.data();
+      uint32_t *quality_crc_output =
+          cp.encoding.preserve_quality ? &cp.read_info.quality_crc[stream_index]
+                                       : nullptr;
+      uint32_t *id_crc_output =
+          cp.encoding.preserve_id ? &cp.read_info.id_crc[stream_index]
+                                  : nullptr;
       uint32_t reads_in_step = read_fastq_block(
           input_streams[stream_index], id_array, read_array.data(),
-          quality_array.data(), num_reads_per_step, fasta_input);
+          quality_array.data(), num_reads_per_step, fasta_input,
+          read_lengths_array.data(), contains_n_output,
+          &cp.read_info.sequence_crc[stream_index], quality_crc_output,
+          id_crc_output, cp.encoding.preserve_quality);
         SPRING_LOG_DEBUG("Preprocess step: stream=" +
                 std::to_string(stream_index + 1) +
                 ", reads_in_step=" + std::to_string(reads_in_step) +
@@ -455,19 +466,6 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
         done[stream_index] = true;
       if (reads_in_step == 0)
         continue;
-
-      // Update integrity digests
-      for (uint32_t i = 0; i < reads_in_step; ++i) {
-        update_record_crc(cp.read_info.sequence_crc[stream_index],
-                          read_array[i]);
-        if (cp.encoding.preserve_quality) {
-          update_record_crc(cp.read_info.quality_crc[stream_index],
-                            quality_array[i]);
-        }
-        if (cp.encoding.preserve_id) {
-          update_record_crc(cp.read_info.id_crc[stream_index], id_array[i]);
-        }
-      }
 
       if (num_reads[0] + num_reads[1] + reads_in_step > MAX_NUM_READS) {
         std::cerr << "Max number of reads allowed is " << MAX_NUM_READS << "\n";
@@ -495,22 +493,13 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
           for (uint32_t read_index = thread_id * num_reads_per_block;
                read_index < thread_id * num_reads_per_block + thread_read_count;
                read_index++) {
-            size_t read_length = read_array[read_index].size();
+            const uint32_t read_length = read_lengths_array[read_index];
             if (read_length > MAX_READ_LEN_LONG) {
               std::cerr << "Max read length for long mode is "
                         << MAX_READ_LEN_LONG << ", but found read of length "
                         << read_length << "\n";
               throw std::runtime_error("Too long read length");
             }
-            if (cp.encoding.preserve_quality &&
-                (quality_array[read_index].size() != read_length))
-              throw std::runtime_error(
-                  "Read length does not match quality length.");
-            read_lengths_array[read_index] = (uint32_t)read_length;
-
-            if (!cp.encoding.long_flag)
-              read_contains_N_array[read_index] =
-                  (read_array[read_index].find('N') != std::string::npos);
 
             if (cp.encoding.long_flag)
               read_length_output.write(

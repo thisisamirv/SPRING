@@ -1,6 +1,7 @@
 #include "io_utils.h"
 #include "bgzf.h"
 #include "core_utils.h"
+#include "integrity_utils.h"
 #include "progress.h"
 #include "libbsc/bsc.h"
 #include "omp.h"
@@ -263,20 +264,37 @@ std::string gzip_compress_string(const std::string &input, int level) {
 
 uint32_t read_fastq_block(std::istream *input_stream, std::string *id_array,
                           std::string *read_array, std::string *quality_array,
-                          const uint32_t &num_reads, const bool &fasta_flag) {
+                          const uint32_t &num_reads, const bool &fasta_flag,
+                          uint32_t *read_lengths, uint8_t *read_contains_n,
+                          uint32_t *sequence_crc, uint32_t *quality_crc,
+                          uint32_t *id_crc,
+                          const bool validate_quality_length) {
   uint32_t reads_processed = 0;
   for (; reads_processed < num_reads; reads_processed++) {
     if (!std::getline(*input_stream, id_array[reads_processed]))
       break;
     remove_CR_from_end(id_array[reads_processed]);
+    if (id_crc != nullptr)
+      update_record_crc(*id_crc, id_array[reads_processed]);
+
     if (!std::getline(*input_stream, read_array[reads_processed])) {
       SPRING_LOG_DEBUG("block_id=io-utils:fastq-read, read_fastq_block parse failure: path=sequence, expected_bytes=1, actual_bytes=0, index=" +
                         std::to_string(reads_processed));
       throw std::runtime_error(kInvalidFastqError);
     }
     remove_CR_from_end(read_array[reads_processed]);
+    if (sequence_crc != nullptr)
+      update_record_crc(*sequence_crc, read_array[reads_processed]);
+    if (read_lengths != nullptr)
+      read_lengths[reads_processed] =
+          static_cast<uint32_t>(read_array[reads_processed].size());
+    if (read_contains_n != nullptr)
+      read_contains_n[reads_processed] =
+          read_array[reads_processed].find('N') != std::string::npos;
+
     if (fasta_flag)
       continue;
+
     std::string plus_line;
     if (!std::getline(*input_stream, plus_line)) {
       SPRING_LOG_DEBUG("block_id=io-utils:fastq-read, read_fastq_block parse failure: path=plus, expected_bytes=43, actual_bytes=0, index=" +
@@ -297,6 +315,13 @@ uint32_t read_fastq_block(std::istream *input_stream, std::string *id_array,
       throw std::runtime_error(kInvalidFastqError);
     }
     remove_CR_from_end(quality_array[reads_processed]);
+    if (validate_quality_length &&
+        quality_array[reads_processed].size() !=
+            read_array[reads_processed].size()) {
+      throw std::runtime_error("Read length does not match quality length.");
+    }
+    if (quality_crc != nullptr)
+      update_record_crc(*quality_crc, quality_array[reads_processed]);
   }
   SPRING_LOG_DEBUG("block_id=io-utils:fastq-read, read_fastq_block summary: requested_reads=" +
                     std::to_string(num_reads) +
