@@ -448,7 +448,10 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
   {
     bool done = false;
     int thread_id = omp_get_thread_num();
-    int64_t remaining_read_scan = rg.numreads - 1;
+    const int64_t scan_stride = std::max<int64_t>(1, omp_get_num_threads());
+    int64_t remaining_read_scan = rg.numreads - 1 - thread_id;
+    if (remaining_read_scan < 0)
+      remaining_read_scan = -1;
     std::ofstream orientation_output(
         detail::thread_output_path(rg.outfileRC, thread_id), std::ios::binary);
     std::ofstream flag_output(
@@ -716,13 +719,14 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
           current_read_position = 0;
         } else {
           left_search = false;
-          for (int64_t read_id = remaining_read_scan; read_id >= 0; read_id--) {
+          for (int64_t read_id = remaining_read_scan; read_id >= 0;
+               read_id -= scan_stride) {
             if (omp_test_lock(
                     remaining_read_lock[detail::lock_shard(read_id)].get())) {
               omp_set_lock(read_locks[detail::lock_shard(read_id)].get());
               if (remaining_reads[read_id]) {
                 current_read_id = read_id;
-                remaining_read_scan = read_id - 1;
+                remaining_read_scan = read_id - scan_stride;
                 remaining_reads[read_id] = 0;
                 found_match = 1;
                 unmatched_counts[thread_id]++;
