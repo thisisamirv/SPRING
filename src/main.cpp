@@ -430,11 +430,11 @@ void validate_io_parameters(const command_line_options &options) {
     }
   }
 
-  // Validate paired-end compression: must have exactly 2 input files
-  if (options.compress_flag && !options.input_paths.empty() &&
-      options.input_paths.size() != 2) {
+  // Validate compression input count: supports 1 (single-end) or 2 (paired-end) files
+  if (options.compress_flag && 
+      (options.input_paths.size() < 1 || options.input_paths.size() > 2)) {
     throw std::runtime_error(
-        "Compression requires exactly 2 input files for paired-end reads, but " +
+        "Compression accepts 1 or 2 input files, but " +
         std::to_string(options.input_paths.size()) + " provided.");
   }
 

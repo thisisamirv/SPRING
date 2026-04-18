@@ -341,7 +341,12 @@ bool search_match(const std::bitset<bitset_size> &ref,
     bucket_start_index = (*dict[dictionary_index].bphf)(lookup_key);
     if (bucket_start_index >= dict[dictionary_index].numkeys)
       continue;
-    if (!omp_test_lock(
+    
+    // If the dictionary is frozen (read-only), skip lock acquisition.
+    // Lock is only needed during dictionary construction/modification.
+    const bool dict_is_frozen = dict[dictionary_index].is_frozen();
+    if (!dict_is_frozen && 
+        !omp_test_lock(
             dict_locks[detail::lock_shard(bucket_start_index)].get()))
       continue;
 
@@ -349,7 +354,8 @@ bool search_match(const std::bitset<bitset_size> &ref,
     bool bucket_matches_lookup = false;
     dict[dictionary_index].findpos(bucket_range, bucket_start_index);
     if (dict[dictionary_index].empty_bin[bucket_start_index]) {
-      omp_unset_lock(dict_locks[detail::lock_shard(bucket_start_index)].get());
+      if (!dict_is_frozen)
+        omp_unset_lock(dict_locks[detail::lock_shard(bucket_start_index)].get());
       continue;
     }
     uint64_t candidate_key =
@@ -369,7 +375,8 @@ bool search_match(const std::bitset<bitset_size> &ref,
             dict[dictionary_index].read_id[bucket_index];
       }
     }
-    omp_unset_lock(dict_locks[detail::lock_shard(bucket_start_index)].get());
+    if (!dict_is_frozen)
+      omp_unset_lock(dict_locks[detail::lock_shard(bucket_start_index)].get());
 
     if (!bucket_matches_lookup)
       continue;
@@ -771,6 +778,28 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
     read_length_output.close();
     // base_counts_storage RAII will free the per-thread buffers
   }
+  // Safety net: any reads still marked remaining were never emitted by worker
+  // threads. Append them as singletons so downstream stages see all reads.
+  uint32_t recovered_singletons = 0;
+  {
+    std::ofstream recovered_singleton_output(
+        detail::thread_singleton_output_path(rg.outfileorder, 0),
+        std::ios::binary | std::ios::app);
+    for (uint32_t read_id = 0; read_id < rg.numreads; read_id++) {
+      if (!remaining_reads[read_id])
+        continue;
+      recovered_singleton_output.write(byte_ptr(&read_id), sizeof(uint32_t));
+      remaining_reads[read_id] = false;
+      recovered_singletons++;
+    }
+  }
+
+  if (recovered_singletons > 0) {
+    unmatched_counts[0] += recovered_singletons;
+    SPRING_LOG_DEBUG("Recovered leftover reorder reads as singletons: " +
+                     std::to_string(recovered_singletons));
+  }
+
   for (const std::string &error_msg : open_stream_errors) {
     if (!error_msg.empty()) {
       std::cerr << error_msg << std::endl;
@@ -909,6 +938,11 @@ void reorder_main(const std::string &temp_dir, const compression_params &cp) {
     constructdictionary<bitset_size>(read.data(), dict.data(),
                                      read_lengths.data(), rg.numdict,
                                      rg.numreads, 2, rg.basedir, rg.num_thr);
+    // Freeze dictionaries after construction: all lookups are now read-only,
+    // so search operations can proceed without lock contention.
+    for (auto &d : dict) {
+      d.freeze();
+    }
   }
   SPRING_LOG_INFO("Reordering reads");
   reorder<bitset_size>(read.data(), dict.data(), read_lengths.data(), rg);

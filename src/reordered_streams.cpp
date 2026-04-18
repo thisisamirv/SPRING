@@ -379,17 +379,24 @@ void reorder_compress_streams(const std::string &temp_dir,
 #pragma omp parallel sections
   {
 #pragma omp section
-    { orientation_entries = read_binary_file_all_sharded(paths.orientation_path,
-                                                         num_thr, ".tmp"); }
+  { orientation_entries = read_binary_file_all_sharded(paths.orientation_path,
+                             num_thr, ".tmp"); }
 #pragma omp section
     { position_entries = read_binary_records_all<uint64_t>(paths.position_path); }
 #pragma omp section
     {
       const std::vector<char> aligned_lengths =
           read_binary_file_all_sharded(paths.read_length_path, num_thr,
-                                       ".tmp");
+                         ".tmp");
       const std::vector<char> unaligned_lengths =
           read_binary_file_all(paths.read_length_path + ".unaligned");
+      SPRING_LOG_DEBUG(
+          "Read length stream: aligned_size=" +
+          std::to_string(aligned_lengths.size() / sizeof(uint16_t)) +
+          ", unaligned_size=" +
+          std::to_string(unaligned_lengths.size() / sizeof(uint16_t)) +
+          ", total_reads=" + std::to_string(num_reads) +
+          ", base_path=" + paths.read_length_path);
       std::vector<char> merged_lengths;
       merged_lengths.reserve(aligned_lengths.size() + unaligned_lengths.size());
       merged_lengths.insert(merged_lengths.end(), aligned_lengths.begin(),

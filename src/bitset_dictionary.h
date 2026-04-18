@@ -50,14 +50,26 @@ public:
   void findpos(int64_t *dictidx, const uint64_t &startposidx);
   void remove(const int64_t *dictidx, const uint64_t &startposidx,
               const int64_t read_id_to_remove);
+  
+  // Freeze the dictionary to enable lock-free reads. After freeze(), the
+  // dictionary becomes immutable and read operations no longer require locking.
+  // This is safe because dictionary construction and modifications happen
+  // strictly before freeze() is called.
+  void freeze() { frozen_ = true; }
+  
+  bool is_frozen() const { return frozen_; }
+  
   bbhashdict()
       : bphf(nullptr), start(0), end(0), numkeys(0), dict_numreads(0),
-        startpos(nullptr), read_id(nullptr) {}
+        startpos(nullptr), read_id(nullptr), frozen_(false) {}
   bbhashdict(const bbhashdict &) = delete;
   bbhashdict &operator=(const bbhashdict &) = delete;
   bbhashdict(bbhashdict &&) noexcept = default;
   bbhashdict &operator=(bbhashdict &&) noexcept = default;
   ~bbhashdict() = default;
+
+private:
+  bool frozen_;
 };
 
 namespace detail {
