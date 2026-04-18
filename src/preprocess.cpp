@@ -527,12 +527,25 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       (uint64_t)cp.encoding.num_thr * num_reads_per_block;
   std::vector<std::string> read_array(num_reads_per_step);
   std::vector<std::string> id_array_1(num_reads_per_step);
-  std::vector<std::string> id_array_2(num_reads_per_step);
-  std::vector<std::string> quality_array(num_reads_per_step);
-    std::vector<uint8_t> read_contains_N_array(num_reads_per_step, 0);
+  std::vector<std::string> id_array_2;
+  if (cp.encoding.paired_end)
+    id_array_2.resize(num_reads_per_step);
+
+  std::vector<std::string> quality_array;
+  if (!fasta_input)
+    quality_array.resize(num_reads_per_step);
+
+  std::vector<uint8_t> read_contains_N_array(num_reads_per_step, 0);
   std::vector<uint32_t> read_lengths_array(num_reads_per_step);
-    std::vector<uint8_t> paired_id_match_array(
+  std::vector<uint8_t> paired_id_match_array(
       static_cast<size_t>(cp.encoding.num_thr), 0);
+
+  std::vector<short_read_thread_buffers> short_read_buffers;
+  std::string quality_chunk;
+  std::string id_chunk;
+  if (!cp.encoding.long_flag) {
+    short_read_buffers.resize(static_cast<size_t>(cp.encoding.num_thr));
+  }
 
   omp_set_num_threads(cp.encoding.num_thr);
 
@@ -556,7 +569,8 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                                   : nullptr;
       uint32_t reads_in_step = read_fastq_block(
           input_streams[stream_index], id_array, read_array.data(),
-          quality_array.data(), num_reads_per_step, fasta_input,
+          quality_array.empty() ? nullptr : quality_array.data(),
+          num_reads_per_step, fasta_input,
           read_lengths_array.data(), contains_n_output,
           &cp.read_info.sequence_crc[stream_index], quality_crc_output,
           id_crc_output, cp.encoding.preserve_quality);
@@ -698,8 +712,12 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
           paired_id_code = 0;
       }
       if (!cp.encoding.long_flag) {
-        std::vector<short_read_thread_buffers> thread_buffers(
-            static_cast<size_t>(cp.encoding.num_thr));
+        for (short_read_thread_buffers &thread_buffer : short_read_buffers) {
+          thread_buffer.clean_read_bytes.clear();
+          thread_buffer.n_read_bytes.clear();
+          thread_buffer.n_read_positions.clear();
+          thread_buffer.clean_read_count = 0;
+        }
 
 #pragma omp parallel for schedule(static)
         for (int thread_id = 0; thread_id < cp.encoding.num_thr; thread_id++) {
@@ -710,8 +728,8 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
           const uint32_t end_read =
               std::min(begin_read + num_reads_per_block, reads_in_step);
 
-          short_read_thread_buffers &thread_buffer =
-              thread_buffers[static_cast<size_t>(thread_id)];
+            short_read_thread_buffers &thread_buffer =
+                short_read_buffers[static_cast<size_t>(thread_id)];
           const uint32_t thread_read_count = end_read - begin_read;
           thread_buffer.n_read_positions.reserve(thread_read_count / 2 + 1);
 
@@ -731,14 +749,16 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
         }
 
         num_reads_clean[stream_index] += flush_short_read_thread_buffers(
-            thread_buffers, clean_outputs[stream_index],
+          short_read_buffers, clean_outputs[stream_index],
             n_read_outputs[stream_index], n_read_order_outputs[stream_index]);
 
         if (!cp.encoding.preserve_order) {
-          std::string quality_chunk;
-          std::string id_chunk;
-          quality_chunk.reserve(static_cast<size_t>(reads_in_step) * 32U);
-          id_chunk.reserve(static_cast<size_t>(reads_in_step) * 32U);
+          quality_chunk.clear();
+          id_chunk.clear();
+          if (quality_chunk.capacity() < static_cast<size_t>(reads_in_step) * 32U)
+            quality_chunk.reserve(static_cast<size_t>(reads_in_step) * 32U);
+          if (id_chunk.capacity() < static_cast<size_t>(reads_in_step) * 32U)
+            id_chunk.reserve(static_cast<size_t>(reads_in_step) * 32U);
           for (uint32_t read_index = 0; read_index < reads_in_step;
                read_index++) {
             quality_chunk.append(quality_array[read_index]);

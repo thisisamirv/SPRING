@@ -269,6 +269,11 @@ uint32_t read_fastq_block(std::istream *input_stream, std::string *id_array,
                           uint32_t *sequence_crc, uint32_t *quality_crc,
                           uint32_t *id_crc,
                           const bool validate_quality_length) {
+  if (!fasta_flag && quality_array == nullptr) {
+    throw std::runtime_error(
+        "Quality output buffer is required when reading FASTQ blocks.");
+  }
+
   uint32_t reads_processed = 0;
   for (; reads_processed < num_reads; reads_processed++) {
     if (!std::getline(*input_stream, id_array[reads_processed]))
