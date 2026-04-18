@@ -520,20 +520,34 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
     int64_t reference_position;
     int64_t current_read_position;
 
-    const uint32_t seed_step = std::max<uint32_t>(
-        1, rg.numreads / static_cast<uint32_t>(omp_get_num_threads()));
+    // Claim an initial seed read from a shared cursor. Keep trying until we
+    // either reserve an unclaimed read or exhaust the input.
+    while (!done) {
 #pragma omp atomic capture
-    {
-      current_read_id = first_read;
-      first_read += seed_step;
-    }
-    if (rg.numreads == 0 || current_read_id >= static_cast<int64_t>(rg.numreads)) {
-      done = true;
-    } else if (remaining_reads[current_read_id] == 0) {
-      done = true;
-    } else {
-      remaining_reads[current_read_id] = 0;
-      unmatched_counts[thread_id]++;
+      {
+        current_read_id = first_read;
+        first_read += 1;
+      }
+      if (rg.numreads == 0 ||
+          current_read_id >= static_cast<int64_t>(rg.numreads)) {
+        done = true;
+        break;
+      }
+
+      omp_set_lock(
+          remaining_read_lock[detail::lock_shard(current_read_id)].get());
+      omp_set_lock(read_locks[detail::lock_shard(current_read_id)].get());
+      if (remaining_reads[current_read_id]) {
+        remaining_reads[current_read_id] = 0;
+        unmatched_counts[thread_id]++;
+        omp_unset_lock(read_locks[detail::lock_shard(current_read_id)].get());
+        omp_unset_lock(
+            remaining_read_lock[detail::lock_shard(current_read_id)].get());
+        break;
+      }
+      omp_unset_lock(read_locks[detail::lock_shard(current_read_id)].get());
+      omp_unset_lock(
+          remaining_read_lock[detail::lock_shard(current_read_id)].get());
     }
     if (!done) {
       updaterefcount<bitset_size>(read[current_read_id], reference_read,
@@ -728,22 +742,21 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
           left_search = false;
           for (int64_t read_id = remaining_read_scan; read_id >= 0;
                read_id -= scan_stride) {
-            if (omp_test_lock(
-                    remaining_read_lock[detail::lock_shard(read_id)].get())) {
-              omp_set_lock(read_locks[detail::lock_shard(read_id)].get());
-              if (remaining_reads[read_id]) {
-                current_read_id = read_id;
-                remaining_read_scan = read_id - scan_stride;
-                remaining_reads[read_id] = 0;
-                found_match = 1;
-                unmatched_counts[thread_id]++;
-              }
-              omp_unset_lock(read_locks[detail::lock_shard(read_id)].get());
-              omp_unset_lock(
-                  remaining_read_lock[detail::lock_shard(read_id)].get());
-              if (found_match == 1)
-                break;
+            omp_set_lock(
+                remaining_read_lock[detail::lock_shard(read_id)].get());
+            omp_set_lock(read_locks[detail::lock_shard(read_id)].get());
+            if (remaining_reads[read_id]) {
+              current_read_id = read_id;
+              remaining_read_scan = read_id - scan_stride;
+              remaining_reads[read_id] = 0;
+              found_match = 1;
+              unmatched_counts[thread_id]++;
             }
+            omp_unset_lock(read_locks[detail::lock_shard(read_id)].get());
+            omp_unset_lock(
+                remaining_read_lock[detail::lock_shard(read_id)].get());
+            if (found_match == 1)
+              break;
           }
           if (found_match == 0) {
             if (previous_read_unmatched == true) {
