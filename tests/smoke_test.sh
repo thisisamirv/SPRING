@@ -19,6 +19,45 @@ mkdir -p "$ROOT_DIR/tests/output"
 WORK_DIR=$(mktemp -d "$ROOT_DIR/tests/output/smoke-test.XXXXXX")
 CURRENT_SMOKE_CASE=""
 
+dump_system_diagnostics() {
+	echo "Smoke diagnostics: system" >&2
+	if command -v uname >/dev/null 2>&1; then
+		echo "Smoke diagnostics: uname=$(uname -a)" >&2
+	fi
+	if [[ -r /etc/os-release ]]; then
+		echo "Smoke diagnostics: os-release" >&2
+		sed -n '1,20p' /etc/os-release >&2 || true
+	fi
+	if command -v lscpu >/dev/null 2>&1; then
+		echo "Smoke diagnostics: cpu summary" >&2
+		lscpu | sed -n '1,15p' >&2 || true
+	fi
+	echo "Smoke diagnostics: cwd=$PWD" >&2
+	echo "Smoke diagnostics: PATH=$PATH" >&2
+
+	echo "Smoke diagnostics: selected environment" >&2
+	env | grep -E '^(CI|GITHUB_|RUNNER_|SPRING_|OMP_|CC=|CXX=|PATH=|SHELL=|LANG=|LC_)' | sort >&2 || true
+
+	echo "Smoke diagnostics: tool versions" >&2
+	for tool in bash cmake ninja gcc g++ clang ld mold lld tar gzip xz python3; do
+		if command -v "$tool" >/dev/null 2>&1; then
+			version_line=$($tool --version 2>/dev/null | head -n 1)
+			echo "  $tool: $version_line" >&2
+		else
+			echo "  $tool: not found" >&2
+		fi
+	done
+
+	if [[ -x "$SPRING_BIN" ]]; then
+		spring_version=$($SPRING_BIN --version 2>&1 | head -n 1)
+		echo "  spring2: $spring_version" >&2
+	fi
+	if [[ -x "$SPRING_PREVIEW_BIN" ]]; then
+		preview_version=$($SPRING_PREVIEW_BIN --version 2>&1 | head -n 1)
+		echo "  spring2-preview: $preview_version" >&2
+	fi
+}
+
 dump_debug_state() {
 	local exit_code="$1"
 	echo "Smoke debug: case=${CURRENT_SMOKE_CASE:-unknown} exit_code=$exit_code" >&2
@@ -45,6 +84,7 @@ dump_debug_state() {
 on_error() {
 	local exit_code="$?"
 	dump_debug_state "$exit_code"
+	dump_system_diagnostics
 	exit "$exit_code"
 }
 
@@ -132,9 +172,16 @@ run_spring() {
 			rm -f -- "$output_path"
 		fi
 	fi
+
+	local display_cmd=()
+	for arg in "${cmd[@]}"; do
+		display_cmd+=("$(printf '%q' "$arg")")
+	done
 	if [[ "$SPRING_COMMAND_TIMEOUT_SECONDS" -gt 0 ]] && command -v timeout >/dev/null 2>&1; then
+		echo "Smoke command: timeout ${SPRING_COMMAND_TIMEOUT_SECONDS} ${display_cmd[*]}"
 		timeout "$SPRING_COMMAND_TIMEOUT_SECONDS" "${cmd[@]}"
 	else
+		echo "Smoke command: ${display_cmd[*]}"
 		"${cmd[@]}"
 	fi
 }

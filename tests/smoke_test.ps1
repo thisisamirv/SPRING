@@ -79,10 +79,88 @@ function Write-SmokeDebug {
     }
 }
 
+function Write-SmokeDiagnostics {
+    Write-Host "Smoke diagnostics: system" -ForegroundColor Yellow
+    try {
+        $os = Get-CimInstance Win32_OperatingSystem
+        Write-Host ("Smoke diagnostics: OS={0} Version={1} Build={2}" -f $os.Caption, $os.Version, $os.BuildNumber) -ForegroundColor Yellow
+    }
+    catch {
+        Write-Host "Smoke diagnostics: OS information unavailable" -ForegroundColor Yellow
+    }
+
+    Write-Host ("Smoke diagnostics: PowerShell={0}" -f $PSVersionTable.PSVersion) -ForegroundColor Yellow
+    Write-Host ("Smoke diagnostics: PSEdition={0}" -f $PSVersionTable.PSEdition) -ForegroundColor Yellow
+    Write-Host ("Smoke diagnostics: cwd={0}" -f (Get-Location)) -ForegroundColor Yellow
+    Write-Host ("Smoke diagnostics: PATH={0}" -f $env:PATH) -ForegroundColor Yellow
+
+    Write-Host "Smoke diagnostics: selected environment" -ForegroundColor Yellow
+    Get-ChildItem Env: |
+        Where-Object {
+            $_.Name -match '^(CI|GITHUB_|RUNNER_|SPRING_|OMP_|CC$|CXX$|PATH$|SHELL$|LANG$|LC_)'
+        } |
+        Sort-Object Name |
+        ForEach-Object {
+            Write-Host ("  {0}={1}" -f $_.Name, $_.Value) -ForegroundColor Yellow
+        }
+
+    Write-Host "Smoke diagnostics: tool versions" -ForegroundColor Yellow
+    $tools = @('cmake', 'ninja', 'gcc', 'g++', 'clang', 'tar', 'python', 'python3')
+    foreach ($tool in $tools) {
+        $toolCmd = Get-Command $tool -ErrorAction SilentlyContinue
+        if ($toolCmd) {
+            try {
+                $versionLine = (& $tool --version 2>&1 | Select-Object -First 1)
+                Write-Host ("  {0}: {1}" -f $tool, $versionLine) -ForegroundColor Yellow
+            }
+            catch {
+                Write-Host ("  {0}: version query failed" -f $tool) -ForegroundColor Yellow
+            }
+        }
+        else {
+            Write-Host ("  {0}: not found" -f $tool) -ForegroundColor Yellow
+        }
+    }
+
+    if (Test-Path $SPRING_BIN) {
+        try {
+            $springVersion = (& $SPRING_BIN --version 2>&1 | Select-Object -First 1)
+            Write-Host ("  spring2: {0}" -f $springVersion) -ForegroundColor Yellow
+        }
+        catch {
+            Write-Host "  spring2: version query failed" -ForegroundColor Yellow
+        }
+    }
+
+    if (Test-Path $SPRING_PREVIEW_BIN) {
+        try {
+            $previewVersion = (& $SPRING_PREVIEW_BIN --version 2>&1 | Select-Object -First 1)
+            Write-Host ("  spring2-preview: {0}" -f $previewVersion) -ForegroundColor Yellow
+        }
+        catch {
+            Write-Host "  spring2-preview: version query failed" -ForegroundColor Yellow
+        }
+    }
+}
+
 function Remove-SmokeWorkDir {
     if (Test-Path $WORK_DIR) {
         Remove-Item -Recurse -Force $WORK_DIR -ErrorAction SilentlyContinue
     }
+}
+
+function Format-CommandToken {
+    param([string]$value)
+
+    if ($null -eq $value) {
+        return "''"
+    }
+
+    if ($value -match "[\s`"'`$]") {
+        return "'" + ($value -replace "'", "''") + "'"
+    }
+
+    return $value
 }
 
 function Invoke-Spring {
@@ -138,13 +216,20 @@ function Invoke-Spring {
         return 
     }
 
+    $displayExe = Format-CommandToken $exe
+    $displayArgs = @()
+    foreach ($arg in $cmdArgs) {
+        $displayArgs += (Format-CommandToken $arg)
+    }
+
     $exitCode = 0
-    Write-Host "Invoking: $exe $($cmdArgs -join ' ')" -ForegroundColor Gray
     if ($SPRING_COMMAND_TIMEOUT_SECONDS -gt 0 -and (Get-Command "timeout" -ErrorAction SilentlyContinue)) {
+        Write-Host "Smoke command: timeout $SPRING_COMMAND_TIMEOUT_SECONDS $displayExe $($displayArgs -join ' ')" -ForegroundColor Gray
         $process = Start-Process -FilePath $exe -ArgumentList $cmdArgs -Wait -NoNewWindow -PassThru
         $exitCode = $process.ExitCode
     }
     else {
+        Write-Host "Smoke command: $displayExe $($displayArgs -join ' ')" -ForegroundColor Gray
         & $exe @cmdArgs
         $exitCode = $LASTEXITCODE
     }
@@ -394,6 +479,7 @@ try {
 }
 catch {
     Write-SmokeDebug $LASTEXITCODE
+    Write-SmokeDiagnostics
     throw $_
 }
 finally {

@@ -10,6 +10,7 @@
 #include <cmath>
 #include <csignal>
 #include <cstdlib>
+#include <exception>
 #include <filesystem>
 #include <iostream>
 #include <sstream>
@@ -330,6 +331,11 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
       throw std::runtime_error(std::string("Unknown option: ") + arg);
     }
   }
+
+  if (options.decompress_flag && !options.compress_flag &&
+      options.output_paths.size() > 2) {
+    throw std::runtime_error("Decompression accepts at most 2 output files.");
+  }
 }
 
 bool has_exactly_one_mode(const command_line_options &options) {
@@ -486,6 +492,11 @@ int main(int argc, char **argv) {
     return print_unexpected_error_and_exit(
         options_description,
         std::string("Program terminated unexpectedly with error: ") + e.what());
+  } catch (const std::exception &e) {
+    return print_unexpected_error_and_exit(
+        options_description,
+        std::string("Program terminated unexpectedly with std::exception: ") +
+            e.what());
   } catch (...) {
     return print_unexpected_error_and_exit(options_description,
                                            "Program terminated unexpectedly");
