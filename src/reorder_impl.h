@@ -341,12 +341,7 @@ bool search_match(const std::bitset<bitset_size> &ref,
     bucket_start_index = (*dict[dictionary_index].bphf)(lookup_key);
     if (bucket_start_index >= dict[dictionary_index].numkeys)
       continue;
-    
-    // If the dictionary is frozen (read-only), skip lock acquisition.
-    // Lock is only needed during dictionary construction/modification.
-    const bool dict_is_frozen = dict[dictionary_index].is_frozen();
-    if (!dict_is_frozen && 
-        !omp_test_lock(
+    if (!omp_test_lock(
             dict_locks[detail::lock_shard(bucket_start_index)].get()))
       continue;
 
@@ -354,8 +349,7 @@ bool search_match(const std::bitset<bitset_size> &ref,
     bool bucket_matches_lookup = false;
     dict[dictionary_index].findpos(bucket_range, bucket_start_index);
     if (dict[dictionary_index].empty_bin[bucket_start_index]) {
-      if (!dict_is_frozen)
-        omp_unset_lock(dict_locks[detail::lock_shard(bucket_start_index)].get());
+      omp_unset_lock(dict_locks[detail::lock_shard(bucket_start_index)].get());
       continue;
     }
     uint64_t candidate_key =
@@ -375,8 +369,7 @@ bool search_match(const std::bitset<bitset_size> &ref,
             dict[dictionary_index].read_id[bucket_index];
       }
     }
-    if (!dict_is_frozen)
-      omp_unset_lock(dict_locks[detail::lock_shard(bucket_start_index)].get());
+    omp_unset_lock(dict_locks[detail::lock_shard(bucket_start_index)].get());
 
     if (!bucket_matches_lookup)
       continue;
@@ -951,11 +944,6 @@ void reorder_main(const std::string &temp_dir, const compression_params &cp) {
     constructdictionary<bitset_size>(read.data(), dict.data(),
                                      read_lengths.data(), rg.numdict,
                                      rg.numreads, 2, rg.basedir, rg.num_thr);
-    // Freeze dictionaries after construction: all lookups are now read-only,
-    // so search operations can proceed without lock contention.
-    for (auto &d : dict) {
-      d.freeze();
-    }
   }
   SPRING_LOG_INFO("Reordering reads");
   reorder<bitset_size>(read.data(), dict.data(), read_lengths.data(), rg);
