@@ -323,6 +323,7 @@ bool search_match(const std::bitset<bitset_size> &ref,
   uint64_t lookup_key;
   int64_t bucket_range[2];
   uint64_t bucket_start_index;
+  std::array<uint32_t, MAX_SEARCH_REORDER> candidate_ids{};
   bool found_match = 0;
   for (int dictionary_index = 0; dictionary_index < rg.numdict;
        dictionary_index++) {
@@ -343,6 +344,9 @@ bool search_match(const std::bitset<bitset_size> &ref,
     if (!omp_test_lock(
             dict_locks[detail::lock_shard(bucket_start_index)].get()))
       continue;
+
+    size_t candidate_count = 0;
+    bool bucket_matches_lookup = false;
     dict[dictionary_index].findpos(bucket_range, bucket_start_index);
     if (dict[dictionary_index].empty_bin[bucket_start_index]) {
       omp_unset_lock(dict_locks[detail::lock_shard(bucket_start_index)].get());
@@ -354,39 +358,53 @@ bool search_match(const std::bitset<bitset_size> &ref,
          2 * dict[dictionary_index].start)
             .to_ullong();
     if (lookup_key == candidate_key) {
+      bucket_matches_lookup = true;
       for (int64_t bucket_index = bucket_range[1] - 1;
            bucket_index >= bucket_range[0] &&
            bucket_index >= bucket_range[1] - maxsearch;
            bucket_index--) {
-        auto read_id = dict[dictionary_index].read_id[bucket_index];
-        size_t hamming;
-        if (!use_reverse_match)
-          hamming = ((ref ^ reads[read_id]) &
-                     length_masks[0][rg.max_readlen -
-                                     std::min<int>(ref_len - shift,
-                                                   read_lengths[read_id])])
-                        .count();
-        else
-          hamming = ((ref ^ reads[read_id]) &
-                     length_masks[shift][rg.max_readlen -
-                                         std::min<int>(ref_len + shift,
-                                                       read_lengths[read_id])])
-                        .count();
-        if (hamming <= thresh) {
-          if (!omp_test_lock(read_locks[detail::lock_shard(read_id)].get()))
-            continue;
-          if (remaining_reads[read_id]) {
-            remaining_reads[read_id] = 0;
-            matched_read_id = read_id;
-            found_match = 1;
-          }
-          omp_unset_lock(read_locks[detail::lock_shard(read_id)].get());
-          if (found_match == 1)
-            break;
-        }
+        if (candidate_count >= candidate_ids.size())
+          break;
+        candidate_ids[candidate_count++] =
+            dict[dictionary_index].read_id[bucket_index];
       }
     }
     omp_unset_lock(dict_locks[detail::lock_shard(bucket_start_index)].get());
+
+    if (!bucket_matches_lookup)
+      continue;
+
+    for (size_t candidate_index = 0; candidate_index < candidate_count;
+         candidate_index++) {
+      const auto read_id = candidate_ids[candidate_index];
+      size_t hamming;
+      if (!use_reverse_match)
+        hamming = ((ref ^ reads[read_id]) &
+                   length_masks[0][rg.max_readlen -
+                                   std::min<int>(ref_len - shift,
+                                                 read_lengths[read_id])])
+                      .count();
+      else
+        hamming = ((ref ^ reads[read_id]) &
+                   length_masks[shift][rg.max_readlen -
+                                       std::min<int>(ref_len + shift,
+                                                     read_lengths[read_id])])
+                      .count();
+      if (hamming > thresh)
+        continue;
+
+      if (!omp_test_lock(read_locks[detail::lock_shard(read_id)].get()))
+        continue;
+      if (remaining_reads[read_id]) {
+        remaining_reads[read_id] = 0;
+        matched_read_id = read_id;
+        found_match = 1;
+      }
+      omp_unset_lock(read_locks[detail::lock_shard(read_id)].get());
+      if (found_match == 1)
+        break;
+    }
+
     if (found_match == 1)
       break;
   }
