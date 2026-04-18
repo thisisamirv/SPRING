@@ -7,6 +7,7 @@
 #include <archive_entry.h>
 #include <fcntl.h>
 #include <filesystem>
+#include <vector>
 #include <sys/stat.h>
 #include <system_error>
 
@@ -23,6 +24,20 @@
 #endif
 
 namespace spring {
+
+void copy_stream_buffered(std::istream &input_stream,
+                          std::ostream &output_stream,
+                          size_t buffer_size) {
+  std::vector<char> buffer(buffer_size);
+  while (input_stream.read(buffer.data(),
+                           static_cast<std::streamsize>(buffer.size()))) {
+    output_stream.write(buffer.data(), input_stream.gcount());
+  }
+  if (input_stream.gcount() > 0) {
+    output_stream.write(buffer.data(), input_stream.gcount());
+  }
+  output_stream.clear();
+}
 
 size_t get_directory_size(const std::string &temp_dir) {
   namespace fs = std::filesystem;
@@ -111,7 +126,8 @@ void create_tar_archive(const std::string &archive_path,
   struct archive *a;
   struct archive_entry *entry;
   struct stat st;
-  char buff[65536];
+  constexpr size_t kArchiveBufferSize = 4 * 1024 * 1024;
+  std::vector<char> buffer(kArchiveBufferSize);
   int len;
   int fd;
   uint64_t archived_file_count = 0;
@@ -157,16 +173,16 @@ void create_tar_archive(const std::string &archive_path,
     fd = open(full_path.c_str(), open_flags);
     if (fd >= 0) {
 #ifdef _WIN32
-      len = _read(fd, buff, sizeof(buff));
+      len = _read(fd, buffer.data(), static_cast<unsigned int>(buffer.size()));
 #else
-      len = read(fd, buff, sizeof(buff));
+      len = read(fd, buffer.data(), buffer.size());
 #endif
       while (len > 0) {
-        archive_write_data(a, buff, len);
+        archive_write_data(a, buffer.data(), len);
 #ifdef _WIN32
-        len = _read(fd, buff, sizeof(buff));
+        len = _read(fd, buffer.data(), static_cast<unsigned int>(buffer.size()));
 #else
-        len = read(fd, buff, sizeof(buff));
+        len = read(fd, buffer.data(), buffer.size());
 #endif
       }
 #ifdef _WIN32

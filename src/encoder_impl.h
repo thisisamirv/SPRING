@@ -59,15 +59,7 @@ inline void append_thread_stream(
               << thread_output_path << "\n";
     return;
   }
-  const size_t buffer_size = 1024 * 1024; // 1MB buffer
-  std::unique_ptr<char[]> buffer(new char[buffer_size]);
-  while (thread_input.read(buffer.get(), buffer_size)) {
-    merged_output.write(buffer.get(), thread_input.gcount());
-  }
-  if (thread_input.gcount() > 0) {
-    merged_output.write(buffer.get(), thread_input.gcount());
-  }
-  merged_output.clear();
+  copy_stream_buffered(thread_input, merged_output);
 }
 
 inline void cleanup_thread_encode_files(const encoder_global &encoder_state,
