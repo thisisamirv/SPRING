@@ -771,6 +771,14 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   getDataParams(eg, cp); // populate numreads
   setglobalarrays<bitset_size>(eg, egb);
   const uint32_t singleton_pool_size = eg.numreads_s + eg.numreads_N;
+  eg.numdict_s =
+      (singleton_pool_size < DICT_SINGLE_STAGE_READ_THRESHOLD)
+          ? 1
+          : NUM_DICT_ENCODER;
+  SPRING_LOG_DEBUG("Encoder dictionary configuration: active_dicts=" +
+                   std::to_string(eg.numdict_s) +
+                   ", singleton_pool=" +
+                   std::to_string(singleton_pool_size));
   std::vector<std::bitset<bitset_size>> read;
   std::vector<uint32_t> order_s;
   std::vector<uint16_t> read_lengths_s;

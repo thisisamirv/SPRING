@@ -33,6 +33,11 @@ constexpr int NUM_DICT_ENCODER = 2;
 constexpr int MAX_SEARCH_ENCODER = 1000;
 constexpr int THRESH_ENCODER = 24;
 
+// For small read pools, MPHF build overhead can dominate runtime. Use a
+// single dictionary in reorder/encoder to reduce build cost with minimal
+// sensitivity loss on tiny inputs.
+constexpr uint32_t DICT_SINGLE_STAGE_READ_THRESHOLD = 50000;
+
 // Block sizing parameters for stream chunking and BSC compression.
 constexpr int NUM_READS_PER_BLOCK = 256000;
 constexpr int NUM_READS_PER_BLOCK_LONG = 10000;

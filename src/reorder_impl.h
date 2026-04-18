@@ -31,7 +31,7 @@ template <size_t bitset_size> struct reorder_global {
   uint32_t numreads_array[2];
 
   int maxshift, num_thr, max_readlen;
-  const int numdict = NUM_DICT_REORDER;
+  int numdict;
 
   std::string basedir;
   std::string infile[2];
@@ -49,7 +49,8 @@ template <size_t bitset_size> struct reorder_global {
   std::bitset<bitset_size> mask64;
   reorder_global(int max_readlen_param)
       : numreads(0), numreads_array{0, 0}, maxshift(0), num_thr(0),
-        max_readlen(max_readlen_param), paired_end(false) {
+        max_readlen(max_readlen_param), numdict(NUM_DICT_REORDER),
+        paired_end(false) {
     basemask.resize(static_cast<size_t>(max_readlen_param));
     basemask_ptrs.resize(static_cast<size_t>(max_readlen_param));
     for (int i = 0; i < max_readlen_param; i++)
@@ -929,6 +930,11 @@ void reorder_main(const std::string &temp_dir, const compression_params &cp) {
       cp.read_info.num_reads_clean[0] + cp.read_info.num_reads_clean[1];
   rg.numreads_array[0] = cp.read_info.num_reads_clean[0];
   rg.numreads_array[1] = cp.read_info.num_reads_clean[1];
+    rg.numdict =
+      (rg.numreads < DICT_SINGLE_STAGE_READ_THRESHOLD) ? 1 : NUM_DICT_REORDER;
+    SPRING_LOG_DEBUG("Reorder dictionary configuration: active_dicts=" +
+             std::to_string(rg.numdict) +
+             ", clean_reads=" + std::to_string(rg.numreads));
 
   omp_set_num_threads(rg.num_thr);
   setglobalarrays(rg);
