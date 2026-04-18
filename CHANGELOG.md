@@ -24,6 +24,7 @@
 * Added automatic compiler-cache launcher support in CMake (`SPRING_ENABLE_COMPILER_CACHE`, default ON).
 * Added automatic fast-linker selection in CMake (`SPRING_ENABLE_FAST_LINKER`, default ON), preferring `mold` on Linux and falling back to `lld` where supported.
 * Added precompiled header support in CMake (`SPRING_ENABLE_PRECOMPILED_HEADERS`, default ON) to accelerate incremental rebuilds by caching stable headers (`src/pch.h`).
+* Added upfront I/O parameter validation in `src/main.cpp` via `validate_io_parameters()` to verify input files exist, output directories are accessible, and paired-end compression requirements are met before entering the main compression/decompression pipeline; this ensures any runtime error is genuinely a compression/decompression issue, not a parameter error.
 
 ### Changed
 
@@ -72,6 +73,8 @@
 * Removed a redundant duplicate call to `generatemasks` in the encoder initialization.
 * Fixed an issue in `src/spring.cpp` where missing archive metadata could lead to silent decompression failures by adding validation for inferred output paths.
 * Removed redundant dead code in decompression IO resolution logic.
+* Fixed confusing error output in `src/main.cpp` by separating error handling for parameter validation errors (show help) from true runtime errors (show error message only); this ensures runtime failures are not obscured by help text.
+* Hardened temporary directory cleanup in `SpringContext::cleanup()` by adding path canonicalization and boundary validation to prevent accidental recursive deletion if internal state is corrupted, and improved diagnostic logging for success/failure conditions.
 
 ## V1.0.0-alpha
 

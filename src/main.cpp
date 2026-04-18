@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <csignal>
+#include <cstdint>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
@@ -84,7 +85,53 @@ public:
       SPRING_LOG_INFO("Deleting temporary directory: " +
                                temp_dir_.generic_string());
       std::error_code ec;
-      std::filesystem::remove_all(temp_dir_, ec);
+      // Safety guard: only allow cleanup inside the configured working
+      // directory. This prevents accidental recursive deletes if state gets
+      // corrupted.
+      std::filesystem::path canonical_working_dir =
+          std::filesystem::weakly_canonical(working_dir_, ec);
+      if (ec) {
+        std::cerr << "Warning: Failed to canonicalize working directory '"
+                  << working_dir_.generic_string() << "' during cleanup: "
+                  << ec.message() << "\n";
+        ec.clear();
+      }
+
+      std::filesystem::path canonical_temp_dir =
+          std::filesystem::weakly_canonical(temp_dir_, ec);
+      if (ec) {
+        std::cerr << "Warning: Failed to canonicalize temporary directory '"
+                  << temp_dir_.generic_string() << "' during cleanup: "
+                  << ec.message() << "\n";
+        ec.clear();
+      }
+
+      bool path_is_safe = true;
+      if (!canonical_working_dir.empty() && !canonical_temp_dir.empty()) {
+        const std::string working_prefix = canonical_working_dir.generic_string();
+        const std::string temp_path = canonical_temp_dir.generic_string();
+        path_is_safe =
+            temp_path.size() >= working_prefix.size() &&
+            temp_path.compare(0, working_prefix.size(), working_prefix) == 0;
+      }
+
+      if (!path_is_safe) {
+        std::cerr << "Warning: Refusing to delete temporary directory outside "
+                  << "working directory boundary: "
+                  << temp_dir_.generic_string() << "\n";
+      } else {
+        const std::uintmax_t removed_count =
+            std::filesystem::remove_all(temp_dir_, ec);
+        if (ec) {
+          std::cerr << "Warning: Failed to delete temporary directory '"
+                    << temp_dir_.generic_string() << "': " << ec.message()
+                    << "\n";
+        } else {
+          SPRING_LOG_DEBUG("Temporary cleanup removed " +
+                           std::to_string(removed_count) + " filesystem "
+                           "entries.");
+        }
+      }
       temp_dir_.clear();
     }
     if (remove_working_dir_ && !working_dir_.empty()) {
@@ -350,6 +397,55 @@ bool has_valid_memory_cap(const command_line_options &options) {
   return options.memory_cap_gb >= 0.0;
 }
 
+void validate_io_parameters(const command_line_options &options) {
+  // Validate input files: must exist and be readable
+  if (options.input_paths.empty()) {
+    throw std::runtime_error("No input files specified.");
+  }
+
+  for (const auto &path : options.input_paths) {
+    if (path.empty()) {
+      throw std::runtime_error("Input path cannot be empty.");
+    }
+    if (!std::filesystem::exists(path)) {
+      throw std::runtime_error("Input file does not exist: " + path);
+    }
+    if (!std::filesystem::is_regular_file(path)) {
+      throw std::runtime_error("Input path is not a regular file: " + path);
+    }
+  }
+
+  // Validate output paths: directories must exist or be creatable
+  if (!options.output_paths.empty()) {
+    for (const auto &path : options.output_paths) {
+      if (path.empty()) {
+        throw std::runtime_error("Output path cannot be empty.");
+      }
+      const std::filesystem::path output_path(path);
+      const std::filesystem::path parent_dir = output_path.parent_path();
+      if (!parent_dir.empty() && !std::filesystem::exists(parent_dir)) {
+        throw std::runtime_error(
+            "Output directory does not exist: " + parent_dir.generic_string());
+      }
+    }
+  }
+
+  // Validate paired-end compression: must have exactly 2 input files
+  if (options.compress_flag && !options.input_paths.empty() &&
+      options.input_paths.size() != 2) {
+    throw std::runtime_error(
+        "Compression requires exactly 2 input files for paired-end reads, but " +
+        std::to_string(options.input_paths.size()) + " provided.");
+  }
+
+  // Validate decompression output count: at most 2 output files
+  if (options.decompress_flag && options.output_paths.size() > 2) {
+    throw std::runtime_error(
+        "Decompression accepts at most 2 output files, but " +
+        std::to_string(options.output_paths.size()) + " specified.");
+  }
+}
+
 int max_threads_for_memory_cap_gb(const double memory_cap_gb) {
   if (memory_cap_gb <= 0.0)
     return 0;
@@ -380,10 +476,10 @@ void apply_memory_cap(command_line_options &options) {
 
 int print_unexpected_error_and_exit(const std::string &options_description,
                                     const std::string &error_message) {
+  (void)options_description;
   std::cout << error_message << "\n";
   if (g_context)
     g_context->cleanup();
-  std::cout << options_description << "\n";
   return 1;
 }
 
@@ -477,6 +573,17 @@ int main(int argc, char **argv) {
 
   if (!has_valid_memory_cap(options)) {
     std::cout << "Memory cap must be non-negative.\n";
+    return 1;
+  }
+
+  // Validate I/O parameters early: input files exist, output paths are valid.
+  // This ensures any error during run_requested_mode is a true runtime error,
+  // not a parameter issue.
+  try {
+    validate_io_parameters(options);
+  } catch (const std::runtime_error &e) {
+    std::cout << e.what() << "\n";
+    std::cout << options_description << "\n";
     return 1;
   }
 
