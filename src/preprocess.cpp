@@ -51,6 +51,11 @@ std::string block_file_path(const std::string &base_path,
   return base_path + "." + std::to_string(block_num);
 }
 
+std::string compressed_block_file_path(const std::string &base_path,
+                                       const uint32_t block_num) {
+  return block_file_path(base_path, block_num) + ".bsc";
+}
+
 uint32_t block_count(const uint64_t num_reads,
                      const uint32_t num_reads_per_block) {
   if (num_reads == 0)
@@ -369,7 +374,13 @@ void remove_redundant_mate_ids(const preprocess_paths &paths,
 
   const uint32_t num_blocks = block_count(num_reads[0], num_reads_per_block);
   for (uint32_t block_index = 0; block_index < num_blocks; block_index++) {
-    remove(block_file_path(paths.id_output_paths[1], block_index).c_str());
+    const std::string block_path = compression_params.encoding.long_flag
+                                       ? compressed_block_file_path(
+                                             paths.id_output_paths[1],
+                                             block_index)
+                                       : block_file_path(paths.id_output_paths[1],
+                                                         block_index);
+    remove(block_path.c_str());
   }
 }
 
@@ -666,20 +677,18 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
           } else {
             std::string read_length_input_path = block_file_path(
                 paths.read_length_paths[stream_index], block_num);
-            std::string read_length_output_path =
-                read_length_input_path + ".bsc";
-            std::filesystem::copy_file(
-              read_length_input_path, read_length_output_path,
-              std::filesystem::copy_options::overwrite_existing);
+            std::string read_length_output_path = compressed_block_file_path(
+                paths.read_length_paths[stream_index], block_num);
+            bsc::BSC_compress(read_length_input_path.c_str(),
+                              read_length_output_path.c_str());
             remove(read_length_input_path.c_str());
             if (cp.encoding.preserve_id) {
-              std::string output_path = block_file_path(
+              std::string output_path = compressed_block_file_path(
                   paths.id_output_paths[stream_index], block_num);
               compress_id_block(output_path.c_str(),
                                 id_array + thread_id * num_reads_per_block,
                                 thread_read_count,
-                                cp.encoding.compression_level,
-                                true);
+                                cp.encoding.compression_level);
             }
             if (cp.encoding.preserve_quality) {
               std::string output_path = block_file_path(
@@ -696,11 +705,17 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
             }
             std::string output_path = block_file_path(
                 paths.read_block_paths[stream_index], block_num);
+            std::string compressed_output_path =
+                compressed_block_file_path(paths.read_block_paths[stream_index],
+                                           block_num);
             write_raw_string_block(
                 output_path,
                 read_array.data() + thread_id * num_reads_per_block,
                 thread_read_count,
                 read_lengths_array.data() + thread_id * num_reads_per_block);
+            bsc::BSC_compress(output_path.c_str(),
+                              compressed_output_path.c_str());
+            remove(output_path.c_str());
           }
         }
       }

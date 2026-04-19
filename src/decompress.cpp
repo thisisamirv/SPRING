@@ -282,10 +282,16 @@ void decompress_read_length_block(const std::string &base_path,
   const std::string compressed_path =
       compressed_block_file_path(base_path, block_num);
   const std::string output_path = block_file_path(base_path, block_num);
-  if (compressed_path.find("readlength_") != std::string::npos) {
-    copy_binary_file(compressed_path, output_path);
-  } else {
+  try {
     safe_bsc_decompress(compressed_path, output_path);
+  } catch (const std::exception &) {
+    if (compressed_path.find("readlength_") != std::string::npos) {
+      // Backward compatibility: older archives used a .bsc suffix for raw
+      // read-length blocks.
+      copy_binary_file(compressed_path, output_path);
+    } else {
+      throw;
+    }
   }
   safe_remove_file(compressed_path);
 
@@ -979,8 +985,12 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
 
           std::string input_path =
               input_read_paths[stream_index] + "." + std::to_string(block_num);
-          read_raw_string_block(input_path,
-                                read_buffer.data() + buffer_offset,
+          const std::string compressed_read_path = input_path + ".bsc";
+          if (std::filesystem::exists(compressed_read_path)) {
+            safe_bsc_decompress(compressed_read_path, input_path);
+            safe_remove_file(compressed_read_path);
+          }
+          read_raw_string_block(input_path, read_buffer.data() + buffer_offset,
                                 thread_read_count,
                                 read_lengths_buffer.data() + buffer_offset);
           safe_remove_file(input_path);
@@ -1017,10 +1027,20 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
             } else {
               input_path = input_id_paths[stream_index] + "." +
                            std::to_string(block_num);
-              decompress_id_block(input_path.c_str(),
-                                  id_buffer.data() + buffer_offset,
-                                  thread_read_count, true);
-              safe_remove_file(input_path);
+              const std::string compressed_id_path = input_path + ".bsc";
+              if (std::filesystem::exists(compressed_id_path)) {
+                decompress_id_block(compressed_id_path.c_str(),
+                                    id_buffer.data() + buffer_offset,
+                                    thread_read_count, false);
+                safe_remove_file(compressed_id_path);
+              } else {
+                // Backward compatibility: raw packed ID blocks from older
+                // long-mode archives.
+                decompress_id_block(input_path.c_str(),
+                                    id_buffer.data() + buffer_offset,
+                                    thread_read_count, true);
+                safe_remove_file(input_path);
+              }
             }
           }
         }
