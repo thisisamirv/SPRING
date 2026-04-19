@@ -225,77 +225,57 @@ inline uint32_t sort_and_deduplicate_keys(uint64_t *dictionary_keys,
   return unique_key_index + 1;
 }
 
-inline void write_hash_chunks(const bbhashdict &dictionary,
-                              const std::string &base_dir,
-                              const int dict_index) {
-  const uint32_t local_num_reads = dictionary.dict_numreads;
-  const std::string local_base_dir = base_dir;
-  const int local_dict_index = dict_index;
+inline std::vector<uint64_t>
+compute_hash_values(const bbhashdict &dictionary,
+                    const uint64_t *keys,
+                    const uint32_t key_count,
+                    const int dict_index) {
+  std::vector<uint64_t> hash_values(static_cast<size_t>(key_count), 0);
+  if (key_count == 0)
+    return hash_values;
+
   const bbhashdict *local_dictionary = &dictionary;
-#pragma omp parallel default(none) shared(std::cerr, local_dictionary) \
-    firstprivate(local_num_reads, local_base_dir, local_dict_index)
-  {
-    const int thread_id = omp_get_thread_num();
-    const int thread_count = omp_get_num_threads();
-    const thread_range range =
-        split_thread_range(local_num_reads, thread_id, thread_count);
-    const std::string key_path = keys_bin_path(local_base_dir, thread_id);
-    const std::string hash_path =
-        hash_bin_path(local_base_dir, thread_id, local_dict_index);
-    std::ifstream key_input(key_path, std::ios::binary);
-    std::ofstream hash_output(hash_path, std::ios::binary);
-    uint64_t current_key;
-
-    for (uint64_t key_index = range.begin; key_index < range.end; key_index++) {
-      if (!key_input.read(byte_ptr(&current_key), sizeof(uint64_t))) {
-        SPRING_LOG_DEBUG("block_id=dict-hash-write:" +
-              std::to_string(local_dict_index) +
-                          ", write_hash_chunks short read: path=" + key_path +
-                          ", expected_bytes=" +
-                          std::to_string(sizeof(uint64_t)) +
-                          ", actual_bytes=" +
-                          std::to_string(key_input.gcount()) +
-                          ", index=" + std::to_string(key_index));
-        std::cerr << "Error reading key at index " << key_index << " from "
-                  << key_path << std::endl;
-        break;
-      }
-      const uint64_t current_hash = (*(local_dictionary->bphf))(current_key);
-      hash_output.write(byte_ptr(&current_hash), sizeof(uint64_t));
-    }
-    hash_output.flush();
-    hash_output.close();
-
-    key_input.close();
-    safe_remove_file(key_path);
+  const uint64_t *local_keys = keys;
+  uint64_t *local_hash_values = hash_values.data();
+#pragma omp parallel for schedule(static) default(none)                         \
+    shared(local_dictionary, local_keys, local_hash_values)                     \
+    firstprivate(key_count)
+  for (int64_t key_index = 0; key_index < static_cast<int64_t>(key_count);
+       key_index++) {
+    local_hash_values[key_index] =
+        (*(local_dictionary->bphf))(local_keys[key_index]);
   }
+
+  for (uint32_t key_index = 0; key_index < key_count; key_index++) {
+    if (hash_values[key_index] >= dictionary.numkeys) {
+      SPRING_LOG_DEBUG("block_id=dict-hash-compute:" +
+                       std::to_string(dict_index) +
+                       ", hash out-of-range: expected_bytes=" +
+                       std::to_string(dictionary.numkeys) +
+                       ", actual_bytes=" +
+                       std::to_string(hash_values[key_index]) +
+                       ", index=" + std::to_string(key_index));
+    }
+  }
+  return hash_values;
 }
 
 inline void count_bucket_sizes(bbhashdict &dictionary,
-                               const std::string &base_dir,
-                               const int dict_index, const int thread_count) {
-  uint64_t current_hash;
-  for (int thread_id = 0; thread_id < thread_count; thread_id++) {
-    std::string path = hash_bin_path(base_dir, thread_id, dict_index);
-    std::ifstream hash_input(path, std::ios::binary);
-    if (!hash_input.is_open()) {
+                               const std::vector<uint64_t> &hash_values,
+                               const int dict_index) {
+  for (uint32_t hash_index = 0;
+       hash_index < static_cast<uint32_t>(hash_values.size()); hash_index++) {
+    const uint64_t current_hash = hash_values[hash_index];
+    if (current_hash >= dictionary.numkeys) {
+      SPRING_LOG_DEBUG("block_id=dict-bucket-count:" +
+                       std::to_string(dict_index) +
+                       ", hash out-of-range: expected_bytes=" +
+                       std::to_string(dictionary.numkeys) +
+                       ", actual_bytes=" + std::to_string(current_hash) +
+                       ", index=" + std::to_string(hash_index));
       continue;
     }
-
-    while (hash_input.read(byte_ptr(&current_hash), sizeof(uint64_t))) {
-      if (current_hash >= dictionary.numkeys) {
-        SPRING_LOG_DEBUG("block_id=dict-bucket-count:" +
-              std::to_string(dict_index) +
-                          ", count_bucket_sizes hash out-of-range: path=" +
-                          path +
-                          ", expected_bytes=" +
-                          std::to_string(dictionary.numkeys) +
-                          ", actual_bytes=" + std::to_string(current_hash) +
-                          ", index=" + std::to_string(thread_id));
-        continue;
-      }
-      dictionary.startpos[current_hash + 1]++;
-    }
+    dictionary.startpos[current_hash + 1]++;
   }
 }
 
@@ -310,52 +290,38 @@ inline void finalize_bucket_offsets(bbhashdict &dictionary) {
   }
 }
 
-inline void
-populate_bucket_read_ids(bbhashdict &dictionary, uint16_t *read_lengths,
-                         const std::string &base_dir, const int dict_index,
-                         const uint32_t numreads, const int thread_count) {
+inline void populate_bucket_read_ids(bbhashdict &dictionary,
+                                     uint16_t *read_lengths,
+                                     const std::vector<uint64_t> &hash_values,
+                                     const int dict_index,
+                                     const uint32_t numreads) {
   dictionary.read_id = std::make_unique<uint32_t[]>(dictionary.dict_numreads);
   uint32_t read_index = 0;
-  uint64_t current_hash;
-
-  for (int thread_id = 0; thread_id < thread_count; thread_id++) {
-    const std::string hash_path =
-        hash_bin_path(base_dir, thread_id, dict_index);
-    std::ifstream hash_input(hash_path, std::ios::binary);
-    if (!hash_input.is_open()) {
-      std::cerr << "Error: Could not open hash chunk for populating: "
-                << hash_path << std::endl;
+  for (uint32_t hash_index = 0;
+       hash_index < static_cast<uint32_t>(hash_values.size()); hash_index++) {
+    const uint64_t current_hash = hash_values[hash_index];
+    if (current_hash >= dictionary.numkeys) {
+      SPRING_LOG_DEBUG("block_id=dict-bucket-populate:" +
+                       std::to_string(dict_index) +
+                       ", hash out-of-range: expected_bytes=" +
+                       std::to_string(dictionary.numkeys) +
+                       ", actual_bytes=" + std::to_string(current_hash) +
+                       ", index=" + std::to_string(hash_index));
       continue;
     }
-    while (hash_input.read(byte_ptr(&current_hash), sizeof(uint64_t))) {
-      if (current_hash >= dictionary.numkeys) {
-        SPRING_LOG_DEBUG(
-          "block_id=dict-bucket-populate:" + std::to_string(dict_index) +
-            ", populate_bucket_read_ids hash out-of-range: path=" +
-            hash_path +
-          ", expected_bytes=" + std::to_string(dictionary.numkeys) +
-          ", actual_bytes=" + std::to_string(current_hash) +
-          ", index=" + std::to_string(thread_id));
-        continue;
-      }
-      while (read_index < numreads &&
-             read_lengths[read_index] <= dictionary.end)
-        read_index++;
-      if (read_index < numreads) {
-        dictionary.read_id[dictionary.startpos[current_hash]++] = read_index;
-        read_index++;
-      } else {
-        SPRING_LOG_DEBUG(
-          "block_id=dict-bucket-populate:" + std::to_string(dict_index) +
-            ", populate_bucket_read_ids exhausted source reads: path=" +
-            hash_path +
-          ", expected_bytes=1, actual_bytes=0, index=" +
-          std::to_string(thread_id));
-        break;
-      }
+    while (read_index < numreads && read_lengths[read_index] <= dictionary.end)
+      read_index++;
+    if (read_index < numreads) {
+      dictionary.read_id[dictionary.startpos[current_hash]++] = read_index;
+      read_index++;
+    } else {
+      SPRING_LOG_DEBUG("block_id=dict-bucket-populate:" +
+                       std::to_string(dict_index) +
+                       ", exhausted source reads: expected_bytes=1, "
+                       "actual_bytes=0, index=" +
+                       std::to_string(hash_index));
+      break;
     }
-    hash_input.close();
-    safe_remove_file(hash_path);
   }
 }
 
@@ -408,10 +374,11 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
     current_dict.dict_numreads = detail::compact_dictionary_keys(
         dictionary_keys_data, read_lengths, numreads, current_dict.end);
 
-    // Persist keys because later passes stream them again while building
-    // the bucket layout.
-    detail::write_key_chunks(dictionary_keys_data, current_dict.dict_numreads,
-                             basedir);
+    // Preserve compacted key order for read-id bucket population after MPHF
+    // build, while dictionary_keys_data is sorted/deduplicated for MPHF input.
+    std::vector<uint64_t> compacted_keys;
+    compacted_keys.assign(dictionary_keys_data,
+                dictionary_keys_data + current_dict.dict_numreads);
 
     current_dict.numkeys = detail::sort_and_deduplicate_keys(
         dictionary_keys_data, current_dict.dict_numreads);
@@ -433,24 +400,21 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
     SPRING_LOG_INFO(std::string("Done. (T=") +
                      std::to_string(current_dict.numkeys) + ")");
 
-    // Re-read the stored keys and materialize their hash buckets.
-    SPRING_LOG_INFO("  Writing hash chunks... ");
-    detail::write_hash_chunks(current_dict, basedir, dict_index);
-    SPRING_LOG_INFO("Done.");
-  }
+    SPRING_LOG_INFO("  Computing hash values in memory...");
+    const std::vector<uint64_t> hash_values = detail::compute_hash_values(
+        current_dict, compacted_keys.data(), current_dict.dict_numreads,
+        dict_index);
 
-  SPRING_LOG_INFO("  Finalizing dictionaries (sequentially)...");
-  for (int dict_index = 0; dict_index < numdict; dict_index++) {
-    bbhashdict &current_dict = dict[dict_index];
     current_dict.startpos =
         std::make_unique<uint32_t[]>(current_dict.numkeys + 1);
     std::fill_n(current_dict.startpos.get(), current_dict.numkeys + 1, 0);
-    detail::count_bucket_sizes(current_dict, basedir, dict_index, num_thr);
+    detail::count_bucket_sizes(current_dict, hash_values, dict_index);
     detail::finalize_bucket_offsets(current_dict);
-    detail::populate_bucket_read_ids(current_dict, read_lengths, basedir,
-                                     dict_index, numreads, num_thr);
+    detail::populate_bucket_read_ids(current_dict, read_lengths, hash_values,
+                                     dict_index, numreads);
     detail::restore_bucket_starts(current_dict);
   }
+
   SPRING_LOG_INFO("  Done finalization.");
   return;
 }
