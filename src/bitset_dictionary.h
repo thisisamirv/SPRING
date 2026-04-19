@@ -415,8 +415,8 @@ inline void populate_bucket_read_ids(bbhashdict &dictionary,
     const uint32_t begin = bucket_starts[static_cast<size_t>(bucket_index)];
     const uint32_t end = bucket_starts[static_cast<size_t>(bucket_index) + 1];
     if (end > begin + 1) {
-      std::sort(local_dictionary->read_id.get() + begin,
-                local_dictionary->read_id.get() + end);
+      std::sort(&local_dictionary->read_id[begin],
+                &local_dictionary->read_id[end]);
     }
   }
 }
