@@ -857,8 +857,15 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
           if (!preserve_id) {
             for (uint32_t i = buffer_offset;
                  i < buffer_offset + thread_read_count; i++)
-              id_buffer[i] = "@" + std::to_string(num_reads_done + i + 1) +
-                             "/" + std::to_string(stream_index + 1);
+            {
+              std::string read_id;
+              read_id.reserve(32);
+              read_id.push_back('@');
+              read_id.append(std::to_string(num_reads_done + i + 1));
+              read_id.push_back('/');
+              read_id.append(std::to_string(stream_index + 1));
+              id_buffer[i] = std::move(read_id);
+            }
           } else {
             if (stream_index == 1 && paired_id_match) {
               for (uint32_t i = buffer_offset;
@@ -993,8 +1000,15 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
           if (!preserve_id) {
             for (uint32_t i = buffer_offset;
                  i < buffer_offset + thread_read_count; i++)
-              id_buffer[i] = "@" + std::to_string(num_reads_done + i + 1) +
-                             "/" + std::to_string(stream_index + 1);
+            {
+              std::string read_id;
+              read_id.reserve(32);
+              read_id.push_back('@');
+              read_id.append(std::to_string(num_reads_done + i + 1));
+              read_id.push_back('/');
+              read_id.append(std::to_string(stream_index + 1));
+              id_buffer[i] = std::move(read_id);
+            }
           } else {
             if (stream_index == 1 && paired_id_match) {
               for (uint32_t i = buffer_offset;
