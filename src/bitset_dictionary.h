@@ -263,30 +263,86 @@ compute_hash_values(const bbhashdict &dictionary,
 inline void count_bucket_sizes(bbhashdict &dictionary,
                                const std::vector<uint64_t> &hash_values,
                                const int dict_index) {
-  for (uint32_t hash_index = 0;
-       hash_index < static_cast<uint32_t>(hash_values.size()); hash_index++) {
-    const uint64_t current_hash = hash_values[hash_index];
-    if (current_hash >= dictionary.numkeys) {
+  bbhashdict *local_dictionary = &dictionary;
+  const std::vector<uint64_t> *local_hash_values = &hash_values;
+#pragma omp parallel for schedule(static) default(none)                         \
+    shared(local_dictionary, local_hash_values) firstprivate(dict_index)
+  for (int64_t hash_index = 0;
+       hash_index < static_cast<int64_t>(local_hash_values->size());
+       hash_index++) {
+    const uint64_t current_hash = (*local_hash_values)[hash_index];
+    if (current_hash >= local_dictionary->numkeys) {
       SPRING_LOG_DEBUG("block_id=dict-bucket-count:" +
                        std::to_string(dict_index) +
                        ", hash out-of-range: expected_bytes=" +
-                       std::to_string(dictionary.numkeys) +
+                       std::to_string(local_dictionary->numkeys) +
                        ", actual_bytes=" + std::to_string(current_hash) +
                        ", index=" + std::to_string(hash_index));
       continue;
     }
-    dictionary.startpos[current_hash + 1]++;
+#pragma omp atomic update
+    local_dictionary->startpos[current_hash + 1]++;
   }
 }
 
 inline void finalize_bucket_offsets(bbhashdict &dictionary) {
   dictionary.empty_bin.assign(dictionary.numkeys, false);
-  for (uint32_t key_index = 0; key_index < dictionary.numkeys; key_index++) {
-    if (dictionary.startpos[key_index + 1] == 0)
-      dictionary.empty_bin[key_index] = true;
+  bbhashdict *local_dictionary = &dictionary;
+
+#pragma omp parallel for schedule(static) default(none) shared(local_dictionary)
+  for (int64_t key_index = 0;
+       key_index < static_cast<int64_t>(local_dictionary->numkeys);
+       key_index++) {
+    if (local_dictionary->startpos[key_index + 1] == 0)
+      local_dictionary->empty_bin[key_index] = true;
   }
-  for (uint32_t key_index = 1; key_index < dictionary.numkeys; key_index++) {
-    dictionary.startpos[key_index] += dictionary.startpos[key_index - 1];
+
+  const uint32_t scan_length =
+      (local_dictionary->numkeys > 0) ? local_dictionary->numkeys - 1 : 0;
+  if (scan_length == 0)
+    return;
+
+  const int thread_count =
+      std::max(1, std::min<int>(omp_get_max_threads(), scan_length));
+  std::vector<uint32_t> block_totals(static_cast<size_t>(thread_count), 0);
+  std::vector<uint32_t> block_offsets(static_cast<size_t>(thread_count), 0);
+
+#pragma omp parallel num_threads(thread_count) default(none)                   \
+  shared(local_dictionary, block_totals, block_offsets, scan_length)         \
+  firstprivate(thread_count)
+  {
+    const int thread_id = omp_get_thread_num();
+    const uint32_t begin =
+        static_cast<uint32_t>(thread_id) * scan_length / thread_count;
+    const uint32_t end =
+        static_cast<uint32_t>(thread_id + 1) * scan_length / thread_count;
+
+    uint32_t running_sum = 0;
+    for (uint32_t local_index = begin; local_index < end; local_index++) {
+      const uint32_t startpos_index = local_index + 1;
+      running_sum += local_dictionary->startpos[startpos_index];
+      local_dictionary->startpos[startpos_index] = running_sum;
+    }
+    block_totals[static_cast<size_t>(thread_id)] = running_sum;
+
+#pragma omp barrier
+
+#pragma omp single
+    {
+      uint32_t prefix_sum = 0;
+      for (int block_index = 0; block_index < thread_count; block_index++) {
+        block_offsets[static_cast<size_t>(block_index)] = prefix_sum;
+        prefix_sum += block_totals[static_cast<size_t>(block_index)];
+      }
+    }
+
+    const uint32_t carry = block_offsets[static_cast<size_t>(thread_id)];
+    if (carry != 0) {
+      for (uint32_t local_index = begin; local_index < end; local_index++) {
+        const uint32_t startpos_index = local_index + 1;
+        local_dictionary->startpos[startpos_index] += carry;
+      }
+    }
   }
 }
 
@@ -296,31 +352,71 @@ inline void populate_bucket_read_ids(bbhashdict &dictionary,
                                      const int dict_index,
                                      const uint32_t numreads) {
   dictionary.read_id = std::make_unique<uint32_t[]>(dictionary.dict_numreads);
-  uint32_t read_index = 0;
-  for (uint32_t hash_index = 0;
-       hash_index < static_cast<uint32_t>(hash_values.size()); hash_index++) {
-    const uint64_t current_hash = hash_values[hash_index];
-    if (current_hash >= dictionary.numkeys) {
+
+  // Save bucket starts so we can sort each populated bucket range after
+  // parallel placement and preserve ascending read-id order.
+  std::vector<uint32_t> bucket_starts(static_cast<size_t>(dictionary.numkeys) +
+                                      1);
+  std::copy_n(dictionary.startpos.get(), dictionary.numkeys + 1,
+              bucket_starts.begin());
+
+  std::vector<uint32_t> eligible_read_ids;
+  eligible_read_ids.reserve(dictionary.dict_numreads);
+  for (uint32_t read_index = 0; read_index < numreads; read_index++) {
+    if (read_lengths[read_index] > dictionary.end)
+      eligible_read_ids.push_back(read_index);
+  }
+
+  const uint32_t usable_count = std::min<uint32_t>(
+      static_cast<uint32_t>(hash_values.size()),
+      static_cast<uint32_t>(eligible_read_ids.size()));
+
+  bbhashdict *local_dictionary = &dictionary;
+  const std::vector<uint64_t> *local_hash_values = &hash_values;
+  const std::vector<uint32_t> *local_eligible_read_ids = &eligible_read_ids;
+
+#pragma omp parallel for schedule(static) default(none)                         \
+    shared(local_dictionary, local_hash_values, local_eligible_read_ids)        \
+    firstprivate(usable_count, dict_index)
+  for (int64_t hash_index = 0; hash_index < static_cast<int64_t>(usable_count);
+       hash_index++) {
+    const uint64_t current_hash = (*local_hash_values)[hash_index];
+    if (current_hash >= local_dictionary->numkeys) {
       SPRING_LOG_DEBUG("block_id=dict-bucket-populate:" +
                        std::to_string(dict_index) +
                        ", hash out-of-range: expected_bytes=" +
-                       std::to_string(dictionary.numkeys) +
+                       std::to_string(local_dictionary->numkeys) +
                        ", actual_bytes=" + std::to_string(current_hash) +
                        ", index=" + std::to_string(hash_index));
       continue;
     }
-    while (read_index < numreads && read_lengths[read_index] <= dictionary.end)
-      read_index++;
-    if (read_index < numreads) {
-      dictionary.read_id[dictionary.startpos[current_hash]++] = read_index;
-      read_index++;
-    } else {
-      SPRING_LOG_DEBUG("block_id=dict-bucket-populate:" +
-                       std::to_string(dict_index) +
-                       ", exhausted source reads: expected_bytes=1, "
-                       "actual_bytes=0, index=" +
-                       std::to_string(hash_index));
-      break;
+
+    uint32_t insert_index;
+#pragma omp atomic capture
+    insert_index = local_dictionary->startpos[current_hash]++;
+
+    local_dictionary->read_id[insert_index] =
+        (*local_eligible_read_ids)[hash_index];
+  }
+
+  if (usable_count < static_cast<uint32_t>(hash_values.size())) {
+    SPRING_LOG_DEBUG("block_id=dict-bucket-populate:" +
+                     std::to_string(dict_index) +
+                     ", exhausted source reads: expected_bytes=" +
+                     std::to_string(hash_values.size()) + ", actual_bytes=" +
+                     std::to_string(usable_count));
+  }
+
+#pragma omp parallel for schedule(static) default(none)                         \
+    shared(local_dictionary, bucket_starts)
+  for (int64_t bucket_index = 0;
+       bucket_index < static_cast<int64_t>(local_dictionary->numkeys);
+       bucket_index++) {
+    const uint32_t begin = bucket_starts[static_cast<size_t>(bucket_index)];
+    const uint32_t end = bucket_starts[static_cast<size_t>(bucket_index) + 1];
+    if (end > begin + 1) {
+      std::sort(local_dictionary->read_id.get() + begin,
+                local_dictionary->read_id.get() + end);
     }
   }
 }
