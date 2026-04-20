@@ -394,8 +394,19 @@ uint32_t max_read_length_in_step(const std::vector<uint32_t> &read_lengths,
 
 } // namespace
 
+bool has_non_acgtn_symbol(const std::string &read) {
+  for (const char base : read) {
+    if (base != 'A' && base != 'C' && base != 'G' && base != 'T' &&
+        base != 'N') {
+      return true;
+    }
+  }
+  return false;
+}
+
 uint32_t detect_max_read_length_in_file(const std::string &path,
-                                        bool fasta_input, bool &use_crlf) {
+                                        bool fasta_input, bool &use_crlf,
+                                        bool &contains_non_acgtn_symbols) {
   std::ifstream input(path, std::ios::binary);
   if (!input.is_open())
     throw std::runtime_error("Can't open file for pre-scan: " + path);
@@ -413,6 +424,9 @@ uint32_t detect_max_read_length_in_file(const std::string &path,
         max_len = std::max(max_len, current_len);
         current_len = 0;
       } else {
+        if (!contains_non_acgtn_symbols && has_non_acgtn_symbol(line)) {
+          contains_non_acgtn_symbols = true;
+        }
         current_len += line.length();
       }
     }
@@ -423,6 +437,9 @@ uint32_t detect_max_read_length_in_file(const std::string &path,
       if (!line.empty() && line.back() == '\r')
         use_crlf = true;
       if (std::getline(input, line)) { // 2: Sequence
+        if (!contains_non_acgtn_symbols && has_non_acgtn_symbol(line)) {
+          contains_non_acgtn_symbols = true;
+        }
         max_len = std::max(max_len, (uint32_t)line.length());
       }
       std::getline(input, line); // 3: +
@@ -435,14 +452,18 @@ uint32_t detect_max_read_length_in_file(const std::string &path,
 uint32_t detect_max_read_length(const std::string &infile_1,
                                 const std::string &infile_2,
                                 const bool paired_end, const bool fasta_input,
-                                bool &use_crlf) {
+                                bool &use_crlf,
+                                bool &contains_non_acgtn_symbols) {
   SPRING_LOG_INFO("Auto-detecting read lengths and line endings ...");
   use_crlf = false;
+  contains_non_acgtn_symbols = false;
   uint32_t max_len_1 =
-      detect_max_read_length_in_file(infile_1, fasta_input, use_crlf);
+      detect_max_read_length_in_file(infile_1, fasta_input, use_crlf,
+                                     contains_non_acgtn_symbols);
   uint32_t max_len_2 = 0;
   if (paired_end) {
-    max_len_2 = detect_max_read_length_in_file(infile_2, fasta_input, use_crlf);
+    max_len_2 = detect_max_read_length_in_file(infile_2, fasta_input, use_crlf,
+                                               contains_non_acgtn_symbols);
   }
   return std::max(max_len_1, max_len_2);
 }

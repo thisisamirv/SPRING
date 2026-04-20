@@ -21,7 +21,8 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
 uint32_t detect_max_read_length(const std::string &infile_1,
                                 const std::string &infile_2,
                                 const bool paired_end, const bool fasta_input,
-                                bool &use_crlf);
+                                bool &use_crlf,
+                                bool &contains_non_acgtn_symbols);
 
 } // namespace spring
 

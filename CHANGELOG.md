@@ -25,6 +25,7 @@
 * Added automatic fast-linker selection in CMake (`SPRING_ENABLE_FAST_LINKER`, default ON), preferring `mold` on Linux and falling back to `lld` where supported.
 * Added precompiled header support in CMake (`SPRING_ENABLE_PRECOMPILED_HEADERS`, default ON) to accelerate incremental rebuilds by caching stable headers (`src/pch.h`).
 * Added upfront I/O parameter validation in `src/main.cpp` via `validate_io_parameters()` to verify input files exist, output directories are accessible, and paired-end compression requirements are met before entering the main compression/decompression pipeline; this ensures any runtime error is genuinely a compression/decompression issue, not a parameter error.
+* Added automatic non-ACGTN sequence detection during input pre-scan: when extended IUPAC/RNA symbols are present, SPRING2 now switches to long-read mode to preserve sequence alphabet losslessly instead of using the short-read 3-bit path.
 
 ### Changed
 

@@ -739,14 +739,25 @@ void compress(const std::string &temp_dir,
   const bool preserve_quality = !no_quality_flag && !fasta_input;
 
   bool use_crlf = false;
+  bool contains_non_acgtn_symbols = false;
   const uint32_t max_read_length = detect_max_read_length(
       prepared_inputs.input_path_1, prepared_inputs.input_path_2,
-      io_config.paired_end, fasta_input, use_crlf);
-  const bool long_flag = max_read_length > MAX_READ_LEN;
+      io_config.paired_end, fasta_input, use_crlf,
+      contains_non_acgtn_symbols);
+  const bool long_flag =
+      (max_read_length > MAX_READ_LEN) || contains_non_acgtn_symbols;
   SPRING_LOG_DEBUG("Detected maximum read length=" +
                     std::to_string(max_read_length) +
                     ", use_crlf=" + std::string(use_crlf ? "true" : "false") +
+                    ", non_acgtn_symbols=" +
+                    std::string(contains_non_acgtn_symbols ? "true" : "false") +
                     ", long_mode=" + std::string(long_flag ? "true" : "false"));
+
+  if (contains_non_acgtn_symbols) {
+    SPRING_LOG_INFO("Detected non-ACGTN symbols in read sequences; "
+                    "switching to long-read mode to preserve sequence "
+                    "alphabet losslessly.");
+  }
 
   if (long_flag) {
     SPRING_LOG_INFO("Auto-detected long-read mode.");
