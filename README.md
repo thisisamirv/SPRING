@@ -84,6 +84,9 @@ Allowed options:
   -c [ --compress ]               compress
   -R1 [ --R1 ] arg                input read-1 file (required)
   -R2 [ --R2 ] arg                input read-2 file (optional; enables paired-end mode)
+  -R3 [ --R3 ] arg                input read-3 file (optional; requires --R2)
+  -I1 [ --I1 ] arg                input index-read-1 file (optional; requires --R2)
+  -I2 [ --I2 ] arg                input index-read-2 file (optional; requires --I1)
   -l [ --level ] arg (=6)         compression level (1-9) to use for output
                                   (.gz) formatting (passed to gzip unchanged
                                   and scaled to Zstd 1-22 internally)
@@ -106,6 +109,10 @@ Allowed options:
   -i [ --input ] arg              input archive file (.sp)
   -u [ --unzip ]                  during decompression, force output to be
                                   uncompressed (even if original was .gz)
+
+When an archive was created with grouped lanes (`--R3` and/or `--I1/--I2`),
+decompression with a single `-o <prefix>` emits grouped outputs using suffixes
+`.R1`, `.R2`, optional `.R3`, optional `.I1`, and optional `.I2`.
 ```
 
 ## Previewing Archives

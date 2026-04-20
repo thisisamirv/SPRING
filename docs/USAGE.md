@@ -7,7 +7,7 @@ This guide provides detailed information on how to use SPRING2 for compressing a
 The general syntax for SPRING2 is:
 
 ```bash
-spring2 [mode] [options] --R1 <input_R1> [--R2 <input_R2>] -o <output_file>
+spring2 [mode] [options] --R1 <input_R1> [--R2 <input_R2>] [--R3 <input_R3>] [--I1 <input_I1>] [--I2 <input_I2>] -o <output_file>
 ```
 
 ### Modes
@@ -26,7 +26,16 @@ spring2 [mode] [options] --R1 <input_R1> [--R2 <input_R2>] -o <output_file>
 
 - `-R1, --R1 arg`: Read 1 input file. Required for compression.
 - `-R2, --R2 arg`: Read 2 input file. Optional; if provided, SPRING2 automatically switches to paired-end mode.
+- `-R3, --R3 arg`: Read 3 input file. Optional; requires `--R2`.
+- `-I1, --I1 arg`: Index read 1 input file. Optional; requires `--R2`.
+- `-I2, --I2 arg`: Index read 2 input file. Optional; requires `--I1`.
 - `-o, --output arg`: Output file name. If omitted, SPRING2 will use the original input name(s) (e.g., swapping extensions to `.sp` during compression). For paired-end decompression, if only one file is specified, two output files will be created by suffixing `.1` and `.2`.
+
+When grouped lane options are provided (`--R3` and/or `--I1/--I2`), SPRING2
+stores a grouped archive containing the read pair (`R1/R2`) plus optional
+read-3 and index lanes. During decompression, `-o <prefix>` expands to
+`<prefix>.R1`, `<prefix>.R2`, optional `<prefix>.R3`, optional `<prefix>.I1`,
+and optional `<prefix>.I2`.
 
 ### Performance and Resources
 
@@ -61,6 +70,22 @@ spring2 [mode] [options] --R1 <input_R1> [--R2 <input_R2>] -o <output_file>
 
 ```bash
 ./spring2 -c --R1 file_1.fastq --R2 file_2.fastq -o file.sp -n "Batch 01 - Control"
+```
+
+### Paired-End FASTQ + Index Reads
+
+```bash
+./spring2 -c --R1 R1.fastq.gz --R2 R2.fastq.gz --I1 I1.fastq.gz --I2 I2.fastq.gz -o run.sp
+./spring2 -d -i run.sp -o run_out
+# Produces: run_out.R1 run_out.R2 run_out.I1 run_out.I2
+```
+
+### Paired-End FASTQ + Read3 + Index Reads
+
+```bash
+./spring2 -c --R1 R1.fastq.gz --R2 R2.fastq.gz --R3 R3.fastq.gz --I1 I1.fastq.gz --I2 I2.fastq.gz -o run.sp
+./spring2 -d -i run.sp -o run_out
+# Produces: run_out.R1 run_out.R2 run_out.R3 run_out.I1 run_out.I2
 ```
 
 ### Verbose Logging Levels

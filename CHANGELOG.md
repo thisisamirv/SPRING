@@ -27,6 +27,7 @@
 * Added upfront I/O parameter validation in `src/main.cpp` via `validate_io_parameters()` to verify input files exist, output directories are accessible, and paired-end compression requirements are met before entering the main compression/decompression pipeline; this ensures any runtime error is genuinely a compression/decompression issue, not a parameter error.
 * Added automatic non-ACGTN sequence detection during input pre-scan: when extended IUPAC/RNA symbols are present, SPRING2 now switches to long-read mode to preserve sequence alphabet losslessly instead of using the short-read 3-bit path.
 * Changed the compression CLI to require `-R1/--R1` for read 1 and accept optional `-R2/--R2` for paired-end mode; compression no longer uses `-i/--input`.
+* Added grouped lane support for read-3 and index reads with `-R3/--R3`, `-I1/--I1`, and `-I2/--I2`: SPRING2 can now compress `R1/R2` together with a third read lane and/or index lanes and restore grouped outputs on decompression (`.R1`, `.R2`, `.R3`, `.I1`, `.I2`).
 
 ### Changed
 

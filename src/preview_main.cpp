@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <iostream>
 #include <string>
+#include <unordered_map>
 
 #include "decompress.h"
 #include "fs_utils.h"
@@ -15,6 +16,31 @@
 #include "version.h"
 
 namespace spring {
+
+namespace {
+
+constexpr const char *kBundleManifestName = "bundle.meta";
+constexpr const char *kBundleVersion = "SPRING2_BUNDLE_V1";
+
+std::unordered_map<std::string, std::string>
+read_key_value_file(const std::string &path) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input.is_open()) {
+    throw std::runtime_error("Unable to read file: " + path);
+  }
+
+  std::unordered_map<std::string, std::string> kv;
+  std::string line;
+  while (std::getline(input, line)) {
+    const size_t sep = line.find('=');
+    if (sep == std::string::npos)
+      continue;
+    kv[line.substr(0, sep)] = line.substr(sep + 1);
+  }
+  return kv;
+}
+
+} // namespace
 
 void perform_verification(const std::string &archive_path,
                           const std::string &temp_dir, compression_params &cp) {
@@ -28,25 +54,72 @@ void preview(const std::string &archive_path, bool audit_only) {
   std::filesystem::create_directories(temp_dir);
 
   try {
-    const std::string null_dev =
-#ifdef _WIN32
-        "nul";
-#else
-        "/dev/null";
-#endif
+    extract_tar_archive(archive_path, temp_dir);
 
-    const std::string untar_command =
-        "tar -xf " + shell_quote(shell_path(archive_path)) + " -C " +
-        shell_quote(shell_path(temp_dir)) + " --wildcards '*cp.bin' 2>" +
-        null_dev + " || " + "tar -xf " + shell_quote(shell_path(archive_path)) +
-        " -C " + shell_quote(shell_path(temp_dir)) + " cp.bin ./cp.bin";
+    const std::string cp_path = temp_dir + "/cp.bin";
+    const std::string bundle_manifest_path =
+        temp_dir + "/" + kBundleManifestName;
+    if (!std::filesystem::exists(cp_path) &&
+        std::filesystem::exists(bundle_manifest_path)) {
+      const auto manifest = read_key_value_file(bundle_manifest_path);
+      if (manifest.find("version") == manifest.end() ||
+          manifest.at("version") != kBundleVersion) {
+        throw std::runtime_error("Unsupported grouped archive manifest version.");
+      }
 
-    if (std::system(untar_command.c_str()) != 0) {
-      throw std::runtime_error("Failed to extract metadata from archive.");
+      const std::string read_archive_name = manifest.count("read_archive") ? manifest.at("read_archive") : "";
+      const std::string index_archive_name = manifest.count("index_archive") ? manifest.at("index_archive") : "";
+        const bool has_r3 =
+          (manifest.count("has_r3") > 0 && manifest.at("has_r3") == "1");
+        const std::string read3_archive_name = manifest.count("read3_archive") ? manifest.at("read3_archive") : "";
+        const std::string read3_alias_source = manifest.count("read3_alias_source") ? manifest.at("read3_alias_source") : "";
+        const bool has_index =
+          (manifest.count("has_index") > 0 && manifest.at("has_index") == "1");
+      const bool has_i2 = (manifest.count("has_i2") > 0 &&
+                           manifest.at("has_i2") == "1");
+
+      std::cout << "SPRING2 Grouped Archive Metadata Preview:\n";
+      std::cout << "--------------------------------\n";
+      std::cout << "Mode:              Grouped (R + I lanes)\n";
+      std::cout << "Input R1:          " << manifest.at("r1_name") << "\n";
+      std::cout << "Input R2:          " << manifest.at("r2_name") << "\n";
+      if (has_r3 && manifest.count("r3_name") > 0) {
+        std::cout << "Input R3:          " << manifest.at("r3_name") << "\n";
+      }
+      if (has_index && manifest.count("i1_name") > 0) {
+        std::cout << "Input I1:          " << manifest.at("i1_name") << "\n";
+      }
+      if (has_index && has_i2 && manifest.count("i2_name") > 0) {
+        std::cout << "Input I2:          " << manifest.at("i2_name") << "\n";
+      }
+      std::cout << "--------------------------------\n";
+
+      if (audit_only) {
+        perform_audit(archive_path, temp_dir);
+      } else {
+        std::cout << "\n[Reads Group]\n";
+        preview(temp_dir + "/" + read_archive_name, false);
+        if (has_r3) {
+          if (!read3_alias_source.empty()) {
+            std::cout << "\n[Read3 Group]\n";
+            std::cout << "R3 is aliased to " << read3_alias_source
+                      << " (no extra payload stored).\n";
+          } else {
+            std::cout << "\n[Read3 Group]\n";
+            preview(temp_dir + "/" + read3_archive_name, false);
+          }
+        }
+        if (has_index) {
+          std::cout << "\n[Index Group]\n";
+          preview(temp_dir + "/" + index_archive_name, false);
+        }
+      }
+      std::filesystem::remove_all(temp_dir);
+      return;
     }
 
     compression_params cp{};
-    std::ifstream in(temp_dir + "/cp.bin", std::ios::binary);
+    std::ifstream in(cp_path, std::ios::binary);
     if (!in.is_open()) {
       throw std::runtime_error("Can't open parameter file after extraction.");
     }

@@ -334,6 +334,37 @@ run_spring -d -i abcd -o tmp
 compare_files tmp.1 "$ASSET_DIR/test_1.fasta"
 compare_files tmp.2 "$ASSET_DIR/test_2.fasta"
 
+announce_case "paired reads + single index lane round-trip"
+run_spring -c --R1 "$ASSET_DIR/test_1.fastq" --R2 "$ASSET_DIR/test_2.fastq" --I1 "$ASSET_DIR/test_1.fastq" -o abcd
+run_spring -d -i abcd -o tmp
+compare_files tmp.R1 "$ASSET_DIR/test_1.fastq"
+compare_files tmp.R2 "$ASSET_DIR/test_2.fastq"
+compare_files tmp.I1 "$ASSET_DIR/test_1.fastq"
+
+announce_case "paired reads + paired index lanes round-trip"
+run_spring -c --R1 "$ASSET_DIR/test_1.fastq" --R2 "$ASSET_DIR/test_2.fastq" --I1 "$ASSET_DIR/test_1.fastq" --I2 "$ASSET_DIR/test_2.fastq" -o abcd
+run_spring -d -i abcd -o tmp
+compare_files tmp.R1 "$ASSET_DIR/test_1.fastq"
+compare_files tmp.R2 "$ASSET_DIR/test_2.fastq"
+compare_files tmp.I1 "$ASSET_DIR/test_1.fastq"
+compare_files tmp.I2 "$ASSET_DIR/test_2.fastq"
+
+announce_case "paired reads + R3 round-trip"
+run_spring -c --R1 "$ASSET_DIR/test_1.fastq" --R2 "$ASSET_DIR/test_2.fastq" --R3 "$ASSET_DIR/test_1.fastq" -o abcd
+run_spring -d -i abcd -o tmp
+compare_files tmp.R1 "$ASSET_DIR/test_1.fastq"
+compare_files tmp.R2 "$ASSET_DIR/test_2.fastq"
+compare_files tmp.R3 "$ASSET_DIR/test_1.fastq"
+
+announce_case "paired reads + R3 + paired index lanes round-trip"
+run_spring -c --R1 "$ASSET_DIR/test_1.fastq" --R2 "$ASSET_DIR/test_2.fastq" --R3 "$ASSET_DIR/test_1.fastq" --I1 "$ASSET_DIR/test_1.fastq" --I2 "$ASSET_DIR/test_2.fastq" -o abcd
+run_spring -d -i abcd -o tmp
+compare_files tmp.R1 "$ASSET_DIR/test_1.fastq"
+compare_files tmp.R2 "$ASSET_DIR/test_2.fastq"
+compare_files tmp.R3 "$ASSET_DIR/test_1.fastq"
+compare_files tmp.I1 "$ASSET_DIR/test_1.fastq"
+compare_files tmp.I2 "$ASSET_DIR/test_2.fastq"
+
 announce_case "fastq to gzipped output"
 run_spring -c --R1 "$ASSET_DIR/test_1.fastq" -o abcd
 run_spring -d -i abcd -o tmp

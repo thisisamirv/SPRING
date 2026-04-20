@@ -75,7 +75,7 @@ $DETECTED_THREADS = Get-DetectedThreadCount
 $SMOKE_THREADS_COMPRESS = Get-CappedThreadCount -Requested $SMOKE_THREADS_COMPRESS -Max $DETECTED_THREADS
 $SMOKE_THREADS_DECOMPRESS = Get-CappedThreadCount -Requested $SMOKE_THREADS_DECOMPRESS -Max $DETECTED_THREADS
 
-function Ensure-SmokeBinaries {
+function Build-SmokeBinaries {
     if (-not (Get-Command "cmake" -ErrorAction SilentlyContinue)) {
         Write-Error "cmake is required to build smoke-test binaries"
         exit 1
@@ -155,13 +155,13 @@ function Write-SmokeDiagnostics {
 
     Write-Host "Smoke diagnostics: selected environment" -ForegroundColor Yellow
     Get-ChildItem Env: |
-        Where-Object {
-            $_.Name -match '^(CI|GITHUB_|RUNNER_|SPRING_|OMP_|CC$|CXX$|PATH$|SHELL$|LANG$|LC_)'
-        } |
-        Sort-Object Name |
-        ForEach-Object {
-            Write-Host ("  {0}={1}" -f $_.Name, $_.Value) -ForegroundColor Yellow
-        }
+    Where-Object {
+        $_.Name -match '^(CI|GITHUB_|RUNNER_|SPRING_|OMP_|CC$|CXX$|PATH$|SHELL$|LANG$|LC_)'
+    } |
+    Sort-Object Name |
+    ForEach-Object {
+        Write-Host ("  {0}={1}" -f $_.Name, $_.Value) -ForegroundColor Yellow
+    }
 
     Write-Host "Smoke diagnostics: tool versions" -ForegroundColor Yellow
     $tools = @('cmake', 'ninja', 'gcc', 'g++', 'clang', 'tar', 'python', 'python3')
@@ -376,7 +376,7 @@ function Initialize-SmokeInput {
 
 # Equivalent of 'trap' in Bash
 try {
-    Ensure-SmokeBinaries
+    Build-SmokeBinaries
 
     if (-not (Test-Path $SPRING_BIN)) {
         Write-Error "Expected built binary at $SPRING_BIN"
@@ -407,6 +407,37 @@ try {
     Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fasta")) { exit 1 }
     if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fasta")) { exit 1 }
+
+    Write-SmokeCase "paired reads + single index lane round-trip"
+    Invoke-Spring -c --R1 "$ASSET_DIR\test_1.fastq" --R2 "$ASSET_DIR\test_2.fastq" --I1 "$ASSET_DIR\test_1.fastq" -o abcd
+    Invoke-Spring -d -i abcd -o tmp
+    if (-not (Compare-Files "tmp.R1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
+    if (-not (Compare-Files "tmp.R2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
+    if (-not (Compare-Files "tmp.I1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
+
+    Write-SmokeCase "paired reads + paired index lanes round-trip"
+    Invoke-Spring -c --R1 "$ASSET_DIR\test_1.fastq" --R2 "$ASSET_DIR\test_2.fastq" --I1 "$ASSET_DIR\test_1.fastq" --I2 "$ASSET_DIR\test_2.fastq" -o abcd
+    Invoke-Spring -d -i abcd -o tmp
+    if (-not (Compare-Files "tmp.R1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
+    if (-not (Compare-Files "tmp.R2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
+    if (-not (Compare-Files "tmp.I1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
+    if (-not (Compare-Files "tmp.I2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
+
+    Write-SmokeCase "paired reads + R3 round-trip"
+    Invoke-Spring -c --R1 "$ASSET_DIR\test_1.fastq" --R2 "$ASSET_DIR\test_2.fastq" --R3 "$ASSET_DIR\test_1.fastq" -o abcd
+    Invoke-Spring -d -i abcd -o tmp
+    if (-not (Compare-Files "tmp.R1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
+    if (-not (Compare-Files "tmp.R2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
+    if (-not (Compare-Files "tmp.R3" "$ASSET_DIR\test_1.fastq")) { exit 1 }
+
+    Write-SmokeCase "paired reads + R3 + paired index lanes round-trip"
+    Invoke-Spring -c --R1 "$ASSET_DIR\test_1.fastq" --R2 "$ASSET_DIR\test_2.fastq" --R3 "$ASSET_DIR\test_1.fastq" --I1 "$ASSET_DIR\test_1.fastq" --I2 "$ASSET_DIR\test_2.fastq" -o abcd
+    Invoke-Spring -d -i abcd -o tmp
+    if (-not (Compare-Files "tmp.R1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
+    if (-not (Compare-Files "tmp.R2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
+    if (-not (Compare-Files "tmp.R3" "$ASSET_DIR\test_1.fastq")) { exit 1 }
+    if (-not (Compare-Files "tmp.I1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
+    if (-not (Compare-Files "tmp.I2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
 
     Write-SmokeCase "fasta round-trip repeat"
     Invoke-Spring -c --R1 "$ASSET_DIR\test_1.fasta" -o abcd

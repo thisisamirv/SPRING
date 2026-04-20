@@ -45,6 +45,9 @@ struct command_line_options {
   bool audit_flag = false;
   std::string r1_path;
   std::string r2_path;
+  std::string r3_path;
+  std::string i1_path;
+  std::string i2_path;
   std::vector<std::string> input_paths;
   std::vector<std::string> output_paths;
   std::vector<std::string> quality_options;
@@ -215,6 +218,12 @@ std::string build_options_description() {
       << "  -R1 [ --R1 ] arg                input read-1 file (required)\n"
       << "  -R2 [ --R2 ] arg                input read-2 file (optional; "
         "enables paired-end mode)\n"
+      << "  -R3 [ --R3 ] arg                input read-3 file (optional; "
+        "requires --R2)\n"
+      << "  -I1 [ --I1 ] arg                input index-read-1 file (optional; "
+        "requires --R2)\n"
+      << "  -I2 [ --I2 ] arg                input index-read-2 file (optional; "
+        "requires --I1)\n"
       << "  -l [ --level ] arg (=6)         compression level (1-9) to use for "
          "output\n"
       << "                                  (.gz) formatting (passed to gzip "
@@ -355,6 +364,21 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
       if (!options.r2_path.empty())
         throw std::runtime_error("--R2 can only be specified once.");
       options.r2_path = args[index++];
+    } else if (arg == "-R3" || arg == "--R3") {
+      require_value(args, index, "--R3");
+      if (!options.r3_path.empty())
+        throw std::runtime_error("--R3 can only be specified once.");
+      options.r3_path = args[index++];
+    } else if (arg == "-I1" || arg == "--I1") {
+      require_value(args, index, "--I1");
+      if (!options.i1_path.empty())
+        throw std::runtime_error("--I1 can only be specified once.");
+      options.i1_path = args[index++];
+    } else if (arg == "-I2" || arg == "--I2") {
+      require_value(args, index, "--I2");
+      if (!options.i2_path.empty())
+        throw std::runtime_error("--I2 can only be specified once.");
+      options.i2_path = args[index++];
     } else if (arg == "-i" || arg == "--input") {
       require_value(args, index, "--input");
       const std::vector<std::string> values =
@@ -394,8 +418,8 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
   }
 
   if (options.decompress_flag && !options.compress_flag &&
-      options.output_paths.size() > 2) {
-    throw std::runtime_error("Decompression accepts at most 2 output files.");
+      options.output_paths.size() > 4) {
+    throw std::runtime_error("Decompression accepts at most 4 output files.");
   }
 }
 
@@ -421,18 +445,40 @@ void normalize_mode_specific_inputs(command_line_options &options) {
     if (options.r1_path.empty()) {
       throw std::runtime_error(
           "Compression requires --R1 <file>. Optionally provide --R2 <file> "
-          "for paired-end mode.");
+          "for paired-end mode and --R3/--I1/--I2 for extra lanes.");
+    }
+    if (!options.r3_path.empty() && options.r2_path.empty()) {
+      throw std::runtime_error("--R3 requires --R2.");
+    }
+    if (!options.i2_path.empty() && options.i1_path.empty()) {
+      throw std::runtime_error("--I2 requires --I1.");
+    }
+    if (!options.i1_path.empty() && options.r2_path.empty()) {
+      throw std::runtime_error(
+          "--I1/--I2 currently require paired-end reads (--R2).");
     }
     options.input_paths.push_back(options.r1_path);
     if (!options.r2_path.empty()) {
       options.input_paths.push_back(options.r2_path);
     }
+    if (!options.r3_path.empty()) {
+      options.input_paths.push_back(options.r3_path);
+    }
+    if (!options.i1_path.empty()) {
+      options.input_paths.push_back(options.i1_path);
+    }
+    if (!options.i2_path.empty()) {
+      options.input_paths.push_back(options.i2_path);
+    }
     return;
   }
 
-  if (!options.r1_path.empty() || !options.r2_path.empty()) {
+  if (!options.r1_path.empty() || !options.r2_path.empty() ||
+      !options.r3_path.empty() ||
+      !options.i1_path.empty() || !options.i2_path.empty()) {
     throw std::runtime_error(
-        "Decompression does not use --R1/--R2. Use --input <archive.sp>.");
+        "Decompression does not use --R1/--R2/--R3/--I1/--I2. Use --input "
+        "<archive.sp>.");
   }
 }
 
@@ -469,11 +515,12 @@ void validate_io_parameters(const command_line_options &options) {
     }
   }
 
-  // Validate compression input count: supports 1 (single-end) or 2 (paired-end) files
+  // Validate compression input count: supports 1 to 5 files depending
+  // on whether index reads are provided.
   if (options.compress_flag && 
-      (options.input_paths.size() < 1 || options.input_paths.size() > 2)) {
+      (options.input_paths.size() < 1 || options.input_paths.size() > 5)) {
     throw std::runtime_error(
-        "Compression accepts 1 or 2 input files, but " +
+        "Compression accepts between 1 and 5 input files, but " +
         std::to_string(options.input_paths.size()) + " provided.");
   }
 
@@ -483,10 +530,10 @@ void validate_io_parameters(const command_line_options &options) {
         std::to_string(options.input_paths.size()) + " provided.");
   }
 
-  // Validate decompression output count: at most 2 output files
-  if (options.decompress_flag && options.output_paths.size() > 2) {
+  // Validate decompression output count: at most 4 output files
+  if (options.decompress_flag && options.output_paths.size() > 4) {
     throw std::runtime_error(
-        "Decompression accepts at most 2 output files, but " +
+        "Decompression accepts at most 4 output files, but " +
         std::to_string(options.output_paths.size()) + " specified.");
   }
 }
@@ -535,7 +582,8 @@ void run_requested_mode(const command_line_options &options,
                      options.num_threads, options.pairing_only_flag,
                      options.no_quality_flag, options.no_ids_flag,
                      options.quality_options, options.compression_level,
-                     options.note, options.log_level, options.audit_flag);
+                     options.note, options.log_level, options.audit_flag,
+                     options.r3_path, options.i1_path, options.i2_path);
     return;
   }
 

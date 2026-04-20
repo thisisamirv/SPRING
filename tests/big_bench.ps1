@@ -119,8 +119,8 @@ function Invoke-ResourceLoggedProcess($binary, $arguments) {
     $psi.FileName = $binary
     if ($arguments -is [System.Array]) {
         $psi.Arguments = ($arguments | ForEach-Object {
-            if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '""') + '"' } else { $_ }
-        }) -join ' '
+                if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '""') + '"' } else { $_ }
+            }) -join ' '
     }
     else {
         $psi.Arguments = $arguments
