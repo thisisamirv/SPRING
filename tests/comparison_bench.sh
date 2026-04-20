@@ -450,10 +450,10 @@ run_benchmark() {
 
 	local spring_args=(
 		-c
-		-i "$INPUT_ABS_1"
+		--R1 "$INPUT_ABS_1"
 	)
 	if [[ -n "$INPUT_ABS_2" ]]; then
-		spring_args+=("$INPUT_ABS_2")
+		spring_args+=(--R2 "$INPUT_ABS_2")
 	fi
 	spring_args+=(
 		-o "$output_file"

@@ -43,6 +43,8 @@ struct command_line_options {
   bool no_quality_flag = false;
   bool no_ids_flag = false;
   bool audit_flag = false;
+  std::string r1_path;
+  std::string r2_path;
   std::vector<std::string> input_paths;
   std::vector<std::string> output_paths;
   std::vector<std::string> quality_options;
@@ -182,8 +184,6 @@ std::string build_options_description() {
       << "* General Options:\n"
       << "  -h [ --help ]                   produce help message\n"
       << "  -V [ --version ]                produce version information\n"
-      << "  -i [ --input ] arg              input file name (two files for "
-         "paired end)\n"
       << "  -o [ --output ] arg             output file name\n"
       << "                                    - if not specified, it uses "
          "original input\n"
@@ -212,6 +212,9 @@ std::string build_options_description() {
          "-----------\n"
       << "* Compression Options:\n"
       << "  -c [ --compress ]               compress\n"
+      << "  -R1 [ --R1 ] arg                input read-1 file (required)\n"
+      << "  -R2 [ --R2 ] arg                input read-2 file (optional; "
+        "enables paired-end mode)\n"
       << "  -l [ --level ] arg (=6)         compression level (1-9) to use for "
          "output\n"
       << "                                  (.gz) formatting (passed to gzip "
@@ -243,6 +246,7 @@ std::string build_options_description() {
          "-----------\n"
       << "* Decompression Options:\n"
       << "  -d [ --decompress ]             decompress\n"
+      << "  -i [ --input ] arg              input archive file (.sp)\n"
       << "  -u [ --unzip ]                  during decompression, force\n"
       << "                                  output to be uncompressed (even "
          "if\n"
@@ -341,6 +345,16 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
           args[index++], "Invalid compression level.");
       if (options.compression_level < 1 || options.compression_level > 9)
         throw std::runtime_error("Compression level must be between 1 and 9.");
+    } else if (arg == "-R1" || arg == "--R1") {
+      require_value(args, index, "--R1");
+      if (!options.r1_path.empty())
+        throw std::runtime_error("--R1 can only be specified once.");
+      options.r1_path = args[index++];
+    } else if (arg == "-R2" || arg == "--R2") {
+      require_value(args, index, "--R2");
+      if (!options.r2_path.empty())
+        throw std::runtime_error("--R2 can only be specified once.");
+      options.r2_path = args[index++];
     } else if (arg == "-i" || arg == "--input") {
       require_value(args, index, "--input");
       const std::vector<std::string> values =
@@ -397,6 +411,31 @@ bool has_valid_memory_cap(const command_line_options &options) {
   return options.memory_cap_gb >= 0.0;
 }
 
+void normalize_mode_specific_inputs(command_line_options &options) {
+  if (options.compress_flag) {
+    if (!options.input_paths.empty()) {
+      throw std::runtime_error(
+          "Compression no longer accepts --input. Use --R1 (required) and "
+          "--R2 (optional).");
+    }
+    if (options.r1_path.empty()) {
+      throw std::runtime_error(
+          "Compression requires --R1 <file>. Optionally provide --R2 <file> "
+          "for paired-end mode.");
+    }
+    options.input_paths.push_back(options.r1_path);
+    if (!options.r2_path.empty()) {
+      options.input_paths.push_back(options.r2_path);
+    }
+    return;
+  }
+
+  if (!options.r1_path.empty() || !options.r2_path.empty()) {
+    throw std::runtime_error(
+        "Decompression does not use --R1/--R2. Use --input <archive.sp>.");
+  }
+}
+
 void validate_io_parameters(const command_line_options &options) {
   // Validate input files: must exist and be readable
   if (options.input_paths.empty()) {
@@ -435,6 +474,12 @@ void validate_io_parameters(const command_line_options &options) {
       (options.input_paths.size() < 1 || options.input_paths.size() > 2)) {
     throw std::runtime_error(
         "Compression accepts 1 or 2 input files, but " +
+        std::to_string(options.input_paths.size()) + " provided.");
+  }
+
+  if (options.decompress_flag && options.input_paths.size() != 1) {
+    throw std::runtime_error(
+        "Decompression requires exactly 1 input archive, but " +
         std::to_string(options.input_paths.size()) + " provided.");
   }
 
@@ -573,6 +618,14 @@ int main(int argc, char **argv) {
 
   if (!has_valid_memory_cap(options)) {
     std::cout << "Memory cap must be non-negative.\n";
+    return 1;
+  }
+
+  try {
+    normalize_mode_specific_inputs(options);
+  } catch (const std::runtime_error &e) {
+    std::cout << e.what() << "\n";
+    std::cout << options_description << "\n";
     return 1;
   }
 

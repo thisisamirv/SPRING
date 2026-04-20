@@ -120,7 +120,7 @@ rm -rf "$WORK_DIR" && mkdir -p "$WORK_DIR"
 rm -f "$OUTPUT_FILE" "$DECOMP_FILE_1" "$DECOMP_FILE_2"
 
 echo "Running Spring paired-end compression (SRR2990433)"
-run_with_resource_log "$COMPRESS_RESOURCE_LOG" "$SPRING_BIN" "${SPRING_VERBOSE_ARGS[@]}" -c -i "$PATH_R1" "$PATH_R2" -o "$OUTPUT_FILE" -w "$WORK_DIR" -t "$THREADS" -q lossless
+run_with_resource_log "$COMPRESS_RESOURCE_LOG" "$SPRING_BIN" "${SPRING_VERBOSE_ARGS[@]}" -c --R1 "$PATH_R1" --R2 "$PATH_R2" -o "$OUTPUT_FILE" -w "$WORK_DIR" -t "$THREADS" -q lossless
 
 echo "Running Spring decompression"
 run_with_resource_log "$DECOMPRESS_RESOURCE_LOG" "$SPRING_BIN" "${SPRING_VERBOSE_ARGS[@]}" -d -i "$OUTPUT_FILE" -o "$DECOMP_BASE" -w "$WORK_DIR"

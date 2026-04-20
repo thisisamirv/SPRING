@@ -7,7 +7,7 @@ This guide provides detailed information on how to use SPRING2 for compressing a
 The general syntax for SPRING2 is:
 
 ```bash
-spring2 [mode] [options] -i <input_files> -o <output_file>
+spring2 [mode] [options] --R1 <input_R1> [--R2 <input_R2>] -o <output_file>
 ```
 
 ### Modes
@@ -16,11 +16,16 @@ spring2 [mode] [options] -i <input_files> -o <output_file>
 - `-d, --decompress`: Perform decompression.
 - `-u, --unzip`: During decompression, force the output to be uncompressed (plain FASTQ/FASTA), even if the original input was a `.gz` file.
 
+### Decompression Input
+
+- `-i, --input arg`: Archive input file for decompression. Provide one `.sp` file.
+
 ## Compression Options
 
 ### Input and Output
 
-- `-i, --input arg`: Input file name. Specify two files for paired-end data.
+- `-R1, --R1 arg`: Read 1 input file. Required for compression.
+- `-R2, --R2 arg`: Read 2 input file. Optional; if provided, SPRING2 automatically switches to paired-end mode.
 - `-o, --output arg`: Output file name. If omitted, SPRING2 will use the original input name(s) (e.g., swapping extensions to `.sp` during compression). For paired-end decompression, if only one file is specified, two output files will be created by suffixing `.1` and `.2`.
 
 ### Performance and Resources
@@ -55,14 +60,14 @@ spring2 [mode] [options] -i <input_files> -o <output_file>
 ### Paired-End FASTQ (Lossless)
 
 ```bash
-./spring2 -c -i file_1.fastq file_2.fastq -o file.sp -n "Batch 01 - Control"
+./spring2 -c --R1 file_1.fastq --R2 file_2.fastq -o file.sp -n "Batch 01 - Control"
 ```
 
 ### Verbose Logging Levels
 
 ```bash
 # Informational logs (same as --verbose info)
-./spring2 -c -i file_1.fastq -o file.sp --verbose
+./spring2 -c --R1 file_1.fastq -o file.sp --verbose
 
 # Explicit info level
 ./spring2 -d -i file.sp --verbose info
@@ -91,13 +96,13 @@ To check the version of either tool:
 SPRING2 automatically detects gzipped inputs and decompresses them on the fly using internal `rapidgzip` (if available) or `zlib`. Detailed gzip metadata (profile, block size, original internal filename) is stored in the archive for high-fidelity restoration.
 
 ```bash
-./spring2 -c -i file_1.fastq.gz file_2.fastq.gz -o file.sp
+./spring2 -c --R1 file_1.fastq.gz --R2 file_2.fastq.gz -o file.sp
 ```
 
 ### Lossy Compression (QVZ)
 
 ```bash
-./spring2 -c -i file_1.fastq file_2.fastq -s oi -q qvz 1.0 -o file.sp
+./spring2 -c --R1 file_1.fastq --R2 file_2.fastq -s oi -q qvz 1.0 -o file.sp
 ```
 
 ### Decompression with Gzipped Output

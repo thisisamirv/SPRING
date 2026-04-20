@@ -387,74 +387,74 @@ try {
     Push-Location $WORK_DIR
 
     Write-SmokeCase "fastq round-trip"
-    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" -o abcd
+    Invoke-Spring -c --R1 "$ASSET_DIR\test_1.fastq" -o abcd
     Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
 
     Write-SmokeCase "fasta round-trip"
-    Invoke-Spring -c -i "$ASSET_DIR\test_1.fasta" -o abcd
+    Invoke-Spring -c --R1 "$ASSET_DIR\test_1.fasta" -o abcd
     Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fasta")) { exit 1 }
 
     Write-SmokeCase "paired fastq round-trip"
-    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" "$ASSET_DIR\test_2.fastq" -o abcd
+    Invoke-Spring -c --R1 "$ASSET_DIR\test_1.fastq" --R2 "$ASSET_DIR\test_2.fastq" -o abcd
     Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
     if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
 
     Write-SmokeCase "paired fasta round-trip"
-    Invoke-Spring -c -i "$ASSET_DIR\test_1.fasta" "$ASSET_DIR\test_2.fasta" -o abcd
+    Invoke-Spring -c --R1 "$ASSET_DIR\test_1.fasta" --R2 "$ASSET_DIR\test_2.fasta" -o abcd
     Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fasta")) { exit 1 }
     if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fasta")) { exit 1 }
 
     Write-SmokeCase "fasta round-trip repeat"
-    Invoke-Spring -c -i "$ASSET_DIR\test_1.fasta" -o abcd
+    Invoke-Spring -c --R1 "$ASSET_DIR\test_1.fasta" -o abcd
     Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fasta")) { exit 1 }
 
     Write-SmokeCase "paired fastq round-trip repeat"
-    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" "$ASSET_DIR\test_2.fastq" -o abcd
+    Invoke-Spring -c --R1 "$ASSET_DIR\test_1.fastq" --R2 "$ASSET_DIR\test_2.fastq" -o abcd
     Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
     if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
 
     Write-SmokeCase "paired fastq gzipped input round-trip"
-    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq.gz" "$ASSET_DIR\test_2.fastq.gz" -o abcd
+    Invoke-Spring -c --R1 "$ASSET_DIR\test_1.fastq.gz" --R2 "$ASSET_DIR\test_2.fastq.gz" -o abcd
     Invoke-Spring -d -i abcd -o tmp -u
     if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
     if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
 
     Write-SmokeCase "paired fasta gzipped input round-trip"
-    Invoke-Spring -c -i "$ASSET_DIR\test_1.fasta.gz" "$ASSET_DIR\test_2.fasta.gz" -o abcd
+    Invoke-Spring -c --R1 "$ASSET_DIR\test_1.fasta.gz" --R2 "$ASSET_DIR\test_2.fasta.gz" -o abcd
     Invoke-Spring -d -i abcd -o tmp -u
     if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fasta")) { exit 1 }
     if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fasta")) { exit 1 }
 
     Write-SmokeCase "single gzipped fastq round-trip"
-    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq.gz" -o abcd
+    Invoke-Spring -c --R1 "$ASSET_DIR\test_1.fastq.gz" -o abcd
     Invoke-Spring -d -i abcd -o tmp -u
     if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
 
     Write-SmokeCase "paired fastq gzipped input round-trip redundant"
-    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq.gz" "$ASSET_DIR\test_2.fastq.gz" -o abcd
+    Invoke-Spring -c --R1 "$ASSET_DIR\test_1.fastq.gz" --R2 "$ASSET_DIR\test_2.fastq.gz" -o abcd
     Invoke-Spring -d -i abcd -o tmp -u
     if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
     if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
 
     Write-SmokeCase "multi-threaded round-trip single"
-    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" -o abcd -t $SMOKE_THREADS_COMPRESS
+    Invoke-Spring -c --R1 "$ASSET_DIR\test_1.fastq" -o abcd -t $SMOKE_THREADS_COMPRESS
     Invoke-Spring -d -i abcd -o tmp -t $SMOKE_THREADS_DECOMPRESS
     if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
 
     Write-SmokeCase "multi-threaded round-trip paired"
-    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" "$ASSET_DIR\test_2.fastq" -o abcd -t $SMOKE_THREADS_COMPRESS
+    Invoke-Spring -c --R1 "$ASSET_DIR\test_1.fastq" --R2 "$ASSET_DIR\test_2.fastq" -o abcd -t $SMOKE_THREADS_COMPRESS
     Invoke-Spring -d -i abcd -o tmp -t $SMOKE_THREADS_DECOMPRESS
     if (-not (Compare-Files "tmp.1" "$ASSET_DIR\test_1.fastq")) { exit 1 }
     if (-not (Compare-Files "tmp.2" "$ASSET_DIR\test_2.fastq")) { exit 1 }
 
     Write-SmokeCase "sorted output round-trip single"
-    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" -o abcd -s o
+    Invoke-Spring -c --R1 "$ASSET_DIR\test_1.fastq" -o abcd -s o
     Invoke-Spring -d -i abcd -o tmp
     $ref1 = Get-Content "$ASSET_DIR\test_1.fastq" | ForEach-Object { $_.Trim() } | Sort-Object -CaseSensitive
     $act1 = Get-Content "tmp" | ForEach-Object { $_.Trim() } | Sort-Object -CaseSensitive
@@ -463,7 +463,7 @@ try {
     if (-not (Compare-Files "tmp.sorted" "ref.sorted")) { exit 1 }
 
     Write-SmokeCase "sorted output round-trip paired"
-    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" "$ASSET_DIR\test_2.fastq" -o abcd -s o -t $SMOKE_THREADS_COMPRESS
+    Invoke-Spring -c --R1 "$ASSET_DIR\test_1.fastq" --R2 "$ASSET_DIR\test_2.fastq" -o abcd -s o -t $SMOKE_THREADS_COMPRESS
     Invoke-Spring -d -i abcd -o tmp -t $SMOKE_THREADS_DECOMPRESS
 
     $ref1 = Get-Content "$ASSET_DIR\test_1.fastq" | ForEach-Object { $_.Trim() } | Sort-Object -CaseSensitive
@@ -480,19 +480,19 @@ try {
 
     # Long-read mode test
     Write-SmokeCase "long-read mode round-trip"
-    Invoke-Spring -c -i "$ASSET_DIR\sample.fastq" -o abcd
+    Invoke-Spring -c --R1 "$ASSET_DIR\sample.fastq" -o abcd
     Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Files "tmp" "$ASSET_DIR\sample.fastq")) { exit 1 }
 
     # Memory capping test
     Write-SmokeCase "memory capping test"
-    Invoke-Spring -m 0.1 -c -i "$ASSET_DIR\test_1.fastq" -o abcd
+    Invoke-Spring -m 0.1 -c --R1 "$ASSET_DIR\test_1.fastq" -o abcd
     Invoke-Spring -m 0.1 -d -i abcd -o tmp
     if (-not (Compare-Files "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
 
     # Archive Notes & Previewer Test
     Write-SmokeCase "archive notes & previewer validation"
-    Invoke-Spring -c -i "$ASSET_DIR\test_1.fastq" -n "SMOKE_TEST_NOTE" -o abcd
+    Invoke-Spring -c --R1 "$ASSET_DIR\test_1.fastq" -n "SMOKE_TEST_NOTE" -o abcd
     $previewOut = "preview.out"
     Invoke-Spring $SPRING_PREVIEW_BIN abcd | Out-File $previewOut
     $previewContent = Get-Content $previewOut -Raw
@@ -505,31 +505,31 @@ try {
 
     # Lossy quality mode: ill_bin
     Write-SmokeCase "lossy mode: ill_bin"
-    Invoke-Spring -c -q ill_bin -i "$ASSET_DIR\test_1.fastq" -o abcd
+    Invoke-Spring -c -q ill_bin --R1 "$ASSET_DIR\test_1.fastq" -o abcd
     Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Lines "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
 
     # Lossy quality mode: qvz
     Write-SmokeCase "lossy mode: qvz"
-    Invoke-Spring -c -q qvz 1 -i "$ASSET_DIR\test_1.fastq" -o abcd
+    Invoke-Spring -c -q qvz 1 --R1 "$ASSET_DIR\test_1.fastq" -o abcd
     Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Lines "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
         
     # Lossy quality mode: binary thresholding
     Write-SmokeCase "lossy mode: binary"
-    Invoke-Spring -c -q binary 30 40 10 -i "$ASSET_DIR\test_1.fastq" -o abcd
+    Invoke-Spring -c -q binary 30 40 10 --R1 "$ASSET_DIR\test_1.fastq" -o abcd
     Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Lines "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
 
     # Data Stripping: IDs
     Write-SmokeCase "stripping: ids"
-    Invoke-Spring -c -s i -i "$ASSET_DIR\test_1.fastq" -o abcd
+    Invoke-Spring -c -s i --R1 "$ASSET_DIR\test_1.fastq" -o abcd
     Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Lines "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
 
     # Data Stripping: Quality
     Write-SmokeCase "stripping: quality"
-    Invoke-Spring -c -s q -i "$ASSET_DIR\test_1.fastq" -o abcd
+    Invoke-Spring -c -s q --R1 "$ASSET_DIR\test_1.fastq" -o abcd
     Invoke-Spring -d -i abcd -o tmp
     if (-not (Compare-Lines "tmp" "$ASSET_DIR\test_1.fastq")) { exit 1 }
 

@@ -159,7 +159,7 @@ echo "  mode:    lossless"
 
 spring_args=(
 	-c
-	-i "$INPUT_ABS"
+	--R1 "$INPUT_ABS"
 	-o "$OUTPUT_FILE"
 	-w "$WORK_DIR"
 	-t "$THREADS"

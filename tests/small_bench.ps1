@@ -176,7 +176,7 @@ Write-Host "  threads: $THREADS"
 Write-Host "  max read length: $maxReadLen"
 Write-Host "  mode:    lossless"
 
-$compArgs = "-c -i `"$INPUT_ABS`" -o `"$OUTPUT_FILE`" -w `"$WORK_DIR`" -t $THREADS -q lossless"
+$compArgs = "-c --R1 `"$INPUT_ABS`" -o `"$OUTPUT_FILE`" -w `"$WORK_DIR`" -t $THREADS -q lossless"
 $compResults = Invoke-ResourceLoggedProcess $SPRING_BIN $compArgs
 
 # --- Decompression ---

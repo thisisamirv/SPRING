@@ -44,7 +44,7 @@ TEST_CASE("Archive Integrity Verification Test") {
   create_dummy_fastq(input_fastq, num_records);
 
   // 1. Compress with mandatory audit
-  std::string compress_cmd = std::string(SPRING2_EXECUTABLE) + " -c -a -i " +
+  std::string compress_cmd = std::string(SPRING2_EXECUTABLE) + " -c -a --R1 " +
                              input_fastq + " -o " + archive_sp + " -w " +
                              test_dir + "/work_compress -t 1";
   REQUIRE(std::system(compress_cmd.c_str()) == 0);
@@ -108,7 +108,7 @@ TEST_CASE("SpringReader Integration Test") {
   create_dummy_fastq(input_fastq, num_records);
 
   // Compress using the spring2 binary we just built
-  std::string compress_cmd = std::string(SPRING2_EXECUTABLE) + " -c -i " +
+  std::string compress_cmd = std::string(SPRING2_EXECUTABLE) + " -c --R1 " +
                              input_fastq + " -o " + archive_spring + " -w " +
                              test_dir + "/work_compress -t 1";
   int ret = std::system(compress_cmd.c_str());

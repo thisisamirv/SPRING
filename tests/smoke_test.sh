@@ -313,29 +313,29 @@ prepare_local_input() {
 cd "$WORK_DIR"
 
 announce_case "fastq round-trip"
-run_spring -c -i "$ASSET_DIR/test_1.fastq" -o abcd
+run_spring -c --R1 "$ASSET_DIR/test_1.fastq" -o abcd
 run_spring -d -i abcd -o tmp
 compare_files tmp "$ASSET_DIR/test_1.fastq"
 
 announce_case "fasta round-trip"
-run_spring -c -i "$ASSET_DIR/test_1.fasta" -o abcd
+run_spring -c --R1 "$ASSET_DIR/test_1.fasta" -o abcd
 run_spring -d -i abcd -o tmp
 compare_files tmp "$ASSET_DIR/test_1.fasta"
 
 announce_case "paired fastq round-trip"
-run_spring -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd
+run_spring -c --R1 "$ASSET_DIR/test_1.fastq" --R2 "$ASSET_DIR/test_2.fastq" -o abcd
 run_spring -d -i abcd -o tmp
 compare_files tmp.1 "$ASSET_DIR/test_1.fastq"
 compare_files tmp.2 "$ASSET_DIR/test_2.fastq"
 
 announce_case "paired fasta round-trip"
-run_spring -c -i "$ASSET_DIR/test_1.fasta" "$ASSET_DIR/test_2.fasta" -o abcd
+run_spring -c --R1 "$ASSET_DIR/test_1.fasta" --R2 "$ASSET_DIR/test_2.fasta" -o abcd
 run_spring -d -i abcd -o tmp
 compare_files tmp.1 "$ASSET_DIR/test_1.fasta"
 compare_files tmp.2 "$ASSET_DIR/test_2.fasta"
 
 announce_case "fastq to gzipped output"
-run_spring -c -i "$ASSET_DIR/test_1.fastq" -o abcd
+run_spring -c --R1 "$ASSET_DIR/test_1.fastq" -o abcd
 run_spring -d -i abcd -o tmp
 compare_files tmp "$ASSET_DIR/test_1.fastq"
 run_spring -d -i abcd -o tmp.gz
@@ -343,30 +343,30 @@ gunzip -f tmp.gz
 compare_files tmp "$ASSET_DIR/test_1.fastq"
 
 announce_case "fasta round-trip repeat"
-run_spring -c -i "$ASSET_DIR/test_1.fasta" -o abcd
+run_spring -c --R1 "$ASSET_DIR/test_1.fasta" -o abcd
 run_spring -d -i abcd -o tmp
 compare_files tmp "$ASSET_DIR/test_1.fasta"
 
 announce_case "paired fastq round-trip repeat"
-run_spring -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd
+run_spring -c --R1 "$ASSET_DIR/test_1.fastq" --R2 "$ASSET_DIR/test_2.fastq" -o abcd
 run_spring -d -i abcd -o tmp
 compare_files tmp.1 "$ASSET_DIR/test_1.fastq"
 compare_files tmp.2 "$ASSET_DIR/test_2.fastq"
 
 announce_case "paired fastq gzipped input round-trip"
-run_spring -c -i "$ASSET_DIR/test_1.fastq.gz" "$ASSET_DIR/test_2.fastq.gz" -o abcd
+run_spring -c --R1 "$ASSET_DIR/test_1.fastq.gz" --R2 "$ASSET_DIR/test_2.fastq.gz" -o abcd
 run_spring -d -i abcd -o tmp -u
 compare_with_gzip_source tmp.1 "$ASSET_DIR/test_1.fastq.gz"
 compare_with_gzip_source tmp.2 "$ASSET_DIR/test_2.fastq.gz"
 
 announce_case "paired fasta gzipped input round-trip"
-run_spring -c -i "$ASSET_DIR/test_1.fasta.gz" "$ASSET_DIR/test_2.fasta.gz" -o abcd
+run_spring -c --R1 "$ASSET_DIR/test_1.fasta.gz" --R2 "$ASSET_DIR/test_2.fasta.gz" -o abcd
 run_spring -d -i abcd -o tmp -u
 compare_with_gzip_source tmp.1 "$ASSET_DIR/test_1.fasta.gz"
 compare_with_gzip_source tmp.2 "$ASSET_DIR/test_2.fasta.gz"
 
 announce_case "single gzipped fastq round-trip"
-run_spring -c -i "$ASSET_DIR/test_1.fastq.gz" -o abcd
+run_spring -c --R1 "$ASSET_DIR/test_1.fastq.gz" -o abcd
 run_spring -d -i abcd -o tmp -u
 compare_with_gzip_source tmp "$ASSET_DIR/test_1.fastq.gz"
 
@@ -376,7 +376,7 @@ gunzip -f tmp.gz
 compare_with_gzip_source tmp "$ASSET_DIR/test_1.fastq.gz"
 
 announce_case "paired fastq gzipped input round-trip redundant"
-run_spring -c -i "$ASSET_DIR/test_1.fastq.gz" "$ASSET_DIR/test_2.fastq.gz" -o abcd
+run_spring -c --R1 "$ASSET_DIR/test_1.fastq.gz" --R2 "$ASSET_DIR/test_2.fastq.gz" -o abcd
 run_spring -d -i abcd -o tmp -u
 compare_with_gzip_source tmp.1 "$ASSET_DIR/test_1.fastq.gz"
 compare_with_gzip_source tmp.2 "$ASSET_DIR/test_2.fastq.gz"
@@ -389,12 +389,12 @@ compare_with_gzip_source tmp.1 "$ASSET_DIR/test_1.fastq.gz"
 compare_with_gzip_source tmp.2 "$ASSET_DIR/test_2.fastq.gz"
 
 announce_case "multi-threaded round-trip single"
-run_spring -c -i "$ASSET_DIR/test_1.fastq" -o abcd -t "$SMOKE_THREADS_COMPRESS"
+run_spring -c --R1 "$ASSET_DIR/test_1.fastq" -o abcd -t "$SMOKE_THREADS_COMPRESS"
 run_spring -d -i abcd -o tmp -t "$SMOKE_THREADS_DECOMPRESS"
 compare_files tmp "$ASSET_DIR/test_1.fastq"
 
 announce_case "multi-threaded round-trip paired"
-run_spring -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd -t "$SMOKE_THREADS_COMPRESS"
+run_spring -c --R1 "$ASSET_DIR/test_1.fastq" --R2 "$ASSET_DIR/test_2.fastq" -o abcd -t "$SMOKE_THREADS_COMPRESS"
 run_spring -d -i abcd -o tmp -t "$SMOKE_THREADS_DECOMPRESS"
 if ! cmp tmp.1 "$ASSET_DIR/test_1.fastq"; then
 	echo "MISMATCH FOUND"
@@ -406,14 +406,14 @@ cmp tmp.1 "$ASSET_DIR/test_1.fastq"
 cmp tmp.2 "$ASSET_DIR/test_2.fastq"
 
 announce_case "sorted output round-trip single"
-run_spring -c -i "$ASSET_DIR/test_1.fastq" -o abcd -s o
+run_spring -c --R1 "$ASSET_DIR/test_1.fastq" -o abcd -s o
 run_spring -d -i abcd -o tmp
 sort tmp >tmp.sorted
 sort "$ASSET_DIR/test_1.fastq" >tmp_1.sorted
 compare_files tmp.sorted tmp_1.sorted
 
 announce_case "sorted output round-trip paired"
-run_spring -c -i "$ASSET_DIR/test_1.fastq" "$ASSET_DIR/test_2.fastq" -o abcd -t "$SMOKE_THREADS_COMPRESS"
+run_spring -c --R1 "$ASSET_DIR/test_1.fastq" --R2 "$ASSET_DIR/test_2.fastq" -o abcd -t "$SMOKE_THREADS_COMPRESS"
 run_spring -d -i abcd -o tmp -t "$SMOKE_THREADS_DECOMPRESS"
 sort tmp.1 >tmp.sorted
 sort "$ASSET_DIR/test_1.fastq" >tmp_1.sorted
@@ -423,17 +423,17 @@ sort "$ASSET_DIR/test_2.fastq" >tmp_1.sorted
 compare_files tmp.sorted tmp_1.sorted
 
 announce_case "long-read mode round-trip"
-run_spring -c -i "$ASSET_DIR/sample.fastq" -o abcd
+run_spring -c --R1 "$ASSET_DIR/sample.fastq" -o abcd
 run_spring -d -i abcd -o tmp
 compare_files tmp "$ASSET_DIR/sample.fastq"
 
 announce_case "memory capping test"
-run_spring -m 0.1 -c -i "$ASSET_DIR/test_1.fastq" -o abcd
+run_spring -m 0.1 -c --R1 "$ASSET_DIR/test_1.fastq" -o abcd
 run_spring -m 0.1 -d -i abcd -o tmp
 compare_files tmp "$ASSET_DIR/test_1.fastq"
 
 announce_case "archive notes & previewer validation"
-run_spring -c -i "$ASSET_DIR/test_1.fastq" -n "SMOKE_TEST_NOTE" -o abcd
+run_spring -c --R1 "$ASSET_DIR/test_1.fastq" -n "SMOKE_TEST_NOTE" -o abcd
 "${SPRING_PREVIEW_BIN_CMD[@]}" abcd > preview.out
 if ! grep -q "SMOKE_TEST_NOTE" preview.out; then
 	echo "Failed to find custom note in preview tool output" >&2
@@ -445,27 +445,27 @@ if ! grep -q "test_1.fastq" preview.out; then
 fi
 
 announce_case "lossy mode: ill_bin"
-run_spring -c -q ill_bin -i "$ASSET_DIR/test_1.fastq" -o abcd
+run_spring -c -q ill_bin --R1 "$ASSET_DIR/test_1.fastq" -o abcd
 run_spring -d -i abcd -o tmp
 compare_lines tmp "$ASSET_DIR/test_1.fastq"
 
 announce_case "lossy mode: qvz"
-run_spring -c -q qvz 1 -i "$ASSET_DIR/test_1.fastq" -o abcd
+run_spring -c -q qvz 1 --R1 "$ASSET_DIR/test_1.fastq" -o abcd
 run_spring -d -i abcd -o tmp
 compare_lines tmp "$ASSET_DIR/test_1.fastq"
 
 announce_case "lossy mode: binary"
-run_spring -c -q binary 30 40 10 -i "$ASSET_DIR/test_1.fastq" -o abcd
+run_spring -c -q binary 30 40 10 --R1 "$ASSET_DIR/test_1.fastq" -o abcd
 run_spring -d -i abcd -o tmp
 compare_lines tmp "$ASSET_DIR/test_1.fastq"
 
 announce_case "stripping: ids"
-run_spring -c -s i -i "$ASSET_DIR/test_1.fastq" -o abcd
+run_spring -c -s i --R1 "$ASSET_DIR/test_1.fastq" -o abcd
 run_spring -d -i abcd -o tmp
 compare_lines tmp "$ASSET_DIR/test_1.fastq"
 
 announce_case "stripping: quality"
-run_spring -c -s q -i "$ASSET_DIR/test_1.fastq" -o abcd
+run_spring -c -s q --R1 "$ASSET_DIR/test_1.fastq" -o abcd
 run_spring -d -i abcd -o tmp
 compare_lines tmp "$ASSET_DIR/test_1.fastq"
 

@@ -64,7 +64,6 @@ Allowed options:
 * General Options:
   -h [ --help ]                   produce help message
   -V [ --version ]                produce version information
-  -i [ --input ] arg              input file name (two files for paired end)
   -o [ --output ] arg             output file name
                                     - if not specified, it uses original input
                                       filenames (swapping extension to .sp during
@@ -83,6 +82,8 @@ Allowed options:
 --------------------------------------------------------------------------------
 * Compression Options:
   -c [ --compress ]               compress
+  -R1 [ --R1 ] arg                input read-1 file (required)
+  -R2 [ --R2 ] arg                input read-2 file (optional; enables paired-end mode)
   -l [ --level ] arg (=6)         compression level (1-9) to use for output
                                   (.gz) formatting (passed to gzip unchanged
                                   and scaled to Zstd 1-22 internally)
@@ -102,6 +103,7 @@ Allowed options:
 --------------------------------------------------------------------------------
 * Decompression Options:
   -d [ --decompress ]             decompress
+  -i [ --input ] arg              input archive file (.sp)
   -u [ --unzip ]                  during decompression, force output to be
                                   uncompressed (even if original was .gz)
 ```
