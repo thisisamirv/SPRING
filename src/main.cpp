@@ -57,6 +57,7 @@ struct command_line_options {
   double memory_cap_gb = 0.0;
   int compression_level = spring::DEFAULT_COMPRESSION_LEVEL;
   std::string note;
+  std::string assay = "auto";
   spring::log_level log_level = spring::log_level::quiet;
   bool unzip_flag = false;
 };
@@ -249,6 +250,9 @@ std::string build_options_description() {
          "to high if >=\n"
       << "                                      thr and to low if < thr)\n"
       << "  -n [ --note ] arg               add a custom note to the archive\n"
+      << "  -y [ --assay ] arg (=auto)      specify assay type. Valid choices:\n"
+      << "                                  auto, rna, atac, methyl, dna, chip,\n"
+      << "                                  sc-rna, sc-atac, sc-methyl\n"
       << "  -a [ --audit ]                  enable post-operation integrity "
          "verification\n"
       << "---------------------------------------------------------------------"
@@ -403,6 +407,15 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
     } else if (arg == "-n" || arg == "--note") {
       require_value(args, index, "--note");
       options.note = strip_quotes(args[index++]);
+    } else if (arg == "-y" || arg == "--assay") {
+      require_value(args, index, "--assay");
+      options.assay = strip_quotes(args[index++]);
+      const std::vector<std::string> valid_assays = {
+          "auto", "rna", "atac", "methyl", "dna", "chip", "sc-rna", "sc-atac", "sc-methyl"};
+      if (std::find(valid_assays.begin(), valid_assays.end(), options.assay) == valid_assays.end()) {
+        throw std::runtime_error("Invalid --assay value: " + options.assay +
+                                 ". Valid choices: auto, rna, atac, methyl, dna, chip, sc-rna, sc-atac, sc-methyl.");
+      }
     } else if (arg == "-v" || arg == "--verbose") {
       options.log_level = spring::log_level::info;
       if (index < args.size() && !is_option_token(args[index])) {
@@ -583,7 +596,8 @@ void run_requested_mode(const command_line_options &options,
                      options.no_quality_flag, options.no_ids_flag,
                      options.quality_options, options.compression_level,
                      options.note, options.log_level, options.audit_flag,
-                     options.r3_path, options.i1_path, options.i2_path);
+                     options.r3_path, options.i1_path, options.i2_path,
+                     options.assay);
     return;
   }
 

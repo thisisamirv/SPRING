@@ -137,6 +137,7 @@ void preview(const std::string &archive_path, bool audit_only) {
     if (!cp.read_info.note.empty()) {
       std::cout << "Note:              " << cp.read_info.note << "\n";
     }
+    std::cout << "Assay Type:        " << (!cp.read_info.assay.empty() ? cp.read_info.assay : "auto") << "\n";
     std::cout << "Mode:              "
               << (cp.encoding.paired_end ? "Paired-end" : "Single-end") << "\n";
     std::cout << "Reads Processed:   " << cp.read_info.num_reads << "\n";

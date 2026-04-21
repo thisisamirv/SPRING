@@ -1,0 +1,9 @@
+spring2_assay_ref_hg38_gencode49.meta
+-----------------------------------
+Genome: hg38
+Annotation: GENCODE v49
+RNA transcripts: MANE-based
+Promoter genes: 11 housekeeping (protein_coding)
+Intron controls: 14 regions, multi-chromosome
+Genome backbone: 7 regions, 2.8 Mb
+Build date: 2026-04-20

@@ -1,6 +1,19 @@
 <!-- markdownlint-disable MD024 -->
 # Changelog
 
+## V1.0.0
+
+### Added
+
+* Added grouped lane support for read-3 and index reads with `-R3/--R3`, `-I1/--I1`, and `-I2/--I2`: SPRING2 can now compress `R1/R2` together with a third read lane and/or index lanes and restore grouped outputs on decompression (`.R1`, `.R2`, `.R3`, `.I1`, `.I2`).
+* Added automatic non-ACGTN sequence detection during input pre-scan: when extended IUPAC/RNA symbols are present, SPRING2 now switches to long-read mode to preserve sequence alphabet losslessly instead of using the short-read 3-bit path.
+* Added the `-y/--assay` flag to specify and store the sequencing assay type in the archive metadata.
+* Added a small test FASTA reference (ref_hg38_gencode49.fa) to spring2/reference/ and the corresponding metadata file for detecting assay type from the input fastq files.
+
+### Changed
+
+* Changed the compression CLI to require `-R1/--R1` for read 1 and accept optional `-R2/--R2` for paired-end mode; compression no longer uses `-i/--input`.
+
 ## V1.0.0-beta
 
 ### Added
@@ -25,9 +38,6 @@
 * Added automatic fast-linker selection in CMake (`SPRING_ENABLE_FAST_LINKER`, default ON), preferring `mold` on Linux and falling back to `lld` where supported.
 * Added precompiled header support in CMake (`SPRING_ENABLE_PRECOMPILED_HEADERS`, default ON) to accelerate incremental rebuilds by caching stable headers (`src/pch.h`).
 * Added upfront I/O parameter validation in `src/main.cpp` via `validate_io_parameters()` to verify input files exist, output directories are accessible, and paired-end compression requirements are met before entering the main compression/decompression pipeline; this ensures any runtime error is genuinely a compression/decompression issue, not a parameter error.
-* Added automatic non-ACGTN sequence detection during input pre-scan: when extended IUPAC/RNA symbols are present, SPRING2 now switches to long-read mode to preserve sequence alphabet losslessly instead of using the short-read 3-bit path.
-* Changed the compression CLI to require `-R1/--R1` for read 1 and accept optional `-R2/--R2` for paired-end mode; compression no longer uses `-i/--input`.
-* Added grouped lane support for read-3 and index reads with `-R3/--R3`, `-I1/--I1`, and `-I2/--I2`: SPRING2 can now compress `R1/R2` together with a third read lane and/or index lanes and restore grouped outputs on decompression (`.R1`, `.R2`, `.R3`, `.I1`, `.I2`).
 
 ### Changed
 

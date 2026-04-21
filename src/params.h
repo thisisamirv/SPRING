@@ -104,6 +104,7 @@ struct compression_params {
     std::string input_filename_1;
     std::string input_filename_2;
     std::string note;
+    std::string assay;
     uint32_t sequence_crc[2];
     uint32_t quality_crc[2];
     uint32_t id_crc[2];

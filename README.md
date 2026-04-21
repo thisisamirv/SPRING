@@ -102,6 +102,9 @@ Allowed options:
                                       thresholding, quality binned to high if >=
                                       thr and to low if < thr)
   -n [ --note ] arg               add a custom note to the archive
+  -y [ --assay ] arg (=auto)      specify assay type. Valid choices:
+                                  auto, rna, atac, methyl, dna, chip,
+                                  sc-rna, sc-atac, sc-methyl
   -a [ --audit ]                  enable post-operation integrity verification
 --------------------------------------------------------------------------------
 * Decompression Options:
@@ -133,6 +136,7 @@ Example:
 --------------------------------
 Original Input 1:  file.fastq.gz
 Note:              My Note
+Assay Type:        sc-rna
 Mode:              Single-end
 Reads Processed:   321055
 Compression Ratio: 5.81x (2312 / 398 MB)

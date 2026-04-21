@@ -875,7 +875,7 @@ void compress(const std::string &temp_dir,
               const int compression_level, const std::string &note,
               const log_level verbosity_level, const bool audit_flag,
               const std::string &r3_path, const std::string &i1_path,
-              const std::string &i2_path) {
+              const std::string &i2_path, const std::string &assay_type) {
   Logger::set_level(verbosity_level);
   ProgressBar progress(verbosity_level == log_level::quiet);
   ProgressBar::SetGlobalInstance(&progress);
@@ -948,7 +948,8 @@ void compress(const std::string &temp_dir,
     compress(read_work_dir, read_inputs,
              {bundle_dir + "/" + read_archive_name}, num_thr,
              pairing_only_flag, no_quality_flag, no_ids_flag, quality_options,
-             compression_level, note, verbosity_level, audit_flag, "", "", "");
+             compression_level, note, verbosity_level, audit_flag, "", "", "",
+             assay_type);
 
     std::string read3_alias_source;
     if (has_r3) {
@@ -963,7 +964,7 @@ void compress(const std::string &temp_dir,
                  quality_options, compression_level,
                  note.empty() ? std::string("read3-group")
                               : (note + " | read3-group"),
-                 verbosity_level, audit_flag, "", "", "");
+                 verbosity_level, audit_flag, "", "", "", assay_type);
       }
     }
 
@@ -974,7 +975,7 @@ void compress(const std::string &temp_dir,
                quality_options, compression_level,
                note.empty() ? std::string("index-group")
                             : (note + " | index-group"),
-               verbosity_level, audit_flag, "", "", "");
+               verbosity_level, audit_flag, "", "", "", assay_type);
     }
 
     std::error_code ec;
@@ -1087,6 +1088,7 @@ void compress(const std::string &temp_dir,
   cp.encoding.num_thr = num_thr;
   cp.encoding.compression_level = compression_level;
   cp.read_info.note = note;
+  cp.read_info.assay = assay_type;
   cp.encoding.fasta_mode = fasta_input;
   cp.read_info.input_filename_1 =
       std::filesystem::path(io_config.input_path_1).filename().string();

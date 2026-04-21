@@ -26,7 +26,8 @@ void compress(const std::string &temp_dir, const string_list &input_paths,
               const bool audit_flag = false,
               const std::string &r3_path = std::string(),
               const std::string &i1_path = std::string(),
-              const std::string &i2_path = std::string());
+              const std::string &i2_path = std::string(),
+              const std::string &assay_type = "auto");
 
 void decompress(const std::string &temp_dir, const string_list &input_paths,
                 const string_list &output_paths, const int num_thr,

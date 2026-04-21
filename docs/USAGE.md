@@ -52,6 +52,7 @@ and optional `<prefix>.I2`.
   - *Example*: `--strip io` to drop both identifiers and original order.
 - `-l, --level arg`: Compression level (1-9). This controls the compression level for `.gz` file formatting and is scaled to Zstd (1-22) internally for other streams. Default is `6`.
 - `-n, --note arg`: Attach a custom text note to the archive. This note is stored in the metadata and can be viewed during decompression or using the preview tool.
+- `-y, --assay arg`: Specify the sequencing assay type (`auto`, `rna`, `atac`, `methyl`, `dna`, `chip`, `sc-rna`, `sc-atac`, `sc-methyl`). Default is `auto`. The assay type is stored in the metadata and viewable using the preview tool.
 - `-v, --verbose [info|debug]`: Control logging verbosity.
   - Default (no `--verbose`): shows the concise stage-based progress bar, plus warnings/errors.
   - `--verbose` or `--verbose info`: disables the progress bar and prints informational step-by-step logs.
