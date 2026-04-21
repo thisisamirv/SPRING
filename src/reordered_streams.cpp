@@ -1,19 +1,17 @@
 // Writes reordered alignment-related streams, unaligned payloads, and per-block
 // compressed outputs that become part of the final Spring archive.
 
-#include <cmath>
+#include <array>
 #include <cstdint>
 #include <cstring>
-#include <array>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <filesystem>
 #include <omp.h>
 #include <string>
 #include <vector>
 
 #include "core_utils.h"
-#include "dna_utils.h"
 #include "fs_utils.h"
 #include "libbsc/bsc.h"
 #include "progress.h"
@@ -196,7 +194,8 @@ void decode_unaligned_reads(const std::string &path,
 
   uint64_t encoded_cursor = 0;
   uint64_t decoded_total = 0;
-  for (uint32_t read_index = 0; read_index < expected_read_count; ++read_index) {
+  for (uint32_t read_index = 0; read_index < expected_read_count;
+       ++read_index) {
     if (encoded_cursor + sizeof(uint16_t) > encoded.size()) {
       throw std::runtime_error(
           "Corrupted unaligned stream: truncated read length header.");
@@ -207,8 +206,7 @@ void decode_unaligned_reads(const std::string &path,
                 sizeof(uint16_t));
     encoded_cursor += sizeof(uint16_t);
 
-    const uint64_t encoded_bytes =
-        (static_cast<uint64_t>(read_length) + 1) / 2;
+    const uint64_t encoded_bytes = (static_cast<uint64_t>(read_length) + 1) / 2;
     if (encoded_cursor + encoded_bytes > encoded.size()) {
       throw std::runtime_error(
           "Corrupted unaligned stream: truncated encoded payload.");
@@ -227,9 +225,9 @@ void decode_unaligned_reads(const std::string &path,
   }
 
   decoded_chars.assign(decoded_total, 0);
-  static const std::array<char, 16> int_to_base = {
-      'A', 'G', 'C', 'T', 'N', 'N', 'N', 'N',
-      'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N'};
+  static const std::array<char, 16> int_to_base = {'A', 'G', 'C', 'T', 'N', 'N',
+                                                   'N', 'N', 'N', 'N', 'N', 'N',
+                                                   'N', 'N', 'N', 'N'};
 
 #pragma omp parallel for schedule(static)
   for (size_t read_index = 0; read_index < expected_read_count; ++read_index) {
@@ -346,13 +344,13 @@ void compress_output_block(const temporary_stream_paths &temp_paths,
 void reorder_compress_streams(const std::string &temp_dir,
                               const compression_params &cp) {
   const reordered_stream_paths paths = build_reordered_stream_paths(temp_dir);
-  SPRING_LOG_DEBUG("reorder_compress_streams start: temp_dir=" + temp_dir +
-                    ", num_reads=" + std::to_string(cp.read_info.num_reads) +
-                    ", paired_end=" +
-                    std::string(cp.encoding.paired_end ? "true" : "false") +
-                    ", preserve_order=" +
-                    std::string(cp.encoding.preserve_order ? "true" : "false") +
-                    ", threads=" + std::to_string(cp.encoding.num_thr));
+  SPRING_LOG_DEBUG(
+      "reorder_compress_streams start: temp_dir=" + temp_dir +
+      ", num_reads=" + std::to_string(cp.read_info.num_reads) +
+      ", paired_end=" + std::string(cp.encoding.paired_end ? "true" : "false") +
+      ", preserve_order=" +
+      std::string(cp.encoding.preserve_order ? "true" : "false") +
+      ", threads=" + std::to_string(cp.encoding.num_thr));
 
   uint32_t num_reads = cp.read_info.num_reads;
   uint32_t aligned_read_count = 0;
@@ -379,15 +377,18 @@ void reorder_compress_streams(const std::string &temp_dir,
 #pragma omp parallel sections
   {
 #pragma omp section
-  { orientation_entries = read_binary_file_all_sharded(paths.orientation_path,
-                             num_thr, ".tmp"); }
+    {
+      orientation_entries =
+          read_binary_file_all_sharded(paths.orientation_path, num_thr, ".tmp");
+    }
 #pragma omp section
-    { position_entries = read_binary_records_all<uint64_t>(paths.position_path); }
+    {
+      position_entries = read_binary_records_all<uint64_t>(paths.position_path);
+    }
 #pragma omp section
     {
       const std::vector<char> aligned_lengths =
-          read_binary_file_all_sharded(paths.read_length_path, num_thr,
-                         ".tmp");
+          read_binary_file_all_sharded(paths.read_length_path, num_thr, ".tmp");
       const std::vector<char> unaligned_lengths =
           read_binary_file_all(paths.read_length_path + ".unaligned");
       SPRING_LOG_DEBUG(
@@ -415,8 +416,10 @@ void reorder_compress_streams(const std::string &temp_dir,
       }
     }
 #pragma omp section
-    { noise_serialized = read_binary_file_all_sharded(paths.noise_path,
-                                                      num_thr); }
+    {
+      noise_serialized =
+          read_binary_file_all_sharded(paths.noise_path, num_thr);
+    }
 #pragma omp section
     {
       const std::vector<char> serialized_noise_positions =
@@ -436,7 +439,8 @@ void reorder_compress_streams(const std::string &temp_dir,
 #pragma omp section
     {
       if (paired_end || preserve_order) {
-        read_order_entries = read_binary_records_all<uint32_t>(paths.order_path);
+        read_order_entries =
+            read_binary_records_all<uint32_t>(paths.order_path);
       }
     }
   }
@@ -448,8 +452,8 @@ void reorder_compress_streams(const std::string &temp_dir,
 
   aligned_read_count = static_cast<uint32_t>(orientation_entries.size());
   if (aligned_read_count > num_reads) {
-    throw std::runtime_error(
-        "Corruption in aligned streams: aligned read count exceeds total reads.");
+    throw std::runtime_error("Corruption in aligned streams: aligned read "
+                             "count exceeds total reads.");
   }
 
   if (read_length_entries.size() != num_reads) {
@@ -457,7 +461,8 @@ void reorder_compress_streams(const std::string &temp_dir,
         "Corruption in read length stream: entry count does not match reads.");
   }
 
-  if ((paired_end || preserve_order) && read_order_entries.size() != num_reads) {
+  if ((paired_end || preserve_order) &&
+      read_order_entries.size() != num_reads) {
     throw std::runtime_error(
         "Corruption in read order stream: entry count does not match reads.");
   }
@@ -468,9 +473,9 @@ void reorder_compress_streams(const std::string &temp_dir,
 
   for (uint32_t entry_index = 0; entry_index < aligned_read_count;
        ++entry_index) {
-    const uint32_t read_order =
-        (paired_end || preserve_order) ? read_order_entries[entry_index]
-                                       : entry_index;
+    const uint32_t read_order = (paired_end || preserve_order)
+                                    ? read_order_entries[entry_index]
+                                    : entry_index;
 
     orientation_by_read[read_order] = orientation_entries[entry_index];
     read_lengths_by_read[read_order] = read_length_entries[entry_index];
@@ -481,11 +486,11 @@ void reorder_compress_streams(const std::string &temp_dir,
     const char *line_begin = noise_serialized.data() + noise_cursor;
     const size_t bytes_remaining = noise_serialized.size() - noise_cursor;
     const void *line_end_ptr = std::memchr(line_begin, '\n', bytes_remaining);
-    const size_t line_len = line_end_ptr == nullptr
-                                ? bytes_remaining
-                                : static_cast<size_t>(
-                                      static_cast<const char *>(line_end_ptr) -
-                                      line_begin);
+    const size_t line_len =
+        line_end_ptr == nullptr
+            ? bytes_remaining
+            : static_cast<size_t>(static_cast<const char *>(line_end_ptr) -
+                                  line_begin);
 
     if (next_noise_offset + line_len > noise_positions.size()) {
       throw std::runtime_error(
@@ -521,11 +526,11 @@ void reorder_compress_streams(const std::string &temp_dir,
   }
 
   unaligned_read_count = num_reads - aligned_read_count;
-  SPRING_LOG_DEBUG("reorder_compress_streams parsed input streams: aligned_reads=" +
-                    std::to_string(aligned_read_count) +
-                    ", unaligned_reads=" + std::to_string(unaligned_read_count) +
-                    ", noise_entries=" +
-                    std::to_string(noise_positions.size()));
+  SPRING_LOG_DEBUG(
+      "reorder_compress_streams parsed input streams: aligned_reads=" +
+      std::to_string(aligned_read_count) +
+      ", unaligned_reads=" + std::to_string(unaligned_read_count) +
+      ", noise_entries=" + std::to_string(noise_positions.size()));
   std::string unaligned_count_path = paths.unaligned_path + ".count";
   std::ifstream unaligned_count_input(unaligned_count_path, std::ios::binary);
   uint64_t unaligned_char_count;
@@ -547,9 +552,10 @@ void reorder_compress_streams(const std::string &temp_dir,
   uint64_t current_unaligned_offset = 0;
   for (uint32_t read_index = 0; read_index < unaligned_read_count;
        read_index++) {
-    const uint32_t read_order = (paired_end || preserve_order)
-                                    ? read_order_entries[aligned_read_count + read_index]
-                                    : (aligned_read_count + read_index);
+    const uint32_t read_order =
+        (paired_end || preserve_order)
+            ? read_order_entries[aligned_read_count + read_index]
+            : (aligned_read_count + read_index);
     const uint16_t read_length =
         read_length_entries[aligned_read_count + read_index];
     if (unaligned_lengths[read_index] != read_length) {
@@ -570,16 +576,15 @@ void reorder_compress_streams(const std::string &temp_dir,
   const temporary_stream_paths temp_paths =
       build_temporary_stream_paths(temp_dir);
   const uint64_t read_limit = paired_end ? half_read_count : num_reads;
-    const uint64_t output_blocks =
+  const uint64_t output_blocks =
       (read_limit == 0)
-        ? 0
-        : (read_limit + static_cast<uint64_t>(num_reads_per_block) - 1) /
-          static_cast<uint64_t>(num_reads_per_block);
-    SPRING_LOG_DEBUG("reorder_compress_streams output planning: read_limit=" +
-            std::to_string(read_limit) +
-            ", num_reads_per_block=" +
-            std::to_string(num_reads_per_block) +
-            ", output_blocks=" + std::to_string(output_blocks));
+          ? 0
+          : (read_limit + static_cast<uint64_t>(num_reads_per_block) - 1) /
+                static_cast<uint64_t>(num_reads_per_block);
+  SPRING_LOG_DEBUG("reorder_compress_streams output planning: read_limit=" +
+                   std::to_string(read_limit) + ", num_reads_per_block=" +
+                   std::to_string(num_reads_per_block) +
+                   ", output_blocks=" + std::to_string(output_blocks));
 
   // In paired-end mode, the block indices count read pairs rather than reads.
 #pragma omp parallel
@@ -734,10 +739,9 @@ void reorder_compress_streams(const std::string &temp_dir,
   }
 
   SPRING_LOG_DEBUG("reorder_compress_streams complete: blocks_written=" +
-                    std::to_string(output_blocks));
+                   std::to_string(output_blocks));
 
   return;
 }
 
 } // namespace spring
-

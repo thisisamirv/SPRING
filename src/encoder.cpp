@@ -4,8 +4,8 @@
 #include "encoder.h"
 #include "core_utils.h"
 #include "fs_utils.h"
-#include "progress.h"
 #include "libbsc/bsc.h"
+#include "progress.h"
 #include <array>
 #include <cstdint>
 #include <cstdio>
@@ -18,6 +18,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
 
 namespace spring {
 
@@ -131,15 +132,15 @@ void pack_sequence_chunk(const encoder_global &encoder_state,
   const sequence_pack_paths paths =
       make_sequence_pack_paths(encoder_state.outfile_seq, thread_id);
   SPRING_LOG_DEBUG("block_id=enc-pack-chunk-" + std::to_string(thread_id) +
-                    ", pack_sequence_chunk start: input=" + paths.input_path +
-                    ", packed=" + paths.packed_path);
+                   ", pack_sequence_chunk start: input=" + paths.input_path +
+                   ", packed=" + paths.packed_path);
 
   const uint64_t sequence_length = write_packed_sequence(
       paths.input_path, paths.packed_path, paths.tail_path);
   thread_sequence_lengths[thread_id] = sequence_length;
   SPRING_LOG_DEBUG("block_id=enc-pack-chunk-" + std::to_string(thread_id) +
-                    ", pack_sequence_chunk done: seq_bases=" +
-                    std::to_string(sequence_length));
+                   ", pack_sequence_chunk done: seq_bases=" +
+                   std::to_string(sequence_length));
   safe_remove_file(paths.input_path);
 }
 
@@ -163,7 +164,7 @@ void pack_compress_seq(const encoder_global &encoder_state,
   if (encoder_state.num_thr <= 0)
     return;
   SPRING_LOG_DEBUG("block_id=enc-pack-main, pack_compress_seq start: threads=" +
-                    std::to_string(encoder_state.num_thr));
+                   std::to_string(encoder_state.num_thr));
 #pragma omp parallel for schedule(static)
   for (int tid = 0; tid < encoder_state.num_thr; tid++) {
     pack_sequence_chunk(encoder_state, tid, thread_sequence_lengths);
@@ -176,8 +177,9 @@ void pack_compress_seq(const encoder_global &encoder_state,
   std::string monolithic_compressed_path = encoder_state.outfile_seq + ".bsc";
   std::ofstream monolithic_out(monolithic_packed_path, std::ios::binary);
   if (!monolithic_out.is_open()) {
-    throw std::runtime_error("Failed to open monolithic packed sequence file: " +
-                             monolithic_packed_path);
+    throw std::runtime_error(
+        "Failed to open monolithic packed sequence file: " +
+        monolithic_packed_path);
   }
   std::vector<char> copy_buffer(1 << 20);
   for (int tid = 0; tid < encoder_state.num_thr; tid++) {
@@ -201,8 +203,9 @@ void pack_compress_seq(const encoder_global &encoder_state,
     }
   }
   monolithic_out.close();
-  SPRING_LOG_DEBUG("block_id=enc-pack-main, monolithic packed file assembled: path=" +
-                    monolithic_packed_path);
+  SPRING_LOG_DEBUG(
+      "block_id=enc-pack-main, monolithic packed file assembled: path=" +
+      monolithic_packed_path);
 
   {
     std::ifstream packed_size_check(monolithic_packed_path,
@@ -229,8 +232,8 @@ void pack_compress_seq(const encoder_global &encoder_state,
   }
 
   SPRING_LOG_DEBUG("block_id=enc-pack-main, invoking BSC_compress: input=" +
-                    monolithic_packed_path + ", output=" +
-                    monolithic_compressed_path);
+                   monolithic_packed_path +
+                   ", output=" + monolithic_compressed_path);
   bsc::BSC_compress(monolithic_packed_path.c_str(),
                     monolithic_compressed_path.c_str());
   SPRING_LOG_DEBUG("block_id=enc-pack-main, BSC_compress complete.");
@@ -423,4 +426,3 @@ void correct_order(uint32_t *order_s, const encoder_global &eg) {
 }
 
 } // namespace spring
-

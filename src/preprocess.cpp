@@ -17,8 +17,7 @@
 #include <vector>
 
 #include "core_utils.h"
-#include "dna_utils.h"
-#include "integrity_utils.h"
+
 #include "io_utils.h"
 #include "libbsc/bsc.h"
 #include "params.h"
@@ -137,14 +136,14 @@ uint32_t flush_short_read_thread_buffers(
   uint32_t clean_read_count = 0;
   for (const short_read_thread_buffers &thread_buffer : thread_buffers) {
     if (!thread_buffer.clean_read_bytes.empty()) {
-      clean_output.write(thread_buffer.clean_read_bytes.data(),
-                         static_cast<std::streamsize>(
-                             thread_buffer.clean_read_bytes.size()));
+      clean_output.write(
+          thread_buffer.clean_read_bytes.data(),
+          static_cast<std::streamsize>(thread_buffer.clean_read_bytes.size()));
     }
     if (!thread_buffer.n_read_bytes.empty()) {
-      n_read_output.write(thread_buffer.n_read_bytes.data(),
-                          static_cast<std::streamsize>(
-                              thread_buffer.n_read_bytes.size()));
+      n_read_output.write(
+          thread_buffer.n_read_bytes.data(),
+          static_cast<std::streamsize>(thread_buffer.n_read_bytes.size()));
     }
     if (!thread_buffer.n_read_positions.empty()) {
       n_read_order_output.write(
@@ -159,8 +158,7 @@ uint32_t flush_short_read_thread_buffers(
 }
 
 void write_raw_string_block(const std::string &output_path,
-                            std::string *strings,
-                            const uint32_t string_count,
+                            std::string *strings, const uint32_t string_count,
                             const uint32_t *string_lengths) {
   std::ofstream output(output_path, std::ios::binary);
   if (!output.is_open()) {
@@ -374,12 +372,10 @@ void remove_redundant_mate_ids(const preprocess_paths &paths,
 
   const uint32_t num_blocks = block_count(num_reads[0], num_reads_per_block);
   for (uint32_t block_index = 0; block_index < num_blocks; block_index++) {
-    const std::string block_path = compression_params.encoding.long_flag
-                                       ? compressed_block_file_path(
-                                             paths.id_output_paths[1],
-                                             block_index)
-                                       : block_file_path(paths.id_output_paths[1],
-                                                         block_index);
+    const std::string block_path =
+        compression_params.encoding.long_flag
+            ? compressed_block_file_path(paths.id_output_paths[1], block_index)
+            : block_file_path(paths.id_output_paths[1], block_index);
     remove(block_path.c_str());
   }
 }
@@ -395,13 +391,10 @@ uint32_t max_read_length_in_step(const std::vector<uint32_t> &read_lengths,
 } // namespace
 
 bool has_non_acgtn_symbol(const std::string &read) {
-  for (const char base : read) {
-    if (base != 'A' && base != 'C' && base != 'G' && base != 'T' &&
-        base != 'N') {
-      return true;
-    }
-  }
-  return false;
+  return std::ranges::any_of(read, [](char base) {
+    return base != 'A' && base != 'C' && base != 'G' && base != 'T' &&
+           base != 'N';
+  });
 }
 
 uint32_t detect_max_read_length_in_file(const std::string &path,
@@ -457,9 +450,8 @@ uint32_t detect_max_read_length(const std::string &infile_1,
   SPRING_LOG_INFO("Auto-detecting read lengths and line endings ...");
   use_crlf = false;
   contains_non_acgtn_symbols = false;
-  uint32_t max_len_1 =
-      detect_max_read_length_in_file(infile_1, fasta_input, use_crlf,
-                                     contains_non_acgtn_symbols);
+  uint32_t max_len_1 = detect_max_read_length_in_file(
+      infile_1, fasta_input, use_crlf, contains_non_acgtn_symbols);
   uint32_t max_len_2 = 0;
   if (paired_end) {
     max_len_2 = detect_max_read_length_in_file(infile_2, fasta_input, use_crlf,
@@ -471,22 +463,18 @@ uint32_t detect_max_read_length(const std::string &infile_1,
 void preprocess(const std::string &infile_1, const std::string &infile_2,
                 const std::string &temp_dir, compression_params &cp,
                 const bool &fasta_input, ProgressBar *progress) {
-  SPRING_LOG_DEBUG("Preprocess start: temp_dir=" + temp_dir +
-                    ", input1=" + infile_1 +
-                    (cp.encoding.paired_end ? (", input2=" + infile_2)
-                                           : std::string()) +
-                    ", long_mode=" +
-                    std::string(cp.encoding.long_flag ? "true" : "false") +
-                    ", paired_end=" +
-                    std::string(cp.encoding.paired_end ? "true" : "false") +
-                    ", preserve_order=" +
-                    std::string(cp.encoding.preserve_order ? "true" : "false") +
-                    ", preserve_id=" +
-                    std::string(cp.encoding.preserve_id ? "true" : "false") +
-                    ", preserve_quality=" +
-                    std::string(cp.encoding.preserve_quality ? "true" : "false") +
-                    ", fasta_input=" +
-                    std::string(fasta_input ? "true" : "false"));
+  SPRING_LOG_DEBUG(
+      "Preprocess start: temp_dir=" + temp_dir + ", input1=" + infile_1 +
+      (cp.encoding.paired_end ? (", input2=" + infile_2) : std::string()) +
+      ", long_mode=" + std::string(cp.encoding.long_flag ? "true" : "false") +
+      ", paired_end=" + std::string(cp.encoding.paired_end ? "true" : "false") +
+      ", preserve_order=" +
+      std::string(cp.encoding.preserve_order ? "true" : "false") +
+      ", preserve_id=" +
+      std::string(cp.encoding.preserve_id ? "true" : "false") +
+      ", preserve_quality=" +
+      std::string(cp.encoding.preserve_quality ? "true" : "false") +
+      ", fasta_input=" + std::string(fasta_input ? "true" : "false"));
   const preprocess_paths paths =
       build_preprocess_paths(infile_1, infile_2, temp_dir);
   std::array<std::ifstream, 2> input_files;
@@ -540,10 +528,10 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   detect_paired_id_pattern(input_files, input_streams, gzip_streams, paths, cp,
                            false, paired_id_code, paired_id_match);
   if (cp.encoding.paired_end && cp.encoding.preserve_id) {
-    SPRING_LOG_DEBUG("Paired ID pattern detection: code=" +
-                      std::to_string(static_cast<int>(paired_id_code)) +
-                      ", match=" +
-                      std::string(paired_id_match ? "true" : "false"));
+    SPRING_LOG_DEBUG(
+        "Paired ID pattern detection: code=" +
+        std::to_string(static_cast<int>(paired_id_code)) +
+        ", match=" + std::string(paired_id_match ? "true" : "false"));
   }
 
   // Initialize integrity digests
@@ -596,20 +584,19 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       uint32_t *quality_crc_output =
           cp.encoding.preserve_quality ? &cp.read_info.quality_crc[stream_index]
                                        : nullptr;
-      uint32_t *id_crc_output =
-          cp.encoding.preserve_id ? &cp.read_info.id_crc[stream_index]
-                                  : nullptr;
+      uint32_t *id_crc_output = cp.encoding.preserve_id
+                                    ? &cp.read_info.id_crc[stream_index]
+                                    : nullptr;
       uint32_t reads_in_step = read_fastq_block(
           input_streams[stream_index], id_array, read_array.data(),
           quality_array.empty() ? nullptr : quality_array.data(),
-          num_reads_per_step, fasta_input,
-          read_lengths_array.data(), contains_n_output,
-          &cp.read_info.sequence_crc[stream_index], quality_crc_output,
-          id_crc_output, cp.encoding.preserve_quality);
-        SPRING_LOG_DEBUG("Preprocess step: stream=" +
-                std::to_string(stream_index + 1) +
-                ", reads_in_step=" + std::to_string(reads_in_step) +
-                ", blocks_done=" + std::to_string(num_blocks_done));
+          num_reads_per_step, fasta_input, read_lengths_array.data(),
+          contains_n_output, &cp.read_info.sequence_crc[stream_index],
+          quality_crc_output, id_crc_output, cp.encoding.preserve_quality);
+      SPRING_LOG_DEBUG(
+          "Preprocess step: stream=" + std::to_string(stream_index + 1) +
+          ", reads_in_step=" + std::to_string(reads_in_step) +
+          ", blocks_done=" + std::to_string(num_blocks_done));
       if (reads_in_step < num_reads_per_step)
         done[stream_index] = true;
       if (reads_in_step == 0)
@@ -681,7 +668,8 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                     std::to_string(num_blocks_done + thread_id);
                 compress_id_block(output_path.c_str(),
                                   id_array + thread_id * num_reads_per_block,
-                                  thread_read_count, cp.encoding.compression_level);
+                                  thread_read_count,
+                                  cp.encoding.compression_level);
               }
               if (cp.encoding.preserve_quality) {
                 std::string output_path =
@@ -716,19 +704,17 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                   paths.quality_output_paths[stream_index], block_num);
               std::string raw_quality_path = output_path + ".raw";
               write_raw_string_block(
-                raw_quality_path,
+                  raw_quality_path,
                   quality_array.data() + thread_id * num_reads_per_block,
                   thread_read_count,
                   read_lengths_array.data() + thread_id * num_reads_per_block);
-              bsc::BSC_compress(raw_quality_path.c_str(),
-                      output_path.c_str());
+              bsc::BSC_compress(raw_quality_path.c_str(), output_path.c_str());
               remove(raw_quality_path.c_str());
             }
             std::string output_path = block_file_path(
                 paths.read_block_paths[stream_index], block_num);
-            std::string compressed_output_path =
-                compressed_block_file_path(paths.read_block_paths[stream_index],
-                                           block_num);
+            std::string compressed_output_path = compressed_block_file_path(
+                paths.read_block_paths[stream_index], block_num);
             write_raw_string_block(
                 output_path,
                 read_array.data() + thread_id * num_reads_per_block,
@@ -764,8 +750,8 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
           const uint32_t end_read =
               std::min(begin_read + num_reads_per_block, reads_in_step);
 
-            short_read_thread_buffers &thread_buffer =
-                short_read_buffers[static_cast<size_t>(thread_id)];
+          short_read_thread_buffers &thread_buffer =
+              short_read_buffers[static_cast<size_t>(thread_id)];
           const uint32_t thread_read_count = end_read - begin_read;
           thread_buffer.n_read_positions.reserve(thread_read_count / 2 + 1);
 
@@ -776,8 +762,8 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                                       read_array[read_index]);
               thread_buffer.clean_read_count++;
             } else {
-              thread_buffer.n_read_positions.push_back(
-                  num_reads[stream_index] + read_index);
+              thread_buffer.n_read_positions.push_back(num_reads[stream_index] +
+                                                       read_index);
               append_encoded_dna_n_bits(thread_buffer.n_read_bytes,
                                         read_array[read_index]);
             }
@@ -785,13 +771,14 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
         }
 
         num_reads_clean[stream_index] += flush_short_read_thread_buffers(
-          short_read_buffers, clean_outputs[stream_index],
+            short_read_buffers, clean_outputs[stream_index],
             n_read_outputs[stream_index], n_read_order_outputs[stream_index]);
 
         if (!cp.encoding.preserve_order) {
           quality_chunk.clear();
           id_chunk.clear();
-          if (quality_chunk.capacity() < static_cast<size_t>(reads_in_step) * 32U)
+          if (quality_chunk.capacity() <
+              static_cast<size_t>(reads_in_step) * 32U)
             quality_chunk.reserve(static_cast<size_t>(reads_in_step) * 32U);
           if (id_chunk.capacity() < static_cast<size_t>(reads_in_step) * 32U)
             id_chunk.reserve(static_cast<size_t>(reads_in_step) * 32U);
@@ -809,9 +796,8 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
             id_chunk.append(id_array[read_index]);
             id_chunk.push_back('\n');
           }
-          id_outputs[stream_index].write(id_chunk.data(),
-                                         static_cast<std::streamsize>(
-                                             id_chunk.size()));
+          id_outputs[stream_index].write(
+              id_chunk.data(), static_cast<std::streamsize>(id_chunk.size()));
         }
       }
       num_reads[stream_index] += reads_in_step;
@@ -860,7 +846,8 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   cp.read_info.max_readlen = max_readlen;
 
   SPRING_LOG_DEBUG(
-      "Preprocess complete: num_reads=" + std::to_string(cp.read_info.num_reads) +
+      "Preprocess complete: num_reads=" +
+      std::to_string(cp.read_info.num_reads) +
       ", num_reads_clean_1=" + std::to_string(cp.read_info.num_reads_clean[0]) +
       ", num_reads_clean_2=" + std::to_string(cp.read_info.num_reads_clean[1]) +
       ", max_readlen=" + std::to_string(cp.read_info.max_readlen) +
@@ -872,17 +859,16 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       ", id_crc_2=" + std::to_string(cp.read_info.id_crc[1]));
 
   SPRING_LOG_INFO("Max Read length: " +
-                   std::to_string(cp.read_info.max_readlen));
+                  std::to_string(cp.read_info.max_readlen));
   SPRING_LOG_INFO("Total number of reads: " +
-                   std::to_string(cp.read_info.num_reads));
+                  std::to_string(cp.read_info.num_reads));
   if (cp.encoding.paired_end) {
     SPRING_LOG_INFO("Total number of reads without N: " +
-                     std::to_string(cp.read_info.num_reads_clean[0] +
-                                    cp.read_info.num_reads_clean[1]));
+                    std::to_string(cp.read_info.num_reads_clean[0] +
+                                   cp.read_info.num_reads_clean[1]));
     SPRING_LOG_INFO("Paired id match code: " +
-                     std::to_string((int)cp.read_info.paired_id_code));
+                    std::to_string((int)cp.read_info.paired_id_code));
   }
 }
 
 } // namespace spring
-

@@ -12,14 +12,16 @@
 #include <fstream>
 #include <iomanip> // std::setw
 #include <iostream>
-#include <unordered_map>
 #include <omp.h>
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
+
+#include "assay_detector.h"
 #include "decompress.h"
 #include "fs_utils.h"
 #include "io_utils.h"
@@ -32,7 +34,7 @@
 #include "reordered_streams.h"
 #include "spring.h"
 #include "template_dispatch.h"
-#include "assay_detector.h"
+
 
 namespace spring {
 
@@ -75,14 +77,13 @@ struct bundle_manifest {
 std::string trim_ascii_whitespace(const std::string &input) {
   size_t begin = 0;
   while (begin < input.size() &&
-         (input[begin] == ' ' || input[begin] == '\t' ||
-          input[begin] == '\r' || input[begin] == '\n')) {
+         (input[begin] == ' ' || input[begin] == '\t' || input[begin] == '\r' ||
+          input[begin] == '\n')) {
     begin++;
   }
   size_t end = input.size();
-  while (end > begin &&
-         (input[end - 1] == ' ' || input[end - 1] == '\t' ||
-          input[end - 1] == '\r' || input[end - 1] == '\n')) {
+  while (end > begin && (input[end - 1] == ' ' || input[end - 1] == '\t' ||
+                         input[end - 1] == '\r' || input[end - 1] == '\n')) {
     end--;
   }
   return input.substr(begin, end - begin);
@@ -157,8 +158,7 @@ bundle_manifest read_bundle_manifest(const std::string &manifest_path) {
     if (delimiter == std::string::npos)
       continue;
     const std::string key = trim_ascii_whitespace(line.substr(0, delimiter));
-    const std::string value =
-        trim_ascii_whitespace(line.substr(delimiter + 1));
+    const std::string value = trim_ascii_whitespace(line.substr(delimiter + 1));
     if (!key.empty())
       kv[key] = value;
   }
@@ -178,25 +178,30 @@ bundle_manifest read_bundle_manifest(const std::string &manifest_path) {
   manifest.i1_name = kv["i1_name"];
   manifest.i2_name = kv["i2_name"];
 
-  if (manifest.version != kBundleVersion || manifest.read_archive_name.empty() ||
-      manifest.r1_name.empty()) {
+  if (manifest.version != kBundleVersion ||
+      manifest.read_archive_name.empty() || manifest.r1_name.empty()) {
     throw std::runtime_error("Invalid or unsupported bundle manifest format.");
   }
   if (manifest.has_r3 && manifest.r3_name.empty()) {
-    throw std::runtime_error("Invalid bundle manifest: has_r3=1 but r3_name is missing.");
+    throw std::runtime_error(
+        "Invalid bundle manifest: has_r3=1 but r3_name is missing.");
   }
   if (manifest.has_r3 && manifest.read3_archive_name.empty() &&
       manifest.read3_alias_source.empty()) {
-    throw std::runtime_error("Invalid bundle manifest: has_r3=1 but no read3 archive or alias source.");
+    throw std::runtime_error("Invalid bundle manifest: has_r3=1 but no read3 "
+                             "archive or alias source.");
   }
   if (manifest.has_index && manifest.index_archive_name.empty()) {
-    throw std::runtime_error("Invalid bundle manifest: has_index=1 but index archive is missing.");
+    throw std::runtime_error(
+        "Invalid bundle manifest: has_index=1 but index archive is missing.");
   }
   if (manifest.has_index && manifest.i1_name.empty()) {
-    throw std::runtime_error("Invalid bundle manifest: has_index=1 but i1_name is missing.");
+    throw std::runtime_error(
+        "Invalid bundle manifest: has_index=1 but i1_name is missing.");
   }
   if (manifest.has_i2 && manifest.i2_name.empty()) {
-    throw std::runtime_error("Invalid bundle manifest: has_i2=1 but i2_name is missing.");
+    throw std::runtime_error(
+        "Invalid bundle manifest: has_i2=1 but i2_name is missing.");
   }
 
   return manifest;
@@ -300,7 +305,7 @@ std::string build_rapidgzip_command(const std::string &input_path,
 void decompress_gzip_input_file_with_zlib(const std::string &input_path,
                                           const std::string &output_path) {
   SPRING_LOG_DEBUG("Using zlib fallback to decompress staged input: " +
-                    input_path + " -> " + output_path);
+                   input_path + " -> " + output_path);
   std::ifstream fin(input_path, std::ios::binary);
   std::ofstream fout(output_path, std::ios::binary);
   if (!fin || !fout) {
@@ -402,7 +407,7 @@ prepared_compression_inputs
 prepare_compression_inputs(const compression_io_config &io_config,
                            const std::string &temp_dir, const int num_thr) {
   SPRING_LOG_DEBUG("Preparing compression inputs in temp directory: " +
-                    temp_dir);
+                   temp_dir);
   prepared_compression_inputs prepared_inputs{
       .input_path_1 = io_config.input_path_1,
       .input_path_2 = io_config.input_path_2,
@@ -416,7 +421,7 @@ prepare_compression_inputs(const compression_io_config &io_config,
     prepared_inputs.input_path_1 =
         decompressed_input_path(temp_dir, io_config.input_path_1, 1);
     SPRING_LOG_DEBUG("Input 1 is gzip-compressed; staging to: " +
-                      prepared_inputs.input_path_1);
+                     prepared_inputs.input_path_1);
     decompress_gzip_input_file(io_config.input_path_1,
                                prepared_inputs.input_path_1, num_thr);
     prepared_inputs.input_1_actual_was_gzipped = true;
@@ -428,7 +433,7 @@ prepare_compression_inputs(const compression_io_config &io_config,
       prepared_inputs.input_path_2 =
           decompressed_input_path(temp_dir, io_config.input_path_2, 2);
       SPRING_LOG_DEBUG("Input 2 is gzip-compressed; staging to: " +
-                        prepared_inputs.input_path_2);
+                       prepared_inputs.input_path_2);
       decompress_gzip_input_file(io_config.input_path_2,
                                  prepared_inputs.input_path_2, num_thr);
       prepared_inputs.input_2_actual_was_gzipped = true;
@@ -444,12 +449,12 @@ void cleanup_prepared_compression_inputs(
   if (!pairing_only_flag) {
     if (prepared_inputs.input_1_actual_was_gzipped) {
       SPRING_LOG_DEBUG("Removing staged input 1 file: " +
-                        prepared_inputs.input_path_1);
+                       prepared_inputs.input_path_1);
       safe_remove_file(prepared_inputs.input_path_1);
     }
     if (prepared_inputs.input_2_actual_was_gzipped) {
       SPRING_LOG_DEBUG("Removing staged input 2 file: " +
-                        prepared_inputs.input_path_2);
+                       prepared_inputs.input_path_2);
       safe_remove_file(prepared_inputs.input_path_2);
     }
   }
@@ -588,12 +593,12 @@ compression_io_config resolve_compression_io(const string_list &input_paths,
   }
 
   SPRING_LOG_DEBUG("Resolved compression I/O: paired_end=" +
-                    std::string(io_config.paired_end ? "true" : "false") +
-                    ", input1=" + io_config.input_path_1 +
-                    (io_config.paired_end
-                         ? (", input2=" + io_config.input_path_2)
-                         : std::string()) +
-                    ", archive=" + io_config.archive_path);
+                   std::string(io_config.paired_end ? "true" : "false") +
+                   ", input1=" + io_config.input_path_1 +
+                   (io_config.paired_end
+                        ? (", input2=" + io_config.input_path_2)
+                        : std::string()) +
+                   ", archive=" + io_config.archive_path);
   return io_config;
 }
 
@@ -620,7 +625,7 @@ void configure_quality_options(compression_params &compression_params,
     compression_params.quality.ill_bin_flag = false;
     compression_params.quality.bin_thr_flag = false;
     SPRING_LOG_DEBUG("Quality mode set to qvz with ratio=" +
-                      std::to_string(compression_params.quality.qvz_ratio));
+                     std::to_string(compression_params.quality.qvz_ratio));
     return;
   }
 
@@ -661,11 +666,11 @@ void configure_quality_options(compression_params &compression_params,
     compression_params.quality.ill_bin_flag = false;
     compression_params.quality.bin_thr_flag = true;
     SPRING_LOG_DEBUG(
-      "Quality mode set to binary (thr=" +
-      std::to_string(compression_params.quality.bin_thr_thr) +
-      ", high=" + std::to_string(compression_params.quality.bin_thr_high) +
-      ", low=" + std::to_string(compression_params.quality.bin_thr_low) +
-      ").");
+        "Quality mode set to binary (thr=" +
+        std::to_string(compression_params.quality.bin_thr_thr) +
+        ", high=" + std::to_string(compression_params.quality.bin_thr_high) +
+        ", low=" + std::to_string(compression_params.quality.bin_thr_low) +
+        ").");
     return;
   }
 
@@ -675,7 +680,7 @@ void configure_quality_options(compression_params &compression_params,
 void print_temp_dir_size(const std::string &temp_dir,
                          const char *label = "Temporary directory size") {
   SPRING_LOG_INFO(std::string(label) + ": " +
-                   std::to_string(get_directory_size(temp_dir)));
+                  std::to_string(get_directory_size(temp_dir)));
 }
 
 void print_compressed_stream_sizes(const std::string &temp_dir) {
@@ -743,11 +748,10 @@ resolve_decompression_io(const string_list &input_paths,
     throw std::runtime_error("Too many (>2) output files specified");
   }
 
-  SPRING_LOG_DEBUG("Resolved decompression I/O: archive=" +
-                    io_config.archive_path + ", output1=" +
-                    io_config.output_path_1 +
-                    (paired_end ? (", output2=" + io_config.output_path_2)
-                                : std::string()));
+  SPRING_LOG_DEBUG(
+      "Resolved decompression I/O: archive=" + io_config.archive_path +
+      ", output1=" + io_config.output_path_1 +
+      (paired_end ? (", output2=" + io_config.output_path_2) : std::string()));
 
   return io_config;
 }
@@ -761,7 +765,7 @@ void perform_audit(const std::string &archive_path,
   std::string audit_dir = temp_dir + "/audit_extract";
   std::filesystem::create_directories(audit_dir);
   SPRING_LOG_DEBUG("Audit started for archive: " + archive_path +
-                    " (extract dir: " + audit_dir + ")");
+                   " (extract dir: " + audit_dir + ")");
 
   try {
     extract_tar_archive(archive_path, audit_dir);
@@ -769,7 +773,8 @@ void perform_audit(const std::string &archive_path,
     const std::string manifest_path = audit_dir + "/" + kBundleManifestName;
     if (std::filesystem::exists(manifest_path)) {
       const bundle_manifest manifest = read_bundle_manifest(manifest_path);
-      const std::string read_archive_path = audit_dir + "/" + manifest.read_archive_name;
+      const std::string read_archive_path =
+          audit_dir + "/" + manifest.read_archive_name;
       const std::string index_archive_path =
           manifest.has_index ? (audit_dir + "/" + manifest.index_archive_name)
                              : std::string();
@@ -883,16 +888,13 @@ void compress(const std::string &temp_dir,
   omp_set_dynamic(0);
 
   SPRING_LOG_INFO("Starting compression...");
-  SPRING_LOG_DEBUG("Compression request: temp_dir=" + temp_dir +
-                    ", num_threads=" + std::to_string(num_thr) +
-                    ", level=" + std::to_string(compression_level) +
-                    ", strip_order=" +
-                    std::string(pairing_only_flag ? "true" : "false") +
-                    ", strip_quality=" +
-                    std::string(no_quality_flag ? "true" : "false") +
-                    ", strip_ids=" +
-                    std::string(no_ids_flag ? "true" : "false") +
-                    ", audit=" + std::string(audit_flag ? "true" : "false"));
+  SPRING_LOG_DEBUG(
+      "Compression request: temp_dir=" + temp_dir + ", num_threads=" +
+      std::to_string(num_thr) + ", level=" + std::to_string(compression_level) +
+      ", strip_order=" + std::string(pairing_only_flag ? "true" : "false") +
+      ", strip_quality=" + std::string(no_quality_flag ? "true" : "false") +
+      ", strip_ids=" + std::string(no_ids_flag ? "true" : "false") +
+      ", audit=" + std::string(audit_flag ? "true" : "false"));
 
   const bool has_r3 = !r3_path.empty();
   const bool has_i1 = !i1_path.empty();
@@ -946,11 +948,10 @@ void compress(const std::string &temp_dir,
                     "(read pair + optional read3 + optional index pair).");
 
     // Compress R1/R2 as a regular SPRING archive.
-    compress(read_work_dir, read_inputs,
-             {bundle_dir + "/" + read_archive_name}, num_thr,
-             pairing_only_flag, no_quality_flag, no_ids_flag, quality_options,
-             compression_level, note, verbosity_level, audit_flag, "", "", "",
-             assay_type);
+    compress(read_work_dir, read_inputs, {bundle_dir + "/" + read_archive_name},
+             num_thr, pairing_only_flag, no_quality_flag, no_ids_flag,
+             quality_options, compression_level, note, verbosity_level,
+             audit_flag, "", "", "", assay_type);
 
     std::string read3_alias_source;
     if (has_r3) {
@@ -970,13 +971,12 @@ void compress(const std::string &temp_dir,
     }
 
     if (has_i1) {
-      compress(index_work_dir, index_inputs,
-               {bundle_dir + "/" + index_archive_name}, num_thr,
-               pairing_only_flag, no_quality_flag, no_ids_flag,
-               quality_options, compression_level,
-               note.empty() ? std::string("index-group")
-                            : (note + " | index-group"),
-               verbosity_level, audit_flag, "", "", "", assay_type);
+      compress(
+          index_work_dir, index_inputs, {bundle_dir + "/" + index_archive_name},
+          num_thr, pairing_only_flag, no_quality_flag, no_ids_flag,
+          quality_options, compression_level,
+          note.empty() ? std::string("index-group") : (note + " | index-group"),
+          verbosity_level, audit_flag, "", "", "", assay_type);
     }
 
     std::error_code ec;
@@ -995,8 +995,8 @@ void compress(const std::string &temp_dir,
         .read_archive_name = read_archive_name,
         .has_r3 = has_r3,
         .read3_archive_name = has_r3 && read3_alias_source.empty()
-                                 ? read3_archive_name
-                                 : std::string(),
+                                  ? read3_archive_name
+                                  : std::string(),
         .read3_alias_source = read3_alias_source,
         .has_index = has_i1,
         .index_archive_name = has_i1 ? index_archive_name : std::string(),
@@ -1054,16 +1054,15 @@ void compress(const std::string &temp_dir,
   bool contains_non_acgtn_symbols = false;
   const uint32_t max_read_length = detect_max_read_length(
       prepared_inputs.input_path_1, prepared_inputs.input_path_2,
-      io_config.paired_end, fasta_input, use_crlf,
-      contains_non_acgtn_symbols);
+      io_config.paired_end, fasta_input, use_crlf, contains_non_acgtn_symbols);
   const bool long_flag =
       (max_read_length > MAX_READ_LEN) || contains_non_acgtn_symbols;
-  SPRING_LOG_DEBUG("Detected maximum read length=" +
-                    std::to_string(max_read_length) +
-                    ", use_crlf=" + std::string(use_crlf ? "true" : "false") +
-                    ", non_acgtn_symbols=" +
-                    std::string(contains_non_acgtn_symbols ? "true" : "false") +
-                    ", long_mode=" + std::string(long_flag ? "true" : "false"));
+  SPRING_LOG_DEBUG(
+      "Detected maximum read length=" + std::to_string(max_read_length) +
+      ", use_crlf=" + std::string(use_crlf ? "true" : "false") +
+      ", non_acgtn_symbols=" +
+      std::string(contains_non_acgtn_symbols ? "true" : "false") +
+      ", long_mode=" + std::string(long_flag ? "true" : "false"));
 
   if (contains_non_acgtn_symbols) {
     SPRING_LOG_INFO("Detected non-ACGTN symbols in read sequences; "
@@ -1089,21 +1088,24 @@ void compress(const std::string &temp_dir,
   cp.encoding.num_thr = num_thr;
   cp.encoding.compression_level = compression_level;
   cp.read_info.note = note;
-  
+
   std::string final_assay = assay_type;
   std::string final_confidence = "N/A";
   if (assay_type == "auto") {
-      SPRING_LOG_INFO("Running auto-detection for assay type on first 10,000 reads...");
-      AssayDetector detector;
-      final_assay = detector.detect(prepared_inputs.input_path_1, 
-                                    io_config.paired_end ? prepared_inputs.input_path_2 : "", 
-                                    r3_path, i1_path, i2_path, final_confidence);
-      SPRING_LOG_INFO("Auto-detected assay: " + final_assay + " (confidence: " + final_confidence + ")");
+    SPRING_LOG_INFO(
+        "Running auto-detection for assay type on first 10,000 reads...");
+    AssayDetector detector;
+    final_assay = detector.detect(
+        prepared_inputs.input_path_1,
+        io_config.paired_end ? prepared_inputs.input_path_2 : "", r3_path,
+        i1_path, i2_path, final_confidence);
+    SPRING_LOG_INFO("Auto-detected assay: " + final_assay +
+                    " (confidence: " + final_confidence + ")");
   }
 
   cp.read_info.assay = final_assay;
   cp.read_info.assay_confidence = final_confidence;
-  
+
   cp.encoding.fasta_mode = fasta_input;
   cp.read_info.input_filename_1 =
       std::filesystem::path(io_config.input_path_1).filename().string();
@@ -1112,12 +1114,11 @@ void compress(const std::string &temp_dir,
         std::filesystem::path(io_config.input_path_2).filename().string();
   }
 
-  SPRING_LOG_DEBUG(
-      "Archive metadata inputs: name1='" + cp.read_info.input_filename_1 +
-      "'" +
-      (cp.encoding.paired_end
-           ? (", name2='" + cp.read_info.input_filename_2 + "'")
-           : std::string()));
+  SPRING_LOG_DEBUG("Archive metadata inputs: name1='" +
+                   cp.read_info.input_filename_1 + "'" +
+                   (cp.encoding.paired_end
+                        ? (", name2='" + cp.read_info.input_filename_2 + "'")
+                        : std::string()));
 
   // Extract detailed gzip metadata for input 1
   extract_gzip_detailed_info(
@@ -1143,28 +1144,27 @@ void compress(const std::string &temp_dir,
     configure_quality_options(cp, quality_options);
 
   SPRING_LOG_INFO(std::string("Detected input format: ") +
-                   input_format_name(input_format));
+                  input_format_name(input_format));
   if (fasta_input) {
-    SPRING_LOG_INFO(
-        "FASTA input detected; quality values will not be stored.");
+    SPRING_LOG_INFO("FASTA input detected; quality values will not be stored.");
   }
 
   if (prepared_inputs.input_1_actual_was_gzipped ||
       prepared_inputs.input_2_actual_was_gzipped) {
     SPRING_LOG_INFO("Detected gzipped input; decompressing to temporary input "
-                     "files before compression.");
+                    "files before compression.");
   }
 
-  SPRING_LOG_DEBUG("Effective encoding options: paired_end=" +
-                    std::string(cp.encoding.paired_end ? "true" : "false") +
-                    ", preserve_order=" +
-                    std::string(cp.encoding.preserve_order ? "true" : "false") +
-                    ", preserve_id=" +
-                    std::string(cp.encoding.preserve_id ? "true" : "false") +
-                    ", preserve_quality=" +
-                    std::string(cp.encoding.preserve_quality ? "true" : "false") +
-                    ", fasta_mode=" +
-                    std::string(cp.encoding.fasta_mode ? "true" : "false"));
+  SPRING_LOG_DEBUG(
+      "Effective encoding options: paired_end=" +
+      std::string(cp.encoding.paired_end ? "true" : "false") +
+      ", preserve_order=" +
+      std::string(cp.encoding.preserve_order ? "true" : "false") +
+      ", preserve_id=" +
+      std::string(cp.encoding.preserve_id ? "true" : "false") +
+      ", preserve_quality=" +
+      std::string(cp.encoding.preserve_quality ? "true" : "false") +
+      ", fasta_mode=" + std::string(cp.encoding.fasta_mode ? "true" : "false"));
 
   run_timed_step("Preprocessing ...", "Preprocessing", [&] {
     progress.set_stage("Preprocessing", 0.0F, 0.25F);
@@ -1254,9 +1254,9 @@ void compress(const std::string &temp_dir,
 
 void decompress(const std::string &temp_dir,
                 const std::vector<std::string> &input_paths,
-                const std::vector<std::string> &output_paths,
-                const int num_thr, const int compression_level,
-                const log_level verbosity_level, const bool unzip_flag) {
+                const std::vector<std::string> &output_paths, const int num_thr,
+                const int compression_level, const log_level verbosity_level,
+                const bool unzip_flag) {
   Logger::set_level(verbosity_level);
   ProgressBar progress(verbosity_level == log_level::quiet);
   ProgressBar::SetGlobalInstance(&progress);
@@ -1264,7 +1264,7 @@ void decompress(const std::string &temp_dir,
 
   SPRING_LOG_INFO("Starting decompression...");
   SPRING_LOG_DEBUG("Decompression request: temp_dir=" + temp_dir +
-                    ", unzip=" + std::string(unzip_flag ? "true" : "false"));
+                   ", unzip=" + std::string(unzip_flag ? "true" : "false"));
   const auto decompression_start = clock_type::now();
   compression_params cp{};
 
@@ -1279,7 +1279,8 @@ void decompress(const std::string &temp_dir,
   const std::string manifest_path = temp_dir + "/" + kBundleManifestName;
   if (std::filesystem::exists(manifest_path)) {
     const bundle_manifest manifest = read_bundle_manifest(manifest_path);
-    SPRING_LOG_INFO("Detected grouped bundle archive (reads + optional read3 + optional index reads).");
+    SPRING_LOG_INFO("Detected grouped bundle archive (reads + optional read3 + "
+                    "optional index reads).");
 
     std::vector<std::string> resolved_outputs;
     if (output_paths.empty()) {
@@ -1328,26 +1329,26 @@ void decompress(const std::string &temp_dir,
       resolved_outputs = output_paths;
     }
 
-    const std::string read_archive_path = temp_dir + "/" + manifest.read_archive_name;
+    const std::string read_archive_path =
+        temp_dir + "/" + manifest.read_archive_name;
     const std::string read3_archive_path =
-      (manifest.has_r3 && manifest.read3_alias_source.empty())
-        ? (temp_dir + "/" + manifest.read3_archive_name)
-        : std::string();
+        (manifest.has_r3 && manifest.read3_alias_source.empty())
+            ? (temp_dir + "/" + manifest.read3_archive_name)
+            : std::string();
     const std::string index_archive_path =
-      manifest.has_index ? (temp_dir + "/" + manifest.index_archive_name)
-                 : std::string();
+        manifest.has_index ? (temp_dir + "/" + manifest.index_archive_name)
+                           : std::string();
 
     decompress(temp_dir + "/decompress_reads", {read_archive_path},
-               {resolved_outputs[0], resolved_outputs[1]},
-               num_thr, compression_level,
-               verbosity_level, unzip_flag);
+               {resolved_outputs[0], resolved_outputs[1]}, num_thr,
+               compression_level, verbosity_level, unzip_flag);
 
     size_t next_output_index = 2;
     if (manifest.has_r3) {
       if (!manifest.read3_alias_source.empty()) {
-        const std::string &alias_source =
-            (manifest.read3_alias_source == "R2") ? resolved_outputs[1]
-                                                   : resolved_outputs[0];
+        const std::string &alias_source = (manifest.read3_alias_source == "R2")
+                                              ? resolved_outputs[1]
+                                              : resolved_outputs[0];
         std::error_code copy_ec;
         std::filesystem::copy_file(
             alias_source, resolved_outputs[next_output_index],
@@ -1395,18 +1396,17 @@ void decompress(const std::string &temp_dir,
   }
 
   bool paired_end = cp.encoding.paired_end;
-  SPRING_LOG_DEBUG("Archive metadata: paired_end=" +
-                    std::string(cp.encoding.paired_end ? "true" : "false") +
-                    ", long_mode=" +
-                    std::string(cp.encoding.long_flag ? "true" : "false") +
-                    ", preserve_order=" +
-                    std::string(cp.encoding.preserve_order ? "true" : "false") +
-                    ", preserve_quality=" +
-                    std::string(cp.encoding.preserve_quality ? "true" : "false") +
-                    ", preserve_id=" +
-                    std::string(cp.encoding.preserve_id ? "true" : "false") +
-                    ", fasta_mode=" +
-                    std::string(cp.encoding.fasta_mode ? "true" : "false"));
+  SPRING_LOG_DEBUG(
+      "Archive metadata: paired_end=" +
+      std::string(cp.encoding.paired_end ? "true" : "false") +
+      ", long_mode=" + std::string(cp.encoding.long_flag ? "true" : "false") +
+      ", preserve_order=" +
+      std::string(cp.encoding.preserve_order ? "true" : "false") +
+      ", preserve_quality=" +
+      std::string(cp.encoding.preserve_quality ? "true" : "false") +
+      ", preserve_id=" +
+      std::string(cp.encoding.preserve_id ? "true" : "false") +
+      ", fasta_mode=" + std::string(cp.encoding.fasta_mode ? "true" : "false"));
   if (Logger::is_info_enabled()) {
     std::cout << "Original filenames detected in archive:\n";
     std::cout << "  Input 1: " << cp.read_info.input_filename_1 << "\n";
@@ -1469,9 +1469,8 @@ void decompress(const std::string &temp_dir,
     }
   }
 
-  SPRING_LOG_DEBUG("Resolved " +
-                    std::to_string(resolved_output_paths.size()) +
-                    " output path(s) after unzip handling.");
+  SPRING_LOG_DEBUG("Resolved " + std::to_string(resolved_output_paths.size()) +
+                   " output path(s) after unzip handling.");
 
   const decompression_io_config io_config =
       resolve_decompression_io(input_paths, resolved_output_paths, paired_end);
@@ -1504,8 +1503,7 @@ void decompress(const std::string &temp_dir,
         if (cp.read_info.quality_crc[i] != 0 &&
             qual_crc[i] != cp.read_info.quality_crc[i])
           mismatch = true;
-        if (cp.read_info.id_crc[i] != 0 &&
-            id_crc[i] != cp.read_info.id_crc[i])
+        if (cp.read_info.id_crc[i] != 0 && id_crc[i] != cp.read_info.id_crc[i])
           mismatch = true;
       }
 
@@ -1548,4 +1546,3 @@ std::string random_string(size_t length) {
 }
 
 } // namespace spring
-

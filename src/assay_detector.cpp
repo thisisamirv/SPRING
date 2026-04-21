@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <vector>
 #include <zlib.h>
@@ -63,8 +64,6 @@ std::string get_executable_dir() {
 
 } // namespace
 
-AssayDetector::AssayDetector() {}
-
 void AssayDetector::load_reference(const std::string &ref_path) {
   if (reference_loaded_)
     return;
@@ -78,14 +77,14 @@ void AssayDetector::load_reference(const std::string &ref_path) {
 
   std::string line;
   BlockID current_block = BlockID::NONE;
-  std::string current_seq = "";
+  std::string current_seq;
 
   auto process_seq = [&]() {
     if (current_seq.length() >= kKmerSize && current_block != BlockID::NONE) {
       for (size_t i = 0; i <= current_seq.length() - kKmerSize;
            i += 5) { // Subsample k-mers to save memory
         uint64_t code = encode_kmer(current_seq, i, kKmerSize);
-        if (code != static_cast<uint64_t>(-1)) {
+        if (code != std::numeric_limits<uint64_t>::max()) {
           uint64_t can = canonical_kmer(code, kKmerSize);
           kmer_index_[can] = current_block;
         }
@@ -117,14 +116,14 @@ void AssayDetector::load_reference(const std::string &ref_path) {
   reference_loaded_ = true;
 }
 
-bool AssayDetector::has_atac_adapter(const std::string &seq) const {
+bool AssayDetector::has_atac_adapter(const std::string &seq) {
   const std::string kmer1 = "CTGTCTCTTATA";
   const std::string kmer2 = "TATACACATCTC";
   return seq.find(kmer1) != std::string::npos ||
          seq.find(kmer2) != std::string::npos;
 }
 
-bool AssayDetector::has_poly_a_tail(const std::string &seq) const {
+bool AssayDetector::has_poly_a_tail(const std::string &seq) {
   if (seq.length() < 20)
     return false;
   int a_count = 0, t_count = 0;
@@ -184,7 +183,7 @@ void AssayDetector::process_reads(const std::string &r1_path,
           for (size_t i = 0; i <= seq.length() - kKmerSize;
                i += 10) { // Sketch sampling
             uint64_t code = encode_kmer(seq, i, kKmerSize);
-            if (code != static_cast<uint64_t>(-1)) {
+            if (code != std::numeric_limits<uint64_t>::max()) {
               uint64_t can = canonical_kmer(code, kKmerSize);
               stats.total_sampled_kmers++;
               auto it = kmer_index_.find(can);

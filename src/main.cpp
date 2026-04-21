@@ -80,8 +80,7 @@ public:
     remove_working_dir_ = !working_dir_exists;
 
     temp_dir_ = create_temp_dir(working_dir_path);
-    SPRING_LOG_INFO("Temporary directory: " +
-                             temp_dir_.generic_string());
+    SPRING_LOG_INFO("Temporary directory: " + temp_dir_.generic_string());
   }
 
   ~SpringContext() { cleanup(); }
@@ -89,7 +88,7 @@ public:
   void cleanup() noexcept {
     if (!temp_dir_.empty()) {
       SPRING_LOG_INFO("Deleting temporary directory: " +
-                               temp_dir_.generic_string());
+                      temp_dir_.generic_string());
       std::error_code ec;
       // Safety guard: only allow cleanup inside the configured working
       // directory. This prevents accidental recursive deletes if state gets
@@ -98,8 +97,8 @@ public:
           std::filesystem::weakly_canonical(working_dir_, ec);
       if (ec) {
         std::cerr << "Warning: Failed to canonicalize working directory '"
-                  << working_dir_.generic_string() << "' during cleanup: "
-                  << ec.message() << "\n";
+                  << working_dir_.generic_string()
+                  << "' during cleanup: " << ec.message() << "\n";
         ec.clear();
       }
 
@@ -107,18 +106,17 @@ public:
           std::filesystem::weakly_canonical(temp_dir_, ec);
       if (ec) {
         std::cerr << "Warning: Failed to canonicalize temporary directory '"
-                  << temp_dir_.generic_string() << "' during cleanup: "
-                  << ec.message() << "\n";
+                  << temp_dir_.generic_string()
+                  << "' during cleanup: " << ec.message() << "\n";
         ec.clear();
       }
 
       bool path_is_safe = true;
       if (!canonical_working_dir.empty() && !canonical_temp_dir.empty()) {
-        const std::string working_prefix = canonical_working_dir.generic_string();
+        const std::string working_prefix =
+            canonical_working_dir.generic_string();
         const std::string temp_path = canonical_temp_dir.generic_string();
-        path_is_safe =
-            temp_path.size() >= working_prefix.size() &&
-            temp_path.compare(0, working_prefix.size(), working_prefix) == 0;
+        path_is_safe = temp_path.starts_with(working_prefix);
       }
 
       if (!path_is_safe) {
@@ -134,7 +132,8 @@ public:
                     << "\n";
         } else {
           SPRING_LOG_DEBUG("Temporary cleanup removed " +
-                           std::to_string(removed_count) + " filesystem "
+                           std::to_string(removed_count) +
+                           " filesystem "
                            "entries.");
         }
       }
@@ -210,7 +209,7 @@ std::string build_options_description() {
          "1 GB per\n"
       << "                                  worker thread (0 disables)\n"
       << "  -v [ --verbose ] [arg (=info)]  logging level: info or debug "
-        "(default\n"
+         "(default\n"
       << "                                  without -v: progress bar)\n"
       << "---------------------------------------------------------------------"
          "-----------\n"
@@ -218,13 +217,13 @@ std::string build_options_description() {
       << "  -c [ --compress ]               compress\n"
       << "  -R1 [ --R1 ] arg                input read-1 file (required)\n"
       << "  -R2 [ --R2 ] arg                input read-2 file (optional; "
-        "enables paired-end mode)\n"
+         "enables paired-end mode)\n"
       << "  -R3 [ --R3 ] arg                input read-3 file (optional; "
-        "requires --R2)\n"
+         "requires --R2)\n"
       << "  -I1 [ --I1 ] arg                input index-read-1 file (optional; "
-        "requires --R2)\n"
+         "requires --R2)\n"
       << "  -I2 [ --I2 ] arg                input index-read-2 file (optional; "
-        "requires --I1)\n"
+         "requires --I1)\n"
       << "  -l [ --level ] arg (=6)         compression level (1-9) to use for "
          "output\n"
       << "                                  (.gz) formatting (passed to gzip "
@@ -250,7 +249,8 @@ std::string build_options_description() {
          "to high if >=\n"
       << "                                      thr and to low if < thr)\n"
       << "  -n [ --note ] arg               add a custom note to the archive\n"
-      << "  -y [ --assay ] arg (=auto)      specify assay type. Valid choices:\n"
+      << "  -y [ --assay ] arg (=auto)      specify assay type. Valid "
+         "choices:\n"
       << "                                  auto, rna, atac, methyl, dna,\n"
       << "                                  sc-rna, sc-atac, sc-methyl\n"
       << "  -a [ --audit ]                  enable post-operation integrity "
@@ -411,10 +411,13 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
       require_value(args, index, "--assay");
       options.assay = strip_quotes(args[index++]);
       const std::vector<std::string> valid_assays = {
-          "auto", "rna", "atac", "methyl", "dna", "sc-rna", "sc-atac", "sc-methyl"};
-      if (std::find(valid_assays.begin(), valid_assays.end(), options.assay) == valid_assays.end()) {
+          "auto", "rna",    "atac",    "methyl",
+          "dna",  "sc-rna", "sc-atac", "sc-methyl"};
+      if (std::ranges::find(valid_assays, options.assay) ==
+          valid_assays.end()) {
         throw std::runtime_error("Invalid --assay value: " + options.assay +
-                                 ". Valid choices: auto, rna, atac, methyl, dna, sc-rna, sc-atac, sc-methyl.");
+                                 ". Valid choices: auto, rna, atac, methyl, "
+                                 "dna, sc-rna, sc-atac, sc-methyl.");
       }
     } else if (arg == "-v" || arg == "--verbose") {
       options.log_level = spring::log_level::info;
@@ -487,8 +490,8 @@ void normalize_mode_specific_inputs(command_line_options &options) {
   }
 
   if (!options.r1_path.empty() || !options.r2_path.empty() ||
-      !options.r3_path.empty() ||
-      !options.i1_path.empty() || !options.i2_path.empty()) {
+      !options.r3_path.empty() || !options.i1_path.empty() ||
+      !options.i2_path.empty()) {
     throw std::runtime_error(
         "Decompression does not use --R1/--R2/--R3/--I1/--I2. Use --input "
         "<archive.sp>.");
@@ -522,15 +525,15 @@ void validate_io_parameters(const command_line_options &options) {
       const std::filesystem::path output_path(path);
       const std::filesystem::path parent_dir = output_path.parent_path();
       if (!parent_dir.empty() && !std::filesystem::exists(parent_dir)) {
-        throw std::runtime_error(
-            "Output directory does not exist: " + parent_dir.generic_string());
+        throw std::runtime_error("Output directory does not exist: " +
+                                 parent_dir.generic_string());
       }
     }
   }
 
   // Validate compression input count: supports 1 to 5 files depending
   // on whether index reads are provided.
-  if (options.compress_flag && 
+  if (options.compress_flag &&
       (options.input_paths.size() < 1 || options.input_paths.size() > 5)) {
     throw std::runtime_error(
         "Compression accepts between 1 and 5 input files, but " +
@@ -591,13 +594,12 @@ int print_unexpected_error_and_exit(const std::string &options_description,
 void run_requested_mode(const command_line_options &options,
                         const std::string &temp_dir) {
   if (options.compress_flag) {
-    spring::compress(temp_dir, options.input_paths, options.output_paths,
-                     options.num_threads, options.pairing_only_flag,
-                     options.no_quality_flag, options.no_ids_flag,
-                     options.quality_options, options.compression_level,
-                     options.note, options.log_level, options.audit_flag,
-                     options.r3_path, options.i1_path, options.i2_path,
-                     options.assay);
+    spring::compress(
+        temp_dir, options.input_paths, options.output_paths,
+        options.num_threads, options.pairing_only_flag, options.no_quality_flag,
+        options.no_ids_flag, options.quality_options, options.compression_level,
+        options.note, options.log_level, options.audit_flag, options.r3_path,
+        options.i1_path, options.i2_path, options.assay);
     return;
   }
 
@@ -610,16 +612,15 @@ void log_options_for_debugging(const command_line_options &options) {
   if (!spring::Logger::is_debug_enabled())
     return;
 
-  SPRING_LOG_DEBUG(
-      "CLI mode: " +
-      std::string(options.compress_flag ? "compress" : "decompress"));
+  SPRING_LOG_DEBUG("CLI mode: " + std::string(options.compress_flag
+                                                  ? "compress"
+                                                  : "decompress"));
   SPRING_LOG_DEBUG(
       "CLI settings: threads=" + std::to_string(options.num_threads) +
       ", memory_cap_gb=" + std::to_string(options.memory_cap_gb) +
-      ", level=" + std::to_string(options.compression_level) +
-      ", log_level=" +
+      ", level=" + std::to_string(options.compression_level) + ", log_level=" +
       std::string(options.log_level == spring::log_level::debug ? "debug"
-                                  : "info") +
+                                                                : "info") +
       ", audit=" + std::string(options.audit_flag ? "true" : "false") +
       ", unzip=" + std::string(options.unzip_flag ? "true" : "false"));
 
@@ -629,11 +630,10 @@ void log_options_for_debugging(const command_line_options &options) {
       ", quality=" + std::string(options.no_quality_flag ? "true" : "false") +
       ", ids=" + std::string(options.no_ids_flag ? "true" : "false"));
 
-  SPRING_LOG_DEBUG("CLI paths: inputs=" +
-                            std::to_string(options.input_paths.size()) +
-                            ", outputs=" +
-                            std::to_string(options.output_paths.size()) +
-                            ", tmp_dir=" + options.working_dir);
+  SPRING_LOG_DEBUG(
+      "CLI paths: inputs=" + std::to_string(options.input_paths.size()) +
+      ", outputs=" + std::to_string(options.output_paths.size()) +
+      ", tmp_dir=" + options.working_dir);
 }
 
 } // namespace
@@ -727,4 +727,3 @@ int main(int argc, char **argv) {
   g_context = nullptr;
   return 0;
 }
-

@@ -127,4 +127,3 @@ void ProgressBar::render(float global_progress) {
 }
 
 } // namespace spring
-

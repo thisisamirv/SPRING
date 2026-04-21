@@ -68,4 +68,3 @@ private:
   } while (false)
 
 #endif // SPRING_PROGRESS_H
-

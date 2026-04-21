@@ -7,11 +7,14 @@
 #include <archive_entry.h>
 #include <fcntl.h>
 #include <filesystem>
-#include <vector>
 #include <sys/stat.h>
 #include <system_error>
+#include <vector>
 
-#ifndef _WIN32
+#ifdef _WIN32
+#include <io.h>
+#include <share.h>
+#else
 #include <unistd.h>
 #endif
 
@@ -26,8 +29,7 @@
 namespace spring {
 
 void copy_stream_buffered(std::istream &input_stream,
-                          std::ostream &output_stream,
-                          size_t buffer_size) {
+                          std::ostream &output_stream, size_t buffer_size) {
   std::vector<char> buffer(buffer_size);
   while (input_stream.read(buffer.data(),
                            static_cast<std::streamsize>(buffer.size()))) {
@@ -126,7 +128,7 @@ void create_tar_archive(const std::string &archive_path,
   struct archive *a;
   struct archive_entry *entry;
   struct stat st;
-  constexpr size_t kArchiveBufferSize = 4 * 1024 * 1024;
+  constexpr size_t kArchiveBufferSize = 4ULL * 1024 * 1024;
   std::vector<char> buffer(kArchiveBufferSize);
   int len;
   int fd;
@@ -134,7 +136,7 @@ void create_tar_archive(const std::string &archive_path,
   uint64_t archived_total_bytes = 0;
 
   SPRING_LOG_DEBUG("create_tar_archive start: source_dir=" + source_dir +
-                    ", archive_path=" + archive_path);
+                   ", archive_path=" + archive_path);
 
   a = archive_write_new();
   archive_write_set_format_pax_restricted(a);
@@ -164,13 +166,20 @@ void create_tar_archive(const std::string &archive_path,
     archive_write_header(a, entry);
 
     int open_flags = O_RDONLY;
-  #if defined(_WIN32) && defined(O_BINARY) && (O_BINARY != 0)
+#if defined(_WIN32) && defined(O_BINARY) && (O_BINARY != 0)
     open_flags |= O_BINARY;
-  #endif
-  #if defined(O_CLOEXEC) && (O_CLOEXEC != 0)
+#endif
+#if defined(O_CLOEXEC) && (O_CLOEXEC != 0)
     open_flags |= O_CLOEXEC;
-  #endif
+#endif
+#ifdef _WIN32
+    if (_sopen_s(&fd, full_path.c_str(), open_flags, _SH_DENYNO, _S_IREAD) !=
+        0) {
+      fd = -1;
+    }
+#else
     fd = open(full_path.c_str(), open_flags);
+#endif
     if (fd >= 0) {
 #ifdef _WIN32
       len = _read(fd, buffer.data(), static_cast<unsigned int>(buffer.size()));
@@ -180,7 +189,8 @@ void create_tar_archive(const std::string &archive_path,
       while (len > 0) {
         archive_write_data(a, buffer.data(), len);
 #ifdef _WIN32
-        len = _read(fd, buffer.data(), static_cast<unsigned int>(buffer.size()));
+        len =
+            _read(fd, buffer.data(), static_cast<unsigned int>(buffer.size()));
 #else
         len = read(fd, buffer.data(), buffer.size());
 #endif
@@ -196,10 +206,10 @@ void create_tar_archive(const std::string &archive_path,
 
   archive_write_close(a);
   archive_write_free(a);
-  SPRING_LOG_DEBUG("create_tar_archive complete: files=" +
-                    std::to_string(archived_file_count) +
-                    ", total_input_bytes=" +
-                    std::to_string(archived_total_bytes));
+  SPRING_LOG_DEBUG(
+      "create_tar_archive complete: files=" +
+      std::to_string(archived_file_count) +
+      ", total_input_bytes=" + std::to_string(archived_total_bytes));
 }
 
 void extract_tar_archive(const std::string &archive_path,
@@ -213,7 +223,7 @@ void extract_tar_archive(const std::string &archive_path,
   uint64_t extracted_data_bytes = 0;
 
   SPRING_LOG_DEBUG("extract_tar_archive start: archive_path=" + archive_path +
-                    ", target_dir=" + target_dir);
+                   ", target_dir=" + target_dir);
 
   flags = ARCHIVE_EXTRACT_PERM;
   flags |= ARCHIVE_EXTRACT_SECURE_NODOTDOT;
@@ -282,10 +292,72 @@ void extract_tar_archive(const std::string &archive_path,
   archive_write_close(ext);
   archive_write_free(ext);
   SPRING_LOG_DEBUG("extract_tar_archive complete: entries=" +
-                    std::to_string(extracted_entry_count) +
-                    ", extracted_bytes=" +
-                    std::to_string(extracted_data_bytes));
+                   std::to_string(extracted_entry_count) +
+                   ", extracted_bytes=" + std::to_string(extracted_data_bytes));
+}
+std::unordered_map<std::string, std::string>
+read_files_from_tar_memory(const std::string &archive_path,
+                           const std::vector<std::string> &target_filenames) {
+  struct archive *a;
+  struct archive_entry *entry;
+  int r;
+  std::unordered_map<std::string, std::string> contents;
+
+  a = archive_read_new();
+  archive_read_support_filter_gzip(a);
+  archive_read_support_filter_xz(a);
+  archive_read_support_filter_zstd(a);
+  archive_read_support_filter_none(a);
+  archive_read_support_format_tar(a);
+  archive_read_support_format_empty(a);
+
+  r = archive_read_open_filename(a, archive_path.c_str(), 10240);
+  if (r != ARCHIVE_OK) {
+    archive_read_free(a);
+    return contents;
+  }
+
+  size_t found_count = 0;
+  for (;;) {
+    r = archive_read_next_header(a, &entry);
+    if (r == ARCHIVE_EOF)
+      break;
+    if (r < ARCHIVE_WARN)
+      break;
+
+    std::string current_name = archive_entry_pathname(entry);
+    bool is_target = false;
+    for (const auto &tf : target_filenames) {
+      if (current_name == tf) {
+        is_target = true;
+        break;
+      }
+    }
+
+    if (is_target) {
+      const void *buff;
+      size_t size;
+      la_int64_t offset;
+      std::string content;
+      while (true) {
+        r = archive_read_data_block(a, &buff, &size, &offset);
+        if (r == ARCHIVE_EOF)
+          break;
+        if (r < ARCHIVE_OK)
+          break;
+        content.append(static_cast<const char *>(buff), size);
+      }
+      contents[current_name] = content;
+      found_count++;
+      if (found_count == target_filenames.size()) {
+        break;
+      }
+    }
+  }
+
+  archive_read_close(a);
+  archive_read_free(a);
+  return contents;
 }
 
 } // namespace spring
-

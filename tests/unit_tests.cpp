@@ -7,7 +7,6 @@
 #include <fstream>
 #include <string>
 
-
 using namespace spring;
 
 namespace {

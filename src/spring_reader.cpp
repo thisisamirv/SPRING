@@ -71,8 +71,8 @@ public:
       }
       if (!paired_end_) {
         queue_.get().push(std::move(current_step_));
-        max_queue_depth_ =
-            std::max(max_queue_depth_, static_cast<uint64_t>(queue_.get().size()));
+        max_queue_depth_ = std::max(max_queue_depth_,
+                                    static_cast<uint64_t>(queue_.get().size()));
         steps_pushed_++;
         records_pushed_ += count;
         current_step_ = {}; // Reset
@@ -92,8 +92,8 @@ public:
         current_step_.second.push_back(std::move(rec));
       }
       queue_.get().push(std::move(current_step_));
-      max_queue_depth_ =
-          std::max(max_queue_depth_, static_cast<uint64_t>(queue_.get().size()));
+      max_queue_depth_ = std::max(max_queue_depth_,
+                                  static_cast<uint64_t>(queue_.get().size()));
       steps_pushed_++;
       records_pushed_ += count;
       current_step_ = {}; // Reset
@@ -102,24 +102,24 @@ public:
     }
 
     if ((steps_pushed_ > 0) && (steps_pushed_ % 128 == 0)) {
-      SPRING_LOG_DEBUG("block_id=spring-reader:sink, SpringReader sink progress: pushed_steps=" +
-                        std::to_string(steps_pushed_) +
-                        ", pushed_records=" + std::to_string(records_pushed_) +
-                        ", backpressure_events=" +
-                        std::to_string(wait_events_) +
-                        ", max_queue_depth=" + std::to_string(max_queue_depth_));
+      SPRING_LOG_DEBUG("block_id=spring-reader:sink, SpringReader sink "
+                       "progress: pushed_steps=" +
+                       std::to_string(steps_pushed_) +
+                       ", pushed_records=" + std::to_string(records_pushed_) +
+                       ", backpressure_events=" + std::to_string(wait_events_) +
+                       ", max_queue_depth=" + std::to_string(max_queue_depth_));
     }
   }
 
   void log_summary() const {
     const uint64_t wait_ms = wait_ns_total_ / 1000000ULL;
-    SPRING_LOG_DEBUG("block_id=spring-reader:sink, SpringReader sink summary: pushed_steps=" +
-                      std::to_string(steps_pushed_) +
-                      ", pushed_records=" + std::to_string(records_pushed_) +
-                      ", backpressure_events=" +
-                      std::to_string(wait_events_) +
-                      ", backpressure_wait_ms=" + std::to_string(wait_ms) +
-                      ", max_queue_depth=" + std::to_string(max_queue_depth_));
+    SPRING_LOG_DEBUG("block_id=spring-reader:sink, SpringReader sink summary: "
+                     "pushed_steps=" +
+                     std::to_string(steps_pushed_) +
+                     ", pushed_records=" + std::to_string(records_pushed_) +
+                     ", backpressure_events=" + std::to_string(wait_events_) +
+                     ", backpressure_wait_ms=" + std::to_string(wait_ms) +
+                     ", max_queue_depth=" + std::to_string(max_queue_depth_));
   }
 
 private:
@@ -177,10 +177,10 @@ public:
       if (exists) {
         actual_size = std::filesystem::file_size(cp_path, file_ec);
       }
-        SPRING_LOG_DEBUG(
-          "block_id=spring-reader:metadata, SpringReader metadata open failure: path=" + cp_path +
-          ", expected_bytes=1, actual_bytes=" + std::to_string(actual_size) +
-          ", index=0");
+      SPRING_LOG_DEBUG("block_id=spring-reader:metadata, SpringReader metadata "
+                       "open failure: path=" +
+                       cp_path + ", expected_bytes=1, actual_bytes=" +
+                       std::to_string(actual_size) + ", index=0");
       throw std::runtime_error("Failed to read archive metadata.");
     }
     read_compression_params(cp_in, params_);
@@ -189,13 +189,13 @@ public:
     if (user_num_thr_ > 0)
       params_.encoding.num_thr = user_num_thr_;
 
-    SPRING_LOG_DEBUG("block_id=spring-reader:init, SpringReader init: archive=" + archive_path_ +
-                      ", temp_dir=" + temp_dir_ +
-                      ", paired_end=" +
-                      std::string(params_.encoding.paired_end ? "true" : "false") +
-                      ", long_mode=" +
-                      std::string(params_.encoding.long_flag ? "true" : "false") +
-                      ", threads=" + std::to_string(params_.encoding.num_thr));
+    SPRING_LOG_DEBUG(
+        "block_id=spring-reader:init, SpringReader init: archive=" +
+        archive_path_ + ", temp_dir=" + temp_dir_ + ", paired_end=" +
+        std::string(params_.encoding.paired_end ? "true" : "false") +
+        ", long_mode=" +
+        std::string(params_.encoding.long_flag ? "true" : "false") +
+        ", threads=" + std::to_string(params_.encoding.num_thr));
 
     // Start worker thread
     worker_thread_ = std::thread([this]() {
@@ -209,11 +209,13 @@ public:
           decompress_short(temp_dir_, sink, params_);
         }
         sink.log_summary();
-        const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                    std::chrono::steady_clock::now() - worker_start)
-                                    .count();
-        SPRING_LOG_DEBUG("block_id=spring-reader:worker, SpringReader worker finished: elapsed_ms=" +
-                          std::to_string(elapsed_ms));
+        const auto elapsed_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - worker_start)
+                .count();
+        SPRING_LOG_DEBUG("block_id=spring-reader:worker, SpringReader worker "
+                         "finished: elapsed_ms=" +
+                         std::to_string(elapsed_ms));
 
         {
           std::scoped_lock<std::mutex> lock(mutex_);
@@ -222,12 +224,12 @@ public:
         cv_.notify_all();
       } catch (...) {
         std::scoped_lock<std::mutex> lock(mutex_);
-        SPRING_LOG_DEBUG("block_id=spring-reader:worker, SpringReader worker error branch: archive=" +
-                          archive_path_ + ", temp_dir=" + temp_dir_ +
-                          ", queued_batches=" +
-                          std::to_string(queue_.size()) +
-                          ", popped_batches=" +
-                          std::to_string(queue_batches_popped_));
+        SPRING_LOG_DEBUG(
+            "block_id=spring-reader:worker, SpringReader worker error branch: "
+            "archive=" +
+            archive_path_ + ", temp_dir=" + temp_dir_ +
+            ", queued_batches=" + std::to_string(queue_.size()) +
+            ", popped_batches=" + std::to_string(queue_batches_popped_));
         worker_exception_ = std::current_exception();
         worker_done_ = true;
         cv_.notify_all();
@@ -267,19 +269,19 @@ public:
     if (queue_was_empty) {
       consumer_wait_events_++;
       consumer_wait_ns_total_ += static_cast<uint64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(
-          std::chrono::steady_clock::now() - wait_start)
-          .count());
+          std::chrono::duration_cast<std::chrono::nanoseconds>(
+              std::chrono::steady_clock::now() - wait_start)
+              .count());
     }
 
     if (worker_exception_) {
-      SPRING_LOG_DEBUG("block_id=spring-reader:consumer, SpringReader consumer rethrow: archive=" +
-                        archive_path_ + ", popped_batches=" +
-                        std::to_string(queue_batches_popped_) +
-                        ", popped_records=" +
-                        std::to_string(queue_records_popped_) +
-                        ", queued_batches=" +
-                        std::to_string(queue_.size()));
+      SPRING_LOG_DEBUG(
+          "block_id=spring-reader:consumer, SpringReader consumer rethrow: "
+          "archive=" +
+          archive_path_ +
+          ", popped_batches=" + std::to_string(queue_batches_popped_) +
+          ", popped_records=" + std::to_string(queue_records_popped_) +
+          ", queued_batches=" + std::to_string(queue_.size()));
       std::rethrow_exception(worker_exception_);
     }
 
@@ -294,14 +296,13 @@ public:
     cv_.notify_all(); // Notify worker that space is available
 
     if ((queue_batches_popped_ > 0) && (queue_batches_popped_ % 128 == 0)) {
-      SPRING_LOG_DEBUG("block_id=spring-reader:consumer, SpringReader consumer progress: popped_batches=" +
-                        std::to_string(queue_batches_popped_) +
-                        ", popped_records=" +
-                        std::to_string(queue_records_popped_) +
-                        ", wait_events=" +
-                        std::to_string(consumer_wait_events_) +
-                        ", wait_ms=" +
-                        std::to_string(consumer_wait_ns_total_ / 1000000ULL));
+      SPRING_LOG_DEBUG(
+          "block_id=spring-reader:consumer, SpringReader consumer progress: "
+          "popped_batches=" +
+          std::to_string(queue_batches_popped_) +
+          ", popped_records=" + std::to_string(queue_records_popped_) +
+          ", wait_events=" + std::to_string(consumer_wait_events_) +
+          ", wait_ms=" + std::to_string(consumer_wait_ns_total_ / 1000000ULL));
     }
 
     cache_pos_ = 0;
@@ -350,7 +351,8 @@ const compression_params &SpringReader::params() const {
 
 bool SpringReader::next(ReadRecord &record) {
   if (impl_->params().encoding.paired_end) {
-    SPRING_LOG_DEBUG("block_id=spring-reader:api, SpringReader API mode mismatch: next(record) called for paired-end archive");
+    SPRING_LOG_DEBUG("block_id=spring-reader:api, SpringReader API mode "
+                     "mismatch: next(record) called for paired-end archive");
     throw std::runtime_error("Archive is paired-end, use next(mate1, mate2)");
   }
   return impl_->next(record, nullptr);
@@ -358,7 +360,9 @@ bool SpringReader::next(ReadRecord &record) {
 
 bool SpringReader::next(ReadRecord &mate1, ReadRecord &mate2) {
   if (!impl_->params().encoding.paired_end) {
-    SPRING_LOG_DEBUG("block_id=spring-reader:api, SpringReader API mode mismatch: next(mate1,mate2) called for single-end archive");
+    SPRING_LOG_DEBUG(
+        "block_id=spring-reader:api, SpringReader API mode mismatch: "
+        "next(mate1,mate2) called for single-end archive");
     throw std::runtime_error("Archive is single-end, use next(record)");
   }
   return impl_->next(mate1, &mate2);
@@ -381,4 +385,3 @@ void SpringReader::get_digests(uint32_t seq_crc[2], uint32_t qual_crc[2],
 }
 
 } // namespace spring
-

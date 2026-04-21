@@ -50,15 +50,15 @@ public:
   void findpos(int64_t *dictidx, const uint64_t &startposidx);
   void remove(const int64_t *dictidx, const uint64_t &startposidx,
               const int64_t read_id_to_remove);
-  
+
   // Freeze the dictionary to enable lock-free reads. After freeze(), the
   // dictionary becomes immutable and read operations no longer require locking.
   // This is safe because dictionary construction and modifications happen
   // strictly before freeze() is called.
   void freeze() { frozen_ = true; }
-  
+
   bool is_frozen() const { return frozen_; }
-  
+
   bbhashdict()
       : bphf(nullptr), start(0), end(0), numkeys(0), dict_numreads(0),
         startpos(nullptr), read_id(nullptr), frozen_(false) {}
@@ -102,15 +102,17 @@ void compute_dictionary_keys(std::bitset<bitset_size> *read_bits,
   const int local_start_base = start_base;
   std::bitset<bitset_size> *local_read_bits = read_bits;
   uint64_t *local_dictionary_keys = dictionary_keys;
-#pragma omp parallel for default(none) shared(local_read_bits, local_dictionary_keys) \
-    firstprivate(local_index_mask, local_read_count, local_bits_per_base, local_start_base)
+#pragma omp parallel for default(none)                                         \
+    shared(local_read_bits, local_dictionary_keys)                             \
+    firstprivate(local_index_mask, local_read_count, local_bits_per_base,      \
+                     local_start_base)
   for (int64_t read_index = 0;
-       read_index < static_cast<int64_t>(local_read_count);
-       read_index++) {
+       read_index < static_cast<int64_t>(local_read_count); read_index++) {
     std::bitset<bitset_size> masked_read_bits =
         local_read_bits[read_index] & local_index_mask;
     local_dictionary_keys[read_index] =
-        (masked_read_bits >> (local_bits_per_base * local_start_base)).to_ullong();
+        (masked_read_bits >> (local_bits_per_base * local_start_base))
+            .to_ullong();
   }
 }
 
@@ -135,7 +137,7 @@ inline void write_key_chunks(const uint64_t *dictionary_keys,
   const uint32_t local_key_count = key_count;
   const std::string local_base_dir = base_dir;
   const uint64_t *local_dictionary_keys = dictionary_keys;
-#pragma omp parallel default(none) shared(local_dictionary_keys) \
+#pragma omp parallel default(none) shared(local_dictionary_keys)               \
     firstprivate(local_key_count, local_base_dir)
   {
     const int thread_id = omp_get_thread_num();
@@ -167,12 +169,14 @@ inline uint32_t sort_and_deduplicate_keys(uint64_t *dictionary_keys,
     return key_count;
   }
 
-  const int chunk_count = std::max(1, std::min<int>(omp_get_max_threads(), key_count));
+  const int chunk_count =
+      std::max(1, std::min<int>(omp_get_max_threads(), key_count));
   if (chunk_count == 1) {
     std::sort(dictionary_keys, dictionary_keys + key_count);
   } else {
     std::vector<uint64_t> scratch(key_count);
-    std::vector<uint64_t> chunk_boundaries(static_cast<size_t>(chunk_count) + 1);
+    std::vector<uint64_t> chunk_boundaries(static_cast<size_t>(chunk_count) +
+                                           1);
     for (int chunk_index = 0; chunk_index < chunk_count; ++chunk_index) {
       chunk_boundaries[static_cast<size_t>(chunk_index)] =
           split_thread_range(key_count, chunk_index, chunk_count).begin;
@@ -182,7 +186,8 @@ inline uint32_t sort_and_deduplicate_keys(uint64_t *dictionary_keys,
 #pragma omp parallel for schedule(static)
     for (int chunk_index = 0; chunk_index < chunk_count; ++chunk_index) {
       const uint64_t begin = chunk_boundaries[static_cast<size_t>(chunk_index)];
-      const uint64_t end = chunk_boundaries[static_cast<size_t>(chunk_index + 1)];
+      const uint64_t end =
+          chunk_boundaries[static_cast<size_t>(chunk_index + 1)];
       if (begin < end) {
         std::sort(dictionary_keys + begin, dictionary_keys + end);
       }
@@ -191,15 +196,21 @@ inline uint32_t sort_and_deduplicate_keys(uint64_t *dictionary_keys,
     uint64_t *source_keys = dictionary_keys;
     uint64_t *destination_keys = scratch.data();
     for (int merge_width = 1; merge_width < chunk_count; merge_width *= 2) {
-      const int merge_count = (chunk_count + 2 * merge_width - 1) / (2 * merge_width);
+      const int merge_count =
+          (chunk_count + 2 * merge_width - 1) / (2 * merge_width);
 #pragma omp parallel for schedule(static)
       for (int merge_index = 0; merge_index < merge_count; ++merge_index) {
         const int left_chunk = merge_index * 2 * merge_width;
-        const int middle_chunk = std::min(left_chunk + merge_width, chunk_count);
-        const int right_chunk = std::min(left_chunk + 2 * merge_width, chunk_count);
-        const uint64_t left_begin = chunk_boundaries[static_cast<size_t>(left_chunk)];
-        const uint64_t middle_end = chunk_boundaries[static_cast<size_t>(middle_chunk)];
-        const uint64_t right_end = chunk_boundaries[static_cast<size_t>(right_chunk)];
+        const int middle_chunk =
+            std::min(left_chunk + merge_width, chunk_count);
+        const int right_chunk =
+            std::min(left_chunk + 2 * merge_width, chunk_count);
+        const uint64_t left_begin =
+            chunk_boundaries[static_cast<size_t>(left_chunk)];
+        const uint64_t middle_end =
+            chunk_boundaries[static_cast<size_t>(middle_chunk)];
+        const uint64_t right_end =
+            chunk_boundaries[static_cast<size_t>(right_chunk)];
         if (middle_chunk == right_chunk) {
           std::copy(source_keys + left_begin, source_keys + right_end,
                     destination_keys + left_begin);
@@ -225,11 +236,10 @@ inline uint32_t sort_and_deduplicate_keys(uint64_t *dictionary_keys,
   return unique_key_index + 1;
 }
 
-inline std::vector<uint64_t>
-compute_hash_values(const bbhashdict &dictionary,
-                    const uint64_t *keys,
-                    const uint32_t key_count,
-                    const int dict_index) {
+inline std::vector<uint64_t> compute_hash_values(const bbhashdict &dictionary,
+                                                 const uint64_t *keys,
+                                                 const uint32_t key_count,
+                                                 const int dict_index) {
   std::vector<uint64_t> hash_values(static_cast<size_t>(key_count), 0);
   if (key_count == 0)
     return hash_values;
@@ -237,8 +247,8 @@ compute_hash_values(const bbhashdict &dictionary,
   const bbhashdict *local_dictionary = &dictionary;
   const uint64_t *local_keys = keys;
   uint64_t *local_hash_values = hash_values.data();
-#pragma omp parallel for schedule(static) default(none)                         \
-    shared(local_dictionary, local_keys, local_hash_values)                     \
+#pragma omp parallel for schedule(static) default(none)                        \
+    shared(local_dictionary, local_keys, local_hash_values)                    \
     firstprivate(key_count)
   for (int64_t key_index = 0; key_index < static_cast<int64_t>(key_count);
        key_index++) {
@@ -248,13 +258,12 @@ compute_hash_values(const bbhashdict &dictionary,
 
   for (uint32_t key_index = 0; key_index < key_count; key_index++) {
     if (hash_values[key_index] >= dictionary.numkeys) {
-      SPRING_LOG_DEBUG("block_id=dict-hash-compute:" +
-                       std::to_string(dict_index) +
-                       ", hash out-of-range: expected_bytes=" +
-                       std::to_string(dictionary.numkeys) +
-                       ", actual_bytes=" +
-                       std::to_string(hash_values[key_index]) +
-                       ", index=" + std::to_string(key_index));
+      SPRING_LOG_DEBUG(
+          "block_id=dict-hash-compute:" + std::to_string(dict_index) +
+          ", hash out-of-range: expected_bytes=" +
+          std::to_string(dictionary.numkeys) +
+          ", actual_bytes=" + std::to_string(hash_values[key_index]) +
+          ", index=" + std::to_string(key_index));
     }
   }
   return hash_values;
@@ -265,19 +274,19 @@ inline void count_bucket_sizes(bbhashdict &dictionary,
                                const int dict_index) {
   bbhashdict *local_dictionary = &dictionary;
   const std::vector<uint64_t> *local_hash_values = &hash_values;
-#pragma omp parallel for schedule(static) default(none)                         \
+#pragma omp parallel for schedule(static) default(none)                        \
     shared(local_dictionary, local_hash_values) firstprivate(dict_index)
   for (int64_t hash_index = 0;
        hash_index < static_cast<int64_t>(local_hash_values->size());
        hash_index++) {
     const uint64_t current_hash = (*local_hash_values)[hash_index];
     if (current_hash >= local_dictionary->numkeys) {
-      SPRING_LOG_DEBUG("block_id=dict-bucket-count:" +
-                       std::to_string(dict_index) +
-                       ", hash out-of-range: expected_bytes=" +
-                       std::to_string(local_dictionary->numkeys) +
-                       ", actual_bytes=" + std::to_string(current_hash) +
-                       ", index=" + std::to_string(hash_index));
+      SPRING_LOG_DEBUG(
+          "block_id=dict-bucket-count:" + std::to_string(dict_index) +
+          ", hash out-of-range: expected_bytes=" +
+          std::to_string(local_dictionary->numkeys) +
+          ", actual_bytes=" + std::to_string(current_hash) +
+          ", index=" + std::to_string(hash_index));
       continue;
     }
 #pragma omp atomic update
@@ -308,8 +317,8 @@ inline void finalize_bucket_offsets(bbhashdict &dictionary) {
   std::vector<uint32_t> block_offsets(static_cast<size_t>(thread_count), 0);
 
 #pragma omp parallel num_threads(thread_count) default(none)                   \
-  shared(local_dictionary, block_totals, block_offsets, scan_length)         \
-  firstprivate(thread_count)
+    shared(local_dictionary, block_totals, block_offsets, scan_length)         \
+    firstprivate(thread_count)
   {
     const int thread_id = omp_get_thread_num();
     const uint32_t begin =
@@ -367,27 +376,27 @@ inline void populate_bucket_read_ids(bbhashdict &dictionary,
       eligible_read_ids.push_back(read_index);
   }
 
-  const uint32_t usable_count = std::min<uint32_t>(
-      static_cast<uint32_t>(hash_values.size()),
-      static_cast<uint32_t>(eligible_read_ids.size()));
+  const uint32_t usable_count =
+      std::min<uint32_t>(static_cast<uint32_t>(hash_values.size()),
+                         static_cast<uint32_t>(eligible_read_ids.size()));
 
   bbhashdict *local_dictionary = &dictionary;
   const std::vector<uint64_t> *local_hash_values = &hash_values;
   const std::vector<uint32_t> *local_eligible_read_ids = &eligible_read_ids;
 
-#pragma omp parallel for schedule(static) default(none)                         \
-    shared(local_dictionary, local_hash_values, local_eligible_read_ids)        \
+#pragma omp parallel for schedule(static) default(none)                        \
+    shared(local_dictionary, local_hash_values, local_eligible_read_ids)       \
     firstprivate(usable_count, dict_index)
   for (int64_t hash_index = 0; hash_index < static_cast<int64_t>(usable_count);
        hash_index++) {
     const uint64_t current_hash = (*local_hash_values)[hash_index];
     if (current_hash >= local_dictionary->numkeys) {
-      SPRING_LOG_DEBUG("block_id=dict-bucket-populate:" +
-                       std::to_string(dict_index) +
-                       ", hash out-of-range: expected_bytes=" +
-                       std::to_string(local_dictionary->numkeys) +
-                       ", actual_bytes=" + std::to_string(current_hash) +
-                       ", index=" + std::to_string(hash_index));
+      SPRING_LOG_DEBUG(
+          "block_id=dict-bucket-populate:" + std::to_string(dict_index) +
+          ", hash out-of-range: expected_bytes=" +
+          std::to_string(local_dictionary->numkeys) +
+          ", actual_bytes=" + std::to_string(current_hash) +
+          ", index=" + std::to_string(hash_index));
       continue;
     }
 
@@ -400,14 +409,14 @@ inline void populate_bucket_read_ids(bbhashdict &dictionary,
   }
 
   if (usable_count < static_cast<uint32_t>(hash_values.size())) {
-    SPRING_LOG_DEBUG("block_id=dict-bucket-populate:" +
-                     std::to_string(dict_index) +
-                     ", exhausted source reads: expected_bytes=" +
-                     std::to_string(hash_values.size()) + ", actual_bytes=" +
-                     std::to_string(usable_count));
+    SPRING_LOG_DEBUG(
+        "block_id=dict-bucket-populate:" + std::to_string(dict_index) +
+        ", exhausted source reads: expected_bytes=" +
+        std::to_string(hash_values.size()) +
+        ", actual_bytes=" + std::to_string(usable_count));
   }
 
-#pragma omp parallel for schedule(static) default(none)                         \
+#pragma omp parallel for schedule(static) default(none)                        \
     shared(local_dictionary, bucket_starts)
   for (int64_t bucket_index = 0;
        bucket_index < static_cast<int64_t>(local_dictionary->numkeys);
@@ -474,15 +483,15 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
     // build, while dictionary_keys_data is sorted/deduplicated for MPHF input.
     std::vector<uint64_t> compacted_keys;
     compacted_keys.assign(dictionary_keys_data,
-                dictionary_keys_data + current_dict.dict_numreads);
+                          dictionary_keys_data + current_dict.dict_numreads);
 
     current_dict.numkeys = detail::sort_and_deduplicate_keys(
         dictionary_keys_data, current_dict.dict_numreads);
 
     SPRING_LOG_INFO(std::string("Dictionary ") +
-                     std::to_string(dict_index + 1) + " of " +
-                     std::to_string(numdict) + ": Building MPHF for " +
-                     std::to_string(current_dict.numkeys) + " keys...");
+                    std::to_string(dict_index + 1) + " of " +
+                    std::to_string(numdict) + ": Building MPHF for " +
+                    std::to_string(current_dict.numkeys) + " keys...");
     pthash::build_configuration config;
     // pthash's internal builder is faster here when run serially
     config.num_threads = 1;
@@ -494,12 +503,12 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
                                                 current_dict.numkeys, config);
     current_dict.numkeys = current_dict.bphf->table_size();
     SPRING_LOG_INFO(std::string("Done. (T=") +
-                     std::to_string(current_dict.numkeys) + ")");
+                    std::to_string(current_dict.numkeys) + ")");
 
     SPRING_LOG_INFO("  Computing hash values in memory...");
-    const std::vector<uint64_t> hash_values = detail::compute_hash_values(
-        current_dict, compacted_keys.data(), current_dict.dict_numreads,
-        dict_index);
+    const std::vector<uint64_t> hash_values =
+        detail::compute_hash_values(current_dict, compacted_keys.data(),
+                                    current_dict.dict_numreads, dict_index);
 
     current_dict.startpos =
         std::make_unique<uint32_t[]>(current_dict.numkeys + 1);
@@ -541,4 +550,3 @@ void chartobitset(char *s, const int readlen, std::bitset<bitset_size> &b,
 } // namespace spring
 
 #endif // SPRING_BITSET_DICTIONARY_H_
-

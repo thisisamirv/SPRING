@@ -7,7 +7,7 @@
 #include "fs_utils.h"
 #include "integrity_utils.h"
 #include "io_utils.h"
-#include "libbsc/bsc.h"
+#include "params.h"
 #include "parse_utils.h"
 #include "progress.h"
 #include <cerrno>
@@ -24,7 +24,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #endif
-#include "raii.h"
 #include <algorithm>
 #include <array>
 #include <iterator>
@@ -172,22 +171,19 @@ private:
   [[nodiscard]] size_t find_chunk_index(const uint64_t offset) const {
     auto it = std::ranges::upper_bound(start_offsets_, offset);
     if (it == start_offsets_.begin()) {
-      throw std::runtime_error("Reference offset out of range (offset=" +
-                               std::to_string(offset) +
-                               ", total=" + std::to_string(total_size_) +
-                               ")");
+      throw std::runtime_error(
+          "Reference offset out of range (offset=" + std::to_string(offset) +
+          ", total=" + std::to_string(total_size_) + ")");
     }
     size_t chunk_index =
         static_cast<size_t>(std::prev(it) - start_offsets_.begin());
     const auto &chunk = chunks_[chunk_index];
     if (offset >= chunk.start_offset + chunk.size) {
-      throw std::runtime_error("Reference offset out of range (offset=" +
-                               std::to_string(offset) +
-                               ", chunk_start=" +
-                               std::to_string(chunk.start_offset) +
-                               ", chunk_size=" + std::to_string(chunk.size) +
-                               ", total=" + std::to_string(total_size_) +
-                               ")");
+      throw std::runtime_error(
+          "Reference offset out of range (offset=" + std::to_string(offset) +
+          ", chunk_start=" + std::to_string(chunk.start_offset) +
+          ", chunk_size=" + std::to_string(chunk.size) +
+          ", total=" + std::to_string(total_size_) + ")");
     }
     return chunk_index;
   }
@@ -514,16 +510,16 @@ void set_dec_noise_array(std::array<std::array<char, 128>, 128> &dec_noise);
 
 void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
                       compression_params &cp) {
-  SPRING_LOG_DEBUG("decompress_short start: temp_dir=" + temp_dir +
-                    ", num_reads=" + std::to_string(cp.read_info.num_reads) +
-                    ", paired_end=" +
-                    std::string(cp.encoding.paired_end ? "true" : "false") +
-                    ", preserve_order=" +
-                    std::string(cp.encoding.preserve_order ? "true" : "false") +
-                    ", preserve_id=" +
-                    std::string(cp.encoding.preserve_id ? "true" : "false") +
-                    ", preserve_quality=" +
-                    std::string(cp.encoding.preserve_quality ? "true" : "false"));
+  SPRING_LOG_DEBUG(
+      "decompress_short start: temp_dir=" + temp_dir +
+      ", num_reads=" + std::to_string(cp.read_info.num_reads) +
+      ", paired_end=" + std::string(cp.encoding.paired_end ? "true" : "false") +
+      ", preserve_order=" +
+      std::string(cp.encoding.preserve_order ? "true" : "false") +
+      ", preserve_id=" +
+      std::string(cp.encoding.preserve_id ? "true" : "false") +
+      ", preserve_quality=" +
+      std::string(cp.encoding.preserve_quality ? "true" : "false"));
   std::string base_dir = temp_dir;
 
   std::string file_seq = base_dir + "/read_seq.bin";
@@ -561,9 +557,9 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
     }
   }
   SPRING_LOG_DEBUG("decompress_short ID block mode: stream1_monolithic=" +
-                    std::string(monolithic_id[0] ? "true" : "false") +
-                    ", stream2_monolithic=" +
-                    std::string(monolithic_id[1] ? "true" : "false"));
+                   std::string(monolithic_id[0] ? "true" : "false") +
+                   ", stream2_monolithic=" +
+                   std::string(monolithic_id[1] ? "true" : "false"));
 
   uint32_t num_reads = cp.read_info.num_reads;
   uint8_t paired_id_code = cp.read_info.paired_id_code;
@@ -610,11 +606,9 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
     if (num_reads_cur_step == 0)
       break;
     SPRING_LOG_DEBUG("decompress_short step: num_reads_done=" +
-                      std::to_string(num_reads_done) +
-                      ", reads_this_step=" +
-                      std::to_string(num_reads_cur_step) +
-                      ", num_blocks_done=" +
-                      std::to_string(num_blocks_done));
+                     std::to_string(num_reads_done) +
+                     ", reads_this_step=" + std::to_string(num_reads_cur_step) +
+                     ", num_blocks_done=" + std::to_string(num_blocks_done));
     for (int stream_index = 0; stream_index < 2; stream_index++) {
       if (stream_index == 1 && !paired_end)
         continue;
@@ -862,8 +856,7 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
           }
           if (!preserve_id) {
             for (uint32_t i = buffer_offset;
-                 i < buffer_offset + thread_read_count; i++)
-            {
+                 i < buffer_offset + thread_read_count; i++) {
               std::string read_id;
               read_id.reserve(32);
               read_id.push_back('@');
@@ -880,9 +873,9 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
             } else {
               input_path = input_id_paths[stream_index] + "." +
                            std::to_string(num_blocks_done + thread_id);
-              decompress_id_block(
-                  input_path.c_str(), id_buffer.data() + buffer_offset,
-                  thread_read_count, false);
+              decompress_id_block(input_path.c_str(),
+                                  id_buffer.data() + buffer_offset,
+                                  thread_read_count, false);
               safe_remove_file(input_path);
             }
           }
@@ -903,19 +896,19 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
     num_blocks_done += cp.encoding.num_thr;
   }
   SPRING_LOG_DEBUG("decompress_short complete: total_reads_done=" +
-                    std::to_string(num_reads_done));
+                   std::to_string(num_reads_done));
 }
 
 void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
                      compression_params &cp) {
-  SPRING_LOG_DEBUG("decompress_long start: temp_dir=" + temp_dir +
-                    ", num_reads=" + std::to_string(cp.read_info.num_reads) +
-                    ", paired_end=" +
-                    std::string(cp.encoding.paired_end ? "true" : "false") +
-                    ", preserve_id=" +
-                    std::string(cp.encoding.preserve_id ? "true" : "false") +
-                    ", preserve_quality=" +
-                    std::string(cp.encoding.preserve_quality ? "true" : "false"));
+  SPRING_LOG_DEBUG(
+      "decompress_long start: temp_dir=" + temp_dir +
+      ", num_reads=" + std::to_string(cp.read_info.num_reads) +
+      ", paired_end=" + std::string(cp.encoding.paired_end ? "true" : "false") +
+      ", preserve_id=" +
+      std::string(cp.encoding.preserve_id ? "true" : "false") +
+      ", preserve_quality=" +
+      std::string(cp.encoding.preserve_quality ? "true" : "false"));
   std::string input_read_paths[2];
   std::string input_quality_paths[2];
   std::string input_id_paths[2];
@@ -961,11 +954,9 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
     if (num_reads_cur_step == 0)
       break;
     SPRING_LOG_DEBUG("decompress_long step: num_reads_done=" +
-                      std::to_string(num_reads_done) +
-                      ", reads_this_step=" +
-                      std::to_string(num_reads_cur_step) +
-                      ", num_blocks_done=" +
-                      std::to_string(num_blocks_done));
+                     std::to_string(num_reads_done) +
+                     ", reads_this_step=" + std::to_string(num_reads_cur_step) +
+                     ", num_blocks_done=" + std::to_string(num_blocks_done));
     for (int stream_index = 0; stream_index < 2; stream_index++) {
       if (stream_index == 1 && !paired_end)
         continue;
@@ -983,34 +974,32 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
                                        block_num, read_lengths_buffer.data(),
                                        buffer_offset, thread_read_count);
 
-          std::string input_path =
+          std::string block_base_path =
               input_read_paths[stream_index] + "." + std::to_string(block_num);
-          const std::string compressed_read_path = input_path + ".bsc";
+          const std::string compressed_read_path = block_base_path + ".bsc";
           if (std::filesystem::exists(compressed_read_path)) {
-            safe_bsc_decompress(compressed_read_path, input_path);
+            safe_bsc_decompress(compressed_read_path, block_base_path);
             safe_remove_file(compressed_read_path);
           }
-          read_raw_string_block(input_path, read_buffer.data() + buffer_offset,
-                                thread_read_count,
-                                read_lengths_buffer.data() + buffer_offset);
-          safe_remove_file(input_path);
+          read_raw_string_block(
+              block_base_path, read_buffer.data() + buffer_offset,
+              thread_read_count, read_lengths_buffer.data() + buffer_offset);
+          safe_remove_file(block_base_path);
 
           if (preserve_quality) {
-            input_path = input_quality_paths[stream_index] + "." +
-                         std::to_string(block_num);
-            const std::string quality_raw_path = input_path + ".raw";
-            safe_bsc_decompress(input_path, quality_raw_path);
-            read_raw_string_block(quality_raw_path,
-                                  quality_buffer.data() + buffer_offset,
-                                  thread_read_count,
-                                  read_lengths_buffer.data() + buffer_offset);
+            std::string quality_base_path = input_quality_paths[stream_index] +
+                                            "." + std::to_string(block_num);
+            const std::string quality_raw_path = quality_base_path + ".raw";
+            safe_bsc_decompress(quality_base_path, quality_raw_path);
+            read_raw_string_block(
+                quality_raw_path, quality_buffer.data() + buffer_offset,
+                thread_read_count, read_lengths_buffer.data() + buffer_offset);
             safe_remove_file(quality_raw_path);
-            safe_remove_file(input_path);
+            safe_remove_file(quality_base_path);
           }
           if (!preserve_id) {
             for (uint32_t i = buffer_offset;
-                 i < buffer_offset + thread_read_count; i++)
-            {
+                 i < buffer_offset + thread_read_count; i++) {
               std::string read_id;
               read_id.reserve(32);
               read_id.push_back('@');
@@ -1025,9 +1014,9 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
                    i < buffer_offset + thread_read_count; i++)
                 modify_id(id_buffer[i], paired_id_code);
             } else {
-              input_path = input_id_paths[stream_index] + "." +
-                           std::to_string(block_num);
-              const std::string compressed_id_path = input_path + ".bsc";
+              std::string id_base_path = input_id_paths[stream_index] + "." +
+                                         std::to_string(block_num);
+              const std::string compressed_id_path = id_base_path + ".bsc";
               if (std::filesystem::exists(compressed_id_path)) {
                 decompress_id_block(compressed_id_path.c_str(),
                                     id_buffer.data() + buffer_offset,
@@ -1036,10 +1025,10 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
               } else {
                 // Backward compatibility: raw packed ID blocks from older
                 // long-mode archives.
-                decompress_id_block(input_path.c_str(),
+                decompress_id_block(id_base_path.c_str(),
                                     id_buffer.data() + buffer_offset,
                                     thread_read_count, true);
-                safe_remove_file(input_path);
+                safe_remove_file(id_base_path);
               }
             }
           }
@@ -1059,18 +1048,16 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
     num_blocks_done += cp.encoding.num_thr;
   }
   SPRING_LOG_DEBUG("decompress_long complete: total_reads_done=" +
-                    std::to_string(num_reads_done));
+                   std::to_string(num_reads_done));
 }
 
 void decompress_unpack_seq(const std::string &packed_seq_base_path,
                            int encoding_thread_count, int decoding_thread_count,
                            const compression_params &cp) {
-  SPRING_LOG_DEBUG("decompress_unpack_seq start: base_path=" +
-                    packed_seq_base_path +
-                    ", encoding_threads=" +
-                    std::to_string(encoding_thread_count) +
-                    ", decoding_threads=" +
-                    std::to_string(decoding_thread_count));
+  SPRING_LOG_DEBUG(
+      "decompress_unpack_seq start: base_path=" + packed_seq_base_path +
+      ", encoding_threads=" + std::to_string(encoding_thread_count) +
+      ", decoding_threads=" + std::to_string(decoding_thread_count));
   const std::string monolithic_compressed_path = packed_seq_base_path + ".bsc";
   const std::string monolithic_packed_path = packed_seq_base_path + ".packed";
 
@@ -1111,8 +1098,7 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
           std::min(bytes_remaining, static_cast<uint64_t>(buffer.size()));
       monolithic_in.read(buffer.data(),
                          static_cast<std::streamsize>(bytes_to_read));
-      const uint64_t bytes_read =
-          static_cast<uint64_t>(monolithic_in.gcount());
+      const uint64_t bytes_read = static_cast<uint64_t>(monolithic_in.gcount());
       if (bytes_read != bytes_to_read) {
         throw std::runtime_error(
             "Corrupt archive: truncated packed sequence stream while "
@@ -1126,7 +1112,8 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
   }
   monolithic_in.close();
   safe_remove_file(monolithic_packed_path);
-  SPRING_LOG_DEBUG("decompress_unpack_seq slicing complete; starting per-chunk decode.");
+  SPRING_LOG_DEBUG(
+      "decompress_unpack_seq slicing complete; starting per-chunk decode.");
 
 #pragma omp parallel
   {
@@ -1167,4 +1154,3 @@ void set_dec_noise_array(std::array<std::array<char, 128>, 128> &dec_noise) {
 }
 
 } // namespace spring
-

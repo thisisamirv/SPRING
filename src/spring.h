@@ -31,8 +31,8 @@ void compress(const std::string &temp_dir, const string_list &input_paths,
 
 void decompress(const std::string &temp_dir, const string_list &input_paths,
                 const string_list &output_paths, const int num_thr,
-                                const int compression_level,
-                                const log_level verbosity_level = log_level::info,
+                const int compression_level,
+                const log_level verbosity_level = log_level::info,
                 const bool unzip_flag = false);
 
 void perform_audit(const std::string &archive_path,

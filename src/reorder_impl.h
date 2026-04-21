@@ -444,8 +444,7 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
     shared(rg, read, read_lengths, dict, dict_locks, read_locks,               \
                remaining_read_lock, length_masks_ptrs, index_masks,            \
                remaining_reads, unmatched_counts, open_stream_errors,          \
-               std::cerr, std::cout,                                            \
-               first_read)
+               std::cerr, std::cout, first_read)
   {
     bool done = false;
     int thread_id = omp_get_thread_num();
@@ -814,9 +813,9 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
   }
   // remaining_reads_storage RAII will free the remaining_reads buffer
   SPRING_LOG_INFO("Reordering done, " +
-                   std::to_string(std::accumulate(unmatched_counts.begin(),
-                                                  unmatched_counts.end(), 0)) +
-                   " were unmatched");
+                  std::to_string(std::accumulate(unmatched_counts.begin(),
+                                                 unmatched_counts.end(), 0)) +
+                  " were unmatched");
   // length_masks and index_masks are now RAII-managed containers
   return;
 }
@@ -930,11 +929,11 @@ void reorder_main(const std::string &temp_dir, const compression_params &cp) {
       cp.read_info.num_reads_clean[0] + cp.read_info.num_reads_clean[1];
   rg.numreads_array[0] = cp.read_info.num_reads_clean[0];
   rg.numreads_array[1] = cp.read_info.num_reads_clean[1];
-    rg.numdict =
+  rg.numdict =
       (rg.numreads < DICT_SINGLE_STAGE_READ_THRESHOLD) ? 1 : NUM_DICT_REORDER;
-    SPRING_LOG_DEBUG("Reorder dictionary configuration: active_dicts=" +
-             std::to_string(rg.numdict) +
-             ", clean_reads=" + std::to_string(rg.numreads));
+  SPRING_LOG_DEBUG("Reorder dictionary configuration: active_dicts=" +
+                   std::to_string(rg.numdict) +
+                   ", clean_reads=" + std::to_string(rg.numreads));
 
   omp_set_num_threads(rg.num_thr);
   setglobalarrays(rg);
@@ -961,4 +960,3 @@ void reorder_main(const std::string &temp_dir, const compression_params &cp) {
 } // namespace spring
 
 #endif // SPRING_REORDER_IMPL_H_
-

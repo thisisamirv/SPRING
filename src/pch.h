@@ -6,7 +6,10 @@
 #ifndef SPRING_PCH_H_
 #define SPRING_PCH_H_
 
-// Standard library: containers and strings (used in nearly all translation units)
+// IWYU pragma: begin_exports
+
+// Standard library: containers and strings (used in nearly all translation
+// units)
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -14,8 +17,8 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
 #include <iomanip>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -27,5 +30,7 @@
 
 // OpenMP (used across encoder, decoder, and parallel utilities)
 #include <omp.h>
+
+// IWYU pragma: end_exports
 
 #endif // SPRING_PCH_H_
