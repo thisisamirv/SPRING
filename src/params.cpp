@@ -101,6 +101,7 @@ void write_compression_params(std::ostream &out, const compression_params &cp) {
     out.write(byte_ptr(&cp.read_info.id_crc[i]), sizeof(uint32_t));
   }
   write_string(out, cp.read_info.assay);
+  write_string(out, cp.read_info.assay_confidence);
 }
 
 void read_compression_params(std::istream &in, compression_params &cp) {
@@ -176,11 +177,18 @@ void read_compression_params(std::istream &in, compression_params &cp) {
 
     if (in.peek() != std::char_traits<char>::eof()) {
       cp.read_info.assay = read_string(in);
+      if (in.peek() != std::char_traits<char>::eof()) {
+        cp.read_info.assay_confidence = read_string(in);
+      } else {
+        cp.read_info.assay_confidence = "N/A";
+      }
     } else {
       cp.read_info.assay = "auto";
+      cp.read_info.assay_confidence = "N/A";
     }
   } else {
     cp.read_info.assay = "auto";
+    cp.read_info.assay_confidence = "N/A";
   }
 }
 

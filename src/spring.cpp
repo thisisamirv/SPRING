@@ -32,6 +32,7 @@
 #include "reordered_streams.h"
 #include "spring.h"
 #include "template_dispatch.h"
+#include "assay_detector.h"
 
 namespace spring {
 
@@ -1088,7 +1089,21 @@ void compress(const std::string &temp_dir,
   cp.encoding.num_thr = num_thr;
   cp.encoding.compression_level = compression_level;
   cp.read_info.note = note;
-  cp.read_info.assay = assay_type;
+  
+  std::string final_assay = assay_type;
+  std::string final_confidence = "N/A";
+  if (assay_type == "auto") {
+      SPRING_LOG_INFO("Running auto-detection for assay type on first 10,000 reads...");
+      AssayDetector detector;
+      final_assay = detector.detect(prepared_inputs.input_path_1, 
+                                    io_config.paired_end ? prepared_inputs.input_path_2 : "", 
+                                    r3_path, i1_path, i2_path, final_confidence);
+      SPRING_LOG_INFO("Auto-detected assay: " + final_assay + " (confidence: " + final_confidence + ")");
+  }
+
+  cp.read_info.assay = final_assay;
+  cp.read_info.assay_confidence = final_confidence;
+  
   cp.encoding.fasta_mode = fasta_input;
   cp.read_info.input_filename_1 =
       std::filesystem::path(io_config.input_path_1).filename().string();

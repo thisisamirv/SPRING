@@ -251,7 +251,7 @@ std::string build_options_description() {
       << "                                      thr and to low if < thr)\n"
       << "  -n [ --note ] arg               add a custom note to the archive\n"
       << "  -y [ --assay ] arg (=auto)      specify assay type. Valid choices:\n"
-      << "                                  auto, rna, atac, methyl, dna, chip,\n"
+      << "                                  auto, rna, atac, methyl, dna,\n"
       << "                                  sc-rna, sc-atac, sc-methyl\n"
       << "  -a [ --audit ]                  enable post-operation integrity "
          "verification\n"
@@ -411,10 +411,10 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
       require_value(args, index, "--assay");
       options.assay = strip_quotes(args[index++]);
       const std::vector<std::string> valid_assays = {
-          "auto", "rna", "atac", "methyl", "dna", "chip", "sc-rna", "sc-atac", "sc-methyl"};
+          "auto", "rna", "atac", "methyl", "dna", "sc-rna", "sc-atac", "sc-methyl"};
       if (std::find(valid_assays.begin(), valid_assays.end(), options.assay) == valid_assays.end()) {
         throw std::runtime_error("Invalid --assay value: " + options.assay +
-                                 ". Valid choices: auto, rna, atac, methyl, dna, chip, sc-rna, sc-atac, sc-methyl.");
+                                 ". Valid choices: auto, rna, atac, methyl, dna, sc-rna, sc-atac, sc-methyl.");
       }
     } else if (arg == "-v" || arg == "--verbose") {
       options.log_level = spring::log_level::info;

@@ -1,0 +1,64 @@
+#ifndef SPRING_ASSAY_DETECTOR_H_
+#define SPRING_ASSAY_DETECTOR_H_
+
+#include <string>
+#include <vector>
+#include <unordered_map>
+#include <cstdint>
+
+namespace spring {
+
+class AssayDetector {
+public:
+    AssayDetector();
+
+    // Runs the 5-stage heuristic detection on the provided FASTQ files.
+    // Returns the final predicted assay type.
+    std::string detect(const std::string& r1_path,
+                       const std::string& r2_path,
+                       const std::string& r3_path,
+                       const std::string& i1_path,
+                       const std::string& i2_path,
+                       std::string& confidence_out);
+
+private:
+    struct ReadStats {
+        uint64_t total_reads = 0;
+        uint64_t total_C = 0;
+        uint64_t total_T = 0;
+        uint64_t total_G = 0;
+        uint64_t total_A = 0;
+        std::vector<int> r1_lengths;
+        std::vector<int> r2_lengths;
+        uint64_t atac_adapters_found = 0;
+        uint64_t poly_a_tails_found = 0;
+        uint64_t rna_hits = 0;
+        uint64_t atac_hits = 0;
+        uint64_t intron_hits = 0;
+        uint64_t genome_hits = 0;
+        uint64_t total_sampled_kmers = 0;
+    };
+
+    enum class BlockID {
+        NONE = 0,
+        RNA_EXON = 1,
+        ATAC_PROMOTER = 2,
+        INTRON_CTRL = 3,
+        GENOME_BACKBONE = 4
+    };
+
+    void load_reference(const std::string& ref_path);
+    void process_reads(const std::string& r1_path, const std::string& r2_path, ReadStats& stats);
+    std::string evaluate_stages(const ReadStats& stats, bool explicit_sc_layout, std::string& confidence_out);
+    bool has_atac_adapter(const std::string& seq) const;
+    bool has_poly_a_tail(const std::string& seq) const;
+
+    std::unordered_map<uint64_t, BlockID> kmer_index_;
+    bool reference_loaded_ = false;
+    static constexpr int kKmerSize = 17;
+    static constexpr int kMaxReadsToScan = 10000;
+};
+
+} // namespace spring
+
+#endif // SPRING_ASSAY_DETECTOR_H_

@@ -103,7 +103,7 @@ Allowed options:
                                       thr and to low if < thr)
   -n [ --note ] arg               add a custom note to the archive
   -y [ --assay ] arg (=auto)      specify assay type. Valid choices:
-                                  auto, rna, atac, methyl, dna, chip,
+                                  auto, rna, atac, methyl, dna,
                                   sc-rna, sc-atac, sc-methyl
   -a [ --audit ]                  enable post-operation integrity verification
 --------------------------------------------------------------------------------

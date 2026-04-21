@@ -1,8 +1,12 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include "assay_detector.h"
 #include "dna_utils.h"
 #include "doctest.h"
 #include "parse_utils.h"
+#include <filesystem>
+#include <fstream>
 #include <string>
+
 
 using namespace spring;
 
@@ -44,5 +48,80 @@ TEST_CASE("Testing double parsing") {
 TEST_CASE("Testing uint64 parsing") {
   CHECK(parse_uint64_or_throw("123456789012345", "err") == 123456789012345ULL);
   CHECK_THROWS_AS(parse_uint64_or_throw("-1", "err"), std::runtime_error);
+}
+
+TEST_CASE("Testing AssayDetector") {
+  AssayDetector detector;
+
+  SUBCASE("No reads parsed") {
+    std::string confidence;
+    std::string assay = detector.detect("", "", "", "", "", confidence);
+    CHECK(assay == "dna");
+    CHECK(confidence == "low (no reads parsed)");
+  }
+
+  SUBCASE(
+      "Test poly-A detection signature directly (if accessible or via files)") {
+    // Since process_reads reads files, we create a small temporary fastq file
+    std::string test_fq = "test_sc_rna.fq";
+    std::ofstream out(test_fq);
+    // Write 100 reads with poly-A tails
+    for (int i = 0; i < 100; ++i) {
+      out << "@read" << i << "\n";
+      out << "GCTAGCTAGCTAGCTAGCTAGCTAGCTAGCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n";
+      out << "+\n";
+      out << "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\n";
+    }
+    out.close();
+
+    std::string confidence;
+    std::string assay = detector.detect(test_fq, "", "", "", "", confidence);
+    CHECK(assay == "rna");
+    CHECK(confidence == "high (poly-A/T tail signature)");
+
+    std::filesystem::remove(test_fq);
+  }
+
+  SUBCASE("Test ATAC Tn5 detection signature directly") {
+    std::string test_fq = "test_sc_atac.fq";
+    std::ofstream out(test_fq);
+    // Write 100 reads with Tn5 adapter CTGTCTCTTATA
+    for (int i = 0; i < 100; ++i) {
+      out << "@read" << i << "\n";
+      out << "GCTAGCTAGCTCTGTCTCTTATAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAG\n";
+      out << "+\n";
+      out << "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\n";
+    }
+    out.close();
+
+    std::string confidence;
+    // i1_path provided so it's treated as sc-atac
+    std::string assay =
+        detector.detect(test_fq, "", "", "i1.fq", "", confidence);
+    CHECK(assay == "sc-atac");
+    CHECK(confidence == "high (Tn5 adapter signature)");
+
+    std::filesystem::remove(test_fq);
+  }
+
+  SUBCASE("Test Methylation signature directly") {
+    std::string test_fq = "test_methyl.fq";
+    std::ofstream out(test_fq);
+    // Write 1001 reads with mostly T and no C (bisulfite conversion)
+    for (int i = 0; i < 1001; ++i) {
+      out << "@read" << i << "\n";
+      out << "GTTTGTTTGTTTGTTTGTTTGTTTGTTTGTTTGTTTGTTTGTTTGTTTGTTTGTTTGTTT\n";
+      out << "+\n";
+      out << "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\n";
+    }
+    out.close();
+
+    std::string confidence;
+    std::string assay = detector.detect(test_fq, "", "", "", "", confidence);
+    CHECK(assay == "methyl");
+    CHECK(confidence == "high (bisulfite conversion signature)");
+
+    std::filesystem::remove(test_fq);
+  }
 }
 } // namespace

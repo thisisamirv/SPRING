@@ -8,6 +8,7 @@
 * Added grouped lane support for read-3 and index reads with `-R3/--R3`, `-I1/--I1`, and `-I2/--I2`: SPRING2 can now compress `R1/R2` together with a third read lane and/or index lanes and restore grouped outputs on decompression (`.R1`, `.R2`, `.R3`, `.I1`, `.I2`).
 * Added automatic non-ACGTN sequence detection during input pre-scan: when extended IUPAC/RNA symbols are present, SPRING2 now switches to long-read mode to preserve sequence alphabet losslessly instead of using the short-read 3-bit path.
 * Added the `-y/--assay` flag to specify and store the sequencing assay type in the archive metadata.
+* Added an automatic multi-stage assay detection heuristic (`--assay auto`) that rapidly classifies sequencing chemistry and layout (RNA, ATAC, Methylation, Single-cell, etc.) from the first 10,000 reads using a fast K-mer sketcher and FASTQ signatures.
 * Added a small test FASTA reference (ref_hg38_gencode49.fa) to spring2/reference/ and the corresponding metadata file for detecting assay type from the input fastq files.
 
 ### Changed
