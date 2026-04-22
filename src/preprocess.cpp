@@ -97,53 +97,6 @@ void append_encoded_dna_bits(std::string &buffer, const std::string &read) {
   }
 }
 
-void append_encoded_dna_ternary_bits(std::string &buffer,
-                                     const std::string &read) {
-  const uint16_t readlen = static_cast<uint16_t>(read.size());
-  append_uint16(buffer, readlen);
-
-  static const std::array<uint8_t, 128> dna_to_int = []() {
-    std::array<uint8_t, 128> table{};
-    table[static_cast<uint8_t>('A')] = 0;
-    table[static_cast<uint8_t>('C')] = 2;
-    table[static_cast<uint8_t>('G')] = 1;
-    table[static_cast<uint8_t>('T')] = 3;
-    return table;
-  }();
-
-  for (uint32_t i = 0; i < readlen; i += 5) {
-    uint32_t n = std::min<uint32_t>(5, readlen - i);
-    bool has_c = false;
-    for (uint32_t j = 0; j < n; j++) {
-      if (read[i + j] == 'C' || read[i + j] == 'c') {
-        has_c = true;
-        break;
-      }
-    }
-
-    if (!has_c) {
-      uint8_t packed = 0;
-      uint8_t p3 = 1;
-      for (uint32_t j = 0; j < n; j++) {
-        uint8_t val = dna_to_int[static_cast<uint8_t>(read[i + j])];
-        if (val == 3)
-          val = 2; // T is 2
-        packed += val * p3;
-        p3 *= 3;
-      }
-      buffer.push_back(static_cast<char>(packed));
-    } else {
-      buffer.push_back(static_cast<char>(243));
-      uint16_t escape = 0;
-      for (uint32_t j = 0; j < n; j++) {
-        uint8_t val = dna_to_int[static_cast<uint8_t>(read[i + j])];
-        escape |= (val << (2 * j));
-      }
-      buffer.append(reinterpret_cast<const char *>(&escape), sizeof(uint16_t));
-    }
-  }
-}
-
 void append_encoded_dna_n_bits(std::string &buffer, const std::string &read) {
   static const std::array<uint8_t, 128> dna_n_to_int = []() {
     std::array<uint8_t, 128> table{};
@@ -807,13 +760,8 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
           for (uint32_t read_index = begin_read; read_index < end_read;
                read_index++) {
             if (read_contains_N_array[read_index] == 0) {
-              if (cp.encoding.methyl_ternary) {
-                append_encoded_dna_ternary_bits(thread_buffer.clean_read_bytes,
-                                                read_array[read_index]);
-              } else {
-                append_encoded_dna_bits(thread_buffer.clean_read_bytes,
-                                        read_array[read_index]);
-              }
+              append_encoded_dna_bits(thread_buffer.clean_read_bytes,
+                                      read_array[read_index]);
               thread_buffer.clean_read_count++;
             } else {
               thread_buffer.n_read_positions.push_back(num_reads[stream_index] +

@@ -94,8 +94,8 @@ template <size_t bitset_size>
 void compute_dictionary_keys(std::bitset<bitset_size> *read_bits,
                              const std::bitset<bitset_size> &index_mask,
                              const int start_base, const uint32_t read_count,
-                             const int bits_per_base,
-                             uint64_t *dictionary_keys) {
+                             const int bits_per_base, uint64_t *dictionary_keys,
+                             const char depleted_base = 'N') {
   const std::bitset<bitset_size> local_index_mask = index_mask;
   const uint32_t local_read_count = read_count;
   const int local_bits_per_base = bits_per_base;
@@ -105,14 +105,20 @@ void compute_dictionary_keys(std::bitset<bitset_size> *read_bits,
 #pragma omp parallel for default(none)                                         \
     shared(local_read_bits, local_dictionary_keys)                             \
     firstprivate(local_index_mask, local_read_count, local_bits_per_base,      \
-                     local_start_base)
+                     local_start_base, depleted_base)
   for (int64_t read_index = 0;
        read_index < static_cast<int64_t>(local_read_count); read_index++) {
     std::bitset<bitset_size> masked_read_bits =
         local_read_bits[read_index] & local_index_mask;
-    local_dictionary_keys[read_index] =
+    uint64_t key =
         (masked_read_bits >> (local_bits_per_base * local_start_base))
             .to_ullong();
+    if (depleted_base == 'C') {
+      key &= ~((key >> 1) & 0x5555555555555555ULL);
+    } else if (depleted_base == 'G') {
+      key &= ~((~key >> 1) & 0x5555555555555555ULL);
+    }
+    local_dictionary_keys[read_index] = key;
   }
 }
 
@@ -461,7 +467,8 @@ template <size_t bitset_size>
 void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
                          uint16_t *read_lengths, const int numdict,
                          const uint32_t numreads, const int bpb,
-                         const std::string &basedir, const int num_thr) {
+                         const std::string &basedir, const int num_thr,
+                         const char depleted_base = 'N') {
   auto index_masks = std::make_unique<std::bitset<bitset_size>[]>(
       static_cast<size_t>(numdict));
   generateindexmasks<bitset_size>(index_masks.get(), dict, numdict, bpb);
@@ -471,9 +478,9 @@ void constructdictionary(std::bitset<bitset_size> *read, bbhashdict *dict,
     std::vector<uint64_t> dictionary_keys(numreads, 0);
     uint64_t *dictionary_keys_data = dictionary_keys.data();
 
-    detail::compute_dictionary_keys<bitset_size>(read, index_masks[dict_index],
-                                                 current_dict.start, numreads,
-                                                 bpb, dictionary_keys_data);
+    detail::compute_dictionary_keys<bitset_size>(
+        read, index_masks[dict_index], current_dict.start, numreads, bpb,
+        dictionary_keys_data, depleted_base);
 
     // Keep only reads that are long enough for this dictionary.
     current_dict.dict_numreads = detail::compact_dictionary_keys(

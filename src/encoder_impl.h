@@ -117,10 +117,7 @@ uint32_t write_unaligned_range(
     aligned_read_count++;
     const std::string unaligned_read = bitsettostring<bitset_size>(
         reads[read_index], read_lengths[read_index], encoder_bits);
-    if (eg.methyl_ternary)
-      write_dna_ternary_bits(unaligned_read, unaligned_output);
-    else
-      write_dnaN_in_bits(unaligned_read, unaligned_output);
+    write_dnaN_in_bits(unaligned_read, unaligned_output);
     order_output.write(byte_ptr(&read_orders[read_index]), sizeof(uint32_t));
     read_length_output.write(byte_ptr(&read_lengths[read_index]),
                              sizeof(uint16_t));
@@ -321,10 +318,7 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
       }
       if (!done) {
         contig_read_count++;
-        if (eg.methyl_ternary)
-          read_dna_ternary_bits(current_read, read_input);
-        else
-          read_dna_from_bits(current_read, read_input);
+        read_dna_from_bits(current_read, read_input);
         if (!orientation_stream.get(orientation)) {
           SPRING_LOG_DEBUG("block_id=" + block_id +
                            ", Encoder orientation read failure: path=" +
@@ -680,10 +674,7 @@ void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
   auto **const basemask_ptrs =
       const_cast<std::bitset<bitset_size> **>(egb.basemask_ptrs.data());
   for (uint32_t i = 0; i < eg.numreads_s; i++) {
-    if (eg.methyl_ternary)
-      read_dna_ternary_bits(s, f);
-    else
-      read_dna_from_bits(s, f);
+    read_dna_from_bits(s, f);
     read_lengths_s[i] = static_cast<uint16_t>(s.size());
     stringtobitset<bitset_size>(s, read_lengths_s[i], read[i], basemask_ptrs);
   }

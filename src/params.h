@@ -70,6 +70,7 @@ struct compression_params {
                                // when an I1 lane is provided.
     bool barcode_sort = false; // True when barcode-first ordering was applied.
     bool methyl_ternary = false;
+    char depleted_base = 'N';
   } encoding;
 
   struct QualityConfig {

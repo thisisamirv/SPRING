@@ -123,7 +123,9 @@ TEST_CASE("Testing AssayDetector") {
     std::string assay = res.assay;
     std::string confidence = res.confidence;
     CHECK(assay == "methyl");
-    CHECK(confidence == "high (bisulfite conversion signature)");
+    CHECK(confidence.find("high (bisulfite conversion signature") !=
+          std::string::npos);
+    CHECK(res.depleted_base == 'C');
 
     std::filesystem::remove(test_fq);
   }

@@ -17,6 +17,7 @@ public:
     std::string confidence;
     double c_ratio = 1.0;
     double g_ratio = 1.0;
+    char depleted_base = 'N';
   };
 
   // Runs the 5-stage heuristic detection on the provided FASTQ files.

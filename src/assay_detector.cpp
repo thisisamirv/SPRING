@@ -264,19 +264,26 @@ AssayDetector::evaluate_stages(const ReadStats &stats,
 
     if (r1_c_depleted || r1_g_depleted || r2_c_depleted || r2_g_depleted) {
       std::string detail;
-      if (r1_c_depleted)
+      if (r1_c_depleted) {
         detail = "R1 C-depletion";
-      else if (r1_g_depleted)
+        res.depleted_base = 'C';
+      } else if (r1_g_depleted) {
         detail = "R1 G-depletion";
+        res.depleted_base = 'G';
+      }
 
       if (r2_c_depleted) {
         if (!detail.empty())
           detail += ", ";
         detail += "R2 C-depletion";
+        if (res.depleted_base == 'N')
+          res.depleted_base = 'C';
       } else if (r2_g_depleted) {
         if (!detail.empty())
           detail += ", ";
         detail += "R2 G-depletion";
+        if (res.depleted_base == 'N')
+          res.depleted_base = 'G';
       }
 
       res.confidence = "high (bisulfite conversion signature: " + detail + ")";

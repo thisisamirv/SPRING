@@ -978,6 +978,7 @@ void compress_standard(const std::string &temp_dir,
     if (final_assay == "methyl" || final_assay == "sc-methyl") {
       if (res.c_ratio < 0.05 || res.g_ratio < 0.05) {
         cp.encoding.methyl_ternary = true;
+        cp.encoding.depleted_base = res.depleted_base;
       }
     }
     SPRING_LOG_INFO("Auto-detected assay: " + final_assay +
