@@ -20,8 +20,8 @@
 #include <utility>
 #include <vector>
 
-
 #include "assay_detector.h"
+#include "barcode_sort.h"
 #include "decompress.h"
 #include "fs_utils.h"
 #include "io_utils.h"
@@ -34,7 +34,6 @@
 #include "reordered_streams.h"
 #include "spring.h"
 #include "template_dispatch.h"
-
 
 namespace spring {
 
@@ -881,7 +880,8 @@ void compress(const std::string &temp_dir,
               const int compression_level, const std::string &note,
               const log_level verbosity_level, const bool audit_flag,
               const std::string &r3_path, const std::string &i1_path,
-              const std::string &i2_path, const std::string &assay_type) {
+              const std::string &i2_path, const std::string &assay_type,
+              const std::string &cb_source_path, uint32_t cb_len) {
   Logger::set_level(verbosity_level);
   ProgressBar progress(verbosity_level == log_level::quiet);
   ProgressBar::SetGlobalInstance(&progress);
@@ -948,10 +948,11 @@ void compress(const std::string &temp_dir,
                     "(read pair + optional read3 + optional index pair).");
 
     // Compress R1/R2 as a regular SPRING archive.
+    // Pass i1_path as cb_source_path so barcode_sort can extract CBs from I1.
     compress(read_work_dir, read_inputs, {bundle_dir + "/" + read_archive_name},
              num_thr, pairing_only_flag, no_quality_flag, no_ids_flag,
              quality_options, compression_level, note, verbosity_level,
-             audit_flag, "", "", "", assay_type);
+             audit_flag, "", "", "", assay_type, i1_path);
 
     std::string read3_alias_source;
     if (has_r3) {
@@ -1105,6 +1106,7 @@ void compress(const std::string &temp_dir,
 
   cp.read_info.assay = final_assay;
   cp.read_info.assay_confidence = final_confidence;
+  cp.encoding.cb_len = cb_len;
 
   cp.encoding.fasta_mode = fasta_input;
   cp.read_info.input_filename_1 =
@@ -1175,10 +1177,28 @@ void compress(const std::string &temp_dir,
   print_temp_dir_size(temp_dir);
 
   if (!long_flag) {
-    run_timed_step("Reordering ...", "Reordering", [&] {
-      progress.set_stage("Reordering", 0.25F, 0.50F);
-      call_reorder(temp_dir, cp);
-    });
+    const bool is_sc_assay =
+        (cp.read_info.assay == "sc-rna" || cp.read_info.assay == "sc-atac" ||
+         cp.read_info.assay == "sc-methyl");
+    const bool use_barcode_sort = is_sc_assay && !long_flag;
+
+    if (use_barcode_sort) {
+      cp.encoding.barcode_sort = true;
+      run_timed_step("Barcode-sorting reads ...", "Barcode sort", [&] {
+        progress.set_stage("Barcode sort", 0.25F, 0.50F);
+        barcode_sort(temp_dir, cp, cb_source_path);
+      });
+    } else {
+      if (is_sc_assay && long_flag) {
+        SPRING_LOG_INFO(
+            "Barcode sort disabled: long-read mode is active for SC assay. "
+            "Falling back to overlap-based reordering.");
+      }
+      run_timed_step("Reordering ...", "Reordering", [&] {
+        progress.set_stage("Reordering", 0.25F, 0.50F);
+        call_reorder(temp_dir, cp);
+      });
+    }
 
     print_temp_dir_size(temp_dir, "temp_dir size");
 

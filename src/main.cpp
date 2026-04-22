@@ -58,6 +58,7 @@ struct command_line_options {
   int compression_level = spring::DEFAULT_COMPRESSION_LEVEL;
   std::string note;
   std::string assay = "auto";
+  uint32_t cb_len = 16;
   spring::log_level log_level = spring::log_level::quiet;
   bool unzip_flag = false;
 };
@@ -253,6 +254,11 @@ std::string build_options_description() {
          "choices:\n"
       << "                                  auto, rna, atac, methyl, dna,\n"
       << "                                  sc-rna, sc-atac, sc-methyl\n"
+      << "  -b [ --cb-len ] arg (=16)       cellular barcode length in bases.\n"
+      << "                                  Used when --assay is sc-rna,\n"
+      << "                                  sc-atac, or sc-methyl and no I1\n"
+      << "                                  lane is provided. Ignored when I1\n"
+      << "                                  is present (auto-detected).\n"
       << "  -a [ --audit ]                  enable post-operation integrity "
          "verification\n"
       << "---------------------------------------------------------------------"
@@ -419,6 +425,12 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
                                  ". Valid choices: auto, rna, atac, methyl, "
                                  "dna, sc-rna, sc-atac, sc-methyl.");
       }
+    } else if (arg == "-b" || arg == "--cb-len") {
+      require_value(args, index, "--cb-len");
+      const int raw = std::stoi(strip_quotes(args[index++]));
+      if (raw < 1 || raw > 64)
+        throw std::runtime_error("--cb-len must be between 1 and 64.");
+      options.cb_len = static_cast<uint32_t>(raw);
     } else if (arg == "-v" || arg == "--verbose") {
       options.log_level = spring::log_level::info;
       if (index < args.size() && !is_option_token(args[index])) {
@@ -599,7 +611,10 @@ void run_requested_mode(const command_line_options &options,
         options.num_threads, options.pairing_only_flag, options.no_quality_flag,
         options.no_ids_flag, options.quality_options, options.compression_level,
         options.note, options.log_level, options.audit_flag, options.r3_path,
-        options.i1_path, options.i2_path, options.assay);
+        options.i1_path, options.i2_path, options.assay,
+        options
+            .i1_path, // cb_source_path: use I1 lane for SC barcode extraction
+        options.cb_len);
     return;
   }
 

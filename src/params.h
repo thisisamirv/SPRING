@@ -64,6 +64,11 @@ struct compression_params {
     int num_reads_per_block_long;
     bool fasta_mode;
     bool use_crlf;
+    uint32_t cb_len = 16;      // Cellular barcode length (bases). Used when
+                               // assay is sc-rna/sc-atac/sc-methyl and no I1
+                               // lane is present. Auto-detected from I1 length
+                               // when an I1 lane is provided.
+    bool barcode_sort = false; // True when barcode-first ordering was applied.
   } encoding;
 
   struct QualityConfig {

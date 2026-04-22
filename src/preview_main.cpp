@@ -191,16 +191,17 @@ void preview(const std::string &archive_path, bool audit_only) {
   }
   std::string assay_print =
       !cp.read_info.assay.empty() ? cp.read_info.assay : "auto";
-  std::cout << "Assay Type:        " << assay_print;
-  if (assay_print != "auto") {
-    if (!cp.read_info.assay_confidence.empty() &&
-        cp.read_info.assay_confidence != "N/A") {
-      std::cout << " (" << cp.read_info.assay_confidence << ")";
-    } else {
-      std::cout << " (manual)";
-    }
+  std::cout << "Assay Type:        "
+            << (!cp.read_info.assay.empty() ? cp.read_info.assay : "auto");
+  if (!cp.read_info.assay_confidence.empty() &&
+      cp.read_info.assay_confidence != "N/A") {
+    std::cout << " (" << cp.read_info.assay_confidence << ")";
   }
   std::cout << "\n";
+  if (cp.encoding.barcode_sort) {
+    std::cout << "Barcode Sort:      Yes (CB: R1 prefix or I1 lane, "
+              << cp.encoding.cb_len << " bp)\n";
+  }
   std::cout << "Mode:              "
             << (cp.encoding.paired_end ? "Paired-end" : "Single-end") << "\n";
   std::cout << "Reads Processed:   " << cp.read_info.num_reads << "\n";

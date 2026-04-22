@@ -10,6 +10,7 @@
 * Added the `-y/--assay` flag to specify and store the sequencing assay type in the archive metadata.
 * Added an automatic multi-stage assay detection heuristic (`--assay auto`) that rapidly classifies sequencing chemistry and layout (RNA, ATAC, Methylation, Single-cell, etc.) from the first 10,000 reads using a fast K-mer sketcher and FASTQ signatures.
 * Added a small test FASTA reference (ref_hg38_gencode49.fa) to spring2/reference/ and the corresponding metadata file for detecting assay type from the input fastq files.
+* Added **barcode-first read ordering** for single-cell assays (`--assay sc-rna`, `sc-atac`, `sc-methyl`): reads are stably sorted by their opaque cellular barcode prefix before the overlap-cascade encoder runs, maximising CB locality and compressibility without requiring a barcode whitelist. CB source is exclusive — I1 lane when present (length auto-detected), otherwise the first `--cb-len` bases of R1 (default 16 bp, compatible with 10x Genomics v2/v3 and other platforms). Long-read mode falls back to the standard overlap reordering. The `--cb-len` / `-b` flag controls the R1 prefix length.
 
 ### Changed
 
