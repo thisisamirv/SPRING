@@ -164,14 +164,25 @@ void AssayDetector::process_reads(const std::string &r1_path,
           stats.r2_lengths.push_back(seq.length());
 
         for (char c : seq) {
-          if (c == 'C')
-            stats.total_C++;
-          else if (c == 'T')
-            stats.total_T++;
-          else if (c == 'G')
-            stats.total_G++;
-          else if (c == 'A')
-            stats.total_A++;
+          if (is_r1) {
+            if (c == 'C')
+              stats.r1_C++;
+            else if (c == 'T')
+              stats.r1_T++;
+            else if (c == 'G')
+              stats.r1_G++;
+            else if (c == 'A')
+              stats.r1_A++;
+          } else {
+            if (c == 'C')
+              stats.r2_C++;
+            else if (c == 'T')
+              stats.r2_T++;
+            else if (c == 'G')
+              stats.r2_G++;
+            else if (c == 'A')
+              stats.r2_A++;
+          }
         }
 
         if (has_atac_adapter(seq))
@@ -233,16 +244,45 @@ AssayDetector::evaluate_stages(const ReadStats &stats,
     return res;
   }
 
-  res.c_ratio =
-      static_cast<double>(stats.total_C) / (stats.total_C + stats.total_T + 1);
-  res.g_ratio =
-      static_cast<double>(stats.total_G) / (stats.total_G + stats.total_A + 1);
+  double r1_c_ratio =
+      static_cast<double>(stats.r1_C) / (stats.r1_C + stats.r1_T + 1);
+  double r2_c_ratio =
+      static_cast<double>(stats.r2_C) / (stats.r2_C + stats.r2_T + 1);
+  double r1_g_ratio =
+      static_cast<double>(stats.r1_G) / (stats.r1_G + stats.r1_A + 1);
+  double r2_g_ratio =
+      static_cast<double>(stats.r2_G) / (stats.r2_G + stats.r2_A + 1);
 
-  // Stage 1: Methylation
-  if (stats.total_reads >= 1000) {
-    if (res.c_ratio < 0.05 || res.g_ratio < 0.05) {
-      res.confidence = "high (bisulfite conversion signature)";
+  // Stage 1: Methylation (check strands separately for bisulfite signature)
+  if (stats.total_reads >= 500) {
+    // Prefer C-depletion on R1, G-depletion on R2 (standard directional
+    // library)
+    bool r1_c_depleted = (stats.r1_C + stats.r1_T > 100) && (r1_c_ratio < 0.05);
+    bool r1_g_depleted = (stats.r1_G + stats.r1_A > 100) && (r1_g_ratio < 0.02);
+    bool r2_c_depleted = (stats.r2_C + stats.r2_T > 100) && (r2_c_ratio < 0.02);
+    bool r2_g_depleted = (stats.r2_G + stats.r2_A > 100) && (r2_g_ratio < 0.05);
+
+    if (r1_c_depleted || r1_g_depleted || r2_c_depleted || r2_g_depleted) {
+      std::string detail;
+      if (r1_c_depleted)
+        detail = "R1 C-depletion";
+      else if (r1_g_depleted)
+        detail = "R1 G-depletion";
+
+      if (r2_c_depleted) {
+        if (!detail.empty())
+          detail += ", ";
+        detail += "R2 C-depletion";
+      } else if (r2_g_depleted) {
+        if (!detail.empty())
+          detail += ", ";
+        detail += "R2 G-depletion";
+      }
+
+      res.confidence = "high (bisulfite conversion signature: " + detail + ")";
       res.assay = explicit_sc_layout ? "sc-methyl" : "methyl";
+      res.c_ratio = std::min(r1_c_ratio, r2_c_ratio);
+      res.g_ratio = std::min(r1_g_ratio, r2_g_ratio);
       return res;
     }
   }

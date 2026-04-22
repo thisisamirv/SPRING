@@ -28,10 +28,8 @@ public:
 private:
   struct ReadStats {
     uint64_t total_reads = 0;
-    uint64_t total_C = 0;
-    uint64_t total_T = 0;
-    uint64_t total_G = 0;
-    uint64_t total_A = 0;
+    uint64_t r1_C = 0, r1_T = 0, r1_G = 0, r1_A = 0;
+    uint64_t r2_C = 0, r2_T = 0, r2_G = 0, r2_A = 0;
     std::vector<int> r1_lengths;
     std::vector<int> r2_lengths;
     uint64_t atac_adapters_found = 0;
