@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "core_utils.h"
+#include "dna_utils.h"
 #include "fs_utils.h"
 #include "libbsc/bsc.h"
 #include "progress.h"
@@ -186,7 +187,8 @@ std::vector<T> read_binary_records_all(const std::string &path) {
 void decode_unaligned_reads(const std::string &path,
                             const uint32_t expected_read_count,
                             std::vector<char> &decoded_chars,
-                            std::vector<uint16_t> &decoded_lengths) {
+                            std::vector<uint16_t> &decoded_lengths,
+                            bool methyl_ternary) {
   const std::vector<char> encoded = read_binary_file_all(path);
   decoded_lengths.assign(expected_read_count, 0);
   std::vector<uint64_t> encoded_offsets(expected_read_count, 0);
@@ -194,54 +196,99 @@ void decode_unaligned_reads(const std::string &path,
 
   uint64_t encoded_cursor = 0;
   uint64_t decoded_total = 0;
-  for (uint32_t read_index = 0; read_index < expected_read_count;
-       ++read_index) {
-    if (encoded_cursor + sizeof(uint16_t) > encoded.size()) {
-      throw std::runtime_error(
-          "Corrupted unaligned stream: truncated read length header.");
-    }
-
-    uint16_t read_length;
-    std::memcpy(&read_length, encoded.data() + encoded_cursor,
-                sizeof(uint16_t));
-    encoded_cursor += sizeof(uint16_t);
-
-    const uint64_t encoded_bytes = (static_cast<uint64_t>(read_length) + 1) / 2;
-    if (encoded_cursor + encoded_bytes > encoded.size()) {
-      throw std::runtime_error(
-          "Corrupted unaligned stream: truncated encoded payload.");
-    }
-
-    decoded_lengths[read_index] = read_length;
-    encoded_offsets[read_index] = encoded_cursor;
-    decoded_offsets[read_index] = decoded_total;
-    decoded_total += read_length;
-    encoded_cursor += encoded_bytes;
+  std::ifstream fin;
+  if (methyl_ternary) {
+    fin.open(path, std::ios::binary);
   }
 
-  if (encoded_cursor != encoded.size()) {
+  for (uint32_t read_index = 0; read_index < expected_read_count;
+       ++read_index) {
+    if (!methyl_ternary) {
+      if (encoded_cursor + sizeof(uint16_t) > encoded.size()) {
+        throw std::runtime_error(
+            "Corrupted unaligned stream: truncated read length header.");
+      }
+
+      uint16_t read_length;
+      std::memcpy(&read_length, encoded.data() + encoded_cursor,
+                  sizeof(uint16_t));
+      encoded_cursor += sizeof(uint16_t);
+
+      const uint64_t encoded_bytes =
+          (static_cast<uint64_t>(read_length) + 1) / 2;
+      if (encoded_cursor + encoded_bytes > encoded.size()) {
+        throw std::runtime_error(
+            "Corrupted unaligned stream: truncated encoded payload.");
+      }
+
+      decoded_lengths[read_index] = read_length;
+      encoded_offsets[read_index] = encoded_cursor;
+      decoded_offsets[read_index] = decoded_total;
+      decoded_total += read_length;
+      encoded_cursor += encoded_bytes;
+    } else {
+      // For ternary, we can't easily jump offsets without reading sequentially
+      // or storing them. Since it's a temp file, we'll just read lengths
+      // sequentially to build offsets.
+      uint16_t read_length;
+      if (!fin.read(reinterpret_cast<char *>(&read_length), sizeof(uint16_t)))
+        break;
+      decoded_lengths[read_index] = read_length;
+      encoded_offsets[read_index] = fin.tellg();
+      decoded_offsets[read_index] = decoded_total;
+      decoded_total += read_length;
+
+      // Skip the packed payload
+      for (uint32_t i = 0; i < read_length; i += 5) {
+        uint8_t packed;
+        fin.read(reinterpret_cast<char *>(&packed), 1);
+        if (packed >= 243) {
+          fin.seekg(2, std::ios::cur);
+        }
+      }
+    }
+  }
+
+  if (!methyl_ternary && encoded_cursor != encoded.size()) {
     throw std::runtime_error(
         "Corrupted unaligned stream: trailing bytes after expected records.");
   }
+  if (methyl_ternary)
+    fin.close();
 
   decoded_chars.assign(decoded_total, 0);
   static const std::array<char, 16> int_to_base = {'A', 'G', 'C', 'T', 'N', 'N',
                                                    'N', 'N', 'N', 'N', 'N', 'N',
                                                    'N', 'N', 'N', 'N'};
 
+  if (!methyl_ternary) {
 #pragma omp parallel for schedule(static)
-  for (size_t read_index = 0; read_index < expected_read_count; ++read_index) {
-    const uint16_t read_length = decoded_lengths[read_index];
-    const uint8_t *encoded_read = reinterpret_cast<const uint8_t *>(
-        encoded.data() + encoded_offsets[read_index]);
-    char *decoded_read = decoded_chars.data() + decoded_offsets[read_index];
+    for (size_t read_index = 0; read_index < expected_read_count;
+         ++read_index) {
+      const uint16_t read_length = decoded_lengths[read_index];
+      const uint8_t *encoded_read = reinterpret_cast<const uint8_t *>(
+          encoded.data() + encoded_offsets[read_index]);
+      char *decoded_read = decoded_chars.data() + decoded_offsets[read_index];
 
-    for (uint16_t base_index = 0; base_index < read_length; ++base_index) {
-      const uint8_t packed_byte = encoded_read[base_index / 2];
-      const uint8_t base_code =
-          (base_index % 2 == 0) ? (packed_byte & 0x0F) : (packed_byte >> 4);
-      decoded_read[base_index] = int_to_base[base_code & 0x0F];
+      for (uint16_t base_index = 0; base_index < read_length; ++base_index) {
+        const uint8_t packed_byte = encoded_read[base_index / 2];
+        const uint8_t base_code =
+            (base_index % 2 == 0) ? (packed_byte & 0x0F) : (packed_byte >> 4);
+        decoded_read[base_index] = int_to_base[base_code & 0x0F];
+      }
     }
+  } else {
+    // Sequential decode for ternary unaligned (easier to implement correctly
+    // here)
+    std::ifstream fin_ternary(path, std::ios::binary);
+    std::string s;
+    for (size_t read_index = 0; read_index < expected_read_count;
+         ++read_index) {
+      read_dna_ternary_bits(s, fin_ternary);
+      std::memcpy(decoded_chars.data() + decoded_offsets[read_index], s.data(),
+                  s.size());
+    }
+    fin_ternary.close();
   }
 }
 
@@ -540,7 +587,8 @@ void reorder_compress_streams(const std::string &temp_dir,
   std::vector<char> unaligned_chars;
   std::vector<uint16_t> unaligned_lengths;
   decode_unaligned_reads(paths.unaligned_path, unaligned_read_count,
-                         unaligned_chars, unaligned_lengths);
+                         unaligned_chars, unaligned_lengths,
+                         cp.encoding.methyl_ternary);
   if (unaligned_chars.size() != unaligned_char_count) {
     throw std::runtime_error(
         "Corruption in unaligned stream: decoded size does not match recorded "

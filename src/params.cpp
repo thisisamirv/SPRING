@@ -104,6 +104,7 @@ void write_compression_params(std::ostream &out, const compression_params &cp) {
   write_string(out, cp.read_info.assay_confidence);
   write_bool(out, cp.encoding.barcode_sort);
   out.write(byte_ptr(&cp.encoding.cb_len), sizeof(uint32_t));
+  write_bool(out, cp.encoding.methyl_ternary);
 }
 
 void read_compression_params(std::istream &in, compression_params &cp) {
@@ -187,15 +188,22 @@ void read_compression_params(std::istream &in, compression_params &cp) {
       if (in.peek() != std::char_traits<char>::eof()) {
         cp.encoding.barcode_sort = read_bool(in);
         in.read(byte_ptr(&cp.encoding.cb_len), sizeof(uint32_t));
+        if (in.peek() != std::char_traits<char>::eof()) {
+          cp.encoding.methyl_ternary = read_bool(in);
+        } else {
+          cp.encoding.methyl_ternary = false;
+        }
       } else {
         cp.encoding.barcode_sort = false;
         cp.encoding.cb_len = 16;
+        cp.encoding.methyl_ternary = false;
       }
     } else {
       cp.read_info.assay = "auto";
       cp.read_info.assay_confidence = "N/A";
       cp.encoding.barcode_sort = false;
       cp.encoding.cb_len = 16;
+      cp.encoding.methyl_ternary = false;
     }
   } else {
     cp.read_info.assay = "auto";

@@ -3,7 +3,6 @@
 // decompression.
 
 #include <filesystem>
-#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <string>
@@ -21,24 +20,6 @@ namespace {
 
 constexpr const char *kBundleManifestName = "bundle.meta";
 constexpr const char *kBundleVersion = "SPRING2_BUNDLE_V1";
-
-std::unordered_map<std::string, std::string>
-read_key_value_file(const std::string &path) {
-  std::ifstream input(path, std::ios::binary);
-  if (!input.is_open()) {
-    throw std::runtime_error("Unable to read file: " + path);
-  }
-
-  std::unordered_map<std::string, std::string> kv;
-  std::string line;
-  while (std::getline(input, line)) {
-    const size_t sep = line.find('=');
-    if (sep == std::string::npos)
-      continue;
-    kv[line.substr(0, sep)] = line.substr(sep + 1);
-  }
-  return kv;
-}
 
 std::unordered_map<std::string, std::string>
 read_key_value_string(const std::string &content) {
@@ -63,7 +44,7 @@ void perform_verification(const std::string &archive_path,
   perform_audit(archive_path, temp_dir);
 }
 
-void preview(const std::string &archive_path, bool audit_only) {
+void preview_single(const std::string &archive_path, bool audit_only) {
   if (audit_only) {
     const std::string temp_dir = "tmp_preview_" + random_string(10);
     std::filesystem::create_directories(temp_dir);
@@ -93,86 +74,8 @@ void preview(const std::string &archive_path, bool audit_only) {
   auto contents =
       read_files_from_tar_memory(archive_path, {kBundleManifestName, "cp.bin"});
 
-  if (contents.contains(kBundleManifestName)) {
-    const auto manifest = read_key_value_string(contents[kBundleManifestName]);
-    if (!manifest.contains("version") ||
-        manifest.at("version") != kBundleVersion) {
-      throw std::runtime_error("Unsupported grouped archive manifest version.");
-    }
-
-    const std::string read_archive_name =
-        manifest.contains("read_archive") ? manifest.at("read_archive") : "";
-    const std::string index_archive_name =
-        manifest.contains("index_archive") ? manifest.at("index_archive") : "";
-    const bool has_r3 =
-        (manifest.contains("has_r3") && manifest.at("has_r3") == "1");
-    const std::string read3_archive_name =
-        manifest.contains("read3_archive") ? manifest.at("read3_archive") : "";
-    const std::string read3_alias_source =
-        manifest.contains("read3_alias_source")
-            ? manifest.at("read3_alias_source")
-            : "";
-    const bool has_index =
-        (manifest.contains("has_index") && manifest.at("has_index") == "1");
-    const bool has_i2 =
-        (manifest.contains("has_i2") && manifest.at("has_i2") == "1");
-
-    std::cout << "SPRING2 Grouped Archive Metadata Preview:\n";
-    std::cout << "--------------------------------\n";
-    std::cout << "Mode:              Grouped (R + I lanes)\n";
-    std::cout << "Input R1:          " << manifest.at("r1_name") << "\n";
-    std::cout << "Input R2:          " << manifest.at("r2_name") << "\n";
-    if (has_r3 && manifest.contains("r3_name")) {
-      std::cout << "Input R3:          " << manifest.at("r3_name") << "\n";
-    }
-    if (has_index && manifest.contains("i1_name")) {
-      std::cout << "Input I1:          " << manifest.at("i1_name") << "\n";
-    }
-    if (has_index && has_i2 && manifest.contains("i2_name")) {
-      std::cout << "Input I2:          " << manifest.at("i2_name") << "\n";
-    }
-    std::cout << "--------------------------------\n";
-
-    // For a full preview of grouped sub-archives, we unfortunately must extract
-    // them or read recursively. Since grouped archives are large, we only
-    // extract the sub-archives temporarily.
-    const std::string temp_dir = "tmp_preview_" + random_string(10);
-    std::filesystem::create_directories(temp_dir);
-    try {
-      extract_tar_archive(archive_path, temp_dir);
-      std::cout << "\n[Reads Group]\n";
-      preview(temp_dir + "/" + read_archive_name, false);
-      if (has_r3) {
-        if (!read3_alias_source.empty()) {
-          std::cout << "\n[Read3 Group]\n";
-          std::cout << "R3 is aliased to " << read3_alias_source
-                    << " (no extra payload stored).\n";
-        } else {
-          std::cout << "\n[Read3 Group]\n";
-          preview(temp_dir + "/" + read3_archive_name, false);
-        }
-      }
-      if (has_index) {
-        std::cout << "\n[Index Group]\n";
-        preview(temp_dir + "/" + index_archive_name, false);
-      }
-    } catch (...) {
-      std::error_code ec;
-      std::filesystem::remove_all(temp_dir, ec);
-      throw;
-    }
-    std::error_code ec;
-    std::filesystem::remove_all(temp_dir, ec);
-    if (ec) {
-      std::cerr << "Warning: Could not completely remove temp dir: "
-                << ec.message() << "\n";
-    }
-    return;
-  }
-
   if (!contents.contains("cp.bin")) {
-    throw std::runtime_error(
-        "Could not find cp.bin or bundle.meta in the archive.");
+    throw std::runtime_error("Could not find cp.bin in the archive.");
   }
 
   compression_params cp{};
@@ -189,8 +92,6 @@ void preview(const std::string &archive_path, bool audit_only) {
   if (!cp.read_info.note.empty()) {
     std::cout << "Note:              " << cp.read_info.note << "\n";
   }
-  std::string assay_print =
-      !cp.read_info.assay.empty() ? cp.read_info.assay : "auto";
   std::cout << "Assay Type:        "
             << (!cp.read_info.assay.empty() ? cp.read_info.assay : "auto");
   if (!cp.read_info.assay_confidence.empty() &&
@@ -323,6 +224,83 @@ void preview(const std::string &archive_path, bool audit_only) {
         cp.gzip.streams[1].uncompressed_size,
         cp.gzip.streams[1].compressed_size, cp.gzip.streams[1].member_count);
   }
+}
+
+void preview(const std::string &archive_path, bool audit_only) {
+  auto contents =
+      read_files_from_tar_memory(archive_path, {kBundleManifestName});
+
+  if (contents.contains(kBundleManifestName)) {
+    const auto manifest = read_key_value_string(contents[kBundleManifestName]);
+    if (!manifest.contains("version") ||
+        manifest.at("version") != kBundleVersion) {
+      throw std::runtime_error("Unsupported grouped archive manifest version.");
+    }
+
+    const std::string read_archive_name =
+        manifest.contains("read_archive") ? manifest.at("read_archive") : "";
+    const std::string index_archive_name =
+        manifest.contains("index_archive") ? manifest.at("index_archive") : "";
+    const bool has_r3 =
+        (manifest.contains("has_r3") && manifest.at("has_r3") == "1");
+    const std::string read3_archive_name =
+        manifest.contains("read3_archive") ? manifest.at("read3_archive") : "";
+    const std::string read3_alias_source =
+        manifest.contains("read3_alias_source")
+            ? manifest.at("read3_alias_source")
+            : "";
+    const bool has_index =
+        (manifest.contains("has_index") && manifest.at("has_index") == "1");
+    const bool has_i2 =
+        (manifest.contains("has_i2") && manifest.at("has_i2") == "1");
+
+    std::cout << "SPRING2 Grouped Archive Metadata Preview:\n";
+    std::cout << "--------------------------------\n";
+    std::cout << "Mode:              Grouped (R + I lanes)\n";
+    std::cout << "Input R1:          " << manifest.at("r1_name") << "\n";
+    std::cout << "Input R2:          " << manifest.at("r2_name") << "\n";
+    if (has_r3 && manifest.contains("r3_name")) {
+      std::cout << "Input R3:          " << manifest.at("r3_name") << "\n";
+    }
+    if (has_index && manifest.contains("i1_name")) {
+      std::cout << "Input I1:          " << manifest.at("i1_name") << "\n";
+    }
+    if (has_index && has_i2 && manifest.contains("i2_name")) {
+      std::cout << "Input I2:          " << manifest.at("i2_name") << "\n";
+    }
+    std::cout << "--------------------------------\n";
+
+    const std::string temp_dir = "tmp_preview_" + random_string(10);
+    std::filesystem::create_directories(temp_dir);
+    try {
+      extract_tar_archive(archive_path, temp_dir);
+      std::cout << "\n[Reads Group]\n";
+      preview_single(temp_dir + "/" + read_archive_name, false);
+      if (has_r3) {
+        if (!read3_alias_source.empty()) {
+          std::cout << "\n[Read3 Group]\n";
+          std::cout << "R3 is aliased to " << read3_alias_source
+                    << " (no extra payload stored).\n";
+        } else {
+          std::cout << "\n[Read3 Group]\n";
+          preview_single(temp_dir + "/" + read3_archive_name, false);
+        }
+      }
+      if (has_index) {
+        std::cout << "\n[Index Group]\n";
+        preview_single(temp_dir + "/" + index_archive_name, false);
+      }
+    } catch (...) {
+      std::error_code ec;
+      std::filesystem::remove_all(temp_dir, ec);
+      throw;
+    }
+    std::error_code ec;
+    std::filesystem::remove_all(temp_dir, ec);
+    return;
+  }
+
+  preview_single(archive_path, audit_only);
 }
 
 } // namespace spring

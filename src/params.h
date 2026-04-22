@@ -69,6 +69,7 @@ struct compression_params {
                                // lane is present. Auto-detected from I1 length
                                // when an I1 lane is provided.
     bool barcode_sort = false; // True when barcode-first ordering was applied.
+    bool methyl_ternary = false;
   } encoding;
 
   struct QualityConfig {

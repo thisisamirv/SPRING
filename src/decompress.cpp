@@ -374,42 +374,75 @@ void write_step_output(std::ofstream &output_stream, std::string *id_buffer,
 
 void decode_packed_sequence_chunk(const std::string &packed_seq_base_path,
                                   const int encoding_thread_id,
-                                  const uint64_t num_bases) {
+                                  const uint64_t num_bases,
+                                  bool methyl_ternary) {
   const std::string chunk_base_path =
       packed_seq_base_path + '.' + std::to_string(encoding_thread_id);
   const std::string temporary_output_path = chunk_base_path + ".tmp";
-  const char base_lookup[4] = {'A', 'C', 'G', 'T'};
-
-  // Redundant BSC_decompress removed; callers now provide pre-sliced raw
-  // chunks.
+  static const char base_lookup[4] = {'A', 'G', 'C', 'T'};
 
   std::ofstream unpacked_output(temporary_output_path, std::ios::binary);
   std::ifstream packed_input(chunk_base_path, std::ios::binary);
   std::vector<uint8_t> packed_buffer(1U << 16);
-  std::vector<char> unpacked_buffer(packed_buffer.size() * 4);
+  std::vector<char> unpacked_buffer(packed_buffer.size() * 5);
   uint64_t bases_decoded = 0;
 
   while (packed_input && bases_decoded < num_bases) {
-    packed_input.read(reinterpret_cast<char *>(packed_buffer.data()),
-                      static_cast<std::streamsize>(packed_buffer.size()));
-    const std::streamsize packed_bytes_read = packed_input.gcount();
-    if (packed_bytes_read <= 0) {
-      break;
-    }
+    if (!methyl_ternary) {
+      packed_input.read(reinterpret_cast<char *>(packed_buffer.data()),
+                        static_cast<std::streamsize>(packed_buffer.size()));
+      const std::streamsize packed_bytes_read = packed_input.gcount();
+      if (packed_bytes_read <= 0) {
+        break;
+      }
 
-    size_t unpacked_index = 0;
-    for (std::streamsize packed_index = 0; packed_index < packed_bytes_read;
-         packed_index++) {
-      uint8_t byte = packed_buffer[packed_index];
-      for (int i = 0; i < 4 && bases_decoded < num_bases; i++) {
-        unpacked_buffer[unpacked_index++] = base_lookup[byte & 3];
-        byte >>= 2;
-        bases_decoded++;
+      size_t unpacked_index = 0;
+      for (std::streamsize packed_index = 0; packed_index < packed_bytes_read;
+           packed_index++) {
+        uint8_t byte = packed_buffer[packed_index];
+        for (int i = 0; i < 4 && bases_decoded < num_bases; i++) {
+          unpacked_buffer[unpacked_index++] = base_lookup[byte & 3];
+          byte >>= 2;
+          bases_decoded++;
+        }
+      }
+      unpacked_output.write(unpacked_buffer.data(),
+                            static_cast<std::streamsize>(unpacked_index));
+    } else {
+      // Ternary unpacking
+      uint8_t packed;
+      if (!packed_input.read(reinterpret_cast<char *>(&packed), 1))
+        break;
+
+      if (packed < 243) {
+        size_t unpacked_index = 0;
+        for (int j = 0; j < 5 && bases_decoded < num_bases; j++) {
+          uint8_t val = packed % 3;
+          packed /= 3;
+          if (val == 2)
+            unpacked_buffer[unpacked_index++] = 'T';
+          else
+            unpacked_buffer[unpacked_index++] = base_lookup[val];
+          bases_decoded++;
+        }
+        unpacked_output.write(unpacked_buffer.data(),
+                              static_cast<std::streamsize>(unpacked_index));
+      } else {
+        // Escape block
+        uint16_t escape;
+        if (!packed_input.read(reinterpret_cast<char *>(&escape),
+                               sizeof(uint16_t)))
+          throw std::runtime_error("Ternary seq read error: truncated escape");
+        size_t unpacked_index = 0;
+        for (int j = 0; j < 5 && bases_decoded < num_bases; j++) {
+          unpacked_buffer[unpacked_index++] =
+              base_lookup[(escape >> (2 * j)) & 0x03];
+          bases_decoded++;
+        }
+        unpacked_output.write(unpacked_buffer.data(),
+                              static_cast<std::streamsize>(unpacked_index));
       }
     }
-
-    unpacked_output.write(unpacked_buffer.data(),
-                          static_cast<std::streamsize>(unpacked_index));
   }
 
   packed_input.close();
@@ -1124,7 +1157,8 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
          encoding_thread_id < range.end; encoding_thread_id++) {
       decode_packed_sequence_chunk(
           packed_seq_base_path, encoding_thread_id,
-          cp.read_info.file_len_seq_thr[encoding_thread_id]);
+          cp.read_info.file_len_seq_thr[encoding_thread_id],
+          cp.encoding.methyl_ternary);
     }
   }
   SPRING_LOG_DEBUG("decompress_unpack_seq complete.");

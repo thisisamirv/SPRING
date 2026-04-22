@@ -19,7 +19,6 @@
 #include <string>
 #include <vector>
 
-
 namespace spring {
 
 struct sequence_pack_paths {
@@ -46,16 +45,20 @@ sequence_pack_paths make_sequence_pack_paths(const std::string &base_path,
 
 uint64_t write_packed_sequence(const std::string &sequence_path,
                                const std::string &packed_path,
-                               const std::string &tail_path) {
-  std::array<uint8_t, 256> base_to_int{};
-  base_to_int[(uint8_t)'A'] = 0;
-  base_to_int[(uint8_t)'C'] = 1;
-  base_to_int[(uint8_t)'G'] = 2;
-  base_to_int[(uint8_t)'T'] = 3;
-  base_to_int[(uint8_t)'a'] = 0;
-  base_to_int[(uint8_t)'c'] = 1;
-  base_to_int[(uint8_t)'g'] = 2;
-  base_to_int[(uint8_t)'t'] = 3;
+                               const std::string &tail_path,
+                               bool methyl_ternary) {
+  static const std::array<uint8_t, 128> base_to_int = []() {
+    std::array<uint8_t, 128> table{};
+    table[static_cast<uint8_t>('A')] = 0;
+    table[static_cast<uint8_t>('a')] = 0;
+    table[static_cast<uint8_t>('C')] = 2;
+    table[static_cast<uint8_t>('c')] = 2;
+    table[static_cast<uint8_t>('G')] = 1;
+    table[static_cast<uint8_t>('g')] = 1;
+    table[static_cast<uint8_t>('T')] = 3;
+    table[static_cast<uint8_t>('t')] = 3;
+    return table;
+  }();
 
   constexpr size_t input_buffer_size = 1 << 16;
   std::ifstream sequence_input(sequence_path, std::ios::binary);
@@ -75,9 +78,10 @@ uint64_t write_packed_sequence(const std::string &sequence_path,
   }
   std::array<char, input_buffer_size> input_buffer{};
   std::array<char, input_buffer_size / 4 + 1> packed_buffer{};
-  std::array<char, 4> trailing_bases{};
+  std::array<char, 5> trailing_bases{};
   uint64_t sequence_length = 0;
   size_t trailing_count = 0;
+  const size_t bases_per_byte = methyl_ternary ? 5 : 4;
 
   while (sequence_input) {
     sequence_input.read(input_buffer.data(), input_buffer.size());
@@ -92,15 +96,49 @@ uint64_t write_packed_sequence(const std::string &sequence_path,
     for (std::streamsize input_index = 0; input_index < bytes_read;
          input_index++) {
       trailing_bases[trailing_count++] = input_buffer[input_index];
-      if (trailing_count < trailing_bases.size()) {
+      if (trailing_count < bases_per_byte) {
         continue;
       }
 
-      packed_buffer[packed_count++] =
-          static_cast<char>(64 * base_to_int[(uint8_t)trailing_bases[3]] +
-                            16 * base_to_int[(uint8_t)trailing_bases[2]] +
-                            4 * base_to_int[(uint8_t)trailing_bases[1]] +
-                            base_to_int[(uint8_t)trailing_bases[0]]);
+      if (!methyl_ternary) {
+        packed_buffer[packed_count++] =
+            static_cast<char>(64 * base_to_int[(uint8_t)trailing_bases[3]] +
+                              16 * base_to_int[(uint8_t)trailing_bases[2]] +
+                              4 * base_to_int[(uint8_t)trailing_bases[1]] +
+                              base_to_int[(uint8_t)trailing_bases[0]]);
+      } else {
+        bool has_c = false;
+        for (int k = 0; k < 5; k++) {
+          if (trailing_bases[k] == 'C' || trailing_bases[k] == 'c') {
+            has_c = true;
+            break;
+          }
+        }
+        if (!has_c) {
+          uint8_t packed = 0;
+          uint8_t p3 = 1;
+          for (int k = 0; k < 5; k++) {
+            uint8_t val = base_to_int[static_cast<uint8_t>(trailing_bases[k])];
+            if (val == 3)
+              val = 2; // T is 2 in ternary
+            packed += val * p3;
+            p3 *= 3;
+          }
+          packed_buffer[packed_count++] = static_cast<char>(packed);
+        } else {
+          packed_buffer[packed_count++] = static_cast<char>(243);
+          uint16_t escape = 0;
+          for (int k = 0; k < 5; k++) {
+            uint8_t val = base_to_int[static_cast<uint8_t>(trailing_bases[k])];
+            escape |= (val << (2 * k));
+          }
+          packed_output.write(packed_buffer.data(),
+                              static_cast<std::streamsize>(packed_count));
+          packed_count = 0;
+          packed_output.write(reinterpret_cast<const char *>(&escape),
+                              sizeof(uint16_t));
+        }
+      }
       trailing_count = 0;
     }
 
@@ -111,11 +149,22 @@ uint64_t write_packed_sequence(const std::string &sequence_path,
   }
 
   if (trailing_count > 0) {
-    uint8_t packed_byte = 0;
-    for (size_t i = 0; i < trailing_count; ++i) {
-      packed_byte |= (base_to_int[(uint8_t)trailing_bases[i]] << (2 * i));
+    if (!methyl_ternary) {
+      uint8_t packed_byte = 0;
+      for (size_t i = 0; i < trailing_count; ++i) {
+        packed_byte |= (base_to_int[(uint8_t)trailing_bases[i]] << (2 * i));
+      }
+      packed_output.write(reinterpret_cast<const char *>(&packed_byte), 1);
+    } else {
+      packed_output.put(static_cast<char>(243));
+      uint16_t escape = 0;
+      for (size_t i = 0; i < trailing_count; ++i) {
+        uint8_t val = base_to_int[static_cast<uint8_t>(trailing_bases[i])];
+        escape |= (val << (2 * i));
+      }
+      packed_output.write(reinterpret_cast<const char *>(&escape),
+                          sizeof(uint16_t));
     }
-    packed_output.write(reinterpret_cast<const char *>(&packed_byte), 1);
   }
 
   if (!packed_output.good() || !tail_output.good()) {
@@ -135,8 +184,9 @@ void pack_sequence_chunk(const encoder_global &encoder_state,
                    ", pack_sequence_chunk start: input=" + paths.input_path +
                    ", packed=" + paths.packed_path);
 
-  const uint64_t sequence_length = write_packed_sequence(
-      paths.input_path, paths.packed_path, paths.tail_path);
+  const uint64_t sequence_length =
+      write_packed_sequence(paths.input_path, paths.packed_path,
+                            paths.tail_path, encoder_state.methyl_ternary);
   thread_sequence_lengths[thread_id] = sequence_length;
   SPRING_LOG_DEBUG("block_id=enc-pack-chunk-" + std::to_string(thread_id) +
                    ", pack_sequence_chunk done: seq_bases=" +
@@ -386,13 +436,14 @@ void getDataParams(encoder_global &eg, const compression_params &cp) {
   total_read_count = cp.read_info.num_reads;
 
   std::ifstream singleton_count_input(eg.infile + ".singleton" + ".count",
-                                      std::ifstream::in);
+                                      std::ifstream::in | std::ios::binary);
   singleton_count_input.read(byte_ptr(&eg.numreads_s), sizeof(uint32_t));
   singleton_count_input.close();
   const std::string singleton_count_path = eg.infile + ".singleton.count";
   safe_remove_file(singleton_count_path);
   eg.numreads = clean_read_count - eg.numreads_s;
   eg.numreads_N = total_read_count - clean_read_count;
+  eg.methyl_ternary = cp.encoding.methyl_ternary;
 }
 
 void correct_order(uint32_t *order_s, const encoder_global &eg) {

@@ -223,23 +223,27 @@ void AssayDetector::process_reads(const std::string &r1_path,
   read_file(r2_path, false);
 }
 
-std::string AssayDetector::evaluate_stages(const ReadStats &stats,
-                                           bool explicit_sc_layout,
-                                           std::string &confidence_out) {
+AssayDetector::DetectionResult
+AssayDetector::evaluate_stages(const ReadStats &stats,
+                               bool explicit_sc_layout) {
+  DetectionResult res;
   if (stats.total_reads == 0) {
-    confidence_out = "low (no reads parsed)";
-    return "dna";
+    res.assay = "dna";
+    res.confidence = "low (no reads parsed)";
+    return res;
   }
+
+  res.c_ratio =
+      static_cast<double>(stats.total_C) / (stats.total_C + stats.total_T + 1);
+  res.g_ratio =
+      static_cast<double>(stats.total_G) / (stats.total_G + stats.total_A + 1);
 
   // Stage 1: Methylation
   if (stats.total_reads >= 1000) {
-    double c_ratio = static_cast<double>(stats.total_C) /
-                     (stats.total_C + stats.total_T + 1);
-    double g_ratio = static_cast<double>(stats.total_G) /
-                     (stats.total_G + stats.total_A + 1);
-    if (c_ratio < 0.05 || g_ratio < 0.05) {
-      confidence_out = "high (bisulfite conversion signature)";
-      return explicit_sc_layout ? "sc-methyl" : "methyl";
+    if (res.c_ratio < 0.05 || res.g_ratio < 0.05) {
+      res.confidence = "high (bisulfite conversion signature)";
+      res.assay = explicit_sc_layout ? "sc-methyl" : "methyl";
+      return res;
     }
   }
 
@@ -265,15 +269,17 @@ std::string AssayDetector::evaluate_stages(const ReadStats &stats,
   double atac_frac =
       static_cast<double>(stats.atac_adapters_found) / stats.total_reads;
   if (atac_frac > 0.03) {
-    confidence_out = "high (Tn5 adapter signature)";
-    return is_single_cell ? "sc-atac" : "atac";
+    res.confidence = "high (Tn5 adapter signature)";
+    res.assay = is_single_cell ? "sc-atac" : "atac";
+    return res;
   }
 
   double poly_a_frac =
       static_cast<double>(stats.poly_a_tails_found) / stats.total_reads;
   if (poly_a_frac > 0.03) {
-    confidence_out = "high (poly-A/T tail signature)";
-    return is_single_cell ? "sc-rna" : "rna";
+    res.confidence = "high (poly-A/T tail signature)";
+    res.assay = is_single_cell ? "sc-rna" : "rna";
+    return res;
   }
 
   // Stage 4: Alignment Sketch
@@ -281,8 +287,9 @@ std::string AssayDetector::evaluate_stages(const ReadStats &stats,
     double total_aligned = stats.rna_hits + stats.atac_hits +
                            stats.intron_hits + stats.genome_hits;
     if (total_aligned < 10) {
-      confidence_out = "low (sample may be non-human or contamination)";
-      return "dna";
+      res.confidence = "low (sample may be non-human or contamination)";
+      res.assay = "dna";
+      return res;
     }
 
     double rna_score =
@@ -291,25 +298,29 @@ std::string AssayDetector::evaluate_stages(const ReadStats &stats,
         static_cast<double>(stats.atac_hits) / (stats.intron_hits + 1);
 
     if (rna_score > 10.0) {
-      confidence_out = "medium (alignment to RNA exons)";
-      return is_single_cell ? "sc-rna" : "rna";
+      res.confidence = "medium (alignment to RNA exons)";
+      res.assay = is_single_cell ? "sc-rna" : "rna";
+      return res;
     } else if (atac_score > 5.0) {
-      confidence_out = "medium (alignment to ATAC promoters)";
-      return is_single_cell ? "sc-atac" : "atac";
+      res.confidence = "medium (alignment to ATAC promoters)";
+      res.assay = is_single_cell ? "sc-atac" : "atac";
+      return res;
     } else if (rna_score < 2.0 && atac_score < 2.0) {
-      confidence_out = "medium (uniform background alignment)";
-      return "dna";
+      res.confidence = "medium (uniform background alignment)";
+      res.assay = "dna";
+      return res;
     }
   }
 
-  confidence_out = "low (default)";
-  return "dna";
+  res.confidence = "low (default)";
+  res.assay = "dna";
+  return res;
 }
 
-std::string
+AssayDetector::DetectionResult
 AssayDetector::detect(const std::string &r1_path, const std::string &r2_path,
                       const std::string &r3_path, const std::string &i1_path,
-                      const std::string &i2_path, std::string &confidence_out) {
+                      const std::string &i2_path) {
   bool explicit_sc = (!r3_path.empty() || !i1_path.empty() || !i2_path.empty());
 
   // Attempt to load reference from working directory
@@ -318,7 +329,7 @@ AssayDetector::detect(const std::string &r1_path, const std::string &r2_path,
   ReadStats stats;
   process_reads(r1_path, r2_path, stats);
 
-  return evaluate_stages(stats, explicit_sc, confidence_out);
+  return evaluate_stages(stats, explicit_sc);
 }
 
 } // namespace spring

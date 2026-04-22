@@ -43,6 +43,7 @@ template <size_t bitset_size> struct reorder_global {
   std::string outfilereadlength;
 
   bool paired_end;
+  bool methyl_ternary;
 
   std::vector<std::array<std::bitset<bitset_size>, 128>> basemask;
   std::vector<std::bitset<bitset_size> *> basemask_ptrs;
@@ -50,7 +51,7 @@ template <size_t bitset_size> struct reorder_global {
   reorder_global(int max_readlen_param)
       : numreads(0), numreads_array{0, 0}, maxshift(0), num_thr(0),
         max_readlen(max_readlen_param), numdict(NUM_DICT_REORDER),
-        paired_end(false) {
+        paired_end(false), methyl_ternary(false) {
     basemask.resize(static_cast<size_t>(max_readlen_param));
     basemask_ptrs.resize(static_cast<size_t>(max_readlen_param));
     for (int i = 0; i < max_readlen_param; i++)
@@ -286,6 +287,33 @@ void updaterefcount(std::bitset<bitset_size> &current_read,
 template <size_t bitset_size>
 void readDnaFile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
                  const reorder_global<bitset_size> &rg) {
+  if (rg.methyl_ternary) {
+    std::string s;
+    std::ifstream f(rg.infile[0], std::ifstream::in | std::ios::binary);
+    for (uint32_t i = 0; i < rg.numreads_array[0]; i++) {
+      read_dna_ternary_bits(s, f);
+      read_lengths[i] = static_cast<uint16_t>(s.size());
+      chartobitset<bitset_size>(
+          s.data(), read_lengths[i], read[i],
+          const_cast<std::bitset<bitset_size> **>(rg.basemask_ptrs.data()));
+    }
+    f.close();
+    safe_remove_file(rg.infile[0]);
+    if (rg.paired_end) {
+      std::ifstream f(rg.infile[1], std::ifstream::in | std::ios::binary);
+      for (uint32_t i = rg.numreads_array[0];
+           i < rg.numreads_array[0] + rg.numreads_array[1]; i++) {
+        read_dna_ternary_bits(s, f);
+        read_lengths[i] = static_cast<uint16_t>(s.size());
+        chartobitset<bitset_size>(
+            s.data(), read_lengths[i], read[i],
+            const_cast<std::bitset<bitset_size> **>(rg.basemask_ptrs.data()));
+      }
+      f.close();
+      safe_remove_file(rg.infile[1]);
+    }
+    return;
+  }
   std::ifstream f(rg.infile[0], std::ifstream::in | std::ios::binary);
   for (uint32_t i = 0; i < rg.numreads_array[0]; i++) {
     f.read(byte_ptr(&read_lengths[i]), sizeof(uint16_t));
@@ -846,24 +874,40 @@ void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
     while (inRC.get(c)) {
       finorder.read(byte_ptr(&current), sizeof(uint32_t));
       if (c == 'd') {
-        uint16_t num_bytes_to_write =
-            ((uint32_t)read_lengths[current] + 4 - 1) / 4;
-        fout.write(byte_ptr(&read_lengths[current]), sizeof(uint16_t));
-        fout.write(byte_ptr(&read[current]), num_bytes_to_write);
+        if (rg.methyl_ternary) {
+          bitsettostring<bitset_size>(read[current], s, read_lengths[current],
+                                      rg);
+          write_dna_ternary_bits(s, fout);
+        } else {
+          uint16_t num_bytes_to_write =
+              ((uint32_t)read_lengths[current] + 4 - 1) / 4;
+          fout.write(byte_ptr(&read_lengths[current]), sizeof(uint16_t));
+          fout.write(byte_ptr(&read[current]), num_bytes_to_write);
+        }
       } else {
         bitsettostring<bitset_size>(read[current], s, read_lengths[current],
                                     rg);
         reverse_complement(s, s1, read_lengths[current]);
-        write_dna_in_bits(s1, fout);
+        if (rg.methyl_ternary) {
+          write_dna_ternary_bits(s1, fout);
+        } else {
+          write_dna_in_bits(s1, fout);
+        }
       }
     }
     finorder_s.read(byte_ptr(&current), sizeof(uint32_t));
     while (!finorder_s.eof()) {
       numreads_s_thr[tid]++;
-      uint16_t num_bytes_to_write =
-          ((uint32_t)read_lengths[current] + 4 - 1) / 4;
-      fout_s.write(byte_ptr(&read_lengths[current]), sizeof(uint16_t));
-      fout_s.write(byte_ptr(&read[current]), num_bytes_to_write);
+      if (rg.methyl_ternary) {
+        bitsettostring<bitset_size>(read[current], s, read_lengths[current],
+                                    rg);
+        write_dna_ternary_bits(s, fout_s);
+      } else {
+        uint16_t num_bytes_to_write =
+            ((uint32_t)read_lengths[current] + 4 - 1) / 4;
+        fout_s.write(byte_ptr(&read_lengths[current]), sizeof(uint16_t));
+        fout_s.write(byte_ptr(&read[current]), num_bytes_to_write);
+      }
       finorder_s.read(byte_ptr(&current), sizeof(uint32_t));
     }
     fout.close();
@@ -921,6 +965,7 @@ void reorder_main(const std::string &temp_dir, const compression_params &cp) {
   rg.max_readlen = cp.read_info.max_readlen;
   rg.num_thr = cp.encoding.num_thr;
   rg.paired_end = cp.encoding.paired_end;
+  rg.methyl_ternary = cp.encoding.methyl_ternary;
   rg.maxshift = rg.max_readlen / 2;
   std::array<bbhashdict, NUM_DICT_REORDER> dict;
   initialize_reorder_dict_ranges(dict, rg.max_readlen);

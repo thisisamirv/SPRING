@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <fstream>
 #include <memory>
-#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -17,7 +16,7 @@ namespace spring {
 namespace {
 
 // 2-bit decode table matching dna_utils.cpp: A=0,G=1,C=2,T=3
-static const char kDnaDecodeTable[4] = {'A', 'G', 'C', 'T'};
+const char kDnaDecodeTable[4] = {'A', 'G', 'C', 'T'};
 
 // Decode the first `prefix_len` bases from a 2-bit packed buffer (same
 // encoding as write_dna_in_bits: 4 bases per byte, LSB first).
@@ -89,9 +88,11 @@ std::vector<PackedRead> load_reads(const std::string &path, uint32_t id_offset,
       cb = decode_prefix(packed.data(), readlen, cb_len);
     }
 
-    entries.push_back({std::move(cb),
-                       static_cast<uint32_t>(entries.size()) + id_offset,
-                       readlen, std::move(packed)});
+    entries.push_back(
+        {.cb = std::move(cb),
+         .original_id = static_cast<uint32_t>(entries.size()) + id_offset,
+         .readlen = readlen,
+         .packed = std::move(packed)});
   }
   return entries;
 }
@@ -161,9 +162,7 @@ void barcode_sort(const std::string &temp_dir, const compression_params &cp,
   std::istream *i1_stream = nullptr;
 
   if (!cb_source_path.empty()) {
-    const bool is_gz =
-        cb_source_path.size() > 3 &&
-        cb_source_path.compare(cb_source_path.size() - 3, 3, ".gz") == 0;
+    const bool is_gz = cb_source_path.ends_with(".gz");
     if (is_gz) {
       i1_gz = std::make_unique<gzip_istream>(cb_source_path);
       i1_stream = i1_gz.get();
@@ -211,10 +210,11 @@ void barcode_sort(const std::string &temp_dir, const compression_params &cp,
 
   // Build index into reads_1; sort by CB string only (stable).
   std::vector<uint32_t> r1_order(reads_1.size());
-  std::iota(r1_order.begin(), r1_order.end(), 0);
-  std::stable_sort(
-      r1_order.begin(), r1_order.end(),
-      [&](uint32_t a, uint32_t b) { return reads_1[a].cb < reads_1[b].cb; });
+  for (uint32_t i = 0; i < static_cast<uint32_t>(r1_order.size()); ++i)
+    r1_order[i] = i;
+  std::ranges::stable_sort(r1_order, [&](uint32_t a, uint32_t b) {
+    return reads_1[a].cb < reads_1[b].cb;
+  });
 
   // ── Distribute reads across thread slots (round-robin) ──────────────────
   // Each thread slot is a contiguous file pair read by the encoder.

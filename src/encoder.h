@@ -42,6 +42,7 @@ struct encoder_global {
   std::string infile_order_N;
 
   char enc_noise[128][128];
+  bool methyl_ternary = false;
 };
 
 struct contig_reads {

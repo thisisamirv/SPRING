@@ -757,44 +757,15 @@ resolve_decompression_io(const string_list &input_paths,
 
 } // namespace
 
-void perform_audit(const std::string &archive_path,
-                   const std::string &temp_dir) {
-  // Create a sub-directory for the audit untar to avoid clobbering existing
-  // temp files
+void perform_audit_standard(const std::string &archive_path,
+                            const std::string &temp_dir) {
   std::string audit_dir = temp_dir + "/audit_extract";
   std::filesystem::create_directories(audit_dir);
-  SPRING_LOG_DEBUG("Audit started for archive: " + archive_path +
+  SPRING_LOG_DEBUG("Audit (standard) started for archive: " + archive_path +
                    " (extract dir: " + audit_dir + ")");
 
   try {
     extract_tar_archive(archive_path, audit_dir);
-
-    const std::string manifest_path = audit_dir + "/" + kBundleManifestName;
-    if (std::filesystem::exists(manifest_path)) {
-      const bundle_manifest manifest = read_bundle_manifest(manifest_path);
-      const std::string read_archive_path =
-          audit_dir + "/" + manifest.read_archive_name;
-      const std::string index_archive_path =
-          manifest.has_index ? (audit_dir + "/" + manifest.index_archive_name)
-                             : std::string();
-      const std::string read3_archive_path =
-          (manifest.has_r3 && manifest.read3_alias_source.empty())
-              ? (audit_dir + "/" + manifest.read3_archive_name)
-              : std::string();
-
-      perform_audit(read_archive_path, temp_dir + "/audit_read_group");
-      if (!read3_archive_path.empty()) {
-        perform_audit(read3_archive_path, temp_dir + "/audit_read3_group");
-      }
-      if (!index_archive_path.empty()) {
-        perform_audit(index_archive_path, temp_dir + "/audit_index_group");
-      }
-
-      std::cout << "Audit successful: grouped archive members are valid."
-                << std::endl;
-      std::filesystem::remove_all(audit_dir);
-      return;
-    }
 
     std::string compression_params_path = audit_dir + "/cp.bin";
     std::ifstream compression_params_input(compression_params_path,
@@ -851,18 +822,12 @@ void perform_audit(const std::string &archive_path,
           mismatch = true;
         }
       }
-
       if (mismatch)
-        throw std::runtime_error("Archive integrity verification failed.");
-
-      std::cout << "Audit successful: Data and Digests match perfectly."
-                << std::endl;
-    } else {
-      std::cout << "Audit skipped: Record-level hashing is only supported for "
-                   "lossless, ordered archives."
-                << std::endl;
+        throw std::runtime_error("Archive integrity audit failed!");
     }
 
+    std::cout << "Audit successful: " << archive_path << " is valid."
+              << std::endl;
     std::filesystem::remove_all(audit_dir);
   } catch (...) {
     std::error_code ec;
@@ -871,162 +836,68 @@ void perform_audit(const std::string &archive_path,
   }
 }
 
-void compress(const std::string &temp_dir,
-              const std::vector<std::string> &input_paths,
-              const std::vector<std::string> &output_paths, const int num_thr,
-              const bool pairing_only_flag, const bool no_quality_flag,
-              const bool no_ids_flag,
-              const std::vector<std::string> &quality_options,
-              const int compression_level, const std::string &note,
-              const log_level verbosity_level, const bool audit_flag,
-              const std::string &r3_path, const std::string &i1_path,
-              const std::string &i2_path, const std::string &assay_type,
-              const std::string &cb_source_path, uint32_t cb_len) {
-  Logger::set_level(verbosity_level);
-  ProgressBar progress(verbosity_level == log_level::quiet);
-  ProgressBar::SetGlobalInstance(&progress);
-  omp_set_dynamic(0);
+void perform_audit(const std::string &archive_path,
+                   const std::string &temp_dir) {
+  // Create a sub-directory for the audit untar to avoid clobbering existing
+  // temp files
+  std::string audit_dir = temp_dir + "/audit_extract";
+  std::filesystem::create_directories(audit_dir);
+  SPRING_LOG_DEBUG("Audit started for archive: " + archive_path +
+                   " (extract dir: " + audit_dir + ")");
 
-  SPRING_LOG_INFO("Starting compression...");
-  SPRING_LOG_DEBUG(
-      "Compression request: temp_dir=" + temp_dir + ", num_threads=" +
-      std::to_string(num_thr) + ", level=" + std::to_string(compression_level) +
-      ", strip_order=" + std::string(pairing_only_flag ? "true" : "false") +
-      ", strip_quality=" + std::string(no_quality_flag ? "true" : "false") +
-      ", strip_ids=" + std::string(no_ids_flag ? "true" : "false") +
-      ", audit=" + std::string(audit_flag ? "true" : "false"));
+  try {
+    extract_tar_archive(archive_path, audit_dir);
 
-  const bool has_r3 = !r3_path.empty();
-  const bool has_i1 = !i1_path.empty();
-  const bool has_i2 = !i2_path.empty();
-  const bool grouped_bundle = has_r3 || has_i1 || has_i2;
+    const std::string manifest_path = audit_dir + "/" + kBundleManifestName;
+    if (std::filesystem::exists(manifest_path)) {
+      const bundle_manifest manifest = read_bundle_manifest(manifest_path);
+      const std::string read_archive_path =
+          audit_dir + "/" + manifest.read_archive_name;
+      const std::string index_archive_path =
+          manifest.has_index ? (audit_dir + "/" + manifest.index_archive_name)
+                             : std::string();
+      const std::string read3_archive_path =
+          (manifest.has_r3 && manifest.read3_alias_source.empty())
+              ? (audit_dir + "/" + manifest.read3_archive_name)
+              : std::string();
 
-  if (grouped_bundle) {
-    if (input_paths.size() < 2) {
-      throw std::runtime_error(
-          "Grouped compression requires at least R1 and R2.");
-    }
-    if (output_paths.size() > 1) {
-      throw std::runtime_error(
-          "Number of output files not equal to 1 for grouped compression.");
-    }
-
-    const std::string output_archive_path =
-        output_paths.empty() ? default_archive_name_from_input(input_paths[0])
-                             : output_paths[0];
-    const std::string read_archive_name = "reads_group.sp";
-    const std::string read3_archive_name = "read3_group.sp";
-    const std::string index_archive_name = "index_group.sp";
-    const std::string bundle_dir = temp_dir + "/bundle";
-    const std::string read_work_dir = temp_dir + "/bundle_read_work";
-    const std::string read3_work_dir = temp_dir + "/bundle_read3_work";
-    const std::string index_work_dir = temp_dir + "/bundle_index_work";
-
-    std::filesystem::create_directories(bundle_dir);
-    std::filesystem::create_directories(read_work_dir);
-    if (has_r3) {
-      std::filesystem::create_directories(read3_work_dir);
-    }
-    if (has_i1) {
-      std::filesystem::create_directories(index_work_dir);
-    }
-
-    const string_list read_inputs = {input_paths[0], input_paths[1]};
-    string_list read3_inputs;
-    string_list index_inputs;
-    if (has_r3) {
-      read3_inputs.push_back(r3_path);
-    }
-    if (has_i1) {
-      index_inputs.push_back(i1_path);
-      if (has_i2) {
-        index_inputs.push_back(i2_path);
+      perform_audit_standard(read_archive_path, temp_dir + "/audit_read_group");
+      if (!read3_archive_path.empty()) {
+        perform_audit_standard(read3_archive_path,
+                               temp_dir + "/audit_read3_group");
       }
-    }
-
-    SPRING_LOG_INFO("Detected grouped lanes; compressing as grouped bundle "
-                    "(read pair + optional read3 + optional index pair).");
-
-    // Compress R1/R2 as a regular SPRING archive.
-    // Pass i1_path as cb_source_path so barcode_sort can extract CBs from I1.
-    compress(read_work_dir, read_inputs, {bundle_dir + "/" + read_archive_name},
-             num_thr, pairing_only_flag, no_quality_flag, no_ids_flag,
-             quality_options, compression_level, note, verbosity_level,
-             audit_flag, "", "", "", assay_type, i1_path);
-
-    std::string read3_alias_source;
-    if (has_r3) {
-      if (paths_refer_to_same_file(r3_path, input_paths[0])) {
-        read3_alias_source = "R1";
-      } else if (paths_refer_to_same_file(r3_path, input_paths[1])) {
-        read3_alias_source = "R2";
-      } else {
-        compress(read3_work_dir, read3_inputs,
-                 {bundle_dir + "/" + read3_archive_name}, num_thr,
-                 pairing_only_flag, no_quality_flag, no_ids_flag,
-                 quality_options, compression_level,
-                 note.empty() ? std::string("read3-group")
-                              : (note + " | read3-group"),
-                 verbosity_level, audit_flag, "", "", "", assay_type);
+      if (!index_archive_path.empty()) {
+        perform_audit_standard(index_archive_path,
+                               temp_dir + "/audit_index_group");
       }
+
+      std::cout << "Audit successful: grouped archive members are valid."
+                << std::endl;
+      std::filesystem::remove_all(audit_dir);
+      return;
     }
 
-    if (has_i1) {
-      compress(
-          index_work_dir, index_inputs, {bundle_dir + "/" + index_archive_name},
-          num_thr, pairing_only_flag, no_quality_flag, no_ids_flag,
-          quality_options, compression_level,
-          note.empty() ? std::string("index-group") : (note + " | index-group"),
-          verbosity_level, audit_flag, "", "", "", assay_type);
-    }
-
+    std::filesystem::remove_all(audit_dir);
+    perform_audit_standard(archive_path, temp_dir);
+  } catch (...) {
     std::error_code ec;
-    std::filesystem::remove_all(read_work_dir, ec);
-    ec.clear();
-    if (has_r3) {
-      std::filesystem::remove_all(read3_work_dir, ec);
-      ec.clear();
-    }
-    if (has_i1) {
-      std::filesystem::remove_all(index_work_dir, ec);
-    }
-
-    const bundle_manifest manifest{
-        .version = kBundleVersion,
-        .read_archive_name = read_archive_name,
-        .has_r3 = has_r3,
-        .read3_archive_name = has_r3 && read3_alias_source.empty()
-                                  ? read3_archive_name
-                                  : std::string(),
-        .read3_alias_source = read3_alias_source,
-        .has_index = has_i1,
-        .index_archive_name = has_i1 ? index_archive_name : std::string(),
-        .has_i2 = has_i2,
-        .r1_name = std::filesystem::path(input_paths[0]).filename().string(),
-        .r2_name = std::filesystem::path(input_paths[1]).filename().string(),
-        .r3_name = has_r3 ? std::filesystem::path(r3_path).filename().string()
-                          : std::string(),
-        .i1_name = has_i1 ? std::filesystem::path(i1_path).filename().string()
-                          : std::string(),
-        .i2_name = has_i2 ? std::filesystem::path(i2_path).filename().string()
-                          : std::string()};
-    write_bundle_manifest(bundle_dir + "/" + kBundleManifestName, manifest);
-
-    run_timed_step("Creating grouped bundle archive ...", "Tar archive", [&] {
-      progress.set_stage("Creating archive", 0.95F, 1.0F);
-      create_tar_archive(output_archive_path, bundle_dir);
-    });
-    SPRING_LOG_DEBUG("Grouped archive created at: " + output_archive_path);
-
-    if (audit_flag) {
-      SPRING_LOG_DEBUG("Running post-compression audit for grouped archive.");
-      perform_audit(output_archive_path, temp_dir);
-    }
-
-    ProgressBar::SetGlobalInstance(nullptr);
-    return;
+    std::filesystem::remove_all(audit_dir, ec);
+    throw;
   }
+}
 
+void compress_standard(const std::string &temp_dir,
+                       const string_list &input_paths,
+                       const string_list &output_paths, const int num_thr,
+                       const bool pairing_only_flag, const bool no_quality_flag,
+                       const bool no_ids_flag,
+                       const string_list &quality_options,
+                       const int compression_level, const std::string &note,
+                       const log_level /*verbosity_level*/,
+                       const bool audit_flag, const std::string &r3_path,
+                       const std::string &i1_path, const std::string &i2_path,
+                       const std::string &assay_type,
+                       const std::string &cb_source_path, uint32_t cb_len) {
   const auto compression_start = clock_type::now();
 
   const compression_io_config io_config =
@@ -1096,10 +967,19 @@ void compress(const std::string &temp_dir,
     SPRING_LOG_INFO(
         "Running auto-detection for assay type on first 10,000 reads...");
     AssayDetector detector;
-    final_assay = detector.detect(
+    AssayDetector::DetectionResult res = detector.detect(
         prepared_inputs.input_path_1,
         io_config.paired_end ? prepared_inputs.input_path_2 : "", r3_path,
-        i1_path, i2_path, final_confidence);
+        i1_path, i2_path);
+    final_assay = res.assay;
+    final_confidence = res.confidence;
+
+    // Apply ternary guard: < 5% C or < 5% G (bisulfite conversion)
+    if (final_assay == "methyl" || final_assay == "sc-methyl") {
+      if (res.c_ratio < 0.05 || res.g_ratio < 0.05) {
+        cp.encoding.methyl_ternary = true;
+      }
+    }
     SPRING_LOG_INFO("Auto-detected assay: " + final_assay +
                     " (confidence: " + final_confidence + ")");
   }
@@ -1167,6 +1047,10 @@ void compress(const std::string &temp_dir,
       ", preserve_quality=" +
       std::string(cp.encoding.preserve_quality ? "true" : "false") +
       ", fasta_mode=" + std::string(cp.encoding.fasta_mode ? "true" : "false"));
+
+  auto *progress_ptr = ProgressBar::GlobalInstance();
+  ProgressBar dummy_progress(true);
+  auto &progress = progress_ptr ? *progress_ptr : dummy_progress;
 
   run_timed_step("Preprocessing ...", "Preprocessing", [&] {
     progress.set_stage("Preprocessing", 0.0F, 0.25F);
@@ -1264,11 +1148,305 @@ void compress(const std::string &temp_dir,
     std::cout << "Total size: " << std::setw(12)
               << fs::file_size(archive_file_path) << " bytes\n";
   }
-  ProgressBar::SetGlobalInstance(nullptr);
 
   if (audit_flag) {
     SPRING_LOG_DEBUG("Running post-compression audit.");
-    perform_audit(io_config.archive_path, temp_dir);
+    perform_audit_standard(io_config.archive_path, temp_dir);
+  }
+}
+
+void compress(const std::string &temp_dir,
+              const std::vector<std::string> &input_paths,
+              const std::vector<std::string> &output_paths, const int num_thr,
+              const bool pairing_only_flag, const bool no_quality_flag,
+              const bool no_ids_flag,
+              const std::vector<std::string> &quality_options,
+              const int compression_level, const std::string &note,
+              const log_level verbosity_level, const bool audit_flag,
+              const std::string &r3_path, const std::string &i1_path,
+              const std::string &i2_path, const std::string &assay_type,
+              const std::string &cb_source_path, uint32_t cb_len) {
+  Logger::set_level(verbosity_level);
+  ProgressBar progress(verbosity_level == log_level::quiet);
+  ProgressBar::SetGlobalInstance(&progress);
+  omp_set_dynamic(0);
+
+  SPRING_LOG_INFO("Starting compression...");
+  SPRING_LOG_DEBUG(
+      "Compression request: temp_dir=" + temp_dir + ", num_threads=" +
+      std::to_string(num_thr) + ", level=" + std::to_string(compression_level) +
+      ", strip_order=" + std::string(pairing_only_flag ? "true" : "false") +
+      ", strip_quality=" + std::string(no_quality_flag ? "true" : "false") +
+      ", strip_ids=" + std::string(no_ids_flag ? "true" : "false") +
+      ", audit=" + std::string(audit_flag ? "true" : "false"));
+
+  const bool has_r3 = !r3_path.empty();
+  const bool has_i1 = !i1_path.empty();
+  const bool has_i2 = !i2_path.empty();
+  const bool grouped_bundle = has_r3 || has_i1 || has_i2;
+
+  if (grouped_bundle) {
+    if (input_paths.size() < 2) {
+      throw std::runtime_error(
+          "Grouped compression requires at least R1 and R2.");
+    }
+    if (output_paths.size() > 1) {
+      throw std::runtime_error(
+          "Number of output files not equal to 1 for grouped compression.");
+    }
+
+    const std::string output_archive_path =
+        output_paths.empty() ? default_archive_name_from_input(input_paths[0])
+                             : output_paths[0];
+    const std::string read_archive_name = "reads_group.sp";
+    const std::string read3_archive_name = "read3_group.sp";
+    const std::string index_archive_name = "index_group.sp";
+    const std::string bundle_dir = temp_dir + "/bundle";
+    const std::string read_work_dir = temp_dir + "/bundle_read_work";
+    const std::string read3_work_dir = temp_dir + "/bundle_read3_work";
+    const std::string index_work_dir = temp_dir + "/bundle_index_work";
+
+    std::filesystem::create_directories(bundle_dir);
+    std::filesystem::create_directories(read_work_dir);
+    if (has_r3) {
+      std::filesystem::create_directories(read3_work_dir);
+    }
+    if (has_i1) {
+      std::filesystem::create_directories(index_work_dir);
+    }
+
+    const string_list read_inputs = {input_paths[0], input_paths[1]};
+    string_list read3_inputs;
+    string_list index_inputs;
+    if (has_r3) {
+      read3_inputs.push_back(r3_path);
+    }
+    if (has_i1) {
+      index_inputs.push_back(i1_path);
+      if (has_i2) {
+        index_inputs.push_back(i2_path);
+      }
+    }
+
+    SPRING_LOG_INFO("Detected grouped lanes; compressing as grouped bundle "
+                    "(read pair + optional read3 + optional index pair).");
+
+    // Compress R1/R2 as a regular SPRING archive.
+    // Pass i1_path as cb_source_path so barcode_sort can extract CBs from I1.
+    compress_standard(read_work_dir, read_inputs,
+                      {bundle_dir + "/" + read_archive_name}, num_thr,
+                      pairing_only_flag, no_quality_flag, no_ids_flag,
+                      quality_options, compression_level, note, verbosity_level,
+                      audit_flag, "", i1_path, "", assay_type, i1_path, cb_len);
+
+    std::string read3_alias_source;
+    if (has_r3) {
+      if (paths_refer_to_same_file(r3_path, input_paths[0])) {
+        read3_alias_source = "R1";
+      } else if (paths_refer_to_same_file(r3_path, input_paths[1])) {
+        read3_alias_source = "R2";
+      } else {
+        compress_standard(
+            read3_work_dir, read3_inputs,
+            {bundle_dir + "/" + read3_archive_name}, num_thr, pairing_only_flag,
+            no_quality_flag, no_ids_flag, quality_options, compression_level,
+            note.empty() ? std::string("read3-group")
+                         : (note + " | read3-group"),
+            verbosity_level, audit_flag, "", "", "", assay_type, "", cb_len);
+      }
+    }
+
+    if (has_i1) {
+      compress_standard(
+          index_work_dir, index_inputs, {bundle_dir + "/" + index_archive_name},
+          num_thr, pairing_only_flag, no_quality_flag, no_ids_flag,
+          quality_options, compression_level,
+          note.empty() ? std::string("index-group") : (note + " | index-group"),
+          verbosity_level, audit_flag, "", "", "", assay_type, "", cb_len);
+    }
+
+    std::error_code ec;
+    std::filesystem::remove_all(read_work_dir, ec);
+    ec.clear();
+    if (has_r3) {
+      std::filesystem::remove_all(read3_work_dir, ec);
+      ec.clear();
+    }
+    if (has_i1) {
+      std::filesystem::remove_all(index_work_dir, ec);
+    }
+
+    const bundle_manifest manifest{
+        .version = kBundleVersion,
+        .read_archive_name = read_archive_name,
+        .has_r3 = has_r3,
+        .read3_archive_name = has_r3 && read3_alias_source.empty()
+                                  ? read3_archive_name
+                                  : std::string(),
+        .read3_alias_source = read3_alias_source,
+        .has_index = has_i1,
+        .index_archive_name = has_i1 ? index_archive_name : std::string(),
+        .has_i2 = has_i2,
+        .r1_name = std::filesystem::path(input_paths[0]).filename().string(),
+        .r2_name = std::filesystem::path(input_paths[1]).filename().string(),
+        .r3_name = has_r3 ? std::filesystem::path(r3_path).filename().string()
+                          : std::string(),
+        .i1_name = has_i1 ? std::filesystem::path(i1_path).filename().string()
+                          : std::string(),
+        .i2_name = has_i2 ? std::filesystem::path(i2_path).filename().string()
+                          : std::string()};
+    write_bundle_manifest(bundle_dir + "/" + kBundleManifestName, manifest);
+
+    run_timed_step("Creating grouped bundle archive ...", "Tar archive", [&] {
+      progress.set_stage("Creating archive", 0.95F, 1.0F);
+      create_tar_archive(output_archive_path, bundle_dir);
+    });
+    SPRING_LOG_DEBUG("Grouped archive created at: " + output_archive_path);
+
+    if (audit_flag) {
+      SPRING_LOG_DEBUG("Running post-compression audit for grouped archive.");
+      perform_audit(output_archive_path, temp_dir);
+    }
+
+    ProgressBar::SetGlobalInstance(nullptr);
+    return;
+  }
+
+  compress_standard(temp_dir, input_paths, output_paths, num_thr,
+                    pairing_only_flag, no_quality_flag, no_ids_flag,
+                    quality_options, compression_level, note, verbosity_level,
+                    audit_flag, r3_path, i1_path, i2_path, assay_type,
+                    cb_source_path, cb_len);
+}
+
+void decompress_standard(const std::string &temp_dir,
+                         const std::vector<std::string> &input_paths,
+                         const std::vector<std::string> &output_paths,
+                         const int num_thr, const int /*compression_level*/,
+                         const log_level /*verbosity_level*/,
+                         const bool unzip_flag, const bool untar_first = true) {
+  if (untar_first) {
+    std::filesystem::create_directories(temp_dir);
+    extract_tar_archive(input_paths[0], temp_dir);
+  }
+  const auto decompression_start = clock_type::now();
+  auto *progress_ptr = ProgressBar::GlobalInstance();
+  ProgressBar dummy_progress(true);
+  auto &progress = progress_ptr ? *progress_ptr : dummy_progress;
+  compression_params cp{};
+
+  std::string compression_params_path = temp_dir + "/cp.bin";
+  std::ifstream compression_params_input(compression_params_path,
+                                         std::ios::binary);
+  if (!compression_params_input.is_open())
+    throw std::runtime_error("Can't open parameter file.");
+  read_compression_params(compression_params_input, cp);
+  if (!compression_params_input.good())
+    throw std::runtime_error("Can't read compression parameters.");
+  compression_params_input.close();
+  if (num_thr > 0) {
+    cp.encoding.num_thr = num_thr;
+  }
+
+  bool paired_end = cp.encoding.paired_end;
+  SPRING_LOG_DEBUG(
+      "Archive metadata: paired_end=" +
+      std::string(cp.encoding.paired_end ? "true" : "false") +
+      ", long_mode=" + std::string(cp.encoding.long_flag ? "true" : "false") +
+      ", preserve_order=" +
+      std::string(cp.encoding.preserve_order ? "true" : "false") +
+      ", preserve_quality=" +
+      std::string(cp.encoding.preserve_quality ? "true" : "false") +
+      ", preserve_id=" +
+      std::string(cp.encoding.preserve_id ? "true" : "false") +
+      ", fasta_mode=" + std::string(cp.encoding.fasta_mode ? "true" : "false"));
+
+  const decompression_io_config io_config =
+      resolve_decompression_io(input_paths, output_paths, paired_end);
+
+  auto has_compressed_suffix = [](const std::string &path) {
+    return path.ends_with(".gz");
+  };
+
+  bool should_gzip[2] = {false, false};
+  bool should_bgzf[2] = {false, false};
+  for (int i = 0; i < (paired_end ? 2 : 1); i++) {
+    const std::string &path =
+        (i == 0) ? io_config.output_path_1 : io_config.output_path_2;
+    if (!unzip_flag && has_compressed_suffix(path)) {
+      should_gzip[i] = true;
+      should_bgzf[i] =
+          (i == 0) ? cp.gzip.streams[0].is_bgzf : cp.gzip.streams[1].is_bgzf;
+      // Adjust compression level based on XFL if needed
+      uint8_t xfl = (i == 0) ? cp.gzip.streams[0].xfl : cp.gzip.streams[1].xfl;
+      if (xfl == 2)
+        cp.encoding.compression_level = 9;
+      else if (xfl == 4)
+        cp.encoding.compression_level = 1;
+    }
+  }
+
+  std::unique_ptr<DecompressionSink> sink =
+      std::make_unique<FileDecompressionSink>(
+          io_config.output_path_1, io_config.output_path_2, cp,
+          cp.encoding.use_crlf, should_gzip, should_bgzf);
+
+  if (cp.encoding.long_flag) {
+    decompress_long(temp_dir, *sink, cp);
+  } else {
+    decompress_short(temp_dir, *sink, cp);
+  }
+
+  run_timed_step("Verifying integrity ...", "Integrity check", [&] {
+    const bool is_lossless =
+        cp.encoding.preserve_order && cp.encoding.preserve_quality &&
+        cp.encoding.preserve_id && !cp.quality.qvz_flag &&
+        !cp.quality.ill_bin_flag && !cp.quality.bin_thr_flag;
+
+    if (is_lossless) {
+      uint32_t seq_crc[2], qual_crc[2], id_crc[2];
+      sink->get_digests(seq_crc, qual_crc, id_crc);
+      bool mismatch = false;
+      for (int i = 0; i < (cp.encoding.paired_end ? 2 : 1); ++i) {
+        if (cp.read_info.sequence_crc[i] != 0 &&
+            seq_crc[i] != cp.read_info.sequence_crc[i]) {
+          Logger::log_error("Stream " + std::to_string(i + 1) +
+                            " sequence digest mismatch.");
+          mismatch = true;
+        }
+        if (cp.read_info.quality_crc[i] != 0 &&
+            qual_crc[i] != cp.read_info.quality_crc[i]) {
+          Logger::log_error("Stream " + std::to_string(i + 1) +
+                            " quality digest mismatch.");
+          mismatch = true;
+        }
+        if (cp.read_info.id_crc[i] != 0 &&
+            id_crc[i] != cp.read_info.id_crc[i]) {
+          Logger::log_error("Stream " + std::to_string(i + 1) +
+                            " ID digest mismatch.");
+          mismatch = true;
+        }
+      }
+
+      if (mismatch) {
+        Logger::log_error("Integrity check failed during decompression.");
+        throw std::runtime_error(
+            "ARCHIVE INTEGRITY CHECK FAILED: Reconstructed data does not match "
+            "original digests. The archive may be corrupted.");
+      }
+      SPRING_LOG_DEBUG("Integrity check passed for lossless archive.");
+    }
+  });
+
+  const auto decompression_end = clock_type::now();
+  if (Logger::is_info_enabled()) {
+    std::cout << "Total time for decompression: "
+              << std::chrono::duration_cast<std::chrono::seconds>(
+                     decompression_end - decompression_start)
+                     .count()
+              << " s\n";
+  } else {
+    progress.finalize();
   }
 }
 
@@ -1285,7 +1463,6 @@ void decompress(const std::string &temp_dir,
   SPRING_LOG_INFO("Starting decompression...");
   SPRING_LOG_DEBUG("Decompression request: temp_dir=" + temp_dir +
                    ", unzip=" + std::string(unzip_flag ? "true" : "false"));
-  const auto decompression_start = clock_type::now();
   compression_params cp{};
 
   if (input_paths.size() != 1)
@@ -1359,9 +1536,9 @@ void decompress(const std::string &temp_dir,
         manifest.has_index ? (temp_dir + "/" + manifest.index_archive_name)
                            : std::string();
 
-    decompress(temp_dir + "/decompress_reads", {read_archive_path},
-               {resolved_outputs[0], resolved_outputs[1]}, num_thr,
-               compression_level, verbosity_level, unzip_flag);
+    decompress_standard(temp_dir + "/decompress_reads", {read_archive_path},
+                        {resolved_outputs[0], resolved_outputs[1]}, num_thr,
+                        compression_level, verbosity_level, unzip_flag);
 
     size_t next_output_index = 2;
     if (manifest.has_r3) {
@@ -1378,23 +1555,26 @@ void decompress(const std::string &temp_dir,
                                    copy_ec.message());
         }
       } else {
-        decompress(temp_dir + "/decompress_read3", {read3_archive_path},
-                   {resolved_outputs[next_output_index]}, num_thr,
-                   compression_level, verbosity_level, unzip_flag);
+        decompress_standard(temp_dir + "/decompress_read3",
+                            {read3_archive_path},
+                            {resolved_outputs[next_output_index]}, num_thr,
+                            compression_level, verbosity_level, unzip_flag);
       }
       next_output_index++;
     }
 
     if (manifest.has_index) {
       if (manifest.has_i2) {
-        decompress(temp_dir + "/decompress_index", {index_archive_path},
-                   {resolved_outputs[next_output_index],
-                    resolved_outputs[next_output_index + 1]},
-                   num_thr, compression_level, verbosity_level, unzip_flag);
+        decompress_standard(
+            temp_dir + "/decompress_index", {index_archive_path},
+            {resolved_outputs[next_output_index],
+             resolved_outputs[next_output_index + 1]},
+            num_thr, compression_level, verbosity_level, unzip_flag);
       } else {
-        decompress(temp_dir + "/decompress_index", {index_archive_path},
-                   {resolved_outputs[next_output_index]}, num_thr,
-                   compression_level, verbosity_level, unzip_flag);
+        decompress_standard(temp_dir + "/decompress_index",
+                            {index_archive_path},
+                            {resolved_outputs[next_output_index]}, num_thr,
+                            compression_level, verbosity_level, unzip_flag);
       }
     }
 
@@ -1402,151 +1582,8 @@ void decompress(const std::string &temp_dir,
     return;
   }
 
-  std::string compression_params_path = temp_dir + "/cp.bin";
-  std::ifstream compression_params_input(compression_params_path,
-                                         std::ios::binary);
-  if (!compression_params_input.is_open())
-    throw std::runtime_error("Can't open parameter file.");
-  read_compression_params(compression_params_input, cp);
-  if (!compression_params_input.good())
-    throw std::runtime_error("Can't read compression parameters.");
-  compression_params_input.close();
-  if (num_thr > 0) {
-    cp.encoding.num_thr = num_thr;
-  }
-
-  bool paired_end = cp.encoding.paired_end;
-  SPRING_LOG_DEBUG(
-      "Archive metadata: paired_end=" +
-      std::string(cp.encoding.paired_end ? "true" : "false") +
-      ", long_mode=" + std::string(cp.encoding.long_flag ? "true" : "false") +
-      ", preserve_order=" +
-      std::string(cp.encoding.preserve_order ? "true" : "false") +
-      ", preserve_quality=" +
-      std::string(cp.encoding.preserve_quality ? "true" : "false") +
-      ", preserve_id=" +
-      std::string(cp.encoding.preserve_id ? "true" : "false") +
-      ", fasta_mode=" + std::string(cp.encoding.fasta_mode ? "true" : "false"));
-  if (Logger::is_info_enabled()) {
-    std::cout << "Original filenames detected in archive:\n";
-    std::cout << "  Input 1: " << cp.read_info.input_filename_1 << "\n";
-    if (paired_end) {
-      std::cout << "  Input 2: " << cp.read_info.input_filename_2 << "\n";
-    }
-
-    if (!cp.read_info.note.empty()) {
-      std::cout << "Note: " << cp.read_info.note << "\n";
-    }
-  }
-
-  auto has_compressed_suffix = [](const std::string &path) {
-    return path.ends_with(".gz");
-  };
-
-  auto strip_compressed_suffix = [](const std::string &path) {
-    if (path.ends_with(".gz"))
-      return path.substr(0, path.size() - 3);
-    return path;
-  };
-
-  std::vector<std::string> resolved_output_paths = output_paths;
-  if (resolved_output_paths.empty()) {
-    if (cp.read_info.input_filename_1.empty()) {
-      throw std::runtime_error("Input file 1 is required");
-    }
-    resolved_output_paths.push_back(cp.read_info.input_filename_1);
-    if (cp.encoding.paired_end) {
-      resolved_output_paths.push_back(cp.read_info.input_filename_2);
-    }
-  }
-
-  bool should_gzip[2] = {false, false};
-  bool should_bgzf[2] = {false, false};
-  for (int i = 0; i < (cp.encoding.paired_end ? 2 : 1); i++) {
-    const std::string &path = (i < resolved_output_paths.size())
-                                  ? resolved_output_paths[i]
-                                  : resolved_output_paths[0];
-    bool is_bgzf =
-        (i == 0) ? cp.gzip.streams[0].is_bgzf : cp.gzip.streams[1].is_bgzf;
-    uint8_t xfl = (i == 0) ? cp.gzip.streams[0].xfl : cp.gzip.streams[1].xfl;
-
-    if (unzip_flag)
-      continue;
-
-    if (has_compressed_suffix(path)) {
-      should_gzip[i] = true;
-      should_bgzf[i] = is_bgzf;
-      if (xfl == 2)
-        cp.encoding.compression_level = 9;
-      else if (xfl == 4)
-        cp.encoding.compression_level = 1;
-    }
-  }
-
-  for (std::string &path : resolved_output_paths) {
-    if (unzip_flag && has_compressed_suffix(path)) {
-      path = strip_compressed_suffix(path);
-    }
-  }
-
-  SPRING_LOG_DEBUG("Resolved " + std::to_string(resolved_output_paths.size()) +
-                   " output path(s) after unzip handling.");
-
-  const decompression_io_config io_config =
-      resolve_decompression_io(input_paths, resolved_output_paths, paired_end);
-
-  run_timed_step("Decompressing ...", "Decompressing", [&] {
-    progress.set_stage("Decompressing", 0.10F, 1.0F);
-    FileDecompressionSink sink(io_config.output_path_1, io_config.output_path_2,
-                               cp, cp.encoding.use_crlf, should_gzip,
-                               should_bgzf);
-    if (cp.encoding.long_flag) {
-      decompress_long(temp_dir, sink, cp);
-    } else {
-      decompress_short(temp_dir, sink, cp);
-    }
-
-    // Integrity verification
-    const bool is_lossless =
-        cp.encoding.preserve_order && cp.encoding.preserve_quality &&
-        cp.encoding.preserve_id && !cp.quality.qvz_flag &&
-        !cp.quality.ill_bin_flag && !cp.quality.bin_thr_flag;
-
-    if (is_lossless) {
-      uint32_t seq_crc[2], qual_crc[2], id_crc[2];
-      sink.get_digests(seq_crc, qual_crc, id_crc);
-      bool mismatch = false;
-      for (int i = 0; i < (cp.encoding.paired_end ? 2 : 1); ++i) {
-        if (cp.read_info.sequence_crc[i] != 0 &&
-            seq_crc[i] != cp.read_info.sequence_crc[i])
-          mismatch = true;
-        if (cp.read_info.quality_crc[i] != 0 &&
-            qual_crc[i] != cp.read_info.quality_crc[i])
-          mismatch = true;
-        if (cp.read_info.id_crc[i] != 0 && id_crc[i] != cp.read_info.id_crc[i])
-          mismatch = true;
-      }
-
-      if (mismatch) {
-        Logger::log_error("Integrity check failed during decompression.");
-        throw std::runtime_error(
-            "ARCHIVE INTEGRITY CHECK FAILED: Reconstructed data does not match "
-            "original digests. The archive may be corrupted.");
-      }
-      SPRING_LOG_DEBUG("Integrity check passed for lossless archive.");
-    }
-  });
-
-  const auto decompression_end = clock_type::now();
-  if (Logger::is_info_enabled()) {
-    std::cout << "Total time for decompression: "
-              << std::chrono::duration_cast<std::chrono::seconds>(
-                     decompression_end - decompression_start)
-                     .count()
-              << " s\n";
-  } else {
-    progress.finalize();
-  }
+  decompress_standard(temp_dir, input_paths, output_paths, num_thr,
+                      compression_level, verbosity_level, unzip_flag, false);
   ProgressBar::SetGlobalInstance(nullptr);
 }
 

@@ -107,7 +107,7 @@ uint32_t write_unaligned_range(
     const bool *remaining_reads,
     const encoder_global_b<bitset_size> &encoder_bits,
     const uint32_t begin_read_index, const uint32_t end_read_index,
-    uint64_t &unaligned_length) {
+    uint64_t &unaligned_length, const encoder_global &eg) {
   uint32_t aligned_read_count = 0;
   for (uint32_t read_index = begin_read_index; read_index < end_read_index;
        read_index++) {
@@ -117,7 +117,10 @@ uint32_t write_unaligned_range(
     aligned_read_count++;
     const std::string unaligned_read = bitsettostring<bitset_size>(
         reads[read_index], read_lengths[read_index], encoder_bits);
-    write_dnaN_in_bits(unaligned_read, unaligned_output);
+    if (eg.methyl_ternary)
+      write_dna_ternary_bits(unaligned_read, unaligned_output);
+    else
+      write_dnaN_in_bits(unaligned_read, unaligned_output);
     order_output.write(byte_ptr(&read_orders[read_index]), sizeof(uint32_t));
     read_length_output.write(byte_ptr(&read_lengths[read_index]),
                              sizeof(uint16_t));
@@ -318,7 +321,10 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
       }
       if (!done) {
         contig_read_count++;
-        read_dna_from_bits(current_read, read_input);
+        if (eg.methyl_ternary)
+          read_dna_ternary_bits(current_read, read_input);
+        else
+          read_dna_from_bits(current_read, read_input);
         if (!orientation_stream.get(orientation)) {
           SPRING_LOG_DEBUG("block_id=" + block_id +
                            ", Encoder orientation read failure: path=" +
@@ -674,7 +680,10 @@ void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
   auto **const basemask_ptrs =
       const_cast<std::bitset<bitset_size> **>(egb.basemask_ptrs.data());
   for (uint32_t i = 0; i < eg.numreads_s; i++) {
-    read_dna_from_bits(s, f);
+    if (eg.methyl_ternary)
+      read_dna_ternary_bits(s, f);
+    else
+      read_dna_from_bits(s, f);
     read_lengths_s[i] = static_cast<uint16_t>(s.size());
     stringtobitset<bitset_size>(s, read_lengths_s[i], read[i], basemask_ptrs);
   }
@@ -834,11 +843,11 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   const uint32_t remaining_singleton_reads = detail::write_unaligned_range(
       order_output, read_length_output, unaligned_output, read.data(),
       order_s.data(), read_lengths_s.data(), remaining_reads, egb, 0,
-      eg.numreads_s, len_unaligned);
+      eg.numreads_s, len_unaligned, eg);
   const uint32_t remaining_n_reads = detail::write_unaligned_range(
       order_output, read_length_output, unaligned_output, read.data(),
       order_s.data(), read_lengths_s.data(), remaining_reads, egb,
-      eg.numreads_s, eg.numreads_s + eg.numreads_N, len_unaligned);
+      eg.numreads_s, eg.numreads_s + eg.numreads_N, len_unaligned, eg);
 
   order_output.close();
   read_length_output.close();

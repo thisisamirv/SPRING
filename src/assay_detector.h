@@ -12,11 +12,18 @@ class AssayDetector {
 public:
   AssayDetector() = default;
 
+  struct DetectionResult {
+    std::string assay;
+    std::string confidence;
+    double c_ratio = 1.0;
+    double g_ratio = 1.0;
+  };
+
   // Runs the 5-stage heuristic detection on the provided FASTQ files.
-  // Returns the final predicted assay type.
-  std::string detect(const std::string &r1_path, const std::string &r2_path,
-                     const std::string &r3_path, const std::string &i1_path,
-                     const std::string &i2_path, std::string &confidence_out);
+  // Returns the final predicted assay type and stats.
+  DetectionResult detect(const std::string &r1_path, const std::string &r2_path,
+                         const std::string &r3_path, const std::string &i1_path,
+                         const std::string &i2_path);
 
 private:
   struct ReadStats {
@@ -47,8 +54,8 @@ private:
   void load_reference(const std::string &ref_path);
   void process_reads(const std::string &r1_path, const std::string &r2_path,
                      ReadStats &stats);
-  std::string evaluate_stages(const ReadStats &stats, bool explicit_sc_layout,
-                              std::string &confidence_out);
+  DetectionResult evaluate_stages(const ReadStats &stats,
+                                  bool explicit_sc_layout);
   static bool has_atac_adapter(const std::string &seq);
   static bool has_poly_a_tail(const std::string &seq);
 

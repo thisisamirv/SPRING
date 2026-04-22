@@ -17,6 +17,9 @@ void read_dna_from_bits(std::string &read, std::ifstream &fin);
 void write_dnaN_in_bits(const std::string &read, std::ofstream &fout);
 void read_dnaN_from_bits(std::string &read, std::ifstream &fin);
 
+void write_dna_ternary_bits(const std::string &read, std::ofstream &fout);
+void read_dna_ternary_bits(std::string &read, std::ifstream &fin);
+
 } // namespace spring
 
 #endif // SPRING_DNA_UTILS_H_

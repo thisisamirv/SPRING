@@ -53,8 +53,9 @@ TEST_CASE("Testing AssayDetector") {
   AssayDetector detector;
 
   SUBCASE("No reads parsed") {
-    std::string confidence;
-    std::string assay = detector.detect("", "", "", "", "", confidence);
+    AssayDetector::DetectionResult res = detector.detect("", "", "", "", "");
+    std::string assay = res.assay;
+    std::string confidence = res.confidence;
     CHECK(assay == "dna");
     CHECK(confidence == "low (no reads parsed)");
   }
@@ -73,8 +74,10 @@ TEST_CASE("Testing AssayDetector") {
     }
     out.close();
 
-    std::string confidence;
-    std::string assay = detector.detect(test_fq, "", "", "", "", confidence);
+    AssayDetector::DetectionResult res =
+        detector.detect(test_fq, "", "", "", "");
+    std::string assay = res.assay;
+    std::string confidence = res.confidence;
     CHECK(assay == "rna");
     CHECK(confidence == "high (poly-A/T tail signature)");
 
@@ -93,10 +96,10 @@ TEST_CASE("Testing AssayDetector") {
     }
     out.close();
 
-    std::string confidence;
-    // i1_path provided so it's treated as sc-atac
-    std::string assay =
-        detector.detect(test_fq, "", "", "i1.fq", "", confidence);
+    AssayDetector::DetectionResult res =
+        detector.detect(test_fq, "", "", "i1.fq", "");
+    std::string assay = res.assay;
+    std::string confidence = res.confidence;
     CHECK(assay == "sc-atac");
     CHECK(confidence == "high (Tn5 adapter signature)");
 
@@ -115,8 +118,10 @@ TEST_CASE("Testing AssayDetector") {
     }
     out.close();
 
-    std::string confidence;
-    std::string assay = detector.detect(test_fq, "", "", "", "", confidence);
+    AssayDetector::DetectionResult res =
+        detector.detect(test_fq, "", "", "", "");
+    std::string assay = res.assay;
+    std::string confidence = res.confidence;
     CHECK(assay == "methyl");
     CHECK(confidence == "high (bisulfite conversion signature)");
 
