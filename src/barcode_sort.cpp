@@ -1,5 +1,6 @@
 #include "barcode_sort.h"
 #include "dna_utils.h"
+#include "fs_utils.h"
 #include "io_utils.h"
 #include "params.h"
 #include "progress.h"
@@ -312,6 +313,13 @@ void barcode_sort(const std::string &temp_dir, compression_params &cp,
   if (paired_end) {
     create_empty(temp_dir + "/input_N.dna.2");
     create_empty(temp_dir + "/read_order_N.bin.2");
+  }
+
+  // These preprocess inputs are consumed by barcode_sort and should not be
+  // archived as payload; remove them to avoid inflated bundle sizes.
+  safe_remove_file(temp_dir + "/input_clean_1.dna");
+  if (paired_end) {
+    safe_remove_file(temp_dir + "/input_clean_2.dna");
   }
 
   {

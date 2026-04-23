@@ -1119,8 +1119,6 @@ void compress_standard(const std::string &temp_dir,
   std::string compression_params_path = temp_dir + "/cp.bin";
   std::ofstream compression_params_output(compression_params_path,
                                           std::ios::binary);
-  std::cerr << "compress_standard: serializing cp.encoding.num_thr="
-            << cp.encoding.num_thr << "\n";
   write_compression_params(compression_params_output, cp);
   compression_params_output.close();
 

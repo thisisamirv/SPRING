@@ -755,8 +755,6 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
 
   eg.max_readlen = cp.read_info.max_readlen;
   eg.num_thr = cp.encoding.num_thr;
-  std::cerr << "encoder_main: cp.encoding.num_thr=" << cp.encoding.num_thr
-            << " eg.num_thr=" << eg.num_thr << "\n";
 
   omp_set_num_threads(eg.num_thr);
   getDataParams(eg, cp); // populate numreads
@@ -871,10 +869,6 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
     }
     fin_pos.close();
     safe_remove_file(eg.outfile_pos + '.' + std::to_string(tid));
-    std::cerr << "enc-pos-merge: tid=" << tid
-              << " file_len_seq_thr=" << file_len_seq_thr[tid]
-              << " max_local_pos=" << max_pos_in_shard
-              << " abs_pos_before=" << abs_pos << "\n";
     abs_pos += file_len_seq_thr[tid];
   }
   fout_pos.close();
