@@ -311,6 +311,23 @@ uint32_t compute_thread_read_count(const uint32_t step_read_count,
 
 } // namespace
 
+// Restore a stripped poly-A/T tail onto a read (and optionally its quality).
+static void append_tail(std::string &read_str, std::string *quality_str,
+                        uint16_t tail_info, const std::string *tail_qual) {
+  if (tail_info == 0)
+    return;
+  const char base = (tail_info & 1) ? 'T' : 'A';
+  const uint32_t run = tail_info >> 1;
+  read_str.append(run, base);
+  if (quality_str) {
+    if (tail_qual) {
+      quality_str->append(*tail_qual);
+    } else {
+      quality_str->append(run, 'I');
+    }
+  }
+}
+
 void write_fastq_block(std::ostream &output_stream, std::string *id_buffer,
                        std::string *read_buffer,
                        const std::string *quality_array,
@@ -566,6 +583,21 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
   bool preserve_id = cp.encoding.preserve_id;
   bool preserve_quality = cp.encoding.preserve_quality;
   bool preserve_order = cp.encoding.preserve_order;
+  const bool poly_at_stripped = cp.encoding.poly_at_stripped;
+
+  // Open tail files if poly-A/T stripping was used during compression.
+  std::ifstream f_tail_1, f_tail_2;
+  if (poly_at_stripped) {
+    f_tail_1.open(temp_dir + "/tail_1.bin", std::ios::binary);
+    if (!f_tail_1)
+      throw std::runtime_error("poly_at_stripped set but tail_1.bin not found");
+    if (paired_end) {
+      f_tail_2.open(temp_dir + "/tail_2.bin", std::ios::binary);
+      if (!f_tail_2)
+        throw std::runtime_error(
+            "poly_at_stripped set but tail_2.bin not found");
+    }
+  }
 
   const uint64_t num_reads_per_step = compute_num_reads_per_step(
       num_reads, num_reads_per_block, cp.encoding.num_thr, paired_end);
@@ -883,6 +915,29 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
           (stream_index == 0) ? read_buffer_1.data() : read_buffer_2.data();
       const std::string *quality_ptr =
           preserve_quality ? quality_buffer.data() : nullptr;
+
+      // Restore poly-A/T tails before computing integrity CRCs in the sink.
+      if (poly_at_stripped) {
+        std::ifstream &f_tail = (stream_index == 0) ? f_tail_1 : f_tail_2;
+        std::string *quality_buf_ptr =
+            preserve_quality ? quality_buffer.data() : nullptr;
+        for (uint32_t i = 0; i < num_reads_cur_step; ++i) {
+          uint16_t tail_info = 0;
+          f_tail.read(reinterpret_cast<char *>(&tail_info), sizeof(uint16_t));
+          if (f_tail && tail_info != 0) {
+            const uint32_t tail_len = tail_info >> 1;
+            std::string tail_qual;
+            if (tail_len > 0) {
+              tail_qual.resize(tail_len);
+              f_tail.read(&tail_qual[0], tail_len);
+            }
+            append_tail(read_buffer_ptr[i],
+                        quality_buf_ptr ? &quality_buf_ptr[i] : nullptr,
+                        tail_info, tail_len > 0 ? &tail_qual : nullptr);
+          }
+        }
+      }
+
       sink.consume_step(id_buffer.data(), read_buffer_ptr, quality_ptr,
                         num_reads_cur_step, stream_index);
     }

@@ -515,6 +515,52 @@ void reorder_compress_quality_id(const std::string &temp_dir,
       safe_remove_file(id_paths[stream_index]);
     }
   }
+
+  if (cp.encoding.poly_at_stripped) {
+    SPRING_LOG_INFO("Reordering poly-A/T tails");
+    for (int stream_index = 0; stream_index < 2; stream_index++) {
+      if (stream_index == 1 && !paired_end)
+        continue;
+      std::string tail_path =
+          base_dir + "/tail_" + std::to_string(stream_index + 1) + ".bin";
+      if (!std::filesystem::exists(tail_path))
+        continue;
+
+      const uint32_t file_read_count = reads_per_file(num_reads, paired_end);
+      struct TailRecord {
+        uint16_t info;
+        std::string qual;
+      };
+      std::vector<TailRecord> tails(file_read_count);
+      std::ifstream tail_in(tail_path, std::ios::binary);
+      for (uint32_t i = 0; i < file_read_count; i++) {
+        uint16_t info = 0;
+        tail_in.read(reinterpret_cast<char *>(&info), sizeof(uint16_t));
+        tails[i].info = info;
+        const uint32_t tail_len = info >> 1;
+        if (tail_len > 0) {
+          tails[i].qual.resize(tail_len);
+          tail_in.read(&tails[i].qual[0], tail_len);
+        }
+      }
+      tail_in.close();
+
+      std::vector<TailRecord> reordered_tails(file_read_count);
+      for (uint32_t i = 0; i < file_read_count; i++) {
+        reordered_tails[reordered_positions[i]] = std::move(tails[i]);
+      }
+
+      std::ofstream tail_out(tail_path, std::ios::binary);
+      for (uint32_t i = 0; i < file_read_count; i++) {
+        tail_out.write(reinterpret_cast<const char *>(&reordered_tails[i].info),
+                       sizeof(uint16_t));
+        const uint32_t tail_len = reordered_tails[i].info >> 1;
+        if (tail_len > 0) {
+          tail_out.write(reordered_tails[i].qual.data(), tail_len);
+        }
+      }
+    }
+  }
 }
 
 } // namespace spring

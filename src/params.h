@@ -14,6 +14,10 @@ constexpr uint16_t MAX_READ_LEN = 511;
 constexpr uint32_t MAX_READ_LEN_LONG = 4294967290U;
 constexpr uint32_t MAX_NUM_READS = 4294967290U;
 
+// Minimum poly-A/T run length (exclusive) required to strip the tail.
+// Runs of exactly this length are kept; only strictly longer runs are stripped.
+constexpr uint32_t POLY_AT_TAIL_MIN_LEN = 20;
+
 // Reordering parameters.
 constexpr int NUM_DICT_REORDER = 2;
 constexpr int MAX_SEARCH_REORDER = 1000;
@@ -71,6 +75,8 @@ struct compression_params {
     bool barcode_sort = false; // True when barcode-first ordering was applied.
     bool methyl_ternary = false;
     char depleted_base = 'N';
+    bool poly_at_stripped = false; // True when poly-A/T tail stripping was
+                                   // applied during RNA-mode compression.
   } encoding;
 
   struct QualityConfig {

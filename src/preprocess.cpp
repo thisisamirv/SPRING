@@ -18,6 +18,7 @@
 
 #include "core_utils.h"
 
+#include "integrity_utils.h"
 #include "io_utils.h"
 #include "libbsc/bsc.h"
 #include "params.h"
@@ -42,6 +43,7 @@ struct short_read_thread_buffers {
   std::string clean_read_bytes;
   std::string n_read_bytes;
   std::vector<uint32_t> n_read_positions;
+  std::string tail_info_bytes; // Per-clean-read uint16_t tail encodings
   uint32_t clean_read_count = 0;
 };
 
@@ -64,6 +66,27 @@ uint32_t block_count(const uint64_t num_reads,
 
 void append_uint16(std::string &buffer, const uint16_t value) {
   buffer.append(reinterpret_cast<const char *>(&value), sizeof(uint16_t));
+}
+
+// Strip a terminal poly-A or poly-T run longer than POLY_AT_TAIL_MIN_LEN.
+// Returns a uint16_t encoding: bit 0 = base (0=A,1=T), bits 15:1 = run length.
+// Returns 0 if nothing was stripped. Modifies read_str and read_length in
+// place.
+static uint16_t detect_and_strip_tail(std::string &read_str,
+                                      uint32_t &read_length) {
+  if (read_length <= POLY_AT_TAIL_MIN_LEN)
+    return 0;
+  const char last = read_str[read_length - 1];
+  if (last != 'A' && last != 'T')
+    return 0;
+  uint32_t run = 0;
+  while (run < read_length && read_str[read_length - 1 - run] == last)
+    ++run;
+  if (run <= POLY_AT_TAIL_MIN_LEN)
+    return 0;
+  read_length -= run;
+  read_str.resize(read_length);
+  return static_cast<uint16_t>((run << 1) | (last == 'T' ? 1 : 0));
 }
 
 void append_encoded_dna_bits(std::string &buffer, const std::string &read) {
@@ -132,7 +155,7 @@ void append_encoded_dna_n_bits(std::string &buffer, const std::string &read) {
 uint32_t flush_short_read_thread_buffers(
     const std::vector<short_read_thread_buffers> &thread_buffers,
     std::ofstream &clean_output, std::ofstream &n_read_output,
-    std::ofstream &n_read_order_output) {
+    std::ofstream &n_read_order_output, std::ofstream *tail_output) {
   uint32_t clean_read_count = 0;
   for (const short_read_thread_buffers &thread_buffer : thread_buffers) {
     if (!thread_buffer.clean_read_bytes.empty()) {
@@ -150,6 +173,11 @@ uint32_t flush_short_read_thread_buffers(
           byte_ptr(thread_buffer.n_read_positions.data()),
           static_cast<std::streamsize>(thread_buffer.n_read_positions.size() *
                                        sizeof(uint32_t)));
+    }
+    if (tail_output && !thread_buffer.tail_info_bytes.empty()) {
+      tail_output->write(
+          thread_buffer.tail_info_bytes.data(),
+          static_cast<std::streamsize>(thread_buffer.tail_info_bytes.size()));
     }
     clean_read_count += thread_buffer.clean_read_count;
   }
@@ -492,6 +520,29 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                           n_read_order_outputs, id_outputs, quality_outputs,
                           input_streams, gzip_streams, paths, cp, false);
 
+  // Determine whether poly-A/T tail stripping should be applied.
+  // Only active for: short-read, non-preserve_order, rna assay with
+  // high-confidence auto-detection OR explicit -y rna (confidence == "N/A").
+  const bool apply_poly_at =
+      !cp.encoding.long_flag && !cp.encoding.preserve_order &&
+      cp.read_info.assay == "rna" &&
+      (cp.read_info.assay_confidence == "N/A" ||
+       cp.read_info.assay_confidence.rfind("high", 0) == 0);
+
+  std::array<std::ofstream, 2> tail_outputs;
+  if (apply_poly_at) {
+    tail_outputs[0].open(temp_dir + "/tail_1.bin", std::ios::binary);
+    if (!tail_outputs[0])
+      throw std::runtime_error("Failed to open tail_1.bin for writing");
+    if (cp.encoding.paired_end) {
+      tail_outputs[1].open(temp_dir + "/tail_2.bin", std::ios::binary);
+      if (!tail_outputs[1])
+        throw std::runtime_error("Failed to open tail_2.bin for writing");
+    }
+    SPRING_LOG_DEBUG("poly-A/T tail stripping enabled (min run length > " +
+                     std::to_string(POLY_AT_TAIL_MIN_LEN) + " bp)");
+  }
+
   uint64_t total_input_bytes = 0;
   total_input_bytes += std::filesystem::exists(infile_1)
                            ? std::filesystem::file_size(infile_1)
@@ -593,8 +644,32 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
           input_streams[stream_index], id_array, read_array.data(),
           quality_array.empty() ? nullptr : quality_array.data(),
           num_reads_per_step, fasta_input, read_lengths_array.data(),
-          contains_n_output, &cp.read_info.sequence_crc[stream_index],
+          contains_n_output,
+          nullptr, // sequence_crc: computed post-strip below
           quality_crc_output, id_crc_output, cp.encoding.preserve_quality);
+
+      // Strip poly-A/T tails and accumulate per-read tail info.
+      // We keep a local buffer (step_tail_info) indexed by read position in
+      // this step so the parallel encoding section below can look it up.
+      std::vector<uint16_t> step_tail_info;
+      if (apply_poly_at && reads_in_step > 0) {
+        step_tail_info.resize(reads_in_step, 0);
+        // Strip serially — modifies read_array and read_lengths_array in place.
+        for (uint32_t ri = 0; ri < reads_in_step; ++ri) {
+          step_tail_info[ri] =
+              detect_and_strip_tail(read_array[ri], read_lengths_array[ri]);
+        }
+        if (step_tail_info[0]) // at least one stripped (cheap early check)
+          cp.encoding.poly_at_stripped = true;
+      }
+
+      // Compute sequence CRC on (possibly stripped) data.
+      for (uint32_t ri = 0; ri < reads_in_step; ++ri)
+        update_record_crc(cp.read_info.sequence_crc[stream_index],
+                          read_array[ri]);
+      // Quality CRC was already accumulated by read_fastq_block above
+      // (pre-strip), which is fine: quality strings are not modified by tail
+      // stripping.
       SPRING_LOG_DEBUG(
           "Preprocess step: stream=" + std::to_string(stream_index + 1) +
           ", reads_in_step=" + std::to_string(reads_in_step) +
@@ -736,10 +811,12 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
           paired_id_code = 0;
       }
       if (!cp.encoding.long_flag) {
+        // Clear thread buffers for the next step (including tail bytes).
         for (short_read_thread_buffers &thread_buffer : short_read_buffers) {
           thread_buffer.clean_read_bytes.clear();
           thread_buffer.n_read_bytes.clear();
           thread_buffer.n_read_positions.clear();
+          thread_buffer.tail_info_bytes.clear();
           thread_buffer.clean_read_count = 0;
         }
 
@@ -769,12 +846,37 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
               append_encoded_dna_n_bits(thread_buffer.n_read_bytes,
                                         read_array[read_index]);
             }
+            // Record tail info for all reads (0 when stripping disabled or
+            // N-read).
+            if (apply_poly_at) {
+              uint16_t info = 0;
+              if (read_contains_N_array[read_index] == 0 &&
+                  !step_tail_info.empty()) {
+                info = step_tail_info[read_index];
+                const uint32_t tail_len = info >> 1;
+                if (tail_len > 0) {
+                  // Also strip quality and record it.
+                  std::string &qual = quality_array[read_index];
+                  const std::string tail_qual =
+                      qual.substr(qual.size() - tail_len);
+                  qual.resize(qual.size() - tail_len);
+
+                  append_uint16(thread_buffer.tail_info_bytes, info);
+                  thread_buffer.tail_info_bytes.append(tail_qual);
+                } else {
+                  append_uint16(thread_buffer.tail_info_bytes, 0);
+                }
+              } else {
+                append_uint16(thread_buffer.tail_info_bytes, 0);
+              }
+            }
           }
         }
 
         num_reads_clean[stream_index] += flush_short_read_thread_buffers(
             short_read_buffers, clean_outputs[stream_index],
-            n_read_outputs[stream_index], n_read_order_outputs[stream_index]);
+            n_read_outputs[stream_index], n_read_order_outputs[stream_index],
+            apply_poly_at ? &tail_outputs[stream_index] : nullptr);
 
         if (!cp.encoding.preserve_order) {
           quality_chunk.clear();

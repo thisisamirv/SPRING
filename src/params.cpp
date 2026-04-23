@@ -106,6 +106,7 @@ void write_compression_params(std::ostream &out, const compression_params &cp) {
   out.write(byte_ptr(&cp.encoding.cb_len), sizeof(uint32_t));
   write_bool(out, cp.encoding.methyl_ternary);
   out.write(byte_ptr(&cp.encoding.depleted_base), sizeof(char));
+  write_bool(out, cp.encoding.poly_at_stripped);
 }
 
 void read_compression_params(std::istream &in, compression_params &cp) {
@@ -193,8 +194,14 @@ void read_compression_params(std::istream &in, compression_params &cp) {
           cp.encoding.methyl_ternary = read_bool(in);
           if (in.peek() != std::char_traits<char>::eof()) {
             in.read(byte_ptr(&cp.encoding.depleted_base), sizeof(char));
+            if (in.peek() != std::char_traits<char>::eof()) {
+              cp.encoding.poly_at_stripped = read_bool(in);
+            } else {
+              cp.encoding.poly_at_stripped = false;
+            }
           } else {
             cp.encoding.depleted_base = 'N';
+            cp.encoding.poly_at_stripped = false;
           }
         } else {
           cp.encoding.methyl_ternary = false;
