@@ -33,7 +33,7 @@ struct compression_params;
 // cb_source_path — when non-empty, cellular barcodes are extracted from this
 //                  raw FASTQ (plain or .gz).  When empty, the first cb_len
 //                  bases of each decoded R1 read are used instead.
-void barcode_sort(const std::string &temp_dir, const compression_params &cp,
+void barcode_sort(const std::string &temp_dir, compression_params &cp,
                   const std::string &cb_source_path = std::string());
 
 } // namespace spring

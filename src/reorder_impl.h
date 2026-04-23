@@ -867,28 +867,36 @@ void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
         std::ifstream::in | std::ios::binary);
     char s[MAX_READ_LEN + 1], s1[MAX_READ_LEN + 1];
     uint32_t current;
+    SPRING_LOG_DEBUG("writetofile: thread " + std::to_string(tid) +
+                     " starting...");
     char c;
+    uint32_t reads_written = 0;
     while (inRC.get(c)) {
       finorder.read(byte_ptr(&current), sizeof(uint32_t));
+      if (current >= rg.numreads) {
+        SPRING_LOG_DEBUG("writetofile ERROR: thread " + std::to_string(tid) +
+                         " read_id out of bounds: " + std::to_string(current) +
+                         " >= " + std::to_string(rg.numreads));
+        break;
+      }
+      bitsettostring<bitset_size>(read[current], s, read_lengths[current], rg);
       if (c == 'd') {
-        uint16_t num_bytes_to_write =
-            ((uint32_t)read_lengths[current] + 4 - 1) / 4;
-        fout.write(byte_ptr(&read_lengths[current]), sizeof(uint16_t));
-        fout.write(byte_ptr(&read[current]), num_bytes_to_write);
+        write_dna_in_bits(s, fout);
       } else {
-        bitsettostring<bitset_size>(read[current], s, read_lengths[current],
-                                    rg);
         reverse_complement(s, s1, read_lengths[current]);
-        write_dna_in_bits(std::string(s1, read_lengths[current]), fout);
+        write_dna_in_bits(s1, fout);
+      }
+      reads_written++;
+      if (reads_written % 100000 == 0) {
+        SPRING_LOG_DEBUG("writetofile: thread " + std::to_string(tid) +
+                         " wrote " + std::to_string(reads_written) + " reads");
       }
     }
     finorder_s.read(byte_ptr(&current), sizeof(uint32_t));
     while (!finorder_s.eof()) {
       numreads_s_thr[tid]++;
-      uint16_t num_bytes_to_write =
-          ((uint32_t)read_lengths[current] + 4 - 1) / 4;
-      fout_s.write(byte_ptr(&read_lengths[current]), sizeof(uint16_t));
-      fout_s.write(byte_ptr(&read[current]), num_bytes_to_write);
+      bitsettostring<bitset_size>(read[current], s, read_lengths[current], rg);
+      write_dnaN_in_bits(s, fout_s);
       finorder_s.read(byte_ptr(&current), sizeof(uint32_t));
     }
     fout.close();

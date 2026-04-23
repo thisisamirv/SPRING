@@ -60,7 +60,6 @@ uint64_t write_packed_sequence(const std::string &sequence_path,
     return table;
   }();
 
-  constexpr size_t input_buffer_size = 1 << 16;
   std::ifstream sequence_input(sequence_path, std::ios::binary);
   std::ofstream packed_output(packed_path, std::ios::binary);
   std::ofstream tail_output(tail_path, std::ios::binary);
@@ -76,36 +75,43 @@ uint64_t write_packed_sequence(const std::string &sequence_path,
     throw std::runtime_error("Failed to open sequence tail output: " +
                              tail_path);
   }
-  std::array<char, input_buffer_size> input_buffer{};
-  std::array<char, input_buffer_size / 4 + 1> packed_buffer{};
+  std::vector<char> packed_buffer;
+  packed_buffer.reserve(1 << 16);
   std::array<char, 5> trailing_bases{};
   uint64_t sequence_length = 0;
   size_t trailing_count = 0;
   const size_t bases_per_byte = methyl_ternary ? 5 : 4;
 
-  while (sequence_input) {
-    sequence_input.read(input_buffer.data(), input_buffer.size());
-    const std::streamsize bytes_read = sequence_input.gcount();
-    if (bytes_read <= 0) {
-      break;
+  auto flush_packed_buffer = [&]() {
+    if (!packed_buffer.empty()) {
+      packed_output.write(packed_buffer.data(),
+                          static_cast<std::streamsize>(packed_buffer.size()));
+      packed_buffer.clear();
+    }
+  };
+
+  uint32_t record_len;
+  while (sequence_input.read(reinterpret_cast<char *>(&record_len),
+                             sizeof(uint32_t))) {
+    std::string dna(record_len, '\0');
+    if (!sequence_input.read(&dna[0], record_len)) {
+      throw std::runtime_error("Corrupted sequence chunk: failed to read " +
+                               std::to_string(record_len) + " bases");
     }
 
-    sequence_length += static_cast<uint64_t>(bytes_read);
-    size_t packed_count = 0;
-
-    for (std::streamsize input_index = 0; input_index < bytes_read;
-         input_index++) {
-      trailing_bases[trailing_count++] = input_buffer[input_index];
+    sequence_length += record_len;
+    for (uint32_t input_index = 0; input_index < record_len; input_index++) {
+      trailing_bases[trailing_count++] = dna[input_index];
       if (trailing_count < bases_per_byte) {
         continue;
       }
 
       if (!methyl_ternary) {
-        packed_buffer[packed_count++] =
+        packed_buffer.push_back(
             static_cast<char>(64 * base_to_int[(uint8_t)trailing_bases[3]] +
                               16 * base_to_int[(uint8_t)trailing_bases[2]] +
                               4 * base_to_int[(uint8_t)trailing_bases[1]] +
-                              base_to_int[(uint8_t)trailing_bases[0]]);
+                              base_to_int[(uint8_t)trailing_bases[0]]));
       } else {
         bool has_c = false;
         for (int k = 0; k < 5; k++) {
@@ -124,28 +130,27 @@ uint64_t write_packed_sequence(const std::string &sequence_path,
             packed += val * p3;
             p3 *= 3;
           }
-          packed_buffer[packed_count++] = static_cast<char>(packed);
+          packed_buffer.push_back(static_cast<char>(packed));
         } else {
-          packed_buffer[packed_count++] = static_cast<char>(243);
+          packed_buffer.push_back(static_cast<char>(243));
+          flush_packed_buffer();
           uint16_t escape = 0;
           for (int k = 0; k < 5; k++) {
             uint8_t val = base_to_int[static_cast<uint8_t>(trailing_bases[k])];
             escape |= (val << (2 * k));
           }
-          packed_output.write(packed_buffer.data(),
-                              static_cast<std::streamsize>(packed_count));
-          packed_count = 0;
           packed_output.write(reinterpret_cast<const char *>(&escape),
                               sizeof(uint16_t));
         }
       }
+
+      if (packed_buffer.size() >= (1 << 15)) {
+        flush_packed_buffer();
+      }
       trailing_count = 0;
     }
 
-    if (packed_count > 0) {
-      packed_output.write(packed_buffer.data(),
-                          static_cast<std::streamsize>(packed_count));
-    }
+    flush_packed_buffer();
   }
 
   if (trailing_count > 0) {
@@ -199,12 +204,20 @@ void calculate_sequence_lengths(const encoder_global &encoder_state,
   for (int tid = 0; tid < encoder_state.num_thr; tid++) {
     std::string thread_seq_path =
         encoder_state.outfile_seq + '.' + std::to_string(tid);
-    std::ifstream seq_in(thread_seq_path, std::ios::binary | std::ios::ate);
+    std::ifstream seq_in(thread_seq_path, std::ios::binary);
     if (!seq_in.is_open()) {
       thread_sequence_lengths[tid] = 0;
       continue;
     }
-    thread_sequence_lengths[tid] = static_cast<uint64_t>(seq_in.tellg());
+
+    uint64_t total_bases = 0;
+    uint32_t record_len;
+    while (
+        seq_in.read(reinterpret_cast<char *>(&record_len), sizeof(uint32_t))) {
+      total_bases += record_len;
+      seq_in.seekg(record_len, std::ios::cur);
+    }
+    thread_sequence_lengths[tid] = total_bases;
     seq_in.close();
   }
 }
@@ -235,8 +248,12 @@ void pack_compress_seq(const encoder_global &encoder_state,
   for (int tid = 0; tid < encoder_state.num_thr; tid++) {
     const sequence_pack_paths paths =
         make_sequence_pack_paths(encoder_state.outfile_seq, tid);
-    std::ifstream chunk_in(paths.packed_path, std::ios::binary);
+    std::ifstream chunk_in(paths.packed_path, std::ios::binary | std::ios::ate);
     if (chunk_in.is_open()) {
+      const uint64_t chunk_size = static_cast<uint64_t>(chunk_in.tellg());
+      chunk_in.seekg(0);
+      monolithic_out.write(reinterpret_cast<const char *>(&chunk_size),
+                           sizeof(uint64_t));
       while (chunk_in.read(copy_buffer.data(), copy_buffer.size())) {
         const std::streamsize bytes = chunk_in.gcount();
         monolithic_out.write(copy_buffer.data(), bytes);
@@ -395,6 +412,8 @@ void writecontig(const std::string &ref,
                  std::ofstream &f_noisepos, std::ofstream &f_order,
                  std::ofstream &f_RC, std::ofstream &f_readlength,
                  const encoder_global &eg, uint64_t &abs_pos) {
+  uint32_t ref_len = static_cast<uint32_t>(ref.size());
+  f_seq.write(reinterpret_cast<const char *>(&ref_len), sizeof(uint32_t));
   f_seq << ref;
   uint16_t pos_var;
   size_t previous_noise_offset = 0;
@@ -418,6 +437,15 @@ void writecontig(const std::string &ref,
     }
     f_noise << "\n";
     absolute_current_position = abs_pos + current_position;
+    if (static_cast<uint64_t>(current_position) +
+            (*current_contig_it).read_length >
+        ref.size()) {
+      throw std::runtime_error(
+          "writecontig: read at pos=" + std::to_string(current_position) +
+          " + len=" + std::to_string((*current_contig_it).read_length) +
+          " exceeds ref.size()=" + std::to_string(ref.size()) +
+          ", abs_pos=" + std::to_string(abs_pos));
+    }
     f_pos.write(byte_ptr(&absolute_current_position), sizeof(uint64_t));
     f_order.write(byte_ptr(&((*current_contig_it).order)), sizeof(uint32_t));
     f_readlength.write(byte_ptr(&((*current_contig_it).read_length)),

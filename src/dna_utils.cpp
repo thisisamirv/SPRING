@@ -64,37 +64,12 @@ template <size_t BufferSize>
 void write_encoded_read(const std::string &read, std::ofstream &fout,
                         const uint8_t *dna_to_int, const uint8_t bits_per_base,
                         const uint8_t bases_per_byte) {
-  uint8_t bitarray[BufferSize];
-  uint8_t pos_in_bitarray = 0;
-  const uint16_t readlen = static_cast<uint16_t>(read.size());
-  fout.write(byte_ptr(&readlen), sizeof(uint16_t));
+  const uint32_t readlen = static_cast<uint32_t>(read.size());
+  fout.write(reinterpret_cast<const char *>(&readlen), sizeof(uint32_t));
+  fout.write(read.data(), static_cast<std::streamsize>(readlen));
 
-  const uint32_t full_groups = readlen / bases_per_byte;
-  for (uint32_t group_index = 0; group_index < full_groups; ++group_index) {
-    bitarray[pos_in_bitarray] = 0;
-    for (uint8_t base_index = 0; base_index < bases_per_byte; ++base_index)
-      bitarray[pos_in_bitarray] |=
-          dna_to_int[static_cast<uint8_t>(
-              read[bases_per_byte * group_index + base_index])]
-          << (bits_per_base * base_index);
-    ++pos_in_bitarray;
-  }
-
-  const uint32_t trailing_bases = readlen % bases_per_byte;
-  if (trailing_bases != 0) {
-    const uint32_t group_index = full_groups;
-    bitarray[pos_in_bitarray] = 0;
-    for (uint32_t base_index = 0; base_index < trailing_bases; ++base_index)
-      bitarray[pos_in_bitarray] |=
-          dna_to_int[static_cast<uint8_t>(
-              read[bases_per_byte * group_index + base_index])]
-          << (bits_per_base * base_index);
-    ++pos_in_bitarray;
-  }
-
-  fout.write(byte_ptr(&bitarray[0]), pos_in_bitarray);
   if (!fout.good()) {
-    throw std::runtime_error("Failed writing encoded read to binary stream.");
+    throw std::runtime_error("Failed writing raw read to binary stream.");
   }
 }
 
@@ -103,46 +78,16 @@ void read_encoded_read(std::string &read, std::ifstream &fin,
                        const char *int_to_dna, const uint8_t bit_mask,
                        const uint8_t bits_per_base,
                        const uint8_t bases_per_byte) {
-  uint16_t readlen;
-  uint8_t bitarray[BufferSize];
-  if (!fin.read(byte_ptr(&readlen), sizeof(uint16_t))) {
+  uint32_t readlen;
+  if (!fin.read(reinterpret_cast<char *>(&readlen), sizeof(uint32_t))) {
     if (fin.eof())
       return;
     throw std::runtime_error("Failed reading readlen from binary stream.");
   }
   read.resize(readlen);
 
-  const uint16_t num_bytes_to_read =
-      (static_cast<uint32_t>(readlen) + bases_per_byte - 1) / bases_per_byte;
-  if (num_bytes_to_read > BufferSize) {
-    throw std::runtime_error("Corrupted binary read: record length (" +
-                             std::to_string(readlen) +
-                             ") exceeds buffer capacity.");
-  }
-  if (!fin.read(byte_ptr(&bitarray[0]), num_bytes_to_read)) {
-    throw std::runtime_error("Failed reading encoded data from binary stream.");
-  }
-
-  uint8_t pos_in_bitarray = 0;
-  const uint32_t full_groups = readlen / bases_per_byte;
-  for (uint32_t group_index = 0; group_index < full_groups; ++group_index) {
-    for (uint32_t base_index = 0; base_index < (uint32_t)bases_per_byte;
-         ++base_index) {
-      read[bases_per_byte * group_index + base_index] =
-          int_to_dna[bitarray[pos_in_bitarray] & bit_mask];
-      bitarray[pos_in_bitarray] >>= bits_per_base;
-    }
-    ++pos_in_bitarray;
-  }
-
-  const uint32_t trailing_bases = readlen % bases_per_byte;
-  if (trailing_bases != 0) {
-    const uint32_t group_index = full_groups;
-    for (uint32_t base_index = 0; base_index < trailing_bases; ++base_index) {
-      read[bases_per_byte * group_index + base_index] =
-          int_to_dna[bitarray[pos_in_bitarray] & bit_mask];
-      bitarray[pos_in_bitarray] >>= bits_per_base;
-    }
+  if (!fin.read(&read[0], static_cast<std::streamsize>(readlen))) {
+    throw std::runtime_error("Failed reading raw DNA data from binary stream.");
   }
 }
 

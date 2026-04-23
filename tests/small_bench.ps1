@@ -6,8 +6,14 @@ $SCRIPT_DIR = $PSScriptRoot
 $ROOT_DIR = (Get-Item (Join-Path $SCRIPT_DIR "..")).FullName
 $BUILD_DIR = Join-Path $ROOT_DIR "build"
 $SPRING_BIN_NAME = if ($IsWindows) { "spring2.exe" } else { "spring2" }
+$SPRING_PREVIEW_NAME = if ($IsWindows) { "spring2-preview.exe" } else { "spring2-preview" }
+$RAPIDGZIP_NAME = if ($IsWindows) { "rapidgzip.exe" } else { "rapidgzip" }
 $SPRING_BIN_DEFAULT = Join-Path $BUILD_DIR $SPRING_BIN_NAME
+$SPRING_PREVIEW_DEFAULT = Join-Path $BUILD_DIR $SPRING_PREVIEW_NAME
+$RAPIDGZIP_DEFAULT = Join-Path $BUILD_DIR (Join-Path "indexed_bzip2-build\src\tools" $RAPIDGZIP_NAME)
 $SPRING_BIN = if ($env:SPRING_BIN) { $env:SPRING_BIN } else { $SPRING_BIN_DEFAULT }
+$SPRING_PREVIEW_BIN = if ($env:SPRING_PREVIEW_BIN) { $env:SPRING_PREVIEW_BIN } else { $SPRING_PREVIEW_DEFAULT }
+$RAPIDGZIP_BIN = if ($env:RAPIDGZIP_BIN) { $env:RAPIDGZIP_BIN } else { $RAPIDGZIP_DEFAULT }
 $THREADS = if ($env:THREADS) { [int]$env:THREADS } else { 8 }
 
 $INPUT_DIR = Join-Path $ROOT_DIR "assets\sample-data"
@@ -51,6 +57,29 @@ function Get-MaxReadLength($path) {
     }
     
     return $maxLen
+}
+
+function Expand-GzipToFile($inputPath, $outputPath) {
+    if (Test-Path $RAPIDGZIP_BIN) {
+        & $RAPIDGZIP_BIN -d -f -o "$outputPath" "$inputPath"
+        if ($LASTEXITCODE -ne 0) {
+            throw "rapidgzip failed with exit code ${LASTEXITCODE}: $inputPath"
+        }
+        return
+    }
+
+    # Fallback: use built-in .NET stream decompression when rapidgzip is unavailable.
+    $input = [System.IO.File]::OpenRead($inputPath)
+    $gzip = New-Object System.IO.Compression.GZipStream($input, [System.IO.Compression.CompressionMode]::Decompress)
+    $output = [System.IO.File]::Create($outputPath)
+    try {
+        $gzip.CopyTo($output)
+    }
+    finally {
+        $output.Close()
+        $gzip.Close()
+        $input.Close()
+    }
 }
 
 # Helper: Resource tracking invocation
@@ -103,7 +132,7 @@ function Initialize-Environment {
 }
 
 function Initialize-SpringBinary {
-    if (Test-Path $SPRING_BIN) { return }
+    if ((Test-Path $SPRING_BIN) -and (Test-Path $RAPIDGZIP_BIN)) { return }
     
     Write-Host "Spring binary not found; building..." -ForegroundColor Yellow
     $buildLog = Join-Path $LOG_DIR "build.log"
@@ -128,110 +157,188 @@ function Initialize-SpringBinary {
         $cmakeConfigArgs += "-G", "Ninja"
     }
 
+    $oldPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    
     Write-Host "Running CMake configure..." -ForegroundColor Gray
-    & cmake @cmakeConfigArgs 2>&1 | Set-Content $buildLog
-    if ($LASTEXITCODE -ne 0) { throw "CMake configure failed. See $buildLog" }
+    & cmake @cmakeConfigArgs
+    if ($LASTEXITCODE -ne 0) { throw "CMake configure failed." }
     
     Write-Host "Running CMake build..." -ForegroundColor Gray
-    & cmake --build "$BUILD_DIR" --parallel 2>&1 | Add-Content $buildLog
-    if ($LASTEXITCODE -ne 0) { throw "CMake build failed. See $buildLog" }
+    & cmake --build "$BUILD_DIR" --parallel
+    if ($LASTEXITCODE -ne 0) { throw "CMake build failed." }
 
     if ($IsWindows) {
         Write-Host "Copying runtime DLLs..." -ForegroundColor Gray
-        & cmake --build "$BUILD_DIR" --target copy_runtime_dlls 2>&1 | Add-Content $buildLog
+        & cmake --build "$BUILD_DIR" --target copy_runtime_dlls
     }
+    
+    $ErrorActionPreference = $oldPreference
 }
 
 # --- Main Logic ---
 
-Initialize-Environment
-Initialize-SpringBinary
+function Invoke-SingleFileBenchmark($inputPath) {
+    $INPUT_ABS = (Get-Item $inputPath).FullName
+    $INPUT_BASENAME = [System.IO.Path]::GetFileName($INPUT_ABS)
+    $INPUT_STEM = $INPUT_BASENAME
+    if ($INPUT_STEM.EndsWith(".gz")) { $INPUT_STEM = [System.IO.Path]::GetFileNameWithoutExtension($INPUT_STEM) }
+    $INPUT_STEM = [System.IO.Path]::GetFileNameWithoutExtension($INPUT_STEM)
 
-$INPUT_ABS = (Get-Item $INPUT_FILE_ARG).FullName
-$INPUT_BASENAME = [System.IO.Path]::GetFileName($INPUT_ABS)
-# Stem is filename without extension (handle .fastq.gz)
-$INPUT_STEM = $INPUT_BASENAME
-if ($INPUT_STEM.EndsWith(".gz")) { $INPUT_STEM = [System.IO.Path]::GetFileNameWithoutExtension($INPUT_STEM) }
-$INPUT_STEM = [System.IO.Path]::GetFileNameWithoutExtension($INPUT_STEM)
+    $WORK_DIR = (Join-Path $WORK_ROOT_DIR "$INPUT_STEM.work").Replace("/", "\")
+    $OUTPUT_FILE = (Join-Path $OUTPUT_DIR "$INPUT_STEM.sp").Replace("/", "\")
+    $DECOMP_FILE = (Join-Path $OUTPUT_DIR "$INPUT_STEM.roundtrip.fastq").Replace("/", "\")
 
-$WORK_DIR = (Join-Path $WORK_ROOT_DIR "$INPUT_STEM.work").Replace("/", "\")
-$OUTPUT_FILE = (Join-Path $OUTPUT_DIR "$INPUT_STEM.sp").Replace("/", "\")
-$DECOMP_FILE = (Join-Path $OUTPUT_DIR "$INPUT_STEM.roundtrip.fastq").Replace("/", "\")
+    Write-Host "`n=== Benchmarking $INPUT_BASENAME ===" -ForegroundColor Yellow
+    Write-Host "Analyzing FASTQ..." -ForegroundColor Gray
+    Get-MaxReadLength $INPUT_ABS | Out-Null
 
-Write-Host "Analyzing FASTQ..." -ForegroundColor Gray
-$maxReadLen = Get-MaxReadLength $INPUT_ABS
+    if (Test-Path $WORK_DIR) { Remove-Item $WORK_DIR -Recurse -Force }
+    New-Item -ItemType Directory -Path $WORK_DIR -Force | Out-Null
+    if (Test-Path $OUTPUT_FILE) { Remove-Item $OUTPUT_FILE -Force }
+    if (Test-Path $DECOMP_FILE) { Remove-Item $DECOMP_FILE -Force }
 
-# Cleanup previous
-if (Test-Path $WORK_DIR) { Remove-Item $WORK_DIR -Recurse -Force }
-New-Item -ItemType Directory -Path $WORK_DIR -Force | Out-Null
-if (Test-Path $OUTPUT_FILE) { Remove-Item $OUTPUT_FILE -Force }
-if (Test-Path $DECOMP_FILE) { Remove-Item $DECOMP_FILE -Force }
+    Write-Host "Running Spring lossless compression (auto-assay)" -ForegroundColor Cyan
+    $compArgs = "-c --R1 `"$INPUT_ABS`" -o `"$OUTPUT_FILE`" -w `"$WORK_DIR`" -t $THREADS -q lossless --assay auto"
+    [void](Invoke-ResourceLoggedProcess $SPRING_BIN $compArgs)
 
-# --- Compression ---
-Write-Host "Running Spring lossless compression" -ForegroundColor Cyan
-Write-Host "  input:   $INPUT_ABS"
-Write-Host "  output:  $OUTPUT_FILE"
-Write-Host "  workdir: $WORK_DIR"
-Write-Host "  threads: $THREADS"
-Write-Host "  max read length: $maxReadLen"
-Write-Host "  mode:    lossless"
+    Write-Host "Running Spring decompression" -ForegroundColor Cyan
+    $decompArgs = "-d -i `"$OUTPUT_FILE`" -o `"$DECOMP_FILE`" -w `"$WORK_DIR`""
+    [void](Invoke-ResourceLoggedProcess $SPRING_BIN $decompArgs)
 
-$compArgs = "-c --R1 `"$INPUT_ABS`" -o `"$OUTPUT_FILE`" -w `"$WORK_DIR`" -t $THREADS -q lossless"
-$compResults = Invoke-ResourceLoggedProcess $SPRING_BIN $compArgs
+    $inputSize = (Get-Item $INPUT_ABS).Length
+    $outputSize = (Get-Item $OUTPUT_FILE).Length
+    $reduction = if ($inputSize -gt 0) { ($inputSize - $outputSize) * 100 / $inputSize } else { 0 }
 
-# --- Decompression ---
-Write-Host "`nRunning Spring decompression" -ForegroundColor Cyan
-Write-Host "  input:   $OUTPUT_FILE"
-Write-Host "  output:  $DECOMP_FILE"
+    Write-Host "Verifying integrity..." -ForegroundColor Gray
+    # For .gz files, we compare against decompressed stream
+    $isIdentical = $false
+    if ($INPUT_ABS.EndsWith(".gz")) {
+        $baseline = Join-Path $WORK_DIR "baseline.fastq"
+        Expand-GzipToFile $INPUT_ABS $baseline
+        $hash1 = Get-FileHash $baseline -Algorithm SHA256
+        $hash2 = Get-FileHash $DECOMP_FILE -Algorithm SHA256
+        $isIdentical = ($hash1.Hash -eq $hash2.Hash)
+    }
+    else {
+        $hash1 = Get-FileHash $INPUT_ABS -Algorithm SHA256
+        $hash2 = Get-FileHash $DECOMP_FILE -Algorithm SHA256
+        $isIdentical = ($hash1.Hash -eq $hash2.Hash)
+    }
 
-$decompArgs = "-d -i `"$OUTPUT_FILE`" -o `"$DECOMP_FILE`" -w `"$WORK_DIR`""
-$decompResults = Invoke-ResourceLoggedProcess $SPRING_BIN $decompArgs
+    Write-Output "  Results for $INPUT_BASENAME"
+    Write-Output ("    Compressed size: {0:N0} bytes" -f $outputSize)
+    Write-Output ("    Reduction:       {0:N2}%" -f $reduction)
+    Write-Output ("    Bit-perfect:     $(if ($isIdentical) { 'YES' } else { 'NO' })")
+    
+    return @{ size = $outputSize; identical = $isIdentical }
+}
 
-# Cleanup work dir
-if (Test-Path $WORK_DIR) {
-    if ((Get-ChildItem $WORK_DIR).Count -eq 0) {
-        Remove-Item $WORK_DIR -Recurse -Force
+function Invoke-AssaySuite() {
+    Write-Host "`n--- Running Assay Benchmark Suite ---" -ForegroundColor Magenta
+    
+    $samples = @(
+        @{ name = "Methylation (test_3)"; r1 = "test_3_R1.fastq.gz"; r2 = "test_3_R2.fastq.gz"; assay = "methyl" },
+        @{ name = "sc-ATAC (test_4)"; r1 = "test_4_R1.fastq.gz"; r2 = "test_4_R2.fastq.gz"; r3 = "test_4_R3.fastq.gz"; i1 = "test_4_I1.fastq.gz"; assay = "sc-atac" },
+        @{ name = "sc-RNA (test_5)"; r1 = "test_5_R1.fastq.gz"; r2 = "test_5_R2.fastq.gz"; i1 = "test_5_I1.fastq.gz"; i2 = "test_5_I2.fastq.gz"; assay = "sc-rna" }
+    )
+
+    foreach ($s in $samples) {
+        Write-Host "`n>>> Assay: $($s.name)" -ForegroundColor Yellow
+        $r1_path = Join-Path $INPUT_DIR $s.r1
+        if (-not (Test-Path $r1_path)) { continue }
+
+        $files = @($s.r1)
+        if ($s.r2) { $files += $s.r2 }
+        if ($s.r3) { $files += $s.r3 }
+        if ($s.i1) { $files += $s.i1 }
+        if ($s.i2) { $files += $s.i2 }
+
+        $base_args = ""
+        $input_abs_paths = @()
+        foreach ($f in $files) {
+            $abs = (Join-Path $INPUT_DIR $f)
+            $input_abs_paths += $abs
+            $key = $f.Split("_")[-1].Split(".")[0] # R1, R2, etc.
+            $base_args += " --$key `"$abs`""
+        }
+
+        $stem = $s.r1.Split(".")[0]
+        $out_auto = Join-Path $OUTPUT_DIR "$stem.auto.sp"
+        $out_dna = Join-Path $OUTPUT_DIR "$stem.dna.sp"
+        $work = Join-Path $WORK_ROOT_DIR "$stem.bench"
+        
+        if (Test-Path $work) { Remove-Item $work -Recurse -Force }
+        New-Item -ItemType Directory -Path $work -Force | Out-Null
+
+        # 1. Auto-detected assay
+        Write-Host "  Step 1: Compression with --assay auto (expected: $($s.assay))" -ForegroundColor Cyan
+        $args_auto = "-c $base_args -o `"$out_auto`" -w `"$work`" -t $THREADS -q lossless --assay auto"
+        [void](Invoke-ResourceLoggedProcess $SPRING_BIN $args_auto)
+        $size_auto = (Get-Item $out_auto).Length
+
+        # 2. Restoration check (Full Round-Trip)
+        Write-Host "  Step 2: Verifying bit-perfect restoration..." -ForegroundColor Cyan
+        $decomp_dir = Join-Path $work "decomp"
+        New-Item -ItemType Directory -Path $decomp_dir -Force | Out-Null
+        $decomp_files = @()
+        foreach ($f in $files) {
+            $decomp_files += Join-Path $decomp_dir ($f.Replace(".gz", ""))
+        }
+        $o_args = $decomp_files | ForEach-Object { "`"$_`"" }
+        $decomp_args = "-d -i `"$out_auto`" -o $($o_args -join ' ') -w `"$work`""
+        [void](Invoke-ResourceLoggedProcess $SPRING_BIN $decomp_args)
+
+        $isIdentical = $true
+        for ($i = 0; $i -lt $files.Count; $i++) {
+            $orig = $input_abs_paths[$i]
+            $restored = $decomp_files[$i]
+            
+            $baseline = Join-Path $work "baseline_$i.fastq"
+            Expand-GzipToFile $orig $baseline
+            $hash1 = Get-FileHash $baseline -Algorithm SHA256
+            $hash2 = Get-FileHash $restored -Algorithm SHA256
+            if ($hash1.Hash -ne $hash2.Hash) {
+                Write-Host "    Mismatch in $($files[$i])!" -ForegroundColor Red
+                $isIdentical = $false
+            }
+        }
+
+        if ($isIdentical) {
+            Write-Host "    Bit-perfect: YES" -ForegroundColor Green
+        }
+        else {
+            Write-Host "    Bit-perfect: NO" -ForegroundColor Red
+        }
+
+        # 3. DNA-mode comparison
+        Write-Host "  Step 3: Compression with --assay dna" -ForegroundColor Cyan
+        $args_dna = "-c $base_args -o `"$out_dna`" -w `"$work`" -t $THREADS -q lossless --assay dna"
+        [void](Invoke-ResourceLoggedProcess $SPRING_BIN $args_dna)
+        $size_dna = (Get-Item $out_dna).Length
+
+        # 4. Results
+        $gain = if ($size_dna -gt 0) { ($size_dna - $size_auto) * 100 / $size_dna } else { 0 }
+        Write-Output "`n  Assay-specific Optimization Results:"
+        Write-Output ("    Auto-detected size ($($s.assay)): {0:N0} bytes" -f $size_auto)
+        Write-Output ("    Generic DNA-mode size:       {0:N0} bytes" -f $size_dna)
+        Write-Output ("    Optimization Gain:           {0:N2}%" -f $gain)
+        
+        if ($gain -lt 0) {
+            Write-Host "    Warning: Domain optimization was larger than DNA mode!" -ForegroundColor Red
+        }
+        else {
+            Write-Host "    Domain optimization SUCCESS" -ForegroundColor Green
+        }
     }
 }
 
-# --- Results ---
-$inputSize = (Get-Item $INPUT_ABS).Length
-$outputSize = (Get-Item $OUTPUT_FILE).Length
-$decompSize = (Get-Item $DECOMP_FILE).Length
+Initialize-Environment
+Initialize-SpringBinary
 
-$reduction = if ($inputSize -gt 0) { ($inputSize - $outputSize) * 100 / $inputSize } else { 0 }
-$ratio = if ($outputSize -gt 0) { $inputSize / $outputSize } else { 0 }
-
-# Integrity Check
-Write-Host "`nVerifying integrity..." -ForegroundColor Gray
-$originalHash = Get-FileHash -Path $INPUT_ABS -Algorithm SHA256
-$decompHash = Get-FileHash -Path $DECOMP_FILE -Algorithm SHA256
-$checksumStatus = if ($originalHash.Hash -eq $decompHash.Hash) { "match" } else { "mismatch" }
-
-# Reporting
-Write-Output "`nBenchmark result"
-Write-Output ("  original bytes:   {0:N0}" -f $inputSize)
-Write-Output ("  compressed bytes: {0:N0}" -f $outputSize)
-Write-Output ("  decompressed bytes: {0:N0}" -f $decompSize)
-Write-Output ("  size reduction:   {0:N2}%" -f $reduction)
-Write-Output ("  compression ratio {0:N3}x" -f $ratio)
-
-Write-Output "`nCompression resources"
-Write-Output ("  elapsed time:     {0:N3}s" -f $compResults.elapsed_seconds)
-Write-Output ("  cpu usage:        {0}" -f $compResults.cpu_percent)
-Write-Output ("  cpu time:         user {0:N3}s, system {1:N3}s" -f $compResults.user_seconds, $compResults.system_seconds)
-Write-Output ("  avg core usage:   {0:N2} cores" -f (($compResults.user_seconds + $compResults.system_seconds) / $compResults.elapsed_seconds))
-Write-Output ("  peak memory:      {0:N0} KB ({1:N2} MB RSS)" -f $compResults.max_rss_kb, ($compResults.max_rss_kb / 1024))
-
-Write-Output "`nDecompression resources"
-Write-Output ("  elapsed time:     {0:N3}s" -f $decompResults.elapsed_seconds)
-Write-Output ("  cpu usage:        {0}" -f $decompResults.cpu_percent)
-Write-Output ("  cpu time:         user {0:N3}s, system {1:N3}s" -f $decompResults.user_seconds, $decompResults.system_seconds)
-Write-Output ("  avg core usage:   {0:N2} cores" -f (($decompResults.user_seconds + $decompResults.system_seconds) / $decompResults.elapsed_seconds))
-Write-Output ("  peak memory:      {0:N0} KB ({1:N2} MB RSS)" -f $decompResults.max_rss_kb, ($decompResults.max_rss_kb / 1024))
-
-Write-Output "`nRound-trip check"
-Write-Output "  original hash:    $($originalHash.Hash)"
-Write-Output "  decompressed hash:$($decompHash.Hash)"
-Write-Output "  checksum status:  $checksumStatus"
-Write-Output "  decompressed file matches input: $(if ($checksumStatus -eq 'match') { 'identical' } else { 'different' })"
+if ($args.Count -eq 0 -and (Test-Path (Join-Path $INPUT_DIR "test_3_R1.fastq.gz"))) {
+    Invoke-AssaySuite
+}
+else {
+    Invoke-SingleFileBenchmark $INPUT_FILE_ARG
+}

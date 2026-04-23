@@ -146,7 +146,7 @@ public:
   Impl(Impl &&) = delete;
   Impl &operator=(Impl &&) = delete;
 
-  Impl(std::string archive_path, int num_thr, std::string work_dir)
+    Impl(std::string archive_path, int num_thr, std::string work_dir)
       : archive_path_(std::move(archive_path)), user_num_thr_(num_thr) {
 
     // Setup temporary directory
@@ -186,8 +186,8 @@ public:
     read_compression_params(cp_in, params_);
     cp_in.close();
 
-    if (user_num_thr_ > 0)
-      params_.encoding.num_thr = user_num_thr_;
+    decode_num_thr_ =
+        (user_num_thr_ > 0) ? user_num_thr_ : params_.encoding.num_thr;
 
     SPRING_LOG_DEBUG(
         "block_id=spring-reader:init, SpringReader init: archive=" +
@@ -195,7 +195,8 @@ public:
         std::string(params_.encoding.paired_end ? "true" : "false") +
         ", long_mode=" +
         std::string(params_.encoding.long_flag ? "true" : "false") +
-        ", threads=" + std::to_string(params_.encoding.num_thr));
+        ", encoding_threads=" + std::to_string(params_.encoding.num_thr) +
+        ", decoding_threads=" + std::to_string(decode_num_thr_));
 
     // Start worker thread
     worker_thread_ = std::thread([this]() {
@@ -204,9 +205,9 @@ public:
         BufferDecompressionSink sink(queue_, mutex_, cv_,
                                      params_.encoding.paired_end, 2);
         if (params_.encoding.long_flag) {
-          decompress_long(temp_dir_, sink, params_);
+          decompress_long(temp_dir_, sink, params_, decode_num_thr_);
         } else {
-          decompress_short(temp_dir_, sink, params_);
+          decompress_short(temp_dir_, sink, params_, decode_num_thr_);
         }
         sink.log_summary();
         const auto elapsed_ms =
@@ -323,6 +324,7 @@ private:
   std::string temp_dir_;
   compression_params params_;
   int user_num_thr_;
+  int decode_num_thr_ = 1;
 
   std::thread worker_thread_;
   std::queue<BufferDecompressionSink::StepPair> queue_;

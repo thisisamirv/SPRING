@@ -525,7 +525,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   // high-confidence auto-detection OR explicit -y rna (confidence == "N/A").
   const bool apply_poly_at =
       !cp.encoding.long_flag && !cp.encoding.preserve_order &&
-      cp.read_info.assay == "rna" &&
+      (cp.read_info.assay == "rna" || cp.read_info.assay == "sc-rna") &&
       (cp.read_info.assay_confidence == "N/A" ||
        cp.read_info.assay_confidence.rfind("high", 0) == 0);
 

@@ -83,7 +83,6 @@ std::string bitsettostring(std::bitset<bitset_size> encoded_bases,
 template <size_t bitset_size>
 void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
             uint32_t *read_orders, uint16_t *read_lengths,
-            const std::vector<uint16_t> &all_read_lengths,
             bool *remaining_reads, OmpLock *read_locks,
             OmpLock *dictionary_locks, const encoder_global &eg,
             const encoder_global_b<bitset_size> &egb);

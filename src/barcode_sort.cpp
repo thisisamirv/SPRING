@@ -1,5 +1,5 @@
 #include "barcode_sort.h"
-
+#include "dna_utils.h"
 #include "io_utils.h"
 #include "params.h"
 #include "progress.h"
@@ -37,63 +37,129 @@ struct PackedRead {
   std::string cb;       // extracted cellular barcode (opaque bytes)
   uint32_t original_id; // position in input_clean_1.dna (0-based)
   uint16_t readlen;
-  std::string packed; // raw payload bytes (NOT the uint16 length)
+  std::string raw_read; // raw DNA bases (ASCII)
 };
 
-// Load all reads from one preprocessed file (input_clean_1.dna or
-// input_clean_2.dna).  If `cb_stream` is non-null, consume one FASTQ record
-// from it to obtain the CB for each read; otherwise decode from the packed
-// R1 prefix using `cb_len` bases.
-// `id_offset` is added to the stored original_id (non-zero for R2 reads).
-std::vector<PackedRead> load_reads(const std::string &path, uint32_t id_offset,
-                                   uint32_t cb_len, std::istream *cb_stream,
-                                   uint32_t &detected_cb_len) {
-  std::ifstream fin(path, std::ios::binary);
-  if (!fin.is_open())
-    throw std::runtime_error("barcode_sort: cannot open " + path);
+// Load sharded DNA reads from Clean and N streams, reconstructing their
+// original order.
+std::vector<PackedRead> load_all_reads(const std::string &temp_dir,
+                                       int stream_index, uint32_t total_reads,
+                                       uint32_t num_clean, uint32_t num_n,
+                                       uint32_t &detected_cb_len,
+                                       std::istream *cb_stream,
+                                       uint32_t cb_len) {
+  std::vector<PackedRead> entries(total_reads);
+  std::vector<bool> is_n(total_reads, false);
 
-  std::vector<PackedRead> entries;
-  bool first_cb_read = true;
+  const std::string n_order_path =
+      temp_dir + "/read_order_N.bin" + (stream_index == 1 ? ".2" : "");
+  const std::string n_dna_path =
+      temp_dir + "/input_N.dna" + (stream_index == 1 ? ".2" : "");
+  const std::string clean_dna_path =
+      temp_dir + "/input_clean_" + std::to_string(stream_index + 1) + ".dna";
 
-  while (true) {
-    uint16_t readlen = 0;
-    if (!fin.read(reinterpret_cast<char *>(&readlen), sizeof(uint16_t)))
-      break; // EOF
-
-    const uint32_t packed_bytes = (static_cast<uint32_t>(readlen) + 3) / 4;
-    std::string packed(packed_bytes, '\0');
-    if (!fin.read(packed.data(), packed_bytes))
-      throw std::runtime_error("barcode_sort: truncated read in " + path);
-
-    std::string cb;
-    if (cb_stream) {
-      std::string hdr, seq, plus, qual;
-      if (std::getline(*cb_stream, hdr) && std::getline(*cb_stream, seq) &&
-          std::getline(*cb_stream, plus) && std::getline(*cb_stream, qual)) {
-        // Strip CRLF
-        if (!seq.empty() && seq.back() == '\r')
-          seq.pop_back();
-        if (first_cb_read) {
-          detected_cb_len = static_cast<uint32_t>(seq.size());
-          first_cb_read = false;
-          SPRING_LOG_INFO("barcode_sort: auto-detected cb_len=" +
-                          std::to_string(detected_cb_len) + " bp from I1 lane");
+  // 1. Identify which positions are N-reads using the order file.
+  if (num_n > 0) {
+    std::ifstream fn_order(n_order_path, std::ios::binary);
+    if (fn_order.is_open()) {
+      for (uint32_t i = 0; i < num_n; i++) {
+        uint32_t pos;
+        if (fn_order.read(reinterpret_cast<char *>(&pos), sizeof(uint32_t))) {
+          if (pos < total_reads)
+            is_n[pos] = true;
         }
-        cb = std::move(seq);
-      } else {
-        // I1 exhausted early — fall back to R1 prefix
-        cb = decode_prefix(packed.data(), readlen, cb_len);
       }
-    } else {
-      cb = decode_prefix(packed.data(), readlen, cb_len);
     }
-
-    entries.push_back(
-        {.cb = std::move(cb),
-         .original_id = static_cast<uint32_t>(entries.size()) + id_offset,
-         .readlen = readlen,
-         .packed = std::move(packed)});
   }
+
+  // 2. Load N-reads (4-bit packed) and place them at their original positions.
+  if (num_n > 0) {
+    std::ifstream fn_dna(n_dna_path, std::ios::binary);
+    if (fn_dna.is_open()) {
+      static const char kDnaNDecodeTable[16] = {'A', 'G', 'C', 'T', 'N', 'N',
+                                                'N', 'N', 'N', 'N', 'N', 'N',
+                                                'N', 'N', 'N', 'N'};
+      for (uint32_t i = 0; i < total_reads; i++) {
+        if (!is_n[i])
+          continue;
+        uint16_t readlen;
+        if (!fn_dna.read(reinterpret_cast<char *>(&readlen), sizeof(uint16_t)))
+          break;
+        uint32_t packed_bytes = (static_cast<uint32_t>(readlen) + 1) / 2;
+        std::vector<char> packed(packed_bytes);
+        fn_dna.read(packed.data(), packed_bytes);
+
+        entries[i].readlen = readlen;
+        entries[i].original_id = i;
+        entries[i].raw_read.resize(readlen);
+        for (uint32_t j = 0; j < readlen; j++) {
+          uint8_t byte = static_cast<uint8_t>(packed[j / 2]);
+          uint8_t code = (j % 2 == 0) ? (byte & 0x0F) : (byte >> 4);
+          entries[i].raw_read[j] = kDnaNDecodeTable[code & 0x0F];
+        }
+      }
+    }
+  }
+
+  // 3. Load Clean reads (2-bit packed) and fill the remaining slots.
+  if (num_clean > 0) {
+    std::ifstream fc_dna(clean_dna_path, std::ios::binary);
+    if (fc_dna.is_open()) {
+      for (uint32_t i = 0; i < total_reads; i++) {
+        if (is_n[i])
+          continue;
+        uint16_t readlen;
+        if (!fc_dna.read(reinterpret_cast<char *>(&readlen), sizeof(uint16_t)))
+          break;
+        uint32_t packed_bytes = (static_cast<uint32_t>(readlen) + 3) / 4;
+        std::vector<char> packed(packed_bytes);
+        fc_dna.read(packed.data(), packed_bytes);
+
+        entries[i].readlen = readlen;
+        entries[i].original_id = i;
+        entries[i].raw_read.resize(readlen);
+        for (uint32_t j = 0; j < readlen; j++) {
+          uint8_t byte = static_cast<uint8_t>(packed[j / 4]);
+          entries[i].raw_read[j] =
+              kDnaDecodeTable[(byte >> (2 * (j % 4))) & 0x03];
+        }
+      }
+    }
+  }
+
+  // 4. Extract or decode CBs for all reads (only for R1).
+  if (stream_index == 0) {
+    bool first_cb_read = true;
+    for (uint32_t i = 0; i < total_reads; i++) {
+      if (cb_stream) {
+        std::string hdr, seq, plus, qual;
+        if (std::getline(*cb_stream, hdr) && std::getline(*cb_stream, seq) &&
+            std::getline(*cb_stream, plus) && std::getline(*cb_stream, qual)) {
+          if (!seq.empty() && seq.back() == '\r')
+            seq.pop_back();
+          if (first_cb_read) {
+            detected_cb_len = static_cast<uint32_t>(seq.size());
+            first_cb_read = false;
+            SPRING_LOG_INFO("barcode_sort: auto-detected cb_len=" +
+                            std::to_string(detected_cb_len) +
+                            " bp from I1 lane");
+          }
+          entries[i].cb = std::move(seq);
+        } else {
+          // I1 exhausted — fallback to prefix if possible
+          entries[i].cb =
+              (cb_len > 0)
+                  ? entries[i].raw_read.substr(
+                        0, std::min<uint32_t>(cb_len, entries[i].readlen))
+                  : "";
+        }
+      } else if (cb_len > 0) {
+        entries[i].cb = entries[i].raw_read.substr(
+            0, std::min<uint32_t>(cb_len, entries[i].readlen));
+      }
+    }
+  }
+
   return entries;
 }
 
@@ -126,9 +192,7 @@ void write_thread_slot(const std::string &basedir, int tid,
 
   int64_t position = 0;
   for (const PackedRead *e : slot_data) {
-    // temp.dna: [uint16 readlen][packed bytes] — same as write_dna_in_bits
-    dna.write(reinterpret_cast<const char *>(&e->readlen), sizeof(uint16_t));
-    dna.write(e->packed.data(), static_cast<std::streamsize>(e->packed.size()));
+    write_dna_in_bits(e->raw_read, dna);
     rev.put('d');
     flag.put('1');
     pos.write(reinterpret_cast<const char *>(&position), sizeof(int64_t));
@@ -136,18 +200,19 @@ void write_thread_slot(const std::string &basedir, int tid,
                 sizeof(uint32_t));
     lengths.write(reinterpret_cast<const char *>(&e->readlen),
                   sizeof(uint16_t));
-    ++position;
+    position += e->readlen;
   }
 }
 
 } // namespace
 
-void barcode_sort(const std::string &temp_dir, const compression_params &cp,
+void barcode_sort(const std::string &temp_dir, compression_params &cp,
                   const std::string &cb_source_path) {
   const int num_thr = cp.encoding.num_thr;
   const bool paired_end = cp.encoding.paired_end;
-  const uint32_t num_reads_1 = cp.read_info.num_reads_clean[0];
-  const uint32_t num_reads_2 = paired_end ? cp.read_info.num_reads_clean[1] : 0;
+  // Total reads per stream is half total_reads in PE, or total_reads in SE.
+  const uint32_t reads_per_stream =
+      paired_end ? cp.read_info.num_reads / 2 : cp.read_info.num_reads;
 
   SPRING_LOG_INFO("Barcode sort: " +
                   std::string(cb_source_path.empty()
@@ -177,38 +242,36 @@ void barcode_sort(const std::string &temp_dir, const compression_params &cp,
 
   uint32_t detected_cb_len = cp.encoding.cb_len;
 
-  // ── Load R1 reads ────────────────────────────────────────────────────────
+  // ── Load R1 reads (clean + N) ────────────────────────────────────────────
   SPRING_LOG_INFO("barcode_sort: loading reads...");
-  std::vector<PackedRead> reads_1 =
-      load_reads(temp_dir + "/input_clean_1.dna", 0, cp.encoding.cb_len,
-                 i1_stream, detected_cb_len);
-
-  if (reads_1.size() != num_reads_1) {
-    SPRING_LOG_DEBUG("barcode_sort: expected " + std::to_string(num_reads_1) +
-                     " R1 reads, loaded " + std::to_string(reads_1.size()));
-  }
+  std::vector<PackedRead> reads_1 = load_all_reads(
+      temp_dir, 0, reads_per_stream, cp.read_info.num_reads_clean[0],
+      reads_per_stream - cp.read_info.num_reads_clean[0], detected_cb_len,
+      i1_stream, cp.encoding.cb_len);
 
   // ── Load R2 reads (paired-end) ───────────────────────────────────────────
   std::vector<PackedRead> reads_2;
   if (paired_end) {
     uint32_t dummy_cb_len = detected_cb_len;
-    // R2 CB is not extracted; we use an empty string so R2 follows R1 in sort
-    reads_2 = load_reads(temp_dir + "/input_clean_2.dna", num_reads_1,
-                         cp.encoding.cb_len, nullptr, dummy_cb_len);
-    if (reads_2.size() != num_reads_2) {
-      SPRING_LOG_DEBUG("barcode_sort: expected " + std::to_string(num_reads_2) +
-                       " R2 reads, loaded " + std::to_string(reads_2.size()));
+    reads_2 = load_all_reads(temp_dir, 1, reads_per_stream,
+                             cp.read_info.num_reads_clean[1],
+                             reads_per_stream - cp.read_info.num_reads_clean[1],
+                             dummy_cb_len, nullptr, detected_cb_len);
+
+    // Paired-end read_order.bin uses global read indices where R2 occupies the
+    // second half [reads_per_stream, 2*reads_per_stream). This keeps
+    // downstream quality/id reorder mapping consistent.
+    for (PackedRead &entry : reads_2) {
+      entry.original_id += reads_per_stream;
     }
   }
 
   // ── Build the sort index for R1 (R2 mirrors R1 via index) ───────────────
-  // For paired-end: sort R1 by CB, R2 follows in lock-step.
-  const uint32_t total_reads =
+  const uint32_t total_reads_loaded =
       static_cast<uint32_t>(reads_1.size() + reads_2.size());
   SPRING_LOG_INFO("barcode_sort: stable-sorting " +
                   std::to_string(reads_1.size()) + " read pairs by CB...");
 
-  // Build index into reads_1; sort by CB string only (stable).
   std::vector<uint32_t> r1_order(reads_1.size());
   for (uint32_t i = 0; i < static_cast<uint32_t>(r1_order.size()); ++i)
     r1_order[i] = i;
@@ -217,8 +280,6 @@ void barcode_sort(const std::string &temp_dir, const compression_params &cp,
   });
 
   // ── Distribute reads across thread slots (round-robin) ──────────────────
-  // Each thread slot is a contiguous file pair read by the encoder.
-  // We keep CB-group locality by assigning whole groups to the same slot.
   std::vector<std::vector<PackedRead *>> slots_1(num_thr);
   std::vector<std::vector<PackedRead *>> slots_2(num_thr);
 
@@ -231,13 +292,8 @@ void barcode_sort(const std::string &temp_dir, const compression_params &cp,
   }
 
   // ── Write per-thread cascade files ──────────────────────────────────────
-  // For the encoder, R1 and R2 thread files are separate streams.
-  // In the existing pipeline R1 clean reads occupy [0, num_reads_1) and
-  // R2 occupy [num_reads_1, num_reads_1+num_reads_2) in a single stream.
-  // writetofile merges R1 then R2 per thread, so we do the same.
   SPRING_LOG_INFO("barcode_sort: writing sorted output files...");
   for (int tid = 0; tid < num_thr; ++tid) {
-    // Merge R1 and R2 slot data into one sequence (R1 first, then R2).
     std::vector<PackedRead *> merged = slots_1[static_cast<size_t>(tid)];
     if (paired_end) {
       const auto &s2 = slots_2[static_cast<size_t>(tid)];
@@ -245,14 +301,18 @@ void barcode_sort(const std::string &temp_dir, const compression_params &cp,
     }
     write_thread_slot(temp_dir, tid, merged);
 
-    // Empty singleton stub for this thread slot
     create_empty(temp_dir + "/temp.dna.singleton." + std::to_string(tid));
     create_empty(temp_dir + "/read_order.bin.singleton." + std::to_string(tid));
   }
 
-  // ── Merged singleton stubs (consumed by readsingletons()) ───────────────
   create_empty(temp_dir + "/temp.dna.singleton");
   create_empty(temp_dir + "/read_order.bin.singleton");
+  create_empty(temp_dir + "/input_N.dna");
+  create_empty(temp_dir + "/read_order_N.bin");
+  if (paired_end) {
+    create_empty(temp_dir + "/input_N.dna.2");
+    create_empty(temp_dir + "/read_order_N.bin.2");
+  }
 
   {
     std::ofstream cnt(temp_dir + "/temp.dna.singleton.count", std::ios::binary);
@@ -263,7 +323,11 @@ void barcode_sort(const std::string &temp_dir, const compression_params &cp,
     cnt.write(reinterpret_cast<const char *>(&zero), sizeof(uint32_t));
   }
 
-  SPRING_LOG_INFO("barcode_sort: done — " + std::to_string(total_reads) +
+  // After barcode sorting, all reads are represented in aligned stream files.
+  cp.read_info.num_reads_clean[0] = reads_per_stream;
+  cp.read_info.num_reads_clean[1] = paired_end ? reads_per_stream : 0;
+
+  SPRING_LOG_INFO("barcode_sort: done — " + std::to_string(total_reads_loaded) +
                   " reads sorted by CB.");
 }
 

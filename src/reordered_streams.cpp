@@ -1,7 +1,6 @@
 // Writes reordered alignment-related streams, unaligned payloads, and per-block
 // compressed outputs that become part of the final Spring archive.
 
-#include <array>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -12,7 +11,6 @@
 #include <vector>
 
 #include "core_utils.h"
-#include "dna_utils.h"
 #include "fs_utils.h"
 #include "libbsc/bsc.h"
 #include "progress.h"
@@ -208,18 +206,18 @@ void decode_unaligned_reads(const std::string &path,
           "Corrupted unaligned stream: truncated read length header.");
     }
 
-    uint16_t read_length;
+    uint32_t read_length;
     std::memcpy(&read_length, encoded.data() + encoded_cursor,
-                sizeof(uint16_t));
-    encoded_cursor += sizeof(uint16_t);
+                sizeof(uint32_t));
+    encoded_cursor += sizeof(uint32_t);
 
-    const uint64_t encoded_bytes = (static_cast<uint64_t>(read_length) + 1) / 2;
+    const uint64_t encoded_bytes = static_cast<uint64_t>(read_length);
     if (encoded_cursor + encoded_bytes > encoded.size()) {
       throw std::runtime_error(
-          "Corrupted unaligned stream: truncated encoded payload.");
+          "Corrupted unaligned stream: truncated raw payload.");
     }
 
-    decoded_lengths[read_index] = read_length;
+    decoded_lengths[read_index] = static_cast<uint16_t>(read_length);
     encoded_offsets[read_index] = encoded_cursor;
     decoded_offsets[read_index] = decoded_total;
     decoded_total += read_length;
@@ -232,23 +230,14 @@ void decode_unaligned_reads(const std::string &path,
   }
 
   decoded_chars.assign(decoded_total, 0);
-  static const std::array<char, 16> int_to_base = {'A', 'G', 'C', 'T', 'N', 'N',
-                                                   'N', 'N', 'N', 'N', 'N', 'N',
-                                                   'N', 'N', 'N', 'N'};
 
 #pragma omp parallel for schedule(static)
   for (size_t read_index = 0; read_index < expected_read_count; ++read_index) {
     const uint16_t read_length = decoded_lengths[read_index];
-    const uint8_t *encoded_read = reinterpret_cast<const uint8_t *>(
-        encoded.data() + encoded_offsets[read_index]);
+    const char *encoded_read = encoded.data() + encoded_offsets[read_index];
     char *decoded_read = decoded_chars.data() + decoded_offsets[read_index];
 
-    for (uint16_t base_index = 0; base_index < read_length; ++base_index) {
-      const uint8_t packed_byte = encoded_read[base_index / 2];
-      const uint8_t base_code =
-          (base_index % 2 == 0) ? (packed_byte & 0x0F) : (packed_byte >> 4);
-      decoded_read[base_index] = int_to_base[base_code & 0x0F];
-    }
+    std::memcpy(decoded_read, encoded_read, read_length);
   }
 }
 

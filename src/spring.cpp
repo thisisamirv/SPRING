@@ -779,9 +779,9 @@ void perform_audit_standard(const std::string &archive_path,
 
     NullDecompressionSink sink;
     if (cp.encoding.long_flag) {
-      decompress_long(audit_dir, sink, cp);
+      decompress_long(audit_dir, sink, cp, cp.encoding.num_thr);
     } else {
-      decompress_short(audit_dir, sink, cp);
+      decompress_short(audit_dir, sink, cp, cp.encoding.num_thr);
     }
 
     const bool is_lossless =
@@ -1119,6 +1119,8 @@ void compress_standard(const std::string &temp_dir,
   std::string compression_params_path = temp_dir + "/cp.bin";
   std::ofstream compression_params_output(compression_params_path,
                                           std::ios::binary);
+  std::cerr << "compress_standard: serializing cp.encoding.num_thr="
+            << cp.encoding.num_thr << "\n";
   write_compression_params(compression_params_output, cp);
   compression_params_output.close();
 
@@ -1345,9 +1347,12 @@ void decompress_standard(const std::string &temp_dir,
   if (!compression_params_input.good())
     throw std::runtime_error("Can't read compression parameters.");
   compression_params_input.close();
-  if (num_thr > 0) {
-    cp.encoding.num_thr = num_thr;
-  }
+  // IMPORTANT: cp.encoding.num_thr is the *encoding* thread count and controls
+  // how many packed sequence chunks exist in the archive. DO NOT override it
+  // with the user-specified decoding parallelism, or the decompressor will
+  // attempt to read the wrong number of chunks and get out-of-range positions.
+  // Use a separate variable for decoding parallelism.
+  const int decoding_num_thr = (num_thr > 0) ? num_thr : cp.encoding.num_thr;
 
   bool paired_end = cp.encoding.paired_end;
   SPRING_LOG_DEBUG(
@@ -1393,9 +1398,9 @@ void decompress_standard(const std::string &temp_dir,
           cp.encoding.use_crlf, should_gzip, should_bgzf);
 
   if (cp.encoding.long_flag) {
-    decompress_long(temp_dir, *sink, cp);
+    decompress_long(temp_dir, *sink, cp, decoding_num_thr);
   } else {
-    decompress_short(temp_dir, *sink, cp);
+    decompress_short(temp_dir, *sink, cp, decoding_num_thr);
   }
 
   run_timed_step("Verifying integrity ...", "Integrity check", [&] {

@@ -170,7 +170,6 @@ std::string bitsettostring(std::bitset<bitset_size> encoded_bases,
 template <size_t bitset_size>
 void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
             uint32_t *read_orders, uint16_t *read_lengths,
-            const std::vector<uint16_t> &all_read_lengths,
             bool *remaining_reads, OmpLock *read_locks,
             OmpLock *dictionary_locks, const encoder_global &eg,
             const encoder_global_b<bitset_size> &egb) {
@@ -674,7 +673,7 @@ void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
   auto **const basemask_ptrs =
       const_cast<std::bitset<bitset_size> **>(egb.basemask_ptrs.data());
   for (uint32_t i = 0; i < eg.numreads_s; i++) {
-    read_dna_from_bits(s, f);
+    read_dnaN_from_bits(s, f);
     read_lengths_s[i] = static_cast<uint16_t>(s.size());
     stringtobitset<bitset_size>(s, read_lengths_s[i], read[i], basemask_ptrs);
   }
@@ -756,6 +755,8 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
 
   eg.max_readlen = cp.read_info.max_readlen;
   eg.num_thr = cp.encoding.num_thr;
+  std::cerr << "encoder_main: cp.encoding.num_thr=" << cp.encoding.num_thr
+            << " eg.num_thr=" << eg.num_thr << "\n";
 
   omp_set_num_threads(eg.num_thr);
   getDataParams(eg, cp); // populate numreads
@@ -767,6 +768,7 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   SPRING_LOG_DEBUG("Encoder dictionary configuration: active_dicts=" +
                    std::to_string(eg.numdict_s) +
                    ", singleton_pool=" + std::to_string(singleton_pool_size));
+
   std::vector<std::bitset<bitset_size>> read;
   std::vector<uint32_t> order_s;
   std::vector<uint16_t> read_lengths_s;
@@ -796,16 +798,6 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   }
   SPRING_LOG_INFO("Starting main encoding loop...");
 
-  std::vector<uint16_t> all_read_lengths;
-  {
-    std::ifstream f_len(eg.infile_readlength, std::ios::binary);
-    if (f_len.is_open()) {
-      all_read_lengths.resize(cp.read_info.num_reads);
-      f_len.read(reinterpret_cast<char *>(all_read_lengths.data()),
-                 cp.read_info.num_reads * sizeof(uint16_t));
-    }
-  }
-
   const uint32_t num_locks = NUM_LOCKS_REORDER;
   std::vector<OmpLock> read_locks(num_locks);
   std::vector<OmpLock> dictionary_locks(num_locks);
@@ -816,8 +808,8 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
             true);
 
   encode<bitset_size>(read.data(), dict.data(), order_s.data(),
-                      read_lengths_s.data(), all_read_lengths, remaining_reads,
-                      read_locks.data(), dictionary_locks.data(), eg, egb);
+                      read_lengths_s.data(), remaining_reads, read_locks.data(),
+                      dictionary_locks.data(), eg, egb);
 
   // Stitch the per-thread streams back into the final encoded outputs.
   detail::merge_thread_encoded_outputs(eg);
@@ -870,12 +862,19 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   for (int tid = 0; tid < eg.num_thr; tid++) {
     std::ifstream fin_pos(eg.outfile_pos + '.' + std::to_string(tid),
                           std::ios::binary);
+    uint64_t max_pos_in_shard = 0;
     while (fin_pos.read(byte_ptr(&abs_pos_thr), sizeof(uint64_t))) {
+      if (abs_pos_thr > max_pos_in_shard)
+        max_pos_in_shard = abs_pos_thr;
       abs_pos_thr += abs_pos;
       fout_pos.write(byte_ptr(&abs_pos_thr), sizeof(uint64_t));
     }
     fin_pos.close();
     safe_remove_file(eg.outfile_pos + '.' + std::to_string(tid));
+    std::cerr << "enc-pos-merge: tid=" << tid
+              << " file_len_seq_thr=" << file_len_seq_thr[tid]
+              << " max_local_pos=" << max_pos_in_shard
+              << " abs_pos_before=" << abs_pos << "\n";
     abs_pos += file_len_seq_thr[tid];
   }
   fout_pos.close();
@@ -914,6 +913,11 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
 
   // Generate per-thread .bsc sequence blocks as expected by the decompressor.
   pack_compress_seq(eg, file_len_seq_thr.data());
+
+  // Update metadata with final exact base counts after packing.
+  for (int tid = 0; tid < cp.encoding.num_thr; tid++) {
+    cp.read_info.file_len_seq_thr[tid] = file_len_seq_thr[tid];
+  }
 
   // read/order_s/read_lengths_s are RAII-managed (std::vector)
 }

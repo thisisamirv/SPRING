@@ -10,6 +10,7 @@ LOG_DIR="$OUTPUT_BASE/logs"
 OUTPUT_DIR="$OUTPUT_BASE/runs"
 WORK_ROOT_DIR="$OUTPUT_BASE/work"
 SPRING_BIN=${SPRING_BIN:-"$ROOT_DIR/build/spring2"}
+SPRING_PREVIEW_BIN=${SPRING_PREVIEW_BIN:-"$ROOT_DIR/build/spring2-preview"}
 INPUT_FASTQ=${1:-"$INPUT_DIR/sample.fastq"}
 THREADS=${THREADS:-8}
 BUILD_DIR="$ROOT_DIR/build"
@@ -125,190 +126,148 @@ populate_resource_vars() {
 	done <"$log_file"
 }
 
-if [[ ! -f "$INPUT_FASTQ" ]]; then
-	echo "Input FASTQ not found: $INPUT_FASTQ" >&2
-	exit 1
-fi
+# --- Main Logic ---
 
-INPUT_ABS=$(realpath -m -- "$INPUT_FASTQ")
-INPUT_BASENAME=$(basename -- "$INPUT_ABS")
-INPUT_STEM=${INPUT_BASENAME%.*}
-WORK_DIR="$WORK_ROOT_DIR/$INPUT_STEM.work"
-OUTPUT_FILE="$OUTPUT_DIR/$INPUT_STEM.sp"
-DECOMPRESSED_OUTPUT_FILE="$OUTPUT_DIR/$INPUT_STEM.roundtrip.fastq"
-MAX_SHORT_READ_LENGTH=511
+run_single_file_benchmark() {
+    local input_path="$1"
+    INPUT_ABS=$(realpath -m -- "$input_path")
+    INPUT_BASENAME=$(basename -- "$INPUT_ABS")
+    INPUT_STEM=${INPUT_BASENAME%.*}
+    WORK_DIR="$WORK_ROOT_DIR/$INPUT_STEM.work"
+    OUTPUT_FILE="$OUTPUT_DIR/$INPUT_STEM.sp"
+    DECOMPRESSED_OUTPUT_FILE="$OUTPUT_DIR/$INPUT_STEM.roundtrip.fastq"
 
-MAX_READ_LENGTH=$(awk 'NR % 4 == 2 { if (length($0) > max_len) max_len = length($0) } END { print max_len + 0 }' "$INPUT_ABS")
+    echo -e "\n=== Benchmarking $INPUT_BASENAME ==="
+    
+    MAX_READ_LENGTH=$(awk 'NR % 4 == 2 { if (length($0) > max_len) max_len = length($0) } END { print max_len + 0 }' "$INPUT_ABS")
 
+    mkdir -p "$INPUT_DIR" "$LOG_DIR" "$OUTPUT_DIR" "$WORK_ROOT_DIR"
+    rm -rf "$WORK_DIR"
+    mkdir -p "$WORK_DIR"
+    rm -f "$OUTPUT_FILE"
+    rm -f "$DECOMPRESSED_OUTPUT_FILE"
 
-mkdir -p "$INPUT_DIR" "$LOG_DIR" "$OUTPUT_DIR" "$WORK_ROOT_DIR"
-rm -rf "$WORK_DIR"
-mkdir -p "$WORK_DIR"
-rm -f "$OUTPUT_FILE"
-rm -f "$DECOMPRESSED_OUTPUT_FILE"
-rm -f "$COMPRESS_RESOURCE_LOG"
-rm -f "$DECOMPRESS_RESOURCE_LOG"
+    echo "Running Spring lossless compression (auto-assay)"
+    spring_args=(
+        -c
+        --R1 "$INPUT_ABS"
+        -o "$OUTPUT_FILE"
+        -w "$WORK_DIR"
+        -t "$THREADS"
+        -q lossless
+        --assay auto
+    )
+    run_with_resource_log "$COMPRESS_RESOURCE_LOG" "$SPRING_BIN" "${spring_args[@]}"
 
-echo "Running Spring lossless compression"
-echo "  input:   $INPUT_ABS"
-echo "  output:  $OUTPUT_FILE"
-echo "  workdir: $WORK_DIR"
-echo "  threads: $THREADS"
-echo "  max read length: $MAX_READ_LENGTH"
-echo "  mode:    lossless"
+    echo "Running Spring decompression"
+    decompress_args=(
+        -d
+        -i "$OUTPUT_FILE"
+        -o "$DECOMPRESSED_OUTPUT_FILE"
+        -w "$WORK_DIR"
+    )
+    run_with_resource_log "$DECOMPRESS_RESOURCE_LOG" "$SPRING_BIN" "${decompress_args[@]}"
 
-spring_args=(
-	-c
-	--R1 "$INPUT_ABS"
-	-o "$OUTPUT_FILE"
-	-w "$WORK_DIR"
-	-t "$THREADS"
-	-q lossless
-)
+    INPUT_SIZE=$(stat -c%s "$INPUT_ABS")
+    OUTPUT_SIZE=$(stat -c%s "$OUTPUT_FILE")
+    
+    roundtrip_status="different"
+    if [[ "$INPUT_ABS" == *.gz ]]; then
+        if cmp -s <(gzip -dc "$INPUT_ABS") "$DECOMPRESSED_OUTPUT_FILE"; then
+            roundtrip_status="identical"
+        fi
+    else
+        if cmp -s "$INPUT_ABS" "$DECOMPRESSED_OUTPUT_FILE"; then
+            roundtrip_status="identical"
+        fi
+    fi
 
-run_with_resource_log "$COMPRESS_RESOURCE_LOG" "$SPRING_BIN" "${spring_args[@]}"
-
-echo "Running Spring decompression"
-echo "  input:   $OUTPUT_FILE"
-echo "  output:  $DECOMPRESSED_OUTPUT_FILE"
-
-decompress_args=(
-	-d
-	-i "$OUTPUT_FILE"
-	-o "$DECOMPRESSED_OUTPUT_FILE" \
-	-w "$WORK_DIR"
-)
-
-run_with_resource_log "$DECOMPRESS_RESOURCE_LOG" "$SPRING_BIN" "${decompress_args[@]}"
-
-remove_empty_dir_if_present "$WORK_DIR"
-
-INPUT_SIZE=$(stat -c%s "$INPUT_ABS")
-OUTPUT_SIZE=$(stat -c%s "$OUTPUT_FILE")
-DECOMPRESSED_SIZE=$(stat -c%s "$DECOMPRESSED_OUTPUT_FILE")
-
-populate_resource_vars "compress" "$COMPRESS_RESOURCE_LOG"
-populate_resource_vars "decompress" "$DECOMPRESS_RESOURCE_LOG"
-
-integrity_method="byte comparison only"
-original_checksum=""
-decompressed_checksum=""
-checksum_status="unavailable"
-
-if [[ -n "$(type -P sha256sum)" || -n "$(type -P shasum)" ]]; then
-	integrity_method="SHA-256 + byte comparison"
-	original_checksum=$(compute_checksum "$INPUT_ABS")
-	decompressed_checksum=$(compute_checksum "$DECOMPRESSED_OUTPUT_FILE")
-	if [[ "$original_checksum" == "$decompressed_checksum" ]]; then
-		checksum_status="match"
-	else
-		checksum_status="mismatch"
-	fi
-fi
-
-roundtrip_status="different"
-if cmp -s "$INPUT_ABS" "$DECOMPRESSED_OUTPUT_FILE"; then
-	roundtrip_status="identical"
-fi
-
-awk \
-	-v input_size="$INPUT_SIZE" \
-	-v output_size="$OUTPUT_SIZE" \
-	-v decompressed_size="$DECOMPRESSED_SIZE" \
-	-v compress_elapsed_seconds="$compress_elapsed_seconds" \
-	-v compress_user_seconds="$compress_user_seconds" \
-	-v compress_system_seconds="$compress_system_seconds" \
-	-v compress_cpu_percent="$compress_cpu_percent" \
-	-v compress_max_rss_kb="$compress_max_rss_kb" \
-	-v decompress_elapsed_seconds="$decompress_elapsed_seconds" \
-	-v decompress_user_seconds="$decompress_user_seconds" \
-	-v decompress_system_seconds="$decompress_system_seconds" \
-	-v decompress_cpu_percent="$decompress_cpu_percent" \
-	-v decompress_max_rss_kb="$decompress_max_rss_kb" \
-	-v integrity_method="$integrity_method" \
-	-v original_checksum="$original_checksum" \
-	-v decompressed_checksum="$decompressed_checksum" \
-	-v checksum_status="$checksum_status" \
-	-v roundtrip_status="$roundtrip_status" '
-BEGIN {
-  reduction_percent = 0
-  compression_ratio = 0
-  compress_max_rss_mb = 0
-  compress_average_core_usage = 0
-  decompress_max_rss_mb = 0
-  decompress_average_core_usage = 0
-  if (input_size > 0) {
-    reduction_percent = (input_size - output_size) * 100 / input_size
-    compression_ratio = input_size / output_size
-  }
-  if (compress_elapsed_seconds != "" && compress_elapsed_seconds != 0 && compress_user_seconds != "" && compress_system_seconds != "") {
-    compress_average_core_usage = (compress_user_seconds + compress_system_seconds) / compress_elapsed_seconds
-  }
-  if (decompress_elapsed_seconds != "" && decompress_elapsed_seconds != 0 && decompress_user_seconds != "" && decompress_system_seconds != "") {
-    decompress_average_core_usage = (decompress_user_seconds + decompress_system_seconds) / decompress_elapsed_seconds
-  }
-  if (compress_max_rss_kb != "" && compress_max_rss_kb != "unavailable") {
-    compress_max_rss_mb = compress_max_rss_kb / 1024
-  }
-  if (decompress_max_rss_kb != "" && decompress_max_rss_kb != "unavailable") {
-    decompress_max_rss_mb = decompress_max_rss_kb / 1024
-  }
-  printf("\nBenchmark result\n")
-  printf("  original bytes:   %d\n", input_size)
-  printf("  compressed bytes: %d\n", output_size)
-  printf("  decompressed bytes: %d\n", decompressed_size)
-  printf("  size reduction:   %.2f%%\n", reduction_percent)
-  printf("  compression ratio %.3fx\n", compression_ratio)
-
-  printf("\nCompression resources\n")
-  if (compress_elapsed_seconds != "") {
-    printf("  elapsed time:     %ss\n", compress_elapsed_seconds)
-  }
-  if (compress_cpu_percent != "") {
-    printf("  cpu usage:        %s\n", compress_cpu_percent)
-  }
-  if (compress_user_seconds != "" || compress_system_seconds != "") {
-    printf("  cpu time:         user %ss, system %ss\n", compress_user_seconds, compress_system_seconds)
-  }
-  if (compress_average_core_usage > 0) {
-    printf("  avg core usage:   %.2f cores\n", compress_average_core_usage)
-  }
-  if (compress_max_rss_kb != "" && compress_max_rss_kb != "unavailable") {
-    printf("  peak memory:      %d KB (%.2f MB RSS)\n", compress_max_rss_kb, compress_max_rss_mb)
-  } else if (compress_elapsed_seconds != "") {
-    printf("  peak memory:      unavailable (install GNU time for RSS reporting)\n")
-  }
-
-  printf("\nDecompression resources\n")
-  if (decompress_elapsed_seconds != "") {
-    printf("  elapsed time:     %ss\n", decompress_elapsed_seconds)
-  }
-  if (decompress_cpu_percent != "") {
-    printf("  cpu usage:        %s\n", decompress_cpu_percent)
-  }
-  if (decompress_user_seconds != "" || decompress_system_seconds != "") {
-    printf("  cpu time:         user %ss, system %ss\n", decompress_user_seconds, decompress_system_seconds)
-  }
-  if (decompress_average_core_usage > 0) {
-    printf("  avg core usage:   %.2f cores\n", decompress_average_core_usage)
-  }
-  if (decompress_max_rss_kb != "" && decompress_max_rss_kb != "unavailable") {
-    printf("  peak memory:      %d KB (%.2f MB RSS)\n", decompress_max_rss_kb, decompress_max_rss_mb)
-  } else if (decompress_elapsed_seconds != "") {
-    printf("  peak memory:      unavailable (install GNU time for RSS reporting)\n")
-  }
-
-  printf("\nRound-trip check\n")
-  printf("  integrity method: %s\n", integrity_method)
-  if (original_checksum != "") {
-    printf("  original checksum: %s\n", original_checksum)
-  }
-  if (decompressed_checksum != "") {
-    printf("  output checksum:   %s\n", decompressed_checksum)
-  }
-  if (checksum_status != "unavailable") {
-    printf("  checksum status:  %s\n", checksum_status)
-  }
-  printf("  decompressed file matches input: %s\n", roundtrip_status)
+    echo "  Results for $INPUT_BASENAME"
+    echo "    Compressed size: $OUTPUT_SIZE bytes"
+    echo "    Bit-perfect:     $roundtrip_status"
 }
-'
+
+run_assay_suite() {
+    echo -e "\n--- Running Assay Benchmark Suite ---"
+
+    samples=(
+        "Methylation (test_3);test_3_R1.fastq.gz;test_3_R2.fastq.gz;;;methyl"
+        "sc-ATAC (test_4);test_4_R1.fastq.gz;test_4_R2.fastq.gz;test_4_R3.fastq.gz;test_4_I1.fastq.gz;sc-atac"
+        "sc-RNA (test_5);test_5_R1.fastq.gz;test_5_R2.fastq.gz;test_5_I1.fastq.gz;test_5_I2.fastq.gz;sc-rna"
+    )
+
+    for s in "${samples[@]}"; do
+        IFS=';' read -r name r1 r2 r3 i1 assay <<< "$s"
+        
+        if [[ ! -f "$INPUT_DIR/$r1" ]]; then continue; fi
+        echo -e "\n>>> Assay: $name"
+
+        work="$WORK_ROOT_DIR/${r1%.*}.bench"
+        rm -rf "$work" && mkdir -p "$work"
+        out_auto="$OUTPUT_DIR/${r1%.*}.auto.sp"
+        out_dna="$OUTPUT_DIR/${r1%.*}.dna.sp"
+
+        files=("$r1")
+        [[ -n "$r2" ]] && files+=("$r2")
+        [[ -n "$r3" ]] && files+=("$r3")
+        [[ -n "$i1" ]] && files+=("$i1")
+        [[ -n "$i2" ]] && files+=("$i2")
+
+        base_args=()
+        for f in "${files[@]}"; do
+            abs="$INPUT_DIR/$f"
+            # Extract R1, R2, etc. from filename
+            key=$(echo "$f" | grep -oP '(R|I)[0-9]')
+            base_args+=("--$key" "$abs")
+        done
+
+        # 1. Auto-detected assay
+        echo "  Step 1: Compression with --assay auto (expected: $assay)"
+        "$SPRING_BIN" -c "${base_args[@]}" -o "$out_auto" -w "$work" -t "$THREADS" -q lossless --assay auto
+        size_auto=$(stat -c%s "$out_auto")
+
+        # 2. Restoration check (Full Round-Trip)
+        echo "  Step 2: Verifying bit-perfect restoration..."
+        decomp_dir="$work/decomp"
+        mkdir -p "$decomp_dir"
+        decomp_files=()
+        for f in "${files[@]}"; do
+            decomp_files+=("$decomp_dir/${f%.gz}")
+        done
+        "$SPRING_BIN" -d -i "$out_auto" -o "${decomp_files[@]}" -w "$work"
+
+        all_identical=true
+        for i in "${!files[@]}"; do
+            orig="$INPUT_DIR/${files[$i]}"
+            restored="${decomp_files[$i]}"
+            if ! cmp -s <(gzip -dc "$orig") "$restored"; then
+                echo "    Mismatch in ${files[$i]}!"
+                all_identical=false
+            fi
+        done
+
+        if [ "$all_identical" = true ]; then
+            echo "    Bit-perfect: YES"
+        else
+            echo "    Bit-perfect: NO"
+        fi
+
+        # 3. DNA-mode comparison
+        echo "  Step 3: Compression with --assay dna"
+        "$SPRING_BIN" -c "${base_args[@]}" -o "$out_dna" -w "$work" -t "$THREADS" -q lossless --assay dna
+        size_dna=$(stat -c%s "$out_dna")
+
+        # 4. Results
+        gain=$(( (size_dna - size_auto) * 100 / size_dna ))
+        echo -e "\n  Assay-specific Optimization Results:"
+        echo "    Auto-detected size ($assay): $size_auto bytes"
+        echo "    Generic DNA-mode size:       $size_dna bytes"
+        echo "    Optimization Gain:           $gain%"
+    done
+}
+
+if [[ $# -eq 0 ]] && [[ -f "$INPUT_DIR/test_3_R1.fastq.gz" ]]; then
+    run_assay_suite
+else
+    run_single_file_benchmark "$INPUT_FASTQ"
+fi
