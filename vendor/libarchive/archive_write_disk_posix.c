@@ -27,6 +27,10 @@
 
 #include "archive_platform.h"
 
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
+#endif
+
 #if !defined(_WIN32) || defined(__CYGWIN__)
 
 #ifdef HAVE_SYS_TYPES_H
@@ -143,12 +147,46 @@
  * should investigate ways to support this generically. */
 
 #include "archive.h"
+
+#ifndef ARCHIVE_H_INCLUDED
+#error "archive.h must be included"
+#endif
+
 #include "archive_acl_private.h"
+
+#ifndef ARCHIVE_ACL_PRIVATE_H_INCLUDED
+#error "archive_acl_private.h must be included"
+#endif
+
 #include "archive_endian.h"
+
+#ifndef ARCHIVE_ENDIAN_H_INCLUDED
+#error "archive_endian.h must be included"
+#endif
+
 #include "archive_entry.h"
+
+#ifndef ARCHIVE_ENTRY_H_INCLUDED
+#error "archive_entry.h must be included"
+#endif
+
 #include "archive_private.h"
+
+#ifndef ARCHIVE_PRIVATE_H_INCLUDED
+#error "archive_private.h must be included"
+#endif
+
 #include "archive_string.h"
+
+#ifndef ARCHIVE_STRING_H_INCLUDED
+#error "archive_string.h must be included"
+#endif
+
 #include "archive_write_disk_private.h"
+
+#ifndef ARCHIVE_WRITE_DISK_PRIVATE_H_INCLUDED
+#error "archive_write_disk_private.h must be included"
+#endif
 
 #ifndef O_BINARY
 #define O_BINARY 0

@@ -4,9 +4,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
-#include <stdexcept>
 #include <utility>
-#include <vector>
 
 #include <core/FasterVector.hpp>
 #include <core/VectorView.hpp>

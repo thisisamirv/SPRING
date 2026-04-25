@@ -64,22 +64,31 @@
 
 #include "archive_platform.h"
 
-#ifdef HAVE_ERRNO_H
-#include <errno.h>
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
 #endif
-#ifdef HAVE_STDLIB_H
-#include <stdlib.h>
-#endif
-#ifdef HAVE_STRING_H
-#include <string.h>
-#endif
+
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 
 #include "archive.h"
+
+#ifndef ARCHIVE_H_INCLUDED
+#error "archive.h must be included"
+#endif
+
 #include "archive_private.h"
+
+#ifndef ARCHIVE_PRIVATE_H_INCLUDED
+#error "archive_private.h must be included"
+#endif
+
 #include "archive_read_private.h"
+
+#ifndef ARCHIVE_READ_PRIVATE_H_INCLUDED
+#error "archive_read_private.h must be included"
+#endif
 
 /*
  * Because LZW decompression is pretty simple, I've just implemented

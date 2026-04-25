@@ -43,7 +43,16 @@
 #include <stdio.h>
 
 #include "archive_private.h"
+
+#ifndef ARCHIVE_PRIVATE_H_INCLUDED
+#error "archive_private.h must be included"
+#endif
+
 #include "archive_string.h"
+
+#ifndef ARCHIVE_STRING_H_INCLUDED
+#error "archive_string.h must be included"
+#endif
 
 /*
  * Utility functions to format signed/unsigned integers and append

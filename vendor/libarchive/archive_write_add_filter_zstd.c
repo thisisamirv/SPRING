@@ -26,6 +26,10 @@
 
 #include "archive_platform.h"
 
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
+#endif
+
 #ifdef HAVE_ERRNO_H
 #include <errno.h>
 #endif
@@ -49,9 +53,28 @@
 #endif
 
 #include "archive.h"
+
+#ifndef ARCHIVE_H_INCLUDED
+#error "archive.h must be included"
+#endif
+
 #include "archive_private.h"
+
+#ifndef ARCHIVE_PRIVATE_H_INCLUDED
+#error "archive_private.h must be included"
+#endif
+
 #include "archive_string.h"
+
+#ifndef ARCHIVE_STRING_H_INCLUDED
+#error "archive_string.h must be included"
+#endif
+
 #include "archive_write_private.h"
+
+#ifndef ARCHIVE_WRITE_PRIVATE_H_INCLUDED
+#error "archive_write_private.h must be included"
+#endif
 
 /* Don't compile this if we don't have zstd.h */
 

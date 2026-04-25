@@ -31,7 +31,16 @@
 #include "igzip_lib.h"
 #include "test.h"
 #include <assert.h>
+#if !defined(_WIN32) && !defined(_WIN64)
 #include <getopt.h>
+#else
+/* Provide minimal getopt prototypes for Windows so clangd can parse this
+  file; real builds on Windows should supply an implementation or use
+  a portability layer. */
+extern char *optarg;
+extern int optind, opterr, optopt;
+int getopt(int argc, char *const argv[], const char *optstring);
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -111,7 +120,7 @@ void deflate_perf(struct isal_zstream *stream, uint8_t *inbuf,
                   int level_size, uint32_t hist_bits, uint8_t *dictbuf,
                   size_t dictfile_size, struct isal_dict *dict_str,
                   struct isal_hufftables *hufftables_custom) {
-  int avail_in;
+  size_t avail_in;
   isal_deflate_init(stream);
   stream->level = level;
   stream->level_buf = level_buf;
@@ -135,7 +144,7 @@ void deflate_perf(struct isal_zstream *stream, uint8_t *inbuf,
     stream->avail_in = avail_in >= inbuf_size ? inbuf_size : avail_in;
     avail_in -= inbuf_size;
 
-    if (avail_in <= 0)
+    if (avail_in == 0)
       stream->end_of_stream = 1;
 
     isal_deflate(stream);
@@ -308,8 +317,8 @@ int main(int argc, char *argv[]) {
     exit(0);
   }
 
-  printf("  file %s - in_size=%lu out_size=%d ratio=%3.1f%%", in_file_name,
-         infile_size, stream.total_out, 100.0 * stream.total_out / infile_size);
+    printf("  file %s - in_size=%zu out_size=%d ratio=%3.1f%%", in_file_name,
+      infile_size, stream.total_out, 100.0 * stream.total_out / infile_size);
 
   if (level == 0) {
     memset(&histogram, 0, sizeof(histogram));

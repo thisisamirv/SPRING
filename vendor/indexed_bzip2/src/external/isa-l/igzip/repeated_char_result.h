@@ -29,6 +29,8 @@
 #ifndef _IGZIP_REPEATED_8K_CHAR_RESULT_H_
 #define _IGZIP_REPEATED_8K_CHAR_RESULT_H_
 
+#include <stdint.h>
+
 /* The code for the literal being encoded */
 #define CODE_LIT 0x1
 #define CODE_LIT_LENGTH 0x2

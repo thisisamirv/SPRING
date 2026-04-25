@@ -27,6 +27,10 @@
 
 #include "archive_platform.h"
 
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
+#endif
+
 /*
  * The definitive documentation of the Zip file format is:
  *   http://www.pkware.com/documents/casestudies/APPNOTE.TXT
@@ -62,20 +66,85 @@
 #endif
 
 #include "archive.h"
+
+#ifndef ARCHIVE_H_INCLUDED
+#error "archive.h must be included"
+#endif
+
 #include "archive_cryptor_private.h"
+
+#ifndef ARCHIVE_CRYPTOR_PRIVATE_H_INCLUDED
+#error "archive_cryptor_private.h must be included"
+#endif
+
 #include "archive_digest_private.h"
+
+#ifndef ARCHIVE_DIGEST_PRIVATE_H_INCLUDED
+#error "archive_digest_private.h must be included"
+#endif
+
 #include "archive_endian.h"
+
+#ifndef ARCHIVE_ENDIAN_H_INCLUDED
+#error "archive_endian.h must be included"
+#endif
+
 #include "archive_entry.h"
+
+#ifndef ARCHIVE_ENTRY_H_INCLUDED
+#error "archive_entry.h must be included"
+#endif
+
 #include "archive_entry_locale.h"
+
+#ifndef ARCHIVE_ENTRY_LOCALE_H_INCLUDED
+#error "archive_entry_locale.h must be included"
+#endif
+
 #include "archive_hmac_private.h"
+
+#ifndef ARCHIVE_HMAC_PRIVATE_H_INCLUDED
+#error "archive_hmac_private.h must be included"
+#endif
+
 #include "archive_ppmd8_private.h"
+
+#ifndef ARCHIVE_PPMD8_PRIVATE_H_INCLUDED
+#error "archive_ppmd8_private.h must be included"
+#endif
+
 #include "archive_private.h"
+
+#ifndef ARCHIVE_PRIVATE_H_INCLUDED
+#error "archive_private.h must be included"
+#endif
+
 #include "archive_rb.h"
+
+#ifndef ARCHIVE_RB_H_INCLUDED
+#error "archive_rb.h must be included"
+#endif
+
 #include "archive_read_private.h"
+
+#ifndef ARCHIVE_READ_PRIVATE_H_INCLUDED
+#error "archive_read_private.h must be included"
+#endif
+
 #include "archive_time_private.h"
+
+#ifndef ARCHIVE_TIME_PRIVATE_H_INCLUDED
+#error "archive_time_private.h must be included"
+#endif
 
 #ifndef HAVE_ZLIB_H
 #include "archive_crc32.h"
+#endif
+
+#ifndef HAVE_ZLIB_H
+#ifndef ARCHIVE_CRC32_H
+#error "archive_crc32.h must be included"
+#endif
 #endif
 
 /* length of local file header, not including filename and extra */

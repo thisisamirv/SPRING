@@ -25,11 +25,8 @@
 
 #include "archive_platform.h"
 
-#ifdef HAVE_ERRNO_H
-#include <errno.h>
-#endif
-#ifdef HAVE_STDLIB_H
-#include <stdlib.h>
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
 #endif
 #ifdef HAVE_STRING_H
 #include <string.h>
@@ -39,8 +36,22 @@
 #endif
 
 #include "archive.h"
+
+#ifndef ARCHIVE_H_INCLUDED
+#error "archive.h must be included"
+#endif
+
 #include "archive_private.h"
+
+#ifndef ARCHIVE_PRIVATE_H_INCLUDED
+#error "archive_private.h must be included"
+#endif
+
 #include "archive_read_private.h"
+
+#ifndef ARCHIVE_READ_PRIVATE_H_INCLUDED
+#error "archive_read_private.h must be included"
+#endif
 
 #define LRZIP_HEADER_MAGIC "LRZI"
 #define LRZIP_HEADER_MAGIC_LEN 4

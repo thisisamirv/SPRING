@@ -25,11 +25,12 @@
 
 #include "archive_platform.h"
 
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
+#endif
+
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
-#endif
-#ifdef HAVE_ERRNO_H
-#include <errno.h>
 #endif
 #ifdef HAVE_GRP_H
 #include <grp.h>
@@ -37,14 +38,12 @@
 #ifdef HAVE_PWD_H
 #include <pwd.h>
 #endif
-#ifdef HAVE_STDLIB_H
-#include <stdlib.h>
-#endif
-#ifdef HAVE_STRING_H
-#include <string.h>
-#endif
 
 #include "archive.h"
+
+#ifndef ARCHIVE_H_INCLUDED
+#error "archive.h must be included"
+#endif
 
 #if defined(_WIN32) && !defined(__CYGWIN__)
 int archive_read_disk_set_standard_lookup(struct archive *a) {

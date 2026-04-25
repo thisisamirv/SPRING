@@ -27,6 +27,10 @@
 #define ARCHIVE_OPTIONS_PRIVATE_H_INCLUDED
 
 #include "archive_platform.h"
+
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
+#endif
 #include "archive_private.h"
 
 typedef int (*option_handler)(struct archive *a, const char *mod,

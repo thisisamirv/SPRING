@@ -30,8 +30,12 @@ static inline void update_state(struct isal_zstream *stream, uint8_t *start_in,
   stream->internal_state.block_end = stream->total_in;
   stream->avail_in = end_in - next_in;
 
-  level_buf->icf_buf_next = next_out;
-  level_buf->icf_buf_avail_out = end_out - next_out;
+    level_buf->icf_buf_next = next_out;
+    /* Store available output in bytes to match other code paths that treat
+      `icf_buf_avail_out` as a byte count. `end_out - next_out` yields a
+      count of `struct deflate_icf` elements, so multiply by sizeof. */
+    level_buf->icf_buf_avail_out = (end_out - next_out) *
+                        sizeof(struct deflate_icf);
 }
 
 void isal_deflate_icf_body_hash_hist_base(struct isal_zstream *stream) {
@@ -60,9 +64,11 @@ void isal_deflate_icf_body_hash_hist_base(struct isal_zstream *stream) {
   next_in = start_in;
 
   start_out = ((struct level_buf *)stream->level_buf)->icf_buf_next;
-  end_out =
-      start_out + ((struct level_buf *)stream->level_buf)->icf_buf_avail_out /
-                      sizeof(struct deflate_icf);
+  /* `icf_buf_avail_out` is stored as a byte count; add it to the byte
+     pointer and cast back to element pointer to avoid sizeof double-scaling */
+  end_out = (struct deflate_icf *)((uint8_t *)start_out +
+                                    ((struct level_buf *)stream->level_buf)
+                                        ->icf_buf_avail_out);
   next_out = start_out;
 
   while (next_in + ISAL_LOOK_AHEAD < end_in) {
@@ -150,9 +156,9 @@ void isal_deflate_icf_finish_hash_hist_base(struct isal_zstream *stream) {
   next_in = start_in;
 
   start_out = ((struct level_buf *)stream->level_buf)->icf_buf_next;
-  end_out =
-      start_out + ((struct level_buf *)stream->level_buf)->icf_buf_avail_out /
-                      sizeof(struct deflate_icf);
+  end_out = (struct deflate_icf *)((uint8_t *)start_out +
+                                    ((struct level_buf *)stream->level_buf)
+                                        ->icf_buf_avail_out);
   next_out = start_out;
 
   if (stream->avail_in == 0) {
@@ -261,8 +267,8 @@ void isal_deflate_icf_finish_hash_map_base(struct isal_zstream *stream) {
   next_in = start_in;
 
   start_out = level_buf->icf_buf_next;
-  end_out =
-      start_out + level_buf->icf_buf_avail_out / sizeof(struct deflate_icf);
+  end_out = (struct deflate_icf *)((uint8_t *)start_out +
+                                    level_buf->icf_buf_avail_out);
   next_out = start_out;
 
   if (stream->avail_in == 0) {

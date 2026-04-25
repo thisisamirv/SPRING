@@ -26,6 +26,8 @@
 #ifndef FILTER_FORK_H
 #define FILTER_FORK_H
 
+#include "archive_platform.h"
+
 #ifndef __LIBARCHIVE_BUILD
 #error This header is only to be used internally to libarchive.
 #endif

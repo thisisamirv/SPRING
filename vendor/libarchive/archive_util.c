@@ -69,9 +69,28 @@
 #endif
 
 #include "archive.h"
+
+#ifndef ARCHIVE_H_INCLUDED
+#error "archive.h must be included"
+#endif
+
 #include "archive_private.h"
+
+#ifndef ARCHIVE_PRIVATE_H_INCLUDED
+#error "archive_private.h must be included"
+#endif
+
 #include "archive_random_private.h"
+
+#ifndef ARCHIVE_RANDOM_PRIVATE_H_INCLUDED
+#error "archive_random_private.h must be included"
+#endif
+
 #include "archive_string.h"
+
+#ifndef ARCHIVE_STRING_H_INCLUDED
+#error "archive_string.h must be included"
+#endif
 
 #ifndef O_CLOEXEC
 #define O_CLOEXEC 0

@@ -26,21 +26,20 @@
 
 #include "archive_platform.h"
 
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
+#endif
+
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
-#ifdef HAVE_ERRNO_H
-#include <errno.h>
+
+#include "archive.h"
+
+#ifndef ARCHIVE_H_INCLUDED
+#error "archive.h must be included"
 #endif
-#ifdef HAVE_STDLIB_H
-#include <stdlib.h>
-#endif
-#ifdef HAVE_STRING_H
-#include <string.h>
-#endif
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif
+
 #ifdef HAVE_LZO_LZOCONF_H
 #include <lzo/lzoconf.h>
 #endif
@@ -51,14 +50,32 @@
 #include <zlib.h> /* for crc32 and adler32 */
 #endif
 
-#include "archive.h"
 #if !defined(HAVE_ZLIB_H) && defined(HAVE_LZO_LZOCONF_H) &&                    \
     defined(HAVE_LZO_LZO1X_H)
 #include "archive_crc32.h"
+
+#ifndef ARCHIVE_CRC32_H
+#error "archive_crc32.h must be included"
 #endif
+#endif
+
 #include "archive_endian.h"
+
+#ifndef ARCHIVE_ENDIAN_H_INCLUDED
+#error "archive_endian.h must be included"
+#endif
+
 #include "archive_private.h"
+
+#ifndef ARCHIVE_PRIVATE_H_INCLUDED
+#error "archive_private.h must be included"
+#endif
+
 #include "archive_read_private.h"
+
+#ifndef ARCHIVE_READ_PRIVATE_H_INCLUDED
+#error "archive_read_private.h must be included"
+#endif
 
 #ifndef HAVE_ZLIB_H
 #define adler32 lzo_adler32

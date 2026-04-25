@@ -80,10 +80,34 @@
 #endif
 
 #include "archive.h"
+
+#ifndef ARCHIVE_H_INCLUDED
+#error "archive.h must be included"
+#endif
+
 #include "archive_cryptor_private.h"
+
+#ifndef ARCHIVE_CRYPTOR_PRIVATE_H_INCLUDED
+#error "archive_cryptor_private.h must be included"
+#endif
+
 #include "archive_digest_private.h"
+
+#ifndef ARCHIVE_DIGEST_PRIVATE_H_INCLUDED
+#error "archive_digest_private.h must be included"
+#endif
+
 #include "archive_private.h"
+
+#ifndef ARCHIVE_PRIVATE_H_INCLUDED
+#error "archive_private.h must be included"
+#endif
+
 #include "archive_string.h"
+
+#ifndef ARCHIVE_STRING_H_INCLUDED
+#error "archive_string.h must be included"
+#endif
 
 static void archive_regex_version(struct archive_string *str) {
 #if HAVE_LIBPCREPOSIX && HAVE_PCRE_H

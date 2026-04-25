@@ -26,6 +26,10 @@
 
 #include "archive_platform.h"
 
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
+#endif
+
 #ifdef HAVE_STRING_H
 #include <string.h>
 #endif
@@ -34,6 +38,10 @@
 #endif
 
 #include "archive_pathmatch.h"
+
+#ifndef ARCHIVE_PATHMATCH_H_INCLUDED
+#error "archive_pathmatch.h must be included"
+#endif
 
 /*
  * Check whether a character 'c' is matched by a list specification [...]:

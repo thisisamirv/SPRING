@@ -12,14 +12,68 @@
 #include <array>
 #include <cstdint>
 
+/* Prefer the real core headers when available; otherwise provide minimal
+ * parsing-time fallbacks so clangd can parse this header without the full
+ * project include paths. */
+#if __has_include(<core/BitManipulation.hpp>)
 #include <core/BitManipulation.hpp>
+#else
+namespace rapidgzip {
+template <typename T>
+[[nodiscard]] constexpr T nLowestBitsSet(uint8_t nBitsSet) {
+    if (nBitsSet == 0) return T(0);
+    if (nBitsSet >= static_cast<uint8_t>(sizeof(T) * 8)) return static_cast<T>(~T(0));
+    return static_cast<T>((T(1) << nBitsSet) - 1);
+}
+template <typename T, uint8_t nBitsSet>
+[[nodiscard]] constexpr T nLowestBitsSet() { return nLowestBitsSet<T>(nBitsSet); }
+} // namespace rapidgzip
+#endif
+
+#if __has_include(<core/Error.hpp>)
 #include <core/Error.hpp>
+#else
+namespace rapidgzip {
+enum class Error : uint8_t { NONE = 0, INVALID_CODE_LENGTHS = 1, BLOATING_HUFFMAN_CODING = 2 };
+} // namespace rapidgzip
+#endif
+
+#if __has_include(<core/common.hpp>)
 #include <core/common.hpp>
+#else
+namespace rapidgzip {
+template <typename T>
+[[nodiscard]] constexpr T ceilDiv(T a, T b) { return (a + b - 1) / b; }
+} // namespace rapidgzip
+#endif
+
+#if __has_include(<rapidgzip/gzip/definitions.hpp>)
 #include <rapidgzip/gzip/definitions.hpp>
+#else
+namespace rapidgzip {
+namespace deflate {
+constexpr uint32_t PRECODE_BITS = 3;
+constexpr uint32_t MAX_PRECODE_COUNT = 19;
+constexpr uint32_t MAX_PRECODE_LENGTH = (1U << PRECODE_BITS) - 1U;
+} // namespace deflate
+} // namespace rapidgzip
+#endif
+
+/* Provide a local forceinline fallback for parsing-time. */
+#ifndef forceinline
+#if defined(_MSC_VER)
+#define forceinline __forceinline
+#elif defined(__GNUC__) || defined(__clang__)
+#define forceinline inline __attribute__((always_inline))
+#else
+#define forceinline inline
+#endif
+#endif
 
 
-namespace rapidgzip::PrecodeCheck::CountAllocatedLeaves
-{
+namespace rapidgzip {
+namespace PrecodeCheck {
+namespace CountAllocatedLeaves {
 using LeafCount = uint16_t;
 
 
@@ -61,19 +115,23 @@ computeLeafCount( uint64_t values )
 
 
 template<uint8_t PRECODE_CHUNK_SIZE>
-static constexpr auto PRECODE_TO_LEAF_COUNT_LUT =
-    [] ()
-    {
-        std::array<LeafCount, 1ULL << uint16_t( PRECODE_CHUNK_SIZE * deflate::PRECODE_BITS )> result{};
+[[nodiscard]] static const std::array<LeafCount, 1ULL << uint16_t( PRECODE_CHUNK_SIZE * deflate::PRECODE_BITS )>&
+getPrecodeToLeafCountLUT()
+{
+    using LUT_t = std::array<LeafCount, 1ULL << uint16_t( PRECODE_CHUNK_SIZE * deflate::PRECODE_BITS )>;
+    static const LUT_t lut = []() {
+        LUT_t result{};
         for ( size_t i = 0; i < result.size(); ++i ) {
             result[i] = computeLeafCount<deflate::PRECODE_BITS, PRECODE_CHUNK_SIZE>( i );
         }
         return result;
     }();
+    return lut;
+}
 
 
 template<uint8_t PRECODE_CHUNK_SIZE>
-[[nodiscard]] constexpr forceinline LeafCount
+[[nodiscard]] forceinline LeafCount
 precodesToLeafCount( uint64_t precodeBits )
 {
     constexpr auto CACHED_BITS = deflate::PRECODE_BITS * PRECODE_CHUNK_SIZE;
@@ -86,13 +144,13 @@ precodesToLeafCount( uint64_t precodeBits )
         if ( chunk != CHUNK_COUNT - 1 ) {
             precodeChunk &= nLowestBitsSet<uint64_t, CACHED_BITS>();
         }
-        histogram += PRECODE_TO_LEAF_COUNT_LUT<PRECODE_CHUNK_SIZE>[precodeChunk];
+        histogram += getPrecodeToLeafCountLUT<PRECODE_CHUNK_SIZE>()[precodeChunk];
     }
     return histogram;
 }
 
 
-[[nodiscard]] constexpr Error
+[[nodiscard]] inline Error
 checkPrecode( const uint64_t next4Bits,
               const uint64_t next57Bits )
 {
@@ -116,7 +174,7 @@ checkPrecode( const uint64_t next4Bits,
     }
 #elif 1
     /* Try manual Duff's device loop unrolling making use of the fact that 4 <= codeLengthCount <= 19 */
-    constexpr auto& LUT = PRECODE_TO_LEAF_COUNT_LUT<PRECODE_CHUNK_SIZE>;
+    const auto& LUT = getPrecodeToLeafCountLUT<PRECODE_CHUNK_SIZE>();
     constexpr auto CACHED_BITS = deflate::PRECODE_BITS * PRECODE_CHUNK_SIZE;
     const auto precodeBits = next57Bits & nLowestBitsSet<uint64_t>( codeLengthCount * deflate::PRECODE_BITS );
 
@@ -210,5 +268,7 @@ checkPrecode( const uint64_t next4Bits,
         return Error::BLOATING_HUFFMAN_CODING;
     }
     return Error::NONE;
-}
-}  // namespace rapidgzip::PrecodeCheck::CountAllocatedLeaves
+} // namespace CountAllocatedLeaves
+} // namespace PrecodeCheck
+} // namespace PrecodeCheck
+} // namespace rapidgzip

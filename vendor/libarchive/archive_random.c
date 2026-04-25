@@ -25,6 +25,10 @@
 
 #include "archive_platform.h"
 
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
+#endif
+
 #ifdef HAVE_STDLIB_H
 #include <stdlib.h>
 #endif
@@ -55,6 +59,10 @@ static void la_arc4random_buf(void *, size_t);
 #endif /* HAVE_ARC4RANDOM_BUF */
 
 #include "archive.h"
+
+#ifndef ARCHIVE_H_INCLUDED
+#error "archive.h must be included"
+#endif
 #include "archive_random_private.h"
 
 #if defined(_WIN32) && !defined(__CYGWIN__)

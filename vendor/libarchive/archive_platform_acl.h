@@ -28,6 +28,8 @@
 #ifndef ARCHIVE_PLATFORM_ACL_H_INCLUDED
 #define ARCHIVE_PLATFORM_ACL_H_INCLUDED
 
+#include "archive_platform.h"
+
 #ifndef __LIBARCHIVE_BUILD
 #ifndef __LIBARCHIVE_TEST_COMMON
 #error This header is only to be used internally to libarchive.

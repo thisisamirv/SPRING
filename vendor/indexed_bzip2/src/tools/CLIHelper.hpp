@@ -1,6 +1,9 @@
 #pragma once
 
 #include <string>
+#include <optional>
+#include <iostream>
+#include <filesystem>
 
 #include <cxxopts.hpp>
 
@@ -22,3 +25,13 @@ getFilePath(cxxopts::ParseResult const &parsedArgs,
   }
   return {};
 }
+
+/* Mark these includes as intentionally required for the transitive dependency
+ * `cxxopts.hpp`. The sizeof() uses are unevaluated contexts and only serve to
+ * convince include-cleaner / clangd that the headers are used. */
+namespace rapidgzip::clihelper::detail {
+inline void keep_std_includes() {
+    (void)sizeof(std::optional<int>);
+    (void)sizeof(std::filesystem::path);
+}
+} // namespace rapidgzip::clihelper::detail

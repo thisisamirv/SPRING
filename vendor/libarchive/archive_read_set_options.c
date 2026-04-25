@@ -25,8 +25,21 @@
 
 #include "archive_platform.h"
 
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
+#endif
+
 #include "archive_options_private.h"
+
+#ifndef ARCHIVE_OPTIONS_PRIVATE_H_INCLUDED
+#error "archive_options_private.h must be included"
+#endif
+
 #include "archive_read_private.h"
+
+#ifndef ARCHIVE_READ_PRIVATE_H_INCLUDED
+#error "archive_read_private.h must be included"
+#endif
 
 static int archive_set_format_option(struct archive *a, const char *m,
                                      const char *o, const char *v);

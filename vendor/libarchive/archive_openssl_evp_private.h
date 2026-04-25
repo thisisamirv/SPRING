@@ -26,10 +26,13 @@
 #ifndef ARCHIVE_OPENSSL_EVP_PRIVATE_H_INCLUDED
 #define ARCHIVE_OPENSSL_EVP_PRIVATE_H_INCLUDED
 
+#include "archive_platform.h"
+
 #ifndef __LIBARCHIVE_BUILD
 #error This header is only to be used internally to libarchive.
 #endif
 
+#if defined(ARCHIVE_CRYPTO_OPENSSL)
 #include <openssl/evp.h>
 #include <openssl/opensslv.h>
 
@@ -48,6 +51,7 @@ static inline void EVP_MD_CTX_free(EVP_MD_CTX *ctx) {
   memset(ctx, 0, sizeof(*ctx));
   free(ctx);
 }
+#endif
 #endif
 
 #endif

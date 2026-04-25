@@ -62,9 +62,28 @@
 #endif
 
 #include "archive_endian.h"
+
+#ifndef ARCHIVE_ENDIAN_H_INCLUDED
+#error "archive_endian.h must be included"
+#endif
+
 #include "archive_private.h"
+
+#ifndef ARCHIVE_PRIVATE_H_INCLUDED
+#error "archive_private.h must be included"
+#endif
+
 #include "archive_string.h"
+
+#ifndef ARCHIVE_STRING_H_INCLUDED
+#error "archive_string.h must be included"
+#endif
+
 #include "archive_string_composition.h"
+
+#ifndef ARCHIVE_STRING_COMPOSITION_H_INCLUDED
+#error "archive_string_composition.h must be included"
+#endif
 
 #if !defined(HAVE_WMEMCPY) && !defined(wmemcpy)
 #define wmemcpy(a, b, i) (wchar_t *)memcpy((a), (b), (i) * sizeof(wchar_t))

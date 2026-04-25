@@ -15,12 +15,28 @@
 
 #include "archive_platform.h"
 
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
+#endif
+
+#ifdef HAVE_STDINT_H
 #include <stdint.h>
-#include <stdio.h>
+#endif
+#ifdef HAVE_STRING_H
 #include <string.h>
+#endif
 
 #include "archive_blake2.h"
+
+#ifndef ARCHIVE_BLAKE2_H
+#error "archive_blake2.h must be included"
+#endif
+
 #include "archive_blake2_impl.h"
+
+#ifndef ARCHIVE_BLAKE2_IMPL_H
+#error "archive_blake2_impl.h must be included"
+#endif
 
 static const uint32_t blake2s_IV[8] = {0x6A09E667UL, 0xBB67AE85UL, 0x3C6EF372UL,
                                        0xA54FF53AUL, 0x510E527FUL, 0x9B05688CUL,

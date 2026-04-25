@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include <filesystem>
 #include <cxxopts.hpp>
 
 #include <core/AffinityHelpers.hpp>
@@ -23,8 +24,18 @@
 #include <filereader/Standard.hpp>
 #include <rapidgzip/rapidgzip.hpp>
 
+/* Ensure strong declarations for index/reader types used by this tool. */
+#include <rapidgzip/IndexFileFormat.hpp>
+#include <rapidgzip/ParallelGzipReader.hpp>
+#include <filereader/SinglePass.hpp>
+#include <filereader/Shared.hpp>
+
 #include "CLIHelper.hpp"
 #include "thirdparty.hpp"
+
+// Ensure <filesystem> is considered used so include-cleaner doesn't remove it
+[[maybe_unused]] static constexpr std::size_t rapidgzip_filesystem_used =
+  sizeof(std::filesystem::path);
 
 using namespace rapidgzip;
 

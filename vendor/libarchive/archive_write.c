@@ -25,6 +25,10 @@
 
 #include "archive_platform.h"
 
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
+#endif
+
 /*
  * This file contains the "essential" portions of the write API, that
  * is, stuff that will essentially always be used by any client that
@@ -55,9 +59,27 @@
 #endif
 
 #include "archive.h"
+
+#ifndef ARCHIVE_H_INCLUDED
+#error "archive.h must be included"
+#endif
+
 #include "archive_entry.h"
+
+#ifndef ARCHIVE_ENTRY_H_INCLUDED
+#error "archive_entry.h must be included"
+#endif
 #include "archive_private.h"
+
+#ifndef ARCHIVE_PRIVATE_H_INCLUDED
+#error "archive_private.h must be included"
+#endif
+
 #include "archive_write_private.h"
+
+#ifndef ARCHIVE_WRITE_PRIVATE_H_INCLUDED
+#error "archive_write_private.h must be included"
+#endif
 
 static int _archive_filter_code(struct archive *, int);
 static const char *_archive_filter_name(struct archive *, int);

@@ -4,12 +4,6 @@
 #include <cstdint>
 #include <string>
 
-#include "IndexFileFormat.hpp"
-#include "ParallelGzipReader.hpp"
-#include "gzip/GzipReader.hpp"
-#include "gzip/deflate.hpp"
-#include "gzip/gzip.hpp"
-
 static constexpr uint32_t RAPIDGZIP_VERSION_MAJOR{0};
 static constexpr uint32_t RAPIDGZIP_VERSION_MINOR{16};
 static constexpr uint32_t RAPIDGZIP_VERSION_PATCH{0};

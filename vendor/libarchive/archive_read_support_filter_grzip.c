@@ -25,11 +25,8 @@
 
 #include "archive_platform.h"
 
-#ifdef HAVE_ERRNO_H
-#include <errno.h>
-#endif
-#ifdef HAVE_STDLIB_H
-#include <stdlib.h>
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
 #endif
 #ifdef HAVE_STRING_H
 #include <string.h>
@@ -39,8 +36,22 @@
 #endif
 
 #include "archive.h"
+
+#ifndef ARCHIVE_H_INCLUDED
+#error "archive.h must be included"
+#endif
+
 #include "archive_private.h"
+
+#ifndef ARCHIVE_PRIVATE_H_INCLUDED
+#error "archive_private.h must be included"
+#endif
+
 #include "archive_read_private.h"
+
+#ifndef ARCHIVE_READ_PRIVATE_H_INCLUDED
+#error "archive_read_private.h must be included"
+#endif
 
 static const unsigned char grzip_magic[] = {0x47, 0x52, 0x5a, 0x69, 0x70, 0x49,
                                             0x49, 0x00, 0x02, 0x04, 0x3a, 0x29};

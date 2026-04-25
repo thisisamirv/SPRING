@@ -8,7 +8,32 @@
 #include <stdexcept>
 #include <utility>
 
+/* Prefer the project's FileReader when available; otherwise provide a
+ * minimal parsing-time fallback so language servers without project include
+ * paths can still parse this header. */
+#if __has_include(<filereader/FileReader.hpp>)
 #include <filereader/FileReader.hpp>
+#else
+#include <memory>
+#include <optional>
+#include <cstddef>
+
+namespace rapidgzip {
+class FileReader {
+public:
+    virtual ~FileReader() = default;
+    [[nodiscard]] virtual size_t tell() const = 0;
+    virtual size_t read(char* buf, size_t n) = 0;
+    virtual void seek(long long offset, int whence) = 0;
+    [[nodiscard]] virtual std::optional<size_t> size() const = 0;
+    virtual void seekTo(size_t pos) = 0;
+    [[nodiscard]] virtual bool eof() const = 0;
+    [[nodiscard]] virtual bool seekable() const = 0;
+};
+
+using UniqueFileReader = std::unique_ptr<FileReader>;
+} // namespace rapidgzip
+#endif
 
 #include "Interface.hpp"
 

@@ -25,7 +25,16 @@
 
 #include "archive_platform.h"
 #include "archive_private.h"
+
+#ifndef ARCHIVE_PRIVATE_H_INCLUDED
+#error "archive_private.h must be included"
+#endif
+
 #include "archive_time_private.h"
+
+#ifndef ARCHIVE_TIME_PRIVATE_H_INCLUDED
+#error "archive_time_private.h must be included"
+#endif
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>

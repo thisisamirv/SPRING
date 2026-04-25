@@ -36,6 +36,10 @@ You can contact the author at :
 
 #include "archive_xxhash.h"
 
+#ifndef ARCHIVE_XXHASH_H_INCLUDED
+#error "archive_xxhash.h must be included"
+#endif
+
 #ifdef HAVE_LIBLZ4
 
 /***************************************

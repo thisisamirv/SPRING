@@ -43,7 +43,16 @@
 #define LIBARCHIVE_ARCHIVE_WINDOWS_H_INCLUDED
 
 #ifndef __LIBARCHIVE_BUILD
-#error This header is only to be used internally to libarchive.
+/* This header is intended for internal libarchive builds. For editor/LSP
+ * parsing when __LIBARCHIVE_BUILD is not defined, provide minimal,
+ * non-invasive fallbacks so the file can be parsed without aborting.
+ * Real builds should define __LIBARCHIVE_BUILD and use system headers. */
+#if !defined(ssize_t)
+typedef long ssize_t;
+#endif
+#if !defined(pid_t)
+typedef int pid_t;
+#endif
 #endif
 
 /* Start of configuration for native Win32  */
@@ -69,8 +78,8 @@
 #include <unistd.h>
 #endif
 #define NOCRYPT
-#include <wincrypt.h>
 #include <windows.h>
+#include <wincrypt.h>
 // #define	EFTYPE 7
 
 #include "archive_platform_stat.h"

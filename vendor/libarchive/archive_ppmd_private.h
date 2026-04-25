@@ -5,6 +5,8 @@ This code is based on PPMd var.H (2001): Dmitry Shkarin : Public domain */
 #ifndef ARCHIVE_PPMD_PRIVATE_H_INCLUDED
 #define ARCHIVE_PPMD_PRIVATE_H_INCLUDED
 
+#include "archive_platform.h"
+
 #ifndef __LIBARCHIVE_BUILD
 #error This header is only to be used internally to libarchive.
 #endif

@@ -5,6 +5,14 @@
 
 #include "definitions.hpp"
 
+#if __has_include(<core/Error.hpp>)
+#include <core/Error.hpp>
+#else
+namespace rapidgzip {
+enum class Error : uint8_t { NONE = 0, INVALID_CODE_LENGTHS = 1, BLOATING_HUFFMAN_CODING = 2 };
+} // namespace rapidgzip
+#endif
+
 
 namespace rapidgzip::deflate
 {

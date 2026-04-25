@@ -19,6 +19,14 @@
 #include <stdint.h>
 #include <string.h>
 
+#ifndef __LA_LIBC_CC
+#if defined(_WIN32) && !defined(__CYGWIN__)
+#define __LA_LIBC_CC __cdecl
+#else
+#define __LA_LIBC_CC
+#endif
+#endif
+
 #if !defined(__cplusplus) &&                                                   \
     (!defined(__STDC_VERSION__) || __STDC_VERSION__ < 199901L)
 #if defined(_MSC_VER)
@@ -135,8 +143,7 @@ static BLAKE2_INLINE uint64_t rotr64(const uint64_t w, const unsigned c) {
 
 /* prevents compiler optimizing out memset() */
 static BLAKE2_INLINE void secure_zero_memory(void *v, size_t n) {
-  static void *(__LA_LIBC_CC *const volatile memset_v)(void *, int, size_t) =
-      &memset;
+  void *(__LA_LIBC_CC *const volatile memset_v)(void *, int, size_t) = &memset;
   memset_v(v, 0, n);
 }
 

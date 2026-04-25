@@ -2,7 +2,7 @@
 
 #include <array>
 #include <cstdint>
-#include <utility>
+#include <optional>
 
 #include <core/Error.hpp>
 #include <core/VectorView.hpp>
@@ -66,7 +66,7 @@ public:
   /* Decodes the next symbol symbol in in_buffer using the huff code defined by
    * huff_code  and returns the value in next_lits and sym_count */
   [[nodiscard]] forceinline std::optional<uint16_t>
-  decode(BitReader &bitReader) const {
+  decode(gzip::BitReader &bitReader) const {
     static constexpr auto SMALL_SHORT_SYM_LEN = 9U;
     static constexpr auto SMALL_SHORT_SYM_MASK =
         ((1U << SMALL_SHORT_SYM_LEN) - 1U);

@@ -27,11 +27,18 @@
 #ifndef ARCHIVE_READ_DISK_PRIVATE_H_INCLUDED
 #define ARCHIVE_READ_DISK_PRIVATE_H_INCLUDED
 
+#include "archive_platform.h"
+
 #ifndef __LIBARCHIVE_BUILD
 #error This header is only to be used internally to libarchive.
 #endif
 
 #include "archive_platform_acl.h"
+#include "archive_private.h"
+
+#ifndef ARCHIVE_PLATFORM_ACL_H_INCLUDED
+#error "archive_platform_acl.h must be included"
+#endif
 
 struct tree;
 struct archive_entry;

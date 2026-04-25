@@ -4,7 +4,6 @@
 #include <cassert>
 #include <cstdint>
 #include <optional>
-#include <stdexcept>
 
 #include <huffman/HuffmanCodingSymbolsPerLength.hpp>
 #include <rapidgzip/gzip/definitions.hpp>

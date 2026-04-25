@@ -26,6 +26,10 @@
 
 #include "archive_platform.h"
 
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
+#endif
+
 #ifdef HAVE_ERRNO_H
 #include <errno.h>
 #endif
@@ -38,11 +42,40 @@
 #endif
 
 #include "archive.h"
+
+#ifndef ARCHIVE_H_INCLUDED
+#error "archive.h must be included"
+#endif
+
 #include "archive_entry.h"
+
+#ifndef ARCHIVE_ENTRY_H_INCLUDED
+#error "archive_entry.h must be included"
+#endif
+
 #include "archive_entry_locale.h"
+
+#ifndef ARCHIVE_ENTRY_LOCALE_H_INCLUDED
+#error "archive_entry_locale.h must be included"
+#endif
+
 #include "archive_private.h"
+
+#ifndef ARCHIVE_PRIVATE_H_INCLUDED
+#error "archive_private.h must be included"
+#endif
+
 #include "archive_write_private.h"
+
+#ifndef ARCHIVE_WRITE_PRIVATE_H_INCLUDED
+#error "archive_write_private.h must be included"
+#endif
+
 #include "archive_write_set_format_private.h"
+
+#ifndef ARCHIVE_WRITE_SET_FORMAT_PRIVATE_H_INCLUDED
+#error "archive_write_set_format_private.h must be included"
+#endif
 
 static ssize_t archive_write_odc_data(struct archive_write *, const void *buff,
                                       size_t s);
@@ -284,7 +317,7 @@ static int write_header(struct archive_write *a, struct archive_entry *entry) {
    * are all slash '/', not the Windows path separator '\'. */
   entry_main = __la_win_entry_in_posix_pathseparator(entry);
   if (entry_main == NULL) {
-    archive_set_error(&a->archive, ENOMEM, "Can't allocate ustar data");
+    archive_set_error(&a->archive, ENOMEM, "Can't allocate cpio data");
     return (ARCHIVE_FATAL);
   }
   if (entry != entry_main)

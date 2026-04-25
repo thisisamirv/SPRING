@@ -187,6 +187,8 @@ size_t parse_options(int argc, char *argv[]) {
   }
   return optind;
 #else
+  (void)argc;
+  (void)argv;
   return 1;
 #endif
 }
@@ -199,7 +201,7 @@ size_t parse_options(int argc, char *argv[]) {
 void create_rand_repeat_data(uint8_t *data, int size) {
   uint32_t next_data;
   uint8_t *data_start = data;
-  uint32_t length, distance;
+  int length, distance;
   uint32_t symbol_count = rand() % 255 + 1, swaps_left, tmp;
   uint32_t max_repeat_data = symbol_count;
   uint8_t symbols[256], *symbols_next, swap_val;
@@ -262,8 +264,8 @@ void create_rand_repeat_data(uint8_t *data, int size) {
         length = (rand() % (size - 2)) + MIN_LENGTH;
 
       distance = (rand() % HISTORY_SIZE) + MIN_DIST;
-      if (distance > data - data_start)
-        distance = (rand() % (data - data_start)) + MIN_DIST;
+      if (distance > (int)(data - data_start))
+        distance = (rand() % (int)(data - data_start)) + MIN_DIST;
 
       size -= length;
       if (distance <= length) {
@@ -272,7 +274,7 @@ void create_rand_repeat_data(uint8_t *data, int size) {
           data++;
         }
       } else {
-        memcpy(data, data - distance, length);
+        memcpy(data, data - distance, (size_t)length);
         data += length;
       }
     }
@@ -421,16 +423,16 @@ void print_error(int error_code) {
 }
 
 void print_uint8_t(uint8_t *array, uint64_t length) {
-  const int line_size = 16;
-  int i;
+  const uint64_t line_size = 16;
+  uint64_t i;
 
   printf("Length = %" PRIu64 "", length);
   for (i = 0; i < length; i++) {
     if ((i % line_size) == 0)
-      printf("\n0x%08x\t", i);
+      printf("\n0x%08" PRIx64 "\t", i);
     else
       printf(" ");
-    printf("0x%02x,", array[i]);
+    printf("0x%02x,", (unsigned)array[i]);
   }
   printf("\n");
 }
@@ -564,6 +566,9 @@ int inflate_state_valid_check(struct inflate_state *state, uint8_t *in_buf,
                               uint32_t out_processed, uint32_t data_size) {
   uint32_t in_buffer_size, total_out, out_buffer_size;
 
+  (void)in_processed;
+  (void)data_size;
+
   in_buffer_size =
       (in_size == 0) ? 0 : state->next_in - in_buf + state->avail_in;
 
@@ -604,6 +609,8 @@ int isal_inflate_with_checks(struct inflate_state *state, uint32_t compress_len,
                              uint8_t *out_buf, uint32_t out_size,
                              uint32_t out_processed) {
   int ret, stream_check = 0;
+
+  (void)compress_len;
 
   ret = isal_inflate(state);
 
@@ -871,11 +878,12 @@ int inflate_check(uint8_t *z_buf, uint32_t z_size, uint8_t *in_buf,
     mem_result = memcmp(in_buf, test_buf, in_size);
 
   if (options.verbose && mem_result) {
-    int i;
+    uint32_t i;
     for (i = 0; i < in_size; i++) {
       if (in_buf[i] != test_buf[i]) {
-        log_print("First incorrect data at 0x%x of 0x%x, 0x%x != 0x%x\n", i,
-                  in_size, in_buf[i], test_buf[i]);
+        log_print("First incorrect data at 0x%x of 0x%x, 0x%x != 0x%x\n",
+                  (unsigned)i, (unsigned)in_size, (unsigned)in_buf[i],
+                  (unsigned)test_buf[i]);
         break;
       }
     }
@@ -952,6 +960,8 @@ int stream_valid_check(struct isal_zstream *stream, uint8_t *in_buf,
                        uint32_t in_processed, uint32_t out_processed,
                        uint32_t data_size) {
   uint32_t total_in, in_buffer_size, total_out, out_buffer_size;
+
+  (void)data_size;
 
   total_in = (in_size == 0)
                  ? in_processed
@@ -2723,7 +2733,7 @@ int create_custom_hufftables(struct isal_hufftables *hufftables_custom,
     }
 
     if (file_length > 0)
-      if (fread(stream, 1, file_length, file) != file_length) {
+      if (fread(stream, 1, (size_t)file_length, file) != (size_t)file_length) {
         printf("Error occurred when reading file\n");
         fclose(file);
         free(stream);
@@ -2744,11 +2754,13 @@ int create_custom_hufftables(struct isal_hufftables *hufftables_custom,
 }
 
 int main(int argc, char *argv[]) {
-  int i = 0, j = 0, ret = 0, fin_ret = IGZIP_COMP_OK;
+  size_t i = 0;
+  int j = 0, ret = 0, fin_ret = IGZIP_COMP_OK;
   uint32_t in_size = 0, offset = 0;
   uint8_t *in_buf = NULL;
   struct isal_hufftables hufftables_custom, hufftables_sub;
-  uint64_t iterations, large_buf_size;
+  size_t iterations;
+  uint64_t large_buf_size;
   size_t argv_index;
   char **input_files;
   size_t file_count;
@@ -2813,7 +2825,7 @@ int main(int argc, char *argv[]) {
   if (ret)
     goto exit_stateless_no_flush;
 
-  for (i = 0; i < options.randoms; i++) {
+  for (i = 0; i < (size_t)options.randoms; i++) {
     in_size = get_rand_data_length();
     offset = rand() % (IBUF_SIZE + 1 - in_size);
     in_buf += offset;
@@ -2824,14 +2836,14 @@ int main(int argc, char *argv[]) {
 
     in_buf -= offset;
 
-    if (options.verbose && (i % (options.randoms / 16) == 0))
+    if (options.verbose && (i % ((size_t)(options.randoms / 16)) == 0))
       printf(".");
 
     if (ret)
       goto exit_stateless_no_flush;
   }
 
-  for (i = 0; i < options.randoms / 16; i++) {
+  for (i = 0; i < (size_t)(options.randoms / 16); i++) {
     create_rand_repeat_data(in_buf, PAGE_SIZE);
     ret |=
         test_compress_stateless(in_buf, PAGE_SIZE, NO_FLUSH); // good for efence
@@ -2877,7 +2889,7 @@ exit_stateless_no_flush:
   if (ret)
     goto exit_stateless_full_flush;
 
-  for (i = 0; i < options.randoms; i++) {
+  for (i = 0; i < (size_t)options.randoms; i++) {
     in_size = get_rand_data_length();
     offset = rand() % (IBUF_SIZE + 1 - in_size);
     in_buf += offset;
@@ -2888,14 +2900,14 @@ exit_stateless_no_flush:
 
     in_buf -= offset;
 
-    if (options.verbose && (i % (options.randoms / 16) == 0))
+    if (options.verbose && (i % ((size_t)(options.randoms / 16)) == 0))
       printf(".");
 
     if (ret)
       goto exit_stateless_full_flush;
   }
 
-  for (i = 0; i < options.randoms / 16; i++) {
+  for (i = 0; i < (size_t)(options.randoms / 16); i++) {
     create_rand_repeat_data(in_buf, PAGE_SIZE);
     ret = test_compress_stateless(in_buf, PAGE_SIZE,
                                   FULL_FLUSH); // good for efence
@@ -2920,7 +2932,7 @@ exit_stateless_full_flush:
   if (ret)
     goto exit_stateful_no_flush;
 
-  for (i = 0; i < options.randoms; i++) {
+  for (i = 0; i < (size_t)options.randoms; i++) {
     in_size = get_rand_data_length();
     offset = rand() % (IBUF_SIZE + 1 - in_size);
     in_buf += offset;
@@ -2930,7 +2942,7 @@ exit_stateless_full_flush:
     ret |= test_compress(in_buf, in_size, NO_FLUSH);
 
     in_buf -= offset;
-    if (options.verbose && (i % (options.randoms / 16) == 0))
+    if (options.verbose && (i % ((size_t)(options.randoms / 16)) == 0))
       printf(".");
 
     if (ret)
@@ -2954,7 +2966,7 @@ exit_stateful_no_flush:
   if (ret)
     goto exit_stateful_sync_flush;
 
-  for (i = 0; i < options.randoms; i++) {
+  for (i = 0; i < (size_t)options.randoms; i++) {
     in_size = get_rand_data_length();
     offset = rand() % (IBUF_SIZE + 1 - in_size);
     in_buf += offset;
@@ -2965,7 +2977,7 @@ exit_stateful_no_flush:
 
     in_buf -= offset;
 
-    if (options.verbose && (i % (options.randoms / 16) == 0))
+    if (options.verbose && (i % ((size_t)(options.randoms / 16)) == 0))
       printf(".");
     if (ret)
       break;
@@ -2988,7 +3000,7 @@ exit_stateful_sync_flush:
   if (ret)
     goto exit_stateful_full_flush;
 
-  for (i = 0; i < options.randoms; i++) {
+  for (i = 0; i < (size_t)options.randoms; i++) {
     in_size = get_rand_data_length();
     offset = rand() % (IBUF_SIZE + 1 - in_size);
     in_buf += offset;
@@ -2999,13 +3011,13 @@ exit_stateful_sync_flush:
 
     in_buf -= offset;
 
-    if (options.verbose && (i % (options.randoms / 16) == 0))
+    if (options.verbose && (i % ((size_t)(options.randoms / 16)) == 0))
       printf(".");
     if (ret)
       goto exit_stateful_full_flush;
   }
 
-  for (i = 0; i < options.randoms / 8; i++) {
+  for (i = 0; i < (size_t)(options.randoms / 8); i++) {
     in_size = get_rand_data_length();
     offset = rand() % (IBUF_SIZE + 1 - in_size);
     in_buf += offset;
@@ -3035,7 +3047,7 @@ exit_stateful_full_flush:
   if (ret)
     goto exit_stateful_change_flush;
 
-  for (i = 0; i < options.randoms / 4; i++) {
+  for (i = 0; i < (size_t)(options.randoms / 4); i++) {
     in_size = get_rand_data_length();
     offset = rand() % (IBUF_SIZE + 1 - in_size);
     in_buf += offset;
@@ -3046,7 +3058,7 @@ exit_stateful_full_flush:
 
     in_buf -= offset;
 
-    if (options.verbose && (i % ((options.randoms / 4) / 16) == 0))
+    if (options.verbose && (i % ((size_t)(options.randoms / 4) / 16) == 0))
       printf(".");
     if (ret)
       break;
@@ -3080,9 +3092,9 @@ exit_stateful_change_flush:
 
       if (options.verbose) {
         if (iterations < 16) {
-          for (j = 0; j < 16 / iterations; j++)
+          for (j = 0; j < 16 / (int)iterations; j++)
             printf(".");
-        } else if (i % (iterations / 16) == 0)
+        } else if (i % ((size_t)(iterations / 16)) == 0)
           printf(".");
       }
     }
@@ -3100,7 +3112,7 @@ exit_stateful_change_flush:
 
   printf("igzip_rand_test inflate   Std Vectors:  ");
 
-  for (i = 0; i < sizeof(std_vect_array) / sizeof(struct vect_result); i++) {
+    for (i = 0; i < sizeof(std_vect_array) / sizeof(struct vect_result); i++) {
     ret = test_inflate(&std_vect_array[i]);
     if (ret)
       break;

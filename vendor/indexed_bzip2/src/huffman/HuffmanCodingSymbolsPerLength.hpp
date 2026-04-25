@@ -3,9 +3,8 @@
 #include <array>
 #include <cstdint>
 #include <limits>
-#include <optional>
-#include <stdexcept>
-#include <type_traits>
+
+#include <core/common.hpp>
 
 #include "HuffmanCodingBase.hpp"
 

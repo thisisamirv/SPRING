@@ -27,6 +27,8 @@
 #ifndef ARCHIVE_DIGEST_PRIVATE_H_INCLUDED
 #define ARCHIVE_DIGEST_PRIVATE_H_INCLUDED
 
+#include "archive_platform.h"
+
 #ifndef __LIBARCHIVE_BUILD
 #error This header is only to be used internally to libarchive.
 #endif

@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <optional>
 #include <stdexcept>
-#include <utility>
 
 #include <huffman/HuffmanCodingSymbolsPerLength.hpp>
 #include <rapidgzip/gzip/definitions.hpp>

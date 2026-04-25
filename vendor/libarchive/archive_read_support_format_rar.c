@@ -26,6 +26,10 @@
 
 #include "archive_platform.h"
 
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
+#endif
+
 #ifdef HAVE_ERRNO_H
 #include <errno.h>
 #endif
@@ -36,15 +40,53 @@
 #endif
 
 #include "archive.h"
+
+#ifndef ARCHIVE_H_INCLUDED
+#error "archive.h must be included"
+#endif
+
 #ifndef HAVE_ZLIB_H
 #include "archive_crc32.h"
+
+#ifndef ARCHIVE_CRC32_H
+#error "archive_crc32.h must be included"
+#endif
 #endif
 #include "archive_endian.h"
+
+#ifndef ARCHIVE_ENDIAN_H_INCLUDED
+#error "archive_endian.h must be included"
+#endif
+
 #include "archive_entry.h"
+
+#ifndef ARCHIVE_ENTRY_H_INCLUDED
+#error "archive_entry.h must be included"
+#endif
+
 #include "archive_entry_locale.h"
+
+#ifndef ARCHIVE_ENTRY_LOCALE_H_INCLUDED
+#error "archive_entry_locale.h must be included"
+#endif
+
 #include "archive_ppmd7_private.h"
+
+#ifndef ARCHIVE_PPMD7_PRIVATE_H_INCLUDED
+#error "archive_ppmd7_private.h must be included"
+#endif
+
 #include "archive_private.h"
+
+#ifndef ARCHIVE_PRIVATE_H_INCLUDED
+#error "archive_private.h must be included"
+#endif
+
 #include "archive_read_private.h"
+
+#ifndef ARCHIVE_READ_PRIVATE_H_INCLUDED
+#error "archive_read_private.h must be included"
+#endif
 
 /* RAR signature, also known as the mark header */
 #define RAR_SIGNATURE "\x52\x61\x72\x21\x1A\x07\x00"

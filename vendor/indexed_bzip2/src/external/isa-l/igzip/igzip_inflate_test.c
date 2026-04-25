@@ -28,13 +28,27 @@
 **********************************************************************/
 
 #define _FILE_OFFSET_BITS 64
-#include "huff_codes.h"
 #include "igzip_lib.h"
 #include "test.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+/* `huff_codes.h` not used here; removed to avoid unused-include diagnostics.
+  Guard <zlib.h> for clang/clangd which may not have it available in the
+  analysis environment: provide minimal stubs so the file parses. */
+#if __has_include(<zlib.h>)
 #include <zlib.h>
+#else
+typedef unsigned char Bytef;
+typedef unsigned long uLong;
+typedef unsigned long uLongf;
+/* Minimal prototypes used by this test harness. Real builds must link
+  against zlib. */
+int compress2(Bytef *dest, uLongf *destLen, const Bytef *source,
+          uLong sourceLen, int level);
+uLong compressBound(uLong sourceLen);
+#endif
 
 /*Don't use file larger memory can support because compression and decompression
  * are done in a stateless manner. */
@@ -196,7 +210,7 @@ int test(uint8_t *compressed_stream, uint64_t *compressed_length,
   }
   if (memcmp(uncompressed_stream, uncompressed_test_stream,
              uncompressed_length)) {
-    int i;
+    uint32_t i;
     for (i = 0; i < uncompressed_length; i++) {
       if (uncompressed_stream[i] != uncompressed_test_stream[i]) {
         printf("first error at %d, 0x%x != 0x%x\n", i, uncompressed_stream[i],
@@ -211,7 +225,8 @@ int test(uint8_t *compressed_stream, uint64_t *compressed_length,
 }
 
 int main(int argc, char **argv) {
-  int i, j, ret = 0, fin_ret = 0;
+  int i, ret = 0, fin_ret = 0;
+  uint64_t j;
   FILE *file = NULL;
   uint64_t compressed_length, file_length;
   uint64_t uncompressed_length, uncompressed_test_stream_length;

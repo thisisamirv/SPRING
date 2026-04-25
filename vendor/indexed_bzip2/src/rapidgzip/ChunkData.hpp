@@ -13,6 +13,7 @@
 #include <rapidgzip/DecodedData.hpp>
 #include <rapidgzip/gzip/crc32.hpp>
 #include <rapidgzip/gzip/gzip.hpp>
+#include <core/FileUtils.hpp>
 
 namespace rapidgzip {
 /**

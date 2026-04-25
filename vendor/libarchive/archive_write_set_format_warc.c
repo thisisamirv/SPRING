@@ -27,6 +27,10 @@
 
 #include "archive_platform.h"
 
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
+#endif
+
 #ifdef HAVE_ERRNO_H
 #include <errno.h>
 #endif
@@ -42,12 +46,46 @@
 #endif
 
 #include "archive.h"
+
+#ifndef ARCHIVE_H_INCLUDED
+#error "archive.h must be included"
+#endif
+
 #include "archive_entry.h"
+
+#ifndef ARCHIVE_ENTRY_H_INCLUDED
+#error "archive_entry.h must be included"
+#endif
+
 #include "archive_entry_locale.h"
+
+#ifndef ARCHIVE_ENTRY_LOCALE_H_INCLUDED
+#error "archive_entry_locale.h must be included"
+#endif
+
 #include "archive_private.h"
+
+#ifndef ARCHIVE_PRIVATE_H_INCLUDED
+#error "archive_private.h must be included"
+#endif
+
 #include "archive_random_private.h"
+
+#ifndef ARCHIVE_RANDOM_PRIVATE_H_INCLUDED
+#error "archive_random_private.h must be included"
+#endif
+
 #include "archive_write_private.h"
+
+#ifndef ARCHIVE_WRITE_PRIVATE_H_INCLUDED
+#error "archive_write_private.h must be included"
+#endif
+
 #include "archive_write_set_format_private.h"
+
+#ifndef ARCHIVE_WRITE_SET_FORMAT_PRIVATE_H_INCLUDED
+#error "archive_write_set_format_private.h must be included"
+#endif
 
 struct warc_s {
   unsigned int omit_warcinfo : 1;

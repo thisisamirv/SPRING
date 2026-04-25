@@ -11,7 +11,6 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -26,7 +25,6 @@
 #include <filereader/Standard.hpp>
 #endif
 
-#include "GzipBlockFinder.hpp"
 #include "GzipChunkFetcher.hpp"
 #include "IndexFileFormat.hpp"
 #include "gzip/crc32.hpp"

@@ -34,6 +34,8 @@
 #ifndef ARCHIVE_PACK_DEV_H
 #define ARCHIVE_PACK_DEV_H
 
+#include "archive_platform.h"
+
 typedef dev_t pack_t(int, unsigned long[], const char **);
 
 pack_t *pack_find(const char *);

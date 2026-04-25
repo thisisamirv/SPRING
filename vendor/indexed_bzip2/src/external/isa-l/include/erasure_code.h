@@ -48,7 +48,6 @@
  *
  */
 
-#include "gf_vect_mul.h"
 
 #ifdef __cplusplus
 extern "C" {

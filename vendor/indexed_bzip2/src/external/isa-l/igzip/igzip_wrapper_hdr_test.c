@@ -1,10 +1,9 @@
-#include "checksum_test_ref.h"
 #include "igzip_lib.h"
-#include "igzip_wrapper.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 
 #ifndef TEST_SEED
 #define TEST_SEED 0x1234
@@ -126,8 +125,8 @@ void print_error(int32_t error) {
 }
 
 void print_uint8_t(uint8_t *array, uint64_t length, char *prepend) {
-  const int line_size = 16;
-  int i;
+  const uint64_t line_size = 16;
+  uint64_t i;
 
   if (array == NULL) {
     printf("%s(NULL)\n", prepend);
@@ -139,12 +138,12 @@ void print_uint8_t(uint8_t *array, uint64_t length, char *prepend) {
 
   for (i = 0; i < length; i++) {
     if (i == 0)
-      printf("%s0x%04x\t", prepend, i);
+      printf("%s0x%04" PRIx64 "\t", prepend, i);
     else if ((i % line_size) == 0)
-      printf("\n%s0x%04x\t", prepend, i);
+      printf("\n%s0x%04" PRIx64 "\t", prepend, i);
     else
       printf(" ");
-    printf("0x%02x,", array[i]);
+    printf("0x%02x,", (unsigned)array[i]);
   }
   printf("\n");
 }
@@ -219,6 +218,10 @@ void print_gzip_final_verbose(uint8_t *hdr_buf, uint32_t hdr_buf_len,
     printf("\n");
   }
 #endif
+  (void)hdr_buf;
+  (void)hdr_buf_len;
+  (void)gz_hdr_orig;
+  (void)gz_hdr;
   return;
 }
 
@@ -245,6 +248,10 @@ void print_zlib_final_verbose(uint8_t *hdr_buf, uint32_t hdr_buf_len,
     printf("\n");
   }
 #endif
+  (void)hdr_buf;
+  (void)hdr_buf_len;
+  (void)z_hdr_orig;
+  (void)z_hdr;
   return;
 }
 
@@ -275,7 +282,7 @@ int zlib_header_size(struct isal_zlib_header *z_hdr) {
 }
 
 void rand_string(char *string, uint32_t str_len) {
-  int i;
+  uint32_t i;
 
   if (str_len == 0 || string == NULL)
     return;
@@ -286,7 +293,7 @@ void rand_string(char *string, uint32_t str_len) {
 }
 
 void rand_buf(uint8_t *buf, uint32_t buf_len) {
-  int i;
+  uint32_t i;
 
   if (buf_len == 0 || buf == NULL)
     return;
@@ -779,12 +786,14 @@ int read_zlib_header_streaming(uint8_t *hdr_buf, uint32_t hdr_buf_len,
 }
 
 int main(int argc, char *argv[]) {
+  (void)argc;
+  (void)argv;
   uint8_t *hdr_buf = NULL;
   uint32_t hdr_buf_len;
   int ret = 0;
   struct isal_gzip_header gz_hdr_orig;
   struct isal_zlib_header z_hdr_orig;
-  int i;
+  size_t i;
 
 #ifndef VERBOSE
   setbuf(stdout, NULL);
@@ -794,7 +803,7 @@ int main(int argc, char *argv[]) {
   srand(TEST_SEED);
 
   printf("gzip wrapper test: ");
-  for (i = 0; i < RANDOMS; i++) {
+    for (i = 0; i < (size_t)RANDOMS; i++) {
     rand_buf((uint8_t *)&gz_hdr_orig, sizeof(gz_hdr_orig));
 
     ret = gen_rand_gzip_header(&gz_hdr_orig);
@@ -830,14 +839,14 @@ int main(int argc, char *argv[]) {
     free(hdr_buf);
     hdr_buf = NULL;
 #ifdef TEST_VERBOSE
-    if (i % (RANDOMS / 16) == 0)
+    if (i % ((size_t)(RANDOMS / 16)) == 0)
       printf(".");
 #endif
   }
   printf("Pass \n");
 
   printf("zlib wrapper test: ");
-  for (i = 0; i < RANDOMS; i++) {
+  for (i = 0; i < (size_t)RANDOMS; i++) {
     isal_zlib_header_init(&z_hdr_orig);
 
     gen_rand_zlib_header(&z_hdr_orig);
@@ -868,7 +877,7 @@ int main(int argc, char *argv[]) {
     free(hdr_buf);
     hdr_buf = NULL;
 #ifdef TEST_VERBOSE
-    if (i % (RANDOMS / 16) == 0)
+    if (i % ((size_t)(RANDOMS / 16)) == 0)
       printf(".");
 #endif
   }

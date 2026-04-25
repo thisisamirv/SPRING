@@ -1,7 +1,7 @@
 
 #include <fstream>
 #include <iostream>
-#include <string_view>
+#include <string>
 #include <vector>
 
 #include <igzip_lib.h>

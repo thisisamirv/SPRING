@@ -1,12 +1,11 @@
 #pragma once
 
-#include <ostream>
 #include <vector>
 
 #include "FileReader.hpp"
 
 namespace rapidgzip {
-[[nodiscard]] int toOrigin(std::ios_base::seekdir anchor) {
+inline int toOrigin(std::ios_base::seekdir anchor) {
   switch (anchor) {
   case std::ios_base::beg:
     return SEEK_SET;

@@ -15,16 +15,29 @@
 
 #include "archive_platform.h"
 
-#include <stdio.h>
-#include <stdlib.h>
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
+#endif
+
+#ifdef HAVE_STRING_H
 #include <string.h>
+#endif
 
 #if defined(_OPENMP)
 #include <omp.h>
 #endif
 
 #include "archive_blake2.h"
+
+#ifndef ARCHIVE_BLAKE2_H
+#error "archive_blake2.h must be included"
+#endif
+
 #include "archive_blake2_impl.h"
+
+#ifndef ARCHIVE_BLAKE2_IMPL_H
+#error "archive_blake2_impl.h must be included"
+#endif
 
 #define PARALLELISM_DEGREE 8
 

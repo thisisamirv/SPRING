@@ -31,6 +31,10 @@
 
 #include "archive_platform.h"
 
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
+#endif
+
 #ifdef HAVE_ERRNO_H
 #include <errno.h>
 #endif
@@ -63,27 +67,86 @@
 #endif
 
 #include "archive.h"
+
+#ifndef ARCHIVE_H_INCLUDED
+#error "archive.h must be included"
+#endif
+
 #include "archive_cryptor_private.h"
+
+#ifndef ARCHIVE_CRYPTOR_PRIVATE_H_INCLUDED
+#error "archive_cryptor_private.h must be included"
+#endif
+
 #include "archive_endian.h"
+
+#ifndef ARCHIVE_ENDIAN_H_INCLUDED
+#error "archive_endian.h must be included"
+#endif
+
 #include "archive_entry.h"
+
+#ifndef ARCHIVE_ENTRY_H_INCLUDED
+#error "archive_entry.h must be included"
+#endif
+
 #include "archive_entry_locale.h"
+
+#ifndef ARCHIVE_ENTRY_LOCALE_H_INCLUDED
+#error "archive_entry_locale.h must be included"
+#endif
+
 #include "archive_hmac_private.h"
+
+#ifndef ARCHIVE_HMAC_PRIVATE_H_INCLUDED
+#error "archive_hmac_private.h must be included"
+#endif
+
 #include "archive_private.h"
+
+#ifndef ARCHIVE_PRIVATE_H_INCLUDED
+#error "archive_private.h must be included"
+#endif
+
 #include "archive_random_private.h"
+
+#ifndef ARCHIVE_RANDOM_PRIVATE_H_INCLUDED
+#error "archive_random_private.h must be included"
+#endif
+
 #include "archive_time_private.h"
+
+#ifndef ARCHIVE_TIME_PRIVATE_H_INCLUDED
+#error "archive_time_private.h must be included"
+#endif
+
 #include "archive_write_private.h"
+
+#ifndef ARCHIVE_WRITE_PRIVATE_H_INCLUDED
+#error "archive_write_private.h must be included"
+#endif
 #include "archive_write_set_format_private.h"
+
+#ifndef ARCHIVE_WRITE_SET_FORMAT_PRIVATE_H_INCLUDED
+#error "archive_write_set_format_private.h must be included"
+#endif
 
 #ifndef HAVE_ZLIB_H
 #include "archive_crc32.h"
+
+#ifndef ARCHIVE_CRC32_H
+#error "archive_crc32.h must be included"
+#endif
 #endif
 
 #define ZIP_ENTRY_FLAG_ENCRYPTED (1 << 0)
 #define ZIP_ENTRY_FLAG_LZMA_EOPM (1 << 1)
-#define ZIP_ENTRY_FLAG_DEFLATE_MAX (1 << 1)  /* i.e. compression levels 8 & 9  \
-                                              */
-#define ZIP_ENTRY_FLAG_DEFLATE_FAST (1 << 2) /* i.e. compression levels 3 & 4  \
-                                              */
+#define ZIP_ENTRY_FLAG_DEFLATE_MAX                                             \
+  (1 << 1) /* i.e. compression levels 8 & 9                                    \
+            */
+#define ZIP_ENTRY_FLAG_DEFLATE_FAST                                            \
+  (1 << 2) /* i.e. compression levels 3 & 4                                    \
+            */
 #define ZIP_ENTRY_FLAG_DEFLATE_SUPER_FAST                                      \
   (1 << 1) | (1 << 2) /* i.e. compression levels 1 & 2 */
 #define ZIP_ENTRY_FLAG_LENGTH_AT_END (1 << 3)

@@ -26,10 +26,19 @@
 
 #include "archive_platform.h"
 
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
+#endif
+
+#include "archive_private.h"
+
+#ifndef ARCHIVE_PRIVATE_H_INCLUDED
+#error "archive_private.h must be included"
+#endif
+
 #include "archive.h"
 #include "archive_entry.h"
 #include "archive_entry_private.h"
-#include "archive_private.h"
 
 /*
  * sparse handling

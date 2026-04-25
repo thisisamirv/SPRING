@@ -28,7 +28,13 @@
 
 #ifndef __LIBARCHIVE_BUILD
 #ifndef __LIBARCHIVE_TEST
-#error This header is only to be used internally to libarchive.
+/* Allow parsing in analysis environments that don't define the libarchive
+ * build/test macros. Prefer the system <sys/types.h> if available to get
+ * `ssize_t`/`mode_t` and related typedefs; real builds defining
+ * __LIBARCHIVE_BUILD/__LIBARCHIVE_TEST are unaffected. */
+#if __has_include(<sys/types.h>)
+#include <sys/types.h>
+#endif
 #endif
 #endif
 

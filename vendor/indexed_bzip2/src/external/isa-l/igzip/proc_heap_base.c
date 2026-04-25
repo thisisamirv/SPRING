@@ -28,7 +28,6 @@
 **********************************************************************/
 
 #include "huff_codes.h"
-#include "igzip_lib.h"
 #include "unaligned.h"
 
 static inline void heapify(uint64_t *heap, uint64_t heap_size, uint64_t index) {

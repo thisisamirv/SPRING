@@ -28,15 +28,66 @@
 **********************************************************************/
 
 #define _FILE_OFFSET_BITS 64
-#include "huff_codes.h"
 #include "igzip_lib.h"
 #include "test.h"
 #include <assert.h>
+#if !defined(_WIN32) && !defined(_WIN64)
 #include <getopt.h>
+#else
+/* Minimal getopt declarations for Windows/clangd parsing. Real builds
+  should provide a full getopt implementation or use a portability layer. */
+extern char *optarg;
+extern int optind, opterr, optopt;
+int getopt(int argc, char *const argv[], const char *optstring);
+#endif
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
+#if __has_include(<zlib.h>)
 #include <zlib.h>
+#else
+/* Minimal zlib stubs so clangd can parse this file when zlib isn't
+   available in the analysis environment. Real builds must link against
+   the system zlib. */
+typedef unsigned char Bytef;
+typedef unsigned int uInt;
+typedef unsigned long uLong;
+typedef void *voidpf;
+
+typedef struct z_stream_s {
+  Bytef *next_in;
+  uInt avail_in;
+  uLong total_out;
+  Bytef *next_out;
+  uInt avail_out;
+  voidpf opaque;
+  voidpf zalloc;
+  voidpf zfree;
+} z_stream;
+
+#define Z_FINISH 4
+#define Z_OK 0
+#define Z_STREAM_END 1
+#define Z_NO_FLUSH 0
+#define Z_SYNC_FLUSH 2
+#define Z_FULL_FLUSH 3
+#define Z_DEFAULT_STRATEGY 0
+#define Z_DEFLATED 8
+#define Z_BEST_COMPRESSION 9
+#define Z_NULL ((void *)0)
+
+int deflateInit2(z_stream *strm, int level, int method, int windowBits,
+                 int memLevel, int strategy);
+int deflate(z_stream *strm, int flush);
+int deflateReset(z_stream *strm);
+int deflateEnd(z_stream *strm);
+int inflateInit2(z_stream *strm, int windowBits);
+int inflateReset(z_stream *strm);
+int inflate(z_stream *strm, int flush);
+int inflateEnd(z_stream *strm);
+uLong compressBound(uLong sourceLen);
+#endif
 
 #define BUF_SIZE 1024
 
@@ -176,7 +227,7 @@ void print_perf_info_line(struct perf_info *info) {
 }
 
 void print_file_line(struct perf_info *info) {
-  printf("  file info-> name: %s file_size: %lu compress_size: %lu ratio: "
+  printf("  file info-> name: %s file_size: %zu compress_size: %zu ratio: "
          "%2.02f%%\n",
          info->file_name, info->file_size, info->deflate_size,
          100.0 * info->deflate_size / info->file_size);
@@ -380,6 +431,8 @@ int zlib_deflate_round(z_stream *gstream, uint8_t *outbuf, uInt outbuf_size,
                        int level, int flush_type) {
   uLong inbuf_remaining;
   int check = Z_OK;
+
+  (void)level; /* level currently unused in this wrapper; silence warning */
 
   inbuf_remaining = inbuf_size;
 
@@ -642,7 +695,7 @@ int main(int argc, char *argv[]) {
   unsigned char *compressbuf, *decompbuf, *filebuf;
   char *outfile = NULL;
   int i, c, ret = 0;
-  int dict_file_size = 0;
+  size_t dict_file_size = 0;
   uint8_t *dict_buf = NULL;
   uint64_t decompbuf_size, compressbuf_size;
   uint64_t block_count;
@@ -722,7 +775,7 @@ int main(int argc, char *argv[]) {
       }
       dict_file_size = get_filesize(dict_fn);
       dict_buf = malloc(dict_file_size);
-      if (dict_buf == NULL || dict_file_size == 0) {
+      if (dict_buf == NULL || dict_file_size == 0u) {
         printf("Can't allocate mem for dictionary buffer\n");
         exit(0);
       }
@@ -774,7 +827,7 @@ int main(int argc, char *argv[]) {
 
   if (!inflate_strat.stateless && !inflate_strat.stateful &&
       !inflate_strat.zlib) {
-    if (info.inblock_size == 0)
+    if (info.inblock_size == 0u)
       inflate_strat.stateless = 1;
     else
       inflate_strat.stateful = 1;
@@ -791,7 +844,7 @@ int main(int argc, char *argv[]) {
   }
 
   info.file_size = get_filesize(in);
-  if (info.file_size == 0) {
+  if (info.file_size == 0u) {
     printf("Error: input file has 0 size\n");
     exit(0);
   }
@@ -799,7 +852,7 @@ int main(int argc, char *argv[]) {
   decompbuf_size = info.file_size;
 
   if (compression_queue_size == 0) {
-    if (info.inblock_size == 0)
+    if (info.inblock_size == 0u)
       compression_queue[0].mode = ISAL_STATELESS;
     else
       compression_queue[0].mode = ISAL_STATEFUL;
@@ -814,7 +867,7 @@ int main(int argc, char *argv[]) {
   }
 
   block_count = 1;
-  if (info.flush_type > 0)
+  if (info.flush_type > 0u)
     block_count = (info.file_size + info.inblock_size - 1) / info.inblock_size;
 
   /* Way overestimate likely compressed size to handle bad type 0 and
@@ -850,12 +903,12 @@ int main(int argc, char *argv[]) {
 
     info.deflate_size = compressbuf_size;
 
-    if (dict_file_size != 0) {
+    if (dict_file_size != 0u) {
       info.strategy.mode = ISAL_WITH_DICTIONARY;
       ret = isal_deflate_dict_perf(
           compressbuf, &info.deflate_size, filebuf, info.file_size,
           compression_queue[i].level, info.flush_type, info.hist_bits,
-          info.deflate_time, &info.start, dict_buf, dict_file_size);
+          info.deflate_time, &info.start, dict_buf, (int)dict_file_size);
     } else if (info.strategy.mode == ISAL_STATELESS)
       ret = isal_deflate_perf(compressbuf, &info.deflate_size, filebuf,
                               info.file_size, compression_queue[i].level,
@@ -897,7 +950,7 @@ int main(int argc, char *argv[]) {
       continue;
 
     if (inflate_strat.stateless) {
-      if (dict_file_size != 0)
+      if (dict_file_size != 0u)
         continue;
 
       info.inflate_mode = ISAL_STATELESS;
@@ -911,13 +964,13 @@ int main(int argc, char *argv[]) {
     }
 
     if (inflate_strat.stateful) {
-      info.inflate_mode =
+        info.inflate_mode =
           (dict_file_size == 0) ? ISAL_STATEFUL : ISAL_WITH_DICTIONARY;
 
-      ret = isal_inflate_stateful_perf(
+        ret = isal_inflate_stateful_perf(
           compressbuf, info.deflate_size, decompbuf, decompbuf_size, filebuf,
           info.file_size, info.inblock_size, info.hist_bits, info.inflate_time,
-          &info.start, dict_buf, dict_file_size);
+          &info.start, dict_buf, (int)dict_file_size);
 
       if (ret)
         printf("    Error in isal stateful inflate\n");

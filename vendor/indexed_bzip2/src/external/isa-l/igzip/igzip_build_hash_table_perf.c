@@ -11,7 +11,7 @@ extern void isal_deflate_hash(struct isal_zstream *stream, uint8_t *dict,
                               int dict_len);
 
 void create_rand_data(uint8_t *data, uint32_t size) {
-  int i;
+  uint32_t i;
   for (i = 0; i < size; i++) {
     data[i] = rand() % 256;
   }

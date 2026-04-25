@@ -2,14 +2,23 @@
 
 #include <array>
 #include <cstdint>
-#include <iostream>
-#include <limits>
 #include <optional>
-#include <stdexcept>
-#include <utility>
 
 #include <core/BitManipulation.hpp>
 #include <huffman/HuffmanCodingSymbolsPerLength.hpp>
+#include <core/common.hpp>
+
+/* Ensure `forceinline` is defined for parsing environments. Core defines it
+ * normally, but provide a conservative fallback here to satisfy clangd. */
+#ifndef forceinline
+#if defined(_MSC_VER)
+#define forceinline __forceinline
+#elif defined(__clang__) || defined(__GNUC__)
+#define forceinline __attribute__((always_inline)) inline
+#else
+#define forceinline inline
+#endif
+#endif
 
 namespace rapidgzip {
 /**

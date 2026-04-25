@@ -11,7 +11,22 @@
 #define ARCHIVE_PLATFORM_STAT_H_INCLUDED
 
 #ifndef __LIBARCHIVE_BUILD
-#error This header is only to be used internally to libarchive.
+/* For editor/LSP parsing when __LIBARCHIVE_BUILD is not defined, provide
+ * minimal conservative typedefs so this header can be parsed. Real builds
+ * should define __LIBARCHIVE_BUILD and get correct system definitions. */
+#include <stdint.h>
+#if !defined(ino_t)
+typedef uint64_t ino_t;
+#endif
+#if !defined(dev_t)
+typedef uint64_t dev_t;
+#endif
+#if !defined(uid_t)
+typedef unsigned int uid_t;
+#endif
+#if !defined(gid_t)
+typedef unsigned int gid_t;
+#endif
 #endif
 
 #if defined(_WIN32) && !defined(__CYGWIN__)

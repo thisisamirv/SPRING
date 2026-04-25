@@ -52,7 +52,14 @@ extern "C" {
 #endif
 
 #ifdef _MSC_VER
+/* Avoid defining `inline` as `__inline` when compiling with clang/clangd.
+  Clang in MSVC-compat mode may define `_MSC_VER` but including or
+  interacting with windows headers can produce spurious `winnt.h`
+  diagnostics inside clangd. Skip this redefine when `__clang__` is
+  present. */
+#if !defined(__clang__)
 #define inline __inline
+#endif
 #endif
 
 /* Make os-independent alignment attribute, alloc and free. */
@@ -103,6 +110,17 @@ extern "C" {
 #define USE_SECONDS
 #endif
 
+/* Provide parsing-time fallbacks for CLOCK_MONOTONIC and clock_* APIs when
+  the analysis environment or non-POSIX platforms don't expose them. These
+  declarations are small, non-functional stubs intended only to silence
+  clang/clangd implicit-declaration diagnostics during static analysis; the
+  real platform headers/implementations are used at build time. */
+#ifndef CLOCK_MONOTONIC
+#define CLOCK_MONOTONIC 1
+int clock_gettime(int clk_id, struct timespec *tp);
+int clock_getres(int clk_id, struct timespec *res);
+#endif
+
 #ifdef USE_RDTSC
 #ifndef BENCHMARK_TIME
 #define BENCHMARK_TIME 6
@@ -120,7 +138,7 @@ static inline long long get_res(void) { return 1; }
 #ifndef BENCHMARK_TIME
 #define BENCHMARK_TIME 3
 #endif
-#ifdef _MSC_VER
+#if defined(_MSC_VER) && !defined(__clang__)
 #include <windows.h>
 #define UNIT_SCALE get_res()
 #define CALIBRATE_TIME (UNIT_SCALE / 4)

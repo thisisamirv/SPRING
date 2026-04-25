@@ -30,7 +30,17 @@
 #define _FILE_OFFSET_BITS 64
 #include "igzip_lib.h"
 #include "test.h"
+#if defined(HAVE_GETOPT) || __has_include(<getopt.h>)
 #include <getopt.h>
+#else
+/* Minimal getopt declarations for parsing-time only; real builds should
+  provide system getopt. */
+extern char *optarg;
+extern int optind;
+int getopt(int argc, char *const argv[], const char *optstring);
+#endif
+#include <stdint.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -100,8 +110,9 @@ void semi_dyn_stateless_perf(struct isal_zstream *stream, uint8_t *inbuf,
   stream->flush = FULL_FLUSH;
   stream->next_in = inbuf;
   stream->next_out = outbuf;
-  int remaining = infile_size;
-  int chunk_size = segment_size;
+  (void)outbuf_size;
+  int64_t remaining = (int64_t)infile_size;
+  int64_t chunk_size = (int64_t)segment_size;
 
   while (remaining > 0) {
     // Generate custom hufftables on sample
@@ -110,8 +121,8 @@ void semi_dyn_stateless_perf(struct isal_zstream *stream, uint8_t *inbuf,
       chunk_size = remaining;
       stream->end_of_stream = 1;
     }
-    int hist_rem = (hist_size > chunk_size) ? chunk_size : hist_size;
-    isal_update_histogram(stream->next_in, hist_rem, &histogram);
+    int64_t hist_rem = (hist_size > chunk_size) ? chunk_size : hist_size;
+    isal_update_histogram(stream->next_in, (uint32_t)hist_rem, &histogram);
 
     if (hist_rem == chunk_size)
       isal_create_hufftables_subset(&hufftable, &histogram);
@@ -119,8 +130,8 @@ void semi_dyn_stateless_perf(struct isal_zstream *stream, uint8_t *inbuf,
       isal_create_hufftables(&hufftable, &histogram);
 
     // Compress with custom table
-    stream->avail_in = chunk_size;
-    stream->avail_out = chunk_size + 8 * (1 + (chunk_size >> 16));
+    stream->avail_in = (uint32_t)chunk_size;
+    stream->avail_out = (uint32_t)(chunk_size + 8 * (1 + (chunk_size >> 16)));
     stream->hufftables = &hufftable;
     remaining -= chunk_size;
     isal_deflate_stateless(stream);
@@ -142,8 +153,9 @@ void semi_dyn_stateful_perf(struct isal_zstream *stream, uint8_t *inbuf,
   stream->next_in = inbuf;
   stream->next_out = outbuf;
   stream->avail_out = outbuf_size;
-  int remaining = infile_size;
-  int chunk_size = segment_size;
+  (void)outbuf_size;
+  int64_t remaining = (int64_t)infile_size;
+  int64_t chunk_size = (int64_t)segment_size;
 
   while (remaining > 0) {
     // Generate custom hufftables on sample
@@ -152,8 +164,8 @@ void semi_dyn_stateful_perf(struct isal_zstream *stream, uint8_t *inbuf,
       chunk_size = remaining;
       stream->end_of_stream = 1;
     }
-    int hist_rem = (hist_size > chunk_size) ? chunk_size : hist_size;
-    isal_update_histogram(stream->next_in, hist_rem, &histogram);
+    int64_t hist_rem = (hist_size > chunk_size) ? chunk_size : hist_size;
+    isal_update_histogram(stream->next_in, (uint32_t)hist_rem, &histogram);
 
     if (hist_rem == chunk_size)
       isal_create_hufftables_subset(&hufftable, &histogram);
@@ -161,7 +173,7 @@ void semi_dyn_stateful_perf(struct isal_zstream *stream, uint8_t *inbuf,
       isal_create_hufftables(&hufftable, &histogram);
 
     // Compress with custom table
-    stream->avail_in = chunk_size;
+    stream->avail_in = (uint32_t)chunk_size;
     stream->hufftables = &hufftable;
     remaining -= chunk_size;
     isal_deflate(stream);
@@ -173,7 +185,8 @@ void semi_dyn_stateful_perf(struct isal_zstream *stream, uint8_t *inbuf,
 int main(int argc, char *argv[]) {
   FILE *in = stdin, *out = NULL;
   unsigned char *inbuf, *outbuf;
-  int i = 0, c;
+  size_t i = 0;
+  int c;
   uint64_t infile_size, outbuf_size;
   int segment_size = DEFAULT_SEG_SIZE;
   int sample_size = DEFAULT_SAMPLE_SIZE;
@@ -283,9 +296,9 @@ int main(int argc, char *argv[]) {
     ret = 1;
   }
 
-  printf("  file %s - in_size=%lu out_size=%d iter=%d ratio=%3.1f%%\n",
-         argv[optind], infile_size, stream.total_out, i,
-         100.0 * stream.total_out / infile_size);
+    printf("  file %s - in_size=%" PRIu64 " out_size=%u iter=%zu ratio=%3.1f%%\n",
+      argv[optind], (uint64_t)infile_size, (unsigned)stream.total_out, i,
+      100.0 * stream.total_out / (double)infile_size);
 
   printf("igzip_semi_dyn_file: ");
   perf_print(start, (long long)infile_size);
@@ -315,13 +328,13 @@ int main(int argc, char *argv[]) {
 
     if (memcmp(inflate_buf, inbuf, infile_size)) {
       printf("inflate check Fail\n");
-      printf(" ret %d total_inflate=%d\n", check, istate.total_out);
-      for (i = 0; i < infile_size; i++) {
-        if (inbuf[i] != inflate_buf[i]) {
-          printf("  first diff at offset=%d\n", i);
-          break;
+      printf(" ret %d total_inflate=%u\n", check, (unsigned)istate.total_out);
+        for (i = 0; i < (size_t)infile_size; i++) {
+          if (inbuf[i] != inflate_buf[i]) {
+            printf("  first diff at offset=%zu\n", i);
+            break;
+          }
         }
-      }
       ret = 1;
     } else
       printf("inflate check Pass\n");

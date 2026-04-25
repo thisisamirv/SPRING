@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cassert>
 
 #include <rapidgzip/huffman/HuffmanCodingReversedBitsCachedCompressed.hpp>
 
@@ -89,32 +90,26 @@ iterateValidPrecodeHistograms( Result&        result,
 }
 
 
-constexpr auto VALID_HISTOGRAMS_COUNT =
-    [] ()
-    {
-        size_t validCount{ 0 };
-        iterateValidPrecodeHistograms( validCount, [&validCount] ( const auto& ) { ++validCount; } );
-        return validCount;
-    }();
-
-static_assert( VALID_HISTOGRAMS_COUNT == 1526 );
-
-
 /* Size: sizeof( std::array<uint8_t, MAX_DEPTH = 7> ) * 1526 = 10.682 kB */
-static constexpr auto VALID_HISTOGRAMS =
+inline const auto VALID_HISTOGRAMS =
     [] ()
     {
-        size_t validCount{ 0 };
-        std::array<Histogram, VALID_HISTOGRAMS_COUNT> validHistograms{};
+        std::vector<Histogram> validHistograms{};
+        validHistograms.reserve( 1600 );
 
         iterateValidPrecodeHistograms(
             validHistograms,
-            [&validCount, &validHistograms] ( const Histogram& histogram ) {
-                validHistograms[validCount++] = histogram;
+            [&validHistograms] ( const Histogram& histogram ) {
+                validHistograms.push_back( histogram );
             } );
 
         return validHistograms;
     }();
 
-static_assert( VALID_HISTOGRAMS.back() == Histogram{ { /* code length 1 */ 2, } } );
+inline const auto VALID_HISTOGRAMS_COUNT = VALID_HISTOGRAMS.size();
+
+#ifndef NDEBUG
+assert( VALID_HISTOGRAMS_COUNT == 1526 );
+assert( VALID_HISTOGRAMS.back() == Histogram{ { /* code length 1 */ 2, } } );
+#endif
 }  // namespace rapidgzip::deflate::precode

@@ -29,6 +29,8 @@
 #ifndef ARCHIVE_ENDIAN_H_INCLUDED
 #define ARCHIVE_ENDIAN_H_INCLUDED
 
+#include "archive_platform.h"
+
 /* Note:  This is a purely internal header! */
 /* Do not use this outside of libarchive internal code! */
 

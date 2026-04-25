@@ -5,9 +5,25 @@
 #include <stdio.h>
 #include <string.h>
 
+#if __has_include(<unistd.h>)
 #include <unistd.h>
+#else
+/* Provide minimal parsing-time stubs for platforms without <unistd.h>
+ * (e.g., Windows analysis environment) so clangd can parse this file.
+ */
+#ifndef F_OK
+#define F_OK 0
+#endif
+#ifndef W_OK
+#define W_OK 2
+#endif
+#ifndef R_OK
+#define R_OK 4
+#endif
+static inline int access(const char * /*path*/, int /*mode*/) { return 0; }
+#endif
 
-#include <igzip_lib.h>
+#include "include/igzip_lib.h"
 
 #define MAX_FILEPATH_BUF 4096
 

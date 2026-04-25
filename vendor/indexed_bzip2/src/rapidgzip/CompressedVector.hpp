@@ -4,7 +4,6 @@
 #include <iostream>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include <core/FasterVector.hpp>
 #include <core/VectorView.hpp>

@@ -14,7 +14,6 @@
 #include <core/common.hpp>
 
 #include "blockfinder/Bgzf.hpp"
-#include "gzip/deflate.hpp"
 #include "gzip/format.hpp"
 
 namespace rapidgzip {

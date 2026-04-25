@@ -26,6 +26,10 @@
 
 #include "archive_platform.h"
 
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
+#endif
+
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
@@ -34,12 +38,42 @@
 #include <string.h>
 
 #include "archive.h"
+
+#ifndef ARCHIVE_H_INCLUDED
+#error "archive.h must be included"
+#endif
+
 #include "archive_digest_private.h"
+
+#ifndef ARCHIVE_DIGEST_PRIVATE_H_INCLUDED
+#error "archive_digest_private.h must be included"
+#endif
+
 #include "archive_entry.h"
+
+#ifndef ARCHIVE_ENTRY_H_INCLUDED
+#error "archive_entry.h must be included"
+#endif
+
 #include "archive_entry_private.h"
+
+#ifndef ARCHIVE_ENTRY_PRIVATE_H_INCLUDED
+#error "archive_entry_private.h must be included"
+#endif
+
 #include "archive_private.h"
 #include "archive_rb.h"
+
+#ifndef ARCHIVE_RB_H_INCLUDED
+#error "archive_rb.h must be included"
+#endif
+
 #include "archive_string.h"
+
+#ifndef ARCHIVE_STRING_H_INCLUDED
+#error "archive_string.h must be included"
+#endif
+
 #include "archive_write_private.h"
 
 #define INDENTNAMELEN 15

@@ -143,10 +143,11 @@ static struct deflate_icf *compress_icf_map_g(struct isal_zstream *stream,
   uint64_t code;
   struct isal_zstate *state = &stream->internal_state;
   struct level_buf *level_buf = (struct level_buf *)stream->level_buf;
-  struct deflate_icf *matches_start = matches_next;
-  struct deflate_icf *icf_buf_end =
-      level_buf->icf_buf_next +
-      level_buf->icf_buf_avail_out / sizeof(struct deflate_icf);
+    struct deflate_icf *matches_start = matches_next;
+    /* `icf_buf_avail_out` is a byte count; compute end pointer by adding
+     bytes to the byte pointer and casting back to element pointer. */
+    struct deflate_icf *icf_buf_end = (struct deflate_icf *)
+      ((uint8_t *)level_buf->icf_buf_next + level_buf->icf_buf_avail_out);
 
   while (matches_next + 1 < matches_end &&
          level_buf->icf_buf_next + 1 < icf_buf_end) {

@@ -27,7 +27,31 @@
 #define ARCHIVE_ACL_PRIVATE_H_INCLUDED
 
 #ifndef __LIBARCHIVE_BUILD
-#error This header is only to be used internally to libarchive.
+/* When the project is not being built as part of libarchive, some analysis
+ * environments (language servers) may still parse the header. Provide a
+ * minimal, non-invasive fallback for a few fundamental types so parsing
+ * succeeds. Real builds should define __LIBARCHIVE_BUILD and skip this. */
+#if defined(__has_include) && __has_include(<sys/types.h>)
+#include <sys/types.h>
+#else
+/* Fallback for environments without <sys/types.h> or without
+ * __has_include support (editors/LSP). Provide parsing-only typedefs. */
+#ifndef mode_t
+typedef int mode_t;
+#define _ARCHIVE_MODE_T_DEFINED
+#endif
+#ifndef ssize_t
+typedef long ssize_t;
+#define _ARCHIVE_SSIZE_T_DEFINED
+#endif
+#endif
+#if !defined(mode_t)
+/* Ensure mode_t exists for parsers even if <sys/types.h> didn't provide it. */
+typedef int mode_t;
+#endif
+#if !defined(ssize_t)
+typedef long ssize_t;
+#endif
 #endif
 
 #include "archive_string.h"

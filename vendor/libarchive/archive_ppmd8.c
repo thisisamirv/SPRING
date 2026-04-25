@@ -4,6 +4,10 @@ This code is based on PPMd var.I (2002): Dmitry Shkarin : Public domain */
 
 #include "archive_platform.h"
 
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
+#endif
+
 #include <string.h>
 
 #include "archive_ppmd8_private.h"
@@ -563,18 +567,20 @@ static void RestoreModel(CPpmd8 *p, CTX_PTR c1
     p->OrderFall = p->MaxOrder;
   } else
 #endif
-      if (p->RestoreMethod == PPMD8_RESTORE_METHOD_RESTART ||
-          GetUsedMemory(p) < (p->Size >> 1))
-    RestartModel(p);
-  else {
-    while (p->MaxContext->Suffix)
-      p->MaxContext = SUFFIX(p->MaxContext);
-    do {
-      CutOff(p, p->MaxContext, 0);
-      ExpandTextArea(p);
-    } while (GetUsedMemory(p) > 3 * (p->Size >> 2));
-    p->GlueCount = 0;
-    p->OrderFall = p->MaxOrder;
+  {
+    if (p->RestoreMethod == PPMD8_RESTORE_METHOD_RESTART ||
+        GetUsedMemory(p) < (p->Size >> 1))
+      RestartModel(p);
+    else {
+      while (p->MaxContext->Suffix)
+        p->MaxContext = SUFFIX(p->MaxContext);
+      do {
+        CutOff(p, p->MaxContext, 0);
+        ExpandTextArea(p);
+      } while (GetUsedMemory(p) > 3 * (p->Size >> 2));
+      p->GlueCount = 0;
+      p->OrderFall = p->MaxOrder;
+    }
   }
 }
 

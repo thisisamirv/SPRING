@@ -34,6 +34,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 
 #define BUF_SIZE 1024
 #define MIN_TEST_LOOPS 8
@@ -49,7 +50,7 @@ void print_histogram(struct isal_huff_histogram *histogram) {
       printf("\n");
     else
       printf(", ");
-    printf("%4lu", histogram->lit_len_histogram[i]);
+    printf("%4" PRIu64, histogram->lit_len_histogram[i]);
   }
   printf("\n");
 
@@ -59,7 +60,7 @@ void print_histogram(struct isal_huff_histogram *histogram) {
       printf("\n");
     else
       printf(", ");
-    printf("%4lu", histogram->dist_histogram[i]);
+    printf("%4" PRIu64, histogram->dist_histogram[i]);
   }
   printf("\n");
 }
@@ -67,8 +68,8 @@ void print_histogram(struct isal_huff_histogram *histogram) {
 int main(int argc, char *argv[]) {
   FILE *in;
   unsigned char *inbuf;
-  int iterations, avail_in;
-  uint64_t infile_size;
+  size_t iterations, avail_in;
+  size_t infile_size;
   struct isal_huff_histogram histogram1, histogram2;
 
   memset(&histogram1, 0, sizeof(histogram1));
@@ -89,7 +90,7 @@ int main(int argc, char *argv[]) {
   /* Allocate space for entire input file and output
    * (assuming some possible expansion on output size)
    */
-  infile_size = get_filesize(in);
+  infile_size = (size_t)get_filesize(in);
 
   if (infile_size != 0)
     iterations = RUN_MEM_SIZE / infile_size;
@@ -115,7 +116,7 @@ int main(int argc, char *argv[]) {
   struct perf start;
   BENCHMARK(&start, BENCHMARK_TIME,
             isal_update_histogram(inbuf, infile_size, &histogram1));
-  printf("  file %s - in_size=%lu\n", argv[1], infile_size);
+  printf("  file %s - in_size=%zu\n", argv[1], infile_size);
   printf("igzip_hist_file: ");
   perf_print(start, (long long)infile_size);
 

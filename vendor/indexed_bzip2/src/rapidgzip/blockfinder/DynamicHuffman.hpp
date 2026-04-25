@@ -110,7 +110,7 @@ nextDeflateCandidate( uint32_t bits )
  * Size: 13 bits: 8 KiB, 14 bits: 16 KiB, ...
  */
 template<uint8_t CACHED_BIT_COUNT>
-constexpr auto NEXT_DYNAMIC_DEFLATE_CANDIDATE_LUT =
+inline constexpr auto NEXT_DYNAMIC_DEFLATE_CANDIDATE_LUT =
     [] ()
     {
         std::array<int8_t, 1U << CACHED_BIT_COUNT> result{};
@@ -150,7 +150,7 @@ constexpr uint8_t OPTIMAL_NEXT_DEFLATE_LUT_SIZE = 15;
  * to fix compilation issues.
  */
 template<>
-constexpr std::array<int8_t, 1U << 15U> NEXT_DYNAMIC_DEFLATE_CANDIDATE_LUT<15U> = {
+inline constexpr std::array<int8_t, 1U << 15U> NEXT_DYNAMIC_DEFLATE_CANDIDATE_LUT<15U> = {
     #include "NEXT_DYNAMIC_DEFLATE_CANDIDATE_LUT_15.csv"
 };
 
