@@ -28,9 +28,14 @@
 **********************************************************************/
 #ifndef __RISCV_MULTIBINARY_H__
 #define __RISCV_MULTIBINARY_H__
-#ifndef __riscv
-#error "This file is for riscv only"
-#endif
+
+#include <stdint.h>
+
+#define DEFINE_INTERFACE_DISPATCHER(name) void *name##_dispatcher(void)
+
+#define HWCAP_RV(letter) (1ul << ((letter) - 'A'))
+
+#if defined(__riscv)
 
 #ifdef __ASSEMBLY__
 
@@ -44,7 +49,8 @@
  * 	1. Define dispather function
  * 	2. name must be \name\()_dispatcher
  * 	3. Prototype should be *"void * \name\()_dispatcher"*
- * 	4. The dispather should return the right function pointer , revision and a string information .
+ * 	4. The dispather should return the right function pointer , revision and
+ * a string information .
  **/
 .macro mbin_interface name:req
 	.section .data
@@ -107,11 +113,10 @@
 	jr      t0
 .endm
 #else /* __ASSEMBLY__ */
+#if defined(__linux__)
 #include <sys/auxv.h>
-#define HWCAP_RV(letter) (1ul << ((letter) - 'A'))
-
-#define DEFINE_INTERFACE_DISPATCHER(name)                               \
-	void * name##_dispatcher(void)
+#endif
 
 #endif /* __ASSEMBLY__ */
+#endif /* __riscv */
 #endif /* __RISCV_MULTIBINARY_H__ */

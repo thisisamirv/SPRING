@@ -26,40 +26,37 @@
   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 **********************************************************************/
-#include <aarch64_multibinary.h>
-#include "crc.h"
+#if defined(__aarch64__)
 
-extern uint32_t
-crc32_gzip_refl_crc_ext(uint32_t, uint8_t *, uint64_t);
-extern uint32_t
-crc32_gzip_refl_3crc_fold(uint32_t, uint8_t *, uint64_t);
-extern uint32_t
-crc32_gzip_refl_pmull(uint32_t, uint8_t *, uint64_t);
+extern uint32_t crc32_gzip_refl_crc_ext(uint32_t, uint8_t *, uint64_t);
+extern uint32_t crc32_gzip_refl_3crc_fold(uint32_t, uint8_t *, uint64_t);
+extern uint32_t crc32_gzip_refl_pmull(uint32_t, uint8_t *, uint64_t);
 
-DEFINE_INTERFACE_DISPATCHER(crc32_gzip_refl)
-{
+DEFINE_INTERFACE_DISPATCHER(crc32_gzip_refl) {
 #if defined(__linux__)
-        unsigned long auxval = getauxval(AT_HWCAP);
+  unsigned long auxval = getauxval(AT_HWCAP);
 
-        if (auxval & HWCAP_CRC32) {
-                switch (get_micro_arch_id()) {
-                case MICRO_ARCH_ID(ARM, NEOVERSE_N1):
-                case MICRO_ARCH_ID(ARM, CORTEX_A57):
-                case MICRO_ARCH_ID(ARM, CORTEX_A72):
-                        return crc32_gzip_refl_crc_ext;
-                }
-        }
-        if ((HWCAP_CRC32 | HWCAP_PMULL) == (auxval & (HWCAP_CRC32 | HWCAP_PMULL))) {
-                return crc32_gzip_refl_3crc_fold;
-        }
+  if (auxval & HWCAP_CRC32) {
+    switch (get_micro_arch_id()) {
+    case MICRO_ARCH_ID(ARM, NEOVERSE_N1):
+    case MICRO_ARCH_ID(ARM, CORTEX_A57):
+    case MICRO_ARCH_ID(ARM, CORTEX_A72):
+      return crc32_gzip_refl_crc_ext;
+    }
+  }
+  if ((HWCAP_CRC32 | HWCAP_PMULL) == (auxval & (HWCAP_CRC32 | HWCAP_PMULL))) {
+    return crc32_gzip_refl_3crc_fold;
+  }
 
-        if (auxval & HWCAP_PMULL)
-                return crc32_gzip_refl_pmull;
+  if (auxval & HWCAP_PMULL)
+    return crc32_gzip_refl_pmull;
 #elif defined(__APPLE__)
-        if (sysctlEnabled(SYSCTL_CRC32_KEY))
-                return crc32_gzip_refl_3crc_fold;
-        if (sysctlEnabled(SYSCTL_PMULL_KEY))
-                return crc32_gzip_refl_pmull;
+  if (sysctlEnabled(SYSCTL_CRC32_KEY))
+    return crc32_gzip_refl_3crc_fold;
+  if (sysctlEnabled(SYSCTL_PMULL_KEY))
+    return crc32_gzip_refl_pmull;
 #endif
-        return crc32_gzip_refl_base;
+  return crc32_gzip_refl_base;
 }
+
+#endif /* __aarch64__ */

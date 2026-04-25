@@ -23,33 +23,31 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "archive_platform.h"
-#include "archive_time_private.h"
-#include "archive_private.h"
 #include "archive_entry.h"
+#include "archive_platform.h"
+#include "archive_private.h"
+#include "archive_time_private.h"
 
 #if defined(_WIN32) && !defined(__CYGWIN__)
 
-void
-archive_entry_copy_bhfi(struct archive_entry *entry,
-			BY_HANDLE_FILE_INFORMATION *bhfi)
-{
-	int64_t secs;
-	uint32_t nsecs;
+void archive_entry_copy_bhfi(struct archive_entry *entry,
+                             BY_HANDLE_FILE_INFORMATION *bhfi) {
+  int64_t secs;
+  uint32_t nsecs;
 
-	ntfs_to_unix(FILETIME_to_ntfs(&bhfi->ftLastAccessTime), &secs, &nsecs);
-	archive_entry_set_atime(entry, secs, nsecs);
-	ntfs_to_unix(FILETIME_to_ntfs(&bhfi->ftLastWriteTime), &secs, &nsecs);
-	archive_entry_set_mtime(entry, secs, nsecs);
-	ntfs_to_unix(FILETIME_to_ntfs(&bhfi->ftCreationTime), &secs, &nsecs);
-	archive_entry_set_birthtime(entry, secs, nsecs);
-	archive_entry_set_ctime(entry, secs, nsecs);
-	archive_entry_set_dev(entry, bhfi->dwVolumeSerialNumber);
-	archive_entry_set_ino64(entry, (((int64_t)bhfi->nFileIndexHigh) << 32)
-		+ bhfi->nFileIndexLow);
-	archive_entry_set_nlink(entry, bhfi->nNumberOfLinks);
-	archive_entry_set_size(entry, (((int64_t)bhfi->nFileSizeHigh) << 32)
-		+ bhfi->nFileSizeLow);
-	/* archive_entry_set_mode(entry, st->st_mode); */
+  ntfs_to_unix(FILETIME_to_ntfs(&bhfi->ftLastAccessTime), &secs, &nsecs);
+  archive_entry_set_atime(entry, secs, nsecs);
+  ntfs_to_unix(FILETIME_to_ntfs(&bhfi->ftLastWriteTime), &secs, &nsecs);
+  archive_entry_set_mtime(entry, secs, nsecs);
+  ntfs_to_unix(FILETIME_to_ntfs(&bhfi->ftCreationTime), &secs, &nsecs);
+  archive_entry_set_birthtime(entry, secs, nsecs);
+  archive_entry_set_ctime(entry, secs, nsecs);
+  archive_entry_set_dev(entry, bhfi->dwVolumeSerialNumber);
+  archive_entry_set_ino64(entry, (((int64_t)bhfi->nFileIndexHigh) << 32) +
+                                     bhfi->nFileIndexLow);
+  archive_entry_set_nlink(entry, bhfi->nNumberOfLinks);
+  archive_entry_set_size(entry, (((int64_t)bhfi->nFileSizeHigh) << 32) +
+                                    bhfi->nFileSizeLow);
+  /* archive_entry_set_mode(entry, st->st_mode); */
 }
 #endif

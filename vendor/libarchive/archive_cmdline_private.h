@@ -33,9 +33,9 @@
 #endif
 
 struct archive_cmdline {
-        char            *path;
-        char            **argv;
-        int              argc;
+  char *path;
+  char **argv;
+  int argc;
 };
 
 struct archive_cmdline *__archive_cmdline_allocate(void);

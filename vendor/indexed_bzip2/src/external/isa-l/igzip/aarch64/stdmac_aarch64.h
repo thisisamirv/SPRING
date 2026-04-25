@@ -32,26 +32,17 @@
 
 #ifdef __ASSEMBLY__
 
-#define DEBUG_STACK	144
+#define DEBUG_STACK 144
 
-.macro push_stack
-	stp	x29, x30,[sp,0-DEBUG_STACK]!
-	mov	x29, sp
-        stp     x19, x20, [sp, 16]
-        stp     x21, x22, [sp, 32]
-        stp     x23, x24, [sp, 48]
-        stp     x25, x26, [sp, 64]
-        stp     x27, x28, [sp, 80]
-.endm
-.macro pop_stack
-	ldp     x19, x20, [sp, 16]
-        ldp     x21, x22, [sp, 32]
-        ldp     x23, x24, [sp, 48]
-        ldp     x25, x26, [sp, 64]
-        ldp     x27, x28, [sp, 80]
+.macro push_stack stp x29, x30, [ sp, 0 - DEBUG_STACK ] !mov x29, sp stp x19,
+    x20, [ sp, 16 ] stp x21, x22, [ sp, 32 ] stp x23, x24, [ sp, 48 ] stp x25,
+    x26, [ sp, 64 ] stp x27, x28, [ sp, 80 ].endm.macro pop_stack ldp x19, x20,
+    [ sp, 16 ] ldp x21, x22, [ sp, 32 ] ldp x23, x24, [ sp, 48 ] ldp x25, x26,
+    [ sp, 64 ] ldp x27, x28,
+    [ sp, 80 ]
 
-        ldp     x29, x30, [sp], DEBUG_STACK
-.endm
+    ldp x29,
+    x30, [sp], DEBUG_STACK.endm
 
 #endif
 #endif

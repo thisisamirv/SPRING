@@ -27,12 +27,11 @@
   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 **********************************************************************/
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
 #include "igzip_lib.h"
 #include "test.h"
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 
 #ifndef GT_L3_CACHE
 #define GT_L3_CACHE 32 * 1024 * 1024 /* some number > last level cache */
@@ -40,11 +39,11 @@
 
 #if !defined(COLD_TEST) && !defined(TEST_CUSTOM)
 // Cached test, loop many times over small dataset
-#define TEST_LEN      8 * 1024
+#define TEST_LEN 8 * 1024
 #define TEST_TYPE_STR "_warm"
 #elif defined(COLD_TEST)
 // Uncached test.  Pull from large mem base.
-#define TEST_LEN      (2 * GT_L3_CACHE)
+#define TEST_LEN (2 * GT_L3_CACHE)
 #define TEST_TYPE_STR "_cold"
 #endif
 
@@ -52,24 +51,25 @@
 #define TEST_SEED 0x1234
 #endif
 
-int
-main(int argc, char *argv[])
-{
-        void *buf;
-        struct perf start;
+int main(int argc, char *argv[]) {
+  (void)argc;
+  (void)argv;
 
-        printf("adler32_perf:\n");
+  void *buf;
+  struct perf start;
 
-        if (posix_memalign(&buf, 1024, TEST_LEN)) {
-                printf("alloc error: Fail");
-                return -1;
-        }
-        memset(buf, 0, TEST_LEN);
+  printf("adler32_perf:\n");
 
-        BENCHMARK(&start, BENCHMARK_TIME, isal_adler32(TEST_SEED, buf, TEST_LEN));
-        printf("adler32" TEST_TYPE_STR ": ");
-        perf_print(start, (long long) TEST_LEN);
+  if (posix_memalign(&buf, 1024, TEST_LEN)) {
+    printf("alloc error: Fail");
+    return -1;
+  }
+  memset(buf, 0, TEST_LEN);
 
-        aligned_free(buf);
-        return 0;
+  BENCHMARK(&start, BENCHMARK_TIME, isal_adler32(TEST_SEED, buf, TEST_LEN));
+  printf("adler32" TEST_TYPE_STR ": ");
+  perf_print(start, (long long)TEST_LEN);
+
+  aligned_free(buf);
+  return 0;
 }

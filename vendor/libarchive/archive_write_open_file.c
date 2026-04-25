@@ -47,56 +47,48 @@
 #include "archive.h"
 
 struct write_FILE_data {
-	FILE		*f;
+  FILE *f;
 };
 
-static int	file_free(struct archive *, void *);
-static int	file_open(struct archive *, void *);
-static ssize_t	file_write(struct archive *, void *, const void *buff, size_t);
+static int file_free(struct archive *, void *);
+static int file_open(struct archive *, void *);
+static ssize_t file_write(struct archive *, void *, const void *buff, size_t);
 
-int
-archive_write_open_FILE(struct archive *a, FILE *f)
-{
-	struct write_FILE_data *mine;
+int archive_write_open_FILE(struct archive *a, FILE *f) {
+  struct write_FILE_data *mine;
 
-	mine = malloc(sizeof(*mine));
-	if (mine == NULL) {
-		archive_set_error(a, ENOMEM, "No memory");
-		return (ARCHIVE_FATAL);
-	}
-	mine->f = f;
-	return (archive_write_open2(a, mine, file_open, file_write,
-	    NULL, file_free));
+  mine = malloc(sizeof(*mine));
+  if (mine == NULL) {
+    archive_set_error(a, ENOMEM, "No memory");
+    return (ARCHIVE_FATAL);
+  }
+  mine->f = f;
+  return (archive_write_open2(a, mine, file_open, file_write, NULL, file_free));
 }
 
-static int
-file_open(struct archive *a, void *client_data)
-{
-	(void)a; /* UNUSED */
-	(void)client_data; /* UNUSED */
+static int file_open(struct archive *a, void *client_data) {
+  (void)a;           /* UNUSED */
+  (void)client_data; /* UNUSED */
 
-	return (ARCHIVE_OK);
+  return (ARCHIVE_OK);
 }
 
-static ssize_t
-file_write(struct archive *a, void *client_data, const void *buff, size_t length)
-{
-	struct write_FILE_data	*mine;
-	size_t	bytesWritten;
+static ssize_t file_write(struct archive *a, void *client_data,
+                          const void *buff, size_t length) {
+  struct write_FILE_data *mine;
+  size_t bytesWritten;
 
-	mine = client_data;
-	bytesWritten = fwrite(buff, 1, length, mine->f);
-	if (bytesWritten != length) {
-		archive_set_error(a, errno, "Write error");
-		return (-1);
-	}
-	return (bytesWritten);
+  mine = client_data;
+  bytesWritten = fwrite(buff, 1, length, mine->f);
+  if (bytesWritten != length) {
+    archive_set_error(a, errno, "Write error");
+    return (-1);
+  }
+  return (bytesWritten);
 }
 
-static int
-file_free(struct archive *a, void *client_data)
-{
-	(void)a; /* UNUSED */
-	free(client_data);
-	return (ARCHIVE_OK);
+static int file_free(struct archive *a, void *client_data) {
+  (void)a; /* UNUSED */
+  free(client_data);
+  return (ARCHIVE_OK);
 }

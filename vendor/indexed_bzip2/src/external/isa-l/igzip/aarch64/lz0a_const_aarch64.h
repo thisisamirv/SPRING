@@ -29,32 +29,36 @@
 
 #ifndef __LZ0A_CONST_AARCH64_H__
 #define __LZ0A_CONST_AARCH64_H__
-#include "options_aarch64.h"
 
 #ifdef __ASSEMBLY__
-.set K , 1024
-.set D , IGZIP_HIST_SIZE //  Amount of history
-.set LA , 18 * 16 //  Max look-ahead, rounded up to 32 byte boundary
-.set BSIZE , 2*IGZIP_HIST_SIZE + LA //  Nominal buffer size
+.set K, 1024 .set D,
+    IGZIP_HIST_SIZE //  Amount of history
+        .set LA,
+    18 * 16 //  Max look-ahead, rounded up to 32 byte boundary
+             .set BSIZE,
+    2 * IGZIP_HIST_SIZE + LA //  Nominal buffer size
 
 ///    Constants for stateless compression
 #define LAST_BYTES_COUNT 3 //  Bytes to prevent reading out of array bounds
-#define LA_STATELESS 258 //  No round up since no data is copied to a buffer
+#define LA_STATELESS 258   //  No round up since no data is copied to a buffer
 
-.set IGZIP_LVL0_HASH_SIZE , (8 * K)
-.set IGZIP_HASH8K_HASH_SIZE , (8 * K)
-.set IGZIP_HASH_HIST_HASH_SIZE , IGZIP_HIST_SIZE
-.set IGZIP_HASH_MAP_HASH_SIZE , IGZIP_HIST_SIZE
+                              .set IGZIP_LVL0_HASH_SIZE,
+    (8 * K).set IGZIP_HASH8K_HASH_SIZE, (8 * K).set IGZIP_HASH_HIST_HASH_SIZE,
+    IGZIP_HIST_SIZE.set IGZIP_HASH_MAP_HASH_SIZE,
+    IGZIP_HIST_SIZE
 
 #define LVL0_HASH_MASK (IGZIP_LVL0_HASH_SIZE - 1)
 #define HASH8K_HASH_MASK (IGZIP_HASH8K_HASH_SIZE - 1)
 #define HASH_HIST_HASH_MASK (IGZIP_HASH_HIST_HASH_SIZE - 1)
 #define HASH_MAP_HASH_MASK (IGZIP_HASH_MAP_HASH_SIZE - 1)
 
-.set MIN_DEF_MATCH , 3 // Minimum length of a match in deflate
-.set SHORTEST_MATCH , 4
+        .set MIN_DEF_MATCH,
+    3 // Minimum length of a match in deflate
+        .set SHORTEST_MATCH,
+    4
 
-.set SLOP , 8
+        .set SLOP,
+    8
 
 #define ICF_CODE_BYTES 4
 #define LIT_LEN_BIT_COUNT 10
@@ -66,7 +70,6 @@
 #define DIST_OFFSET LIT_LEN_BIT_COUNT
 #define EXTRA_BITS_OFFSET (DIST_OFFSET + DIST_LIT_BIT_COUNT)
 #define LIT (0x1E << DIST_OFFSET)
-
 
 #endif
 #endif

@@ -25,108 +25,91 @@
 
 #include "archive_platform.h"
 
-#include "archive_read_private.h"
 #include "archive_options_private.h"
+#include "archive_read_private.h"
 
-static int	archive_set_format_option(struct archive *a,
-		    const char *m, const char *o, const char *v);
-static int	archive_set_filter_option(struct archive *a,
-		    const char *m, const char *o, const char *v);
-static int	archive_set_option(struct archive *a,
-		    const char *m, const char *o, const char *v);
+static int archive_set_format_option(struct archive *a, const char *m,
+                                     const char *o, const char *v);
+static int archive_set_filter_option(struct archive *a, const char *m,
+                                     const char *o, const char *v);
+static int archive_set_option(struct archive *a, const char *m, const char *o,
+                              const char *v);
 
-int
-archive_read_set_format_option(struct archive *a, const char *m, const char *o,
-    const char *v)
-{
-	return _archive_set_option(a, m, o, v,
-	    ARCHIVE_READ_MAGIC, "archive_read_set_format_option",
-	    archive_set_format_option);
+int archive_read_set_format_option(struct archive *a, const char *m,
+                                   const char *o, const char *v) {
+  return _archive_set_option(a, m, o, v, ARCHIVE_READ_MAGIC,
+                             "archive_read_set_format_option",
+                             archive_set_format_option);
 }
 
-int
-archive_read_set_filter_option(struct archive *a, const char *m, const char *o,
-    const char *v)
-{
-	return _archive_set_option(a, m, o, v,
-	    ARCHIVE_READ_MAGIC, "archive_read_set_filter_option",
-	    archive_set_filter_option);
+int archive_read_set_filter_option(struct archive *a, const char *m,
+                                   const char *o, const char *v) {
+  return _archive_set_option(a, m, o, v, ARCHIVE_READ_MAGIC,
+                             "archive_read_set_filter_option",
+                             archive_set_filter_option);
 }
 
-int
-archive_read_set_option(struct archive *a, const char *m, const char *o,
-    const char *v)
-{
-	return _archive_set_option(a, m, o, v,
-	    ARCHIVE_READ_MAGIC, "archive_read_set_option",
-	    archive_set_option);
+int archive_read_set_option(struct archive *a, const char *m, const char *o,
+                            const char *v) {
+  return _archive_set_option(a, m, o, v, ARCHIVE_READ_MAGIC,
+                             "archive_read_set_option", archive_set_option);
 }
 
-int
-archive_read_set_options(struct archive *a, const char *options)
-{
-	return _archive_set_options(a, options,
-	    ARCHIVE_READ_MAGIC, "archive_read_set_options",
-	    archive_set_option);
+int archive_read_set_options(struct archive *a, const char *options) {
+  return _archive_set_options(a, options, ARCHIVE_READ_MAGIC,
+                              "archive_read_set_options", archive_set_option);
 }
 
-static int
-archive_set_format_option(struct archive *_a, const char *m, const char *o,
-    const char *v)
-{
-	struct archive_read *a = (struct archive_read *)_a;
-	size_t i;
-	int r, rv = ARCHIVE_WARN, matched_modules = 0;
+static int archive_set_format_option(struct archive *_a, const char *m,
+                                     const char *o, const char *v) {
+  struct archive_read *a = (struct archive_read *)_a;
+  size_t i;
+  int r, rv = ARCHIVE_WARN, matched_modules = 0;
 
-	for (i = 0; i < sizeof(a->formats)/sizeof(a->formats[0]); i++) {
-		struct archive_format_descriptor *format = &a->formats[i];
+  for (i = 0; i < sizeof(a->formats) / sizeof(a->formats[0]); i++) {
+    struct archive_format_descriptor *format = &a->formats[i];
 
-		if (format->options == NULL || format->name == NULL)
-			/* This format does not support option. */
-			continue;
-		if (m != NULL) {
-			if (strcmp(format->name, m) != 0)
-				continue;
-			++matched_modules;
-		}
+    if (format->options == NULL || format->name == NULL)
+      /* This format does not support option. */
+      continue;
+    if (m != NULL) {
+      if (strcmp(format->name, m) != 0)
+        continue;
+      ++matched_modules;
+    }
 
-		a->format = format;
-		r = format->options(a, o, v);
-		a->format = NULL;
+    a->format = format;
+    r = format->options(a, o, v);
+    a->format = NULL;
 
-		if (r == ARCHIVE_FATAL)
-			return (ARCHIVE_FATAL);
+    if (r == ARCHIVE_FATAL)
+      return (ARCHIVE_FATAL);
 
-		if (r == ARCHIVE_OK)
-			rv = ARCHIVE_OK;
-	}
-	/* If the format name didn't match, return a special code for
-	 * _archive_set_option[s]. */
-	if (m != NULL && matched_modules == 0)
-		return ARCHIVE_WARN - 1;
-	return (rv);
+    if (r == ARCHIVE_OK)
+      rv = ARCHIVE_OK;
+  }
+  /* If the format name didn't match, return a special code for
+   * _archive_set_option[s]. */
+  if (m != NULL && matched_modules == 0)
+    return ARCHIVE_WARN - 1;
+  return (rv);
 }
 
-static int
-archive_set_filter_option(struct archive *_a, const char *m, const char *o,
-    const char *v)
-{
-	(void)_a; /* UNUSED */
-	(void)o; /* UNUSED */
-	(void)v; /* UNUSED */
+static int archive_set_filter_option(struct archive *_a, const char *m,
+                                     const char *o, const char *v) {
+  (void)_a; /* UNUSED */
+  (void)o;  /* UNUSED */
+  (void)v;  /* UNUSED */
 
-	/* If the filter name didn't match, return a special code for
-	 * _archive_set_option[s]. */
-	if (m != NULL)
-		return ARCHIVE_WARN - 1;
-	return ARCHIVE_WARN;
+  /* If the filter name didn't match, return a special code for
+   * _archive_set_option[s]. */
+  if (m != NULL)
+    return ARCHIVE_WARN - 1;
+  return ARCHIVE_WARN;
 }
 
-static int
-archive_set_option(struct archive *a, const char *m, const char *o,
-    const char *v)
-{
-	return _archive_set_either_option(a, m, o, v,
-	    archive_set_format_option,
-	    archive_set_filter_option);
+static int archive_set_option(struct archive *a, const char *m, const char *o,
+                              const char *v) {
+  return _archive_set_either_option(a, m, o, v, archive_set_format_option,
+                                    archive_set_filter_option);
 }

@@ -33,22 +33,22 @@
 #include "archive_string.h"
 
 struct archive_acl_entry {
-	struct archive_acl_entry *next;
-	int	type;			/* E.g., access or default */
-	int	tag;			/* E.g., user/group/other/mask */
-	int	permset;		/* r/w/x bits */
-	int	id;			/* uid/gid for user/group */
-	struct archive_mstring name;		/* uname/gname */
+  struct archive_acl_entry *next;
+  int type;                    /* E.g., access or default */
+  int tag;                     /* E.g., user/group/other/mask */
+  int permset;                 /* r/w/x bits */
+  int id;                      /* uid/gid for user/group */
+  struct archive_mstring name; /* uname/gname */
 };
 
 struct archive_acl {
-	mode_t		mode;
-	struct archive_acl_entry	*acl_head;
-	struct archive_acl_entry	*acl_p;
-	int		 acl_state;	/* See acl_next for details. */
-	wchar_t		*acl_text_w;
-	char		*acl_text;
-	int		 acl_types;
+  mode_t mode;
+  struct archive_acl_entry *acl_head;
+  struct archive_acl_entry *acl_p;
+  int acl_state; /* See acl_next for details. */
+  wchar_t *acl_text_w;
+  char *acl_text;
+  int acl_types;
 };
 
 void archive_acl_clear(struct archive_acl *);
@@ -56,28 +56,30 @@ void archive_acl_copy(struct archive_acl *, struct archive_acl *);
 int archive_acl_count(struct archive_acl *, int);
 int archive_acl_types(struct archive_acl *);
 int archive_acl_reset(struct archive_acl *, int);
-int archive_acl_next(struct archive *, struct archive_acl *, int,
-    int *, int *, int *, int *, const char **);
+int archive_acl_next(struct archive *, struct archive_acl *, int, int *, int *,
+                     int *, int *, const char **);
 
-int archive_acl_add_entry(struct archive_acl *, int, int, int, int, const char *);
-int archive_acl_add_entry_w_len(struct archive_acl *,
-    int, int, int, int, const wchar_t *, size_t);
-int archive_acl_add_entry_len(struct archive_acl *,
-    int, int, int, int, const char *, size_t);
+int archive_acl_add_entry(struct archive_acl *, int, int, int, int,
+                          const char *);
+int archive_acl_add_entry_w_len(struct archive_acl *, int, int, int, int,
+                                const wchar_t *, size_t);
+int archive_acl_add_entry_len(struct archive_acl *, int, int, int, int,
+                              const char *, size_t);
 
 wchar_t *archive_acl_to_text_w(struct archive_acl *, ssize_t *, int,
-    struct archive *);
+                               struct archive *);
 char *archive_acl_to_text_l(struct archive_acl *, ssize_t *, int,
-    struct archive_string_conv *);
+                            struct archive_string_conv *);
 
 /*
  * ACL text parser.
  */
 int archive_acl_from_text_w(struct archive_acl *, const wchar_t * /* wtext */,
-    int /* type */);
+                            int /* type */);
 int archive_acl_from_text_l(struct archive_acl *, const char * /* text */,
-    int /* type */, struct archive_string_conv *);
+                            int /* type */, struct archive_string_conv *);
 int archive_acl_from_text_nl(struct archive_acl *, const char * /* text */,
-    size_t /* size of text */, int /* type */, struct archive_string_conv *);
+                             size_t /* size of text */, int /* type */,
+                             struct archive_string_conv *);
 
 #endif /* !ARCHIVE_ACL_PRIVATE_H_INCLUDED */

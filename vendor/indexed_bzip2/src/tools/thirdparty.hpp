@@ -3,13 +3,10 @@
 #include <string>
 #include <string_view>
 
-
-namespace thirdparty
-{
-namespace cxxopts
-{
-static constexpr std::string_view name{ "cxxopts" };
-static constexpr std::string_view url{ "https://github.com/jarro2783/cxxopts/" };
+namespace thirdparty {
+namespace cxxopts {
+static constexpr std::string_view name{"cxxopts"};
+static constexpr std::string_view url{"https://github.com/jarro2783/cxxopts/"};
 static constexpr std::string_view license{
     R"(Copyright (c) 2014 Jarryd Beck
 
@@ -30,14 +27,12 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
-)" };
-}  // namespace cxxopts
+)"};
+} // namespace cxxopts
 
-
-namespace isal
-{
-static constexpr std::string_view name{ "ISA-L" };
-static constexpr std::string_view url{ "https://github.com/intel/isa-l" };
+namespace isal {
+static constexpr std::string_view name{"ISA-L"};
+static constexpr std::string_view url{"https://github.com/intel/isa-l"};
 static constexpr std::string_view license{
     R"(Copyright(c) 2011-2017 Intel Corporation All rights reserved.
 
@@ -65,14 +60,12 @@ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
 THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-)" };
-}  // namespace isal
+)"};
+} // namespace isal
 
-
-namespace rpmalloc
-{
-static constexpr std::string_view name{ "rpmalloc" };
-static constexpr std::string_view url{ "https://github.com/mjansson/rpmalloc" };
+namespace rpmalloc {
+static constexpr std::string_view name{"rpmalloc"};
+static constexpr std::string_view url{"https://github.com/mjansson/rpmalloc"};
 static constexpr std::string_view unlicense{
     R"(This is free and unencumbered software released into the public domain.
 
@@ -98,7 +91,7 @@ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 
 For more information, please refer to <http://unlicense.org>
-)" };
+)"};
 
 static constexpr std::string_view mit{
     R"(The MIT License (MIT)
@@ -123,21 +116,17 @@ IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
 CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-)" };
+)"};
 
-static const std::string fullLicense{
-    std::string( unlicense ) + R"(
+static const std::string fullLicense{std::string(unlicense) + R"(
 You can also use this software under the MIT license if public domain
 is not recognized in your country
-)" + std::string( mit )
-};
-}  // namespace rpmalloc
+)" + std::string(mit)};
+} // namespace rpmalloc
 
-
-namespace zlib
-{
-static constexpr std::string_view name{ "zlib" };
-static constexpr std::string_view url{ "https://github.com/madler/zlib/" };
+namespace zlib {
+static constexpr std::string_view name{"zlib"};
+static constexpr std::string_view url{"https://github.com/madler/zlib/"};
 static constexpr std::string_view license{
     R"(Copyright notice:
 
@@ -161,14 +150,12 @@ static constexpr std::string_view license{
 
   Jean-loup Gailly        Mark Adler
   jloup@gzip.org          madler@alumni.caltech.edu
-)" };
-}  // namespace zlib
+)"};
+} // namespace zlib
 
-
-namespace zlib_ng
-{
-static constexpr std::string_view name{ "zlib-ng" };
-static constexpr std::string_view url{ "https://github.com/zlib-ng/zlib-ng" };
+namespace zlib_ng {
+static constexpr std::string_view name{"zlib-ng"};
+static constexpr std::string_view url{"https://github.com/zlib-ng/zlib-ng"};
 static constexpr std::string_view license{
     R"((C) 1995-2024 Jean-loup Gailly and Mark Adler
 
@@ -189,33 +176,29 @@ freely, subject to the following restrictions:
    misrepresented as being the original software.
 
 3. This notice may not be removed or altered from any source distribution.
-)" };
-}  // namespace zlib_ng
-}  // namespace thirdparty
+)"};
+} // namespace zlib_ng
+} // namespace thirdparty
 
-
-[[nodiscard]] inline std::string
-toYamlString( const std::string_view text )
-{
-    std::string result;
-    result += '"';
-    for ( const auto c : text ) {
-        switch ( c )
-        {
-        case '"':
-            result += R"(\")";
-            break;
-        case '\\':
-            result += R"(\\)";
-            break;
-        case '\n':
-            result += R"(\n)";
-            break;
-        default:
-            result += c;
-            break;
-        }
+[[nodiscard]] inline std::string toYamlString(const std::string_view text) {
+  std::string result;
+  result += '"';
+  for (const auto c : text) {
+    switch (c) {
+    case '"':
+      result += R"(\")";
+      break;
+    case '\\':
+      result += R"(\\)";
+      break;
+    case '\n':
+      result += R"(\n)";
+      break;
+    default:
+      result += c;
+      break;
     }
-    result += '"';
-    return result;
+  }
+  result += '"';
+  return result;
 }

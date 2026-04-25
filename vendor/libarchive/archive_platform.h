@@ -65,16 +65,16 @@
 #define HAVE_FCNTL_H 1
 #define HAVE_SYS_STAT_H 1
 #define HAVE_SYS_TYPES_H 1
-#include <limits.h>
-#include <string.h>
-#include <stdlib.h>
 #include <errno.h>
-#include <wchar.h>
-#include <stdint.h>
-#include <inttypes.h>
 #include <fcntl.h>
+#include <inttypes.h>
+#include <limits.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <wchar.h>
 #if !defined(_WIN32)
 #define HAVE_UNISTD_H 1
 #define HAVE_DIRENT_H 1
@@ -82,12 +82,12 @@
 #define HAVE_GRP_H 1
 #define HAVE_SYS_TIME_H 1
 #define HAVE_GETTIMEOFDAY 1
-#include <unistd.h>
 #include <dirent.h>
-#include <pwd.h>
 #include <grp.h>
-#include <sys/time.h>
+#include <pwd.h>
 #include <sys/ioctl.h>
+#include <sys/time.h>
+#include <unistd.h>
 #ifndef HAVE_SYS_IOCTL_H
 #define HAVE_SYS_IOCTL_H 1
 #endif
@@ -146,22 +146,22 @@
 #define HAVE_GRP_H 1
 #define HAVE_GETPWUID 1
 #define HAVE_GETGRGID 1
-#include <limits.h>
-#include <string.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <wchar.h>
-#include <sys/ioctl.h>
-#include <stdint.h>
-#include <inttypes.h>
-#include <fcntl.h>
-#include <sys/time.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <dirent.h>
-#include <pwd.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <grp.h>
+#include <inttypes.h>
+#include <limits.h>
+#include <pwd.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <wchar.h>
 #ifndef HAVE_SYS_IOCTL_H
 #define HAVE_SYS_IOCTL_H 1
 #endif
@@ -219,22 +219,22 @@
 #define HAVE_GRP_H 1
 #define HAVE_GETPWUID 1
 #define HAVE_GETGRGID 1
-#include <limits.h>
-#include <string.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <wchar.h>
-#include <sys/ioctl.h>
-#include <stdint.h>
-#include <inttypes.h>
-#include <fcntl.h>
-#include <sys/time.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <dirent.h>
-#include <pwd.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <grp.h>
+#include <inttypes.h>
+#include <limits.h>
+#include <pwd.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <wchar.h>
 #ifndef HAVE_SYS_IOCTL_H
 #define HAVE_SYS_IOCTL_H 1
 #endif
@@ -292,22 +292,22 @@
 #define HAVE_GRP_H 1
 #define HAVE_GETPWUID 1
 #define HAVE_GETGRGID 1
-#include <limits.h>
-#include <string.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <wchar.h>
-#include <sys/ioctl.h>
-#include <stdint.h>
-#include <inttypes.h>
-#include <fcntl.h>
-#include <sys/time.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <dirent.h>
-#include <pwd.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <grp.h>
+#include <inttypes.h>
+#include <limits.h>
+#include <pwd.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <wchar.h>
 #ifndef HAVE_SYS_IOCTL_H
 #define HAVE_SYS_IOCTL_H 1
 #endif
@@ -365,22 +365,22 @@
 #define HAVE_GRP_H 1
 #define HAVE_GETPWUID 1
 #define HAVE_GETGRGID 1
-#include <limits.h>
-#include <string.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <wchar.h>
-#include <sys/ioctl.h>
-#include <stdint.h>
-#include <inttypes.h>
-#include <fcntl.h>
-#include <sys/time.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <dirent.h>
-#include <pwd.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <grp.h>
+#include <inttypes.h>
+#include <limits.h>
+#include <pwd.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <wchar.h>
 #ifndef HAVE_SYS_IOCTL_H
 #define HAVE_SYS_IOCTL_H 1
 #endif
@@ -411,20 +411,20 @@
 #define HAVE_DECL_INTMAX_MAX 1
 #define HAVE_DECL_INTMAX_MIN 1
 #define __LIBARCHIVE_CONFIG_H_INCLUDED 1
-#include <limits.h>
-#include <string.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <wchar.h>
-#include <sys/ioctl.h>
-#include <stdint.h>
-#include <inttypes.h>
-#include <fcntl.h>
-#include <sys/time.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <inttypes.h>
+#include <limits.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <wchar.h>
 #ifndef HAVE_SYS_IOCTL_H
 #define HAVE_SYS_IOCTL_H 1
 #endif
@@ -482,22 +482,22 @@
 #define HAVE_GRP_H 1
 #define HAVE_GETPWUID 1
 #define HAVE_GETGRGID 1
-#include <limits.h>
-#include <string.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <wchar.h>
-#include <sys/ioctl.h>
-#include <stdint.h>
-#include <inttypes.h>
-#include <fcntl.h>
-#include <sys/time.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <dirent.h>
-#include <pwd.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <grp.h>
+#include <inttypes.h>
+#include <limits.h>
+#include <pwd.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <wchar.h>
 #ifndef HAVE_SYS_IOCTL_H
 #define HAVE_SYS_IOCTL_H 1
 #endif
@@ -551,20 +551,20 @@
 #define HAVE_FCHMOD 1
 #define HAVE_FCHOWN 1
 #define HAVE_LUTIMES 1
-#include <limits.h>
-#include <string.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <wchar.h>
-#include <sys/ioctl.h>
-#include <stdint.h>
-#include <inttypes.h>
-#include <fcntl.h>
-#include <sys/time.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <inttypes.h>
+#include <limits.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <wchar.h>
 #ifndef HAVE_SYS_IOCTL_H
 #define HAVE_SYS_IOCTL_H 1
 #endif
@@ -611,19 +611,19 @@
 #define HAVE_UNISTD_H 1
 #define HAVE_SYS_STAT_H 1
 #define HAVE_SYS_TYPES_H 1
-#include <limits.h>
-#include <string.h>
-#include <stdlib.h>
 #include <errno.h>
-#include <wchar.h>
-#include <sys/ioctl.h>
-#include <stdint.h>
-#include <inttypes.h>
 #include <fcntl.h>
-#include <sys/time.h>
-#include <unistd.h>
+#include <inttypes.h>
+#include <limits.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
+#include <unistd.h>
+#include <wchar.h>
 #ifndef HAVE_SYS_IOCTL_H
 #define HAVE_SYS_IOCTL_H 1
 #endif
@@ -665,14 +665,14 @@
 #define HAVE_STRCHR 1
 #define HAVE_STRDUP 1
 #define HAVE_MEMMOVE 1
-#include <limits.h>
-#include <string.h>
-#include <stdlib.h>
 #include <errno.h>
-#include <wchar.h>
-#include <sys/ioctl.h>
-#include <stdint.h>
 #include <inttypes.h>
+#include <limits.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <wchar.h>
 #ifndef HAVE_SYS_IOCTL_H
 #define HAVE_SYS_IOCTL_H 1
 #endif
@@ -704,14 +704,14 @@
 #define HAVE_DECL_INTMAX_MAX 1
 #define HAVE_DECL_INTMAX_MIN 1
 #define __LIBARCHIVE_CONFIG_H_INCLUDED 1
-#include <limits.h>
-#include <string.h>
-#include <stdlib.h>
 #include <errno.h>
-#include <wchar.h>
-#include <sys/ioctl.h>
-#include <stdint.h>
 #include <inttypes.h>
+#include <limits.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <wchar.h>
 #ifndef HAVE_SYS_IOCTL_H
 #define HAVE_SYS_IOCTL_H 1
 #endif
@@ -737,14 +737,14 @@
 #define HAVE_DECL_UINT64_MAX 1
 #define HAVE_DECL_INT64_MAX 1
 #define HAVE_DECL_INT64_MIN 1
-#include <limits.h>
-#include <string.h>
-#include <stdlib.h>
 #include <errno.h>
-#include <wchar.h>
-#include <sys/ioctl.h>
-#include <stdint.h>
 #include <inttypes.h>
+#include <limits.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <wchar.h>
 #ifndef HAVE_SYS_IOCTL_H
 #define HAVE_SYS_IOCTL_H 1
 #endif
@@ -757,10 +757,10 @@
 #endif
 #endif
 
-#define	ARCHIVE_PLATFORM_H_INCLUDED
+#define ARCHIVE_PLATFORM_H_INCLUDED
 
 /* archive.h and archive_entry.h require this. */
-#define	__LIBARCHIVE_BUILD 1
+#define __LIBARCHIVE_BUILD 1
 
 #if defined(PLATFORM_CONFIG_H)
 /* Use hand-built config.h in environments that need it. */
@@ -775,13 +775,13 @@
 
 /* On macOS check for some symbols based on the deployment target version.  */
 #if defined(__APPLE__)
-# undef HAVE_FUTIMENS
-# undef HAVE_UTIMENSAT
-# include <AvailabilityMacros.h>
-# if MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
-#  define HAVE_FUTIMENS 1
-#  define HAVE_UTIMENSAT 1
-# endif
+#undef HAVE_FUTIMENS
+#undef HAVE_UTIMENSAT
+#include <AvailabilityMacros.h>
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 101300
+#define HAVE_FUTIMENS 1
+#define HAVE_UTIMENSAT 1
+#endif
 #endif
 
 /* For cygwin, to avoid missing LONG, ULONG, PUCHAR, ... definitions */
@@ -793,7 +793,8 @@
  * macros to cover Windows API functions, probably along with non-trivial
  * refactoring of code to find structures that sit more cleanly on top of
  * either Windows or Posix APIs. */
-#if (defined(__WIN32__) || defined(_WIN32) || defined(__WIN32)) && !defined(__CYGWIN__)
+#if (defined(__WIN32__) || defined(_WIN32) || defined(__WIN32)) &&             \
+    !defined(__CYGWIN__)
 #include "archive_windows.h"
 /* The C library on Windows specifies a calling convention for callback
  * functions and exports; when we interact with them (capture pointers,
@@ -803,7 +804,7 @@
  * (which change the default calling convention.) */
 #define __LA_LIBC_CC __cdecl
 #else
-#define la_stat(path,stref)		stat(path,stref)
+#define la_stat(path, stref) stat(path, stref)
 #define __LA_LIBC_CC
 #endif
 
@@ -823,57 +824,57 @@
 
 /* Borland warns about its own constants!  */
 #if defined(__BORLANDC__)
-# if HAVE_DECL_UINT64_MAX
-#  undef	UINT64_MAX
-#  undef	HAVE_DECL_UINT64_MAX
-# endif
-# if HAVE_DECL_UINT64_MIN
-#  undef	UINT64_MIN
-#  undef	HAVE_DECL_UINT64_MIN
-# endif
-# if HAVE_DECL_INT64_MAX
-#  undef	INT64_MAX
-#  undef	HAVE_DECL_INT64_MAX
-# endif
-# if HAVE_DECL_INT64_MIN
-#  undef	INT64_MIN
-#  undef	HAVE_DECL_INT64_MIN
-# endif
+#if HAVE_DECL_UINT64_MAX
+#undef UINT64_MAX
+#undef HAVE_DECL_UINT64_MAX
+#endif
+#if HAVE_DECL_UINT64_MIN
+#undef UINT64_MIN
+#undef HAVE_DECL_UINT64_MIN
+#endif
+#if HAVE_DECL_INT64_MAX
+#undef INT64_MAX
+#undef HAVE_DECL_INT64_MAX
+#endif
+#if HAVE_DECL_INT64_MIN
+#undef INT64_MIN
+#undef HAVE_DECL_INT64_MIN
+#endif
 #endif
 
 /* Some platforms lack the standard *_MAX definitions. */
 #if !HAVE_DECL_SIZE_MAX
-#define	SIZE_MAX (~(size_t)0)
+#define SIZE_MAX (~(size_t)0)
 #endif
 #if !HAVE_DECL_SSIZE_MAX
-#define	SSIZE_MAX ((ssize_t)(SIZE_MAX >> 1))
+#define SSIZE_MAX ((ssize_t)(SIZE_MAX >> 1))
 #endif
 #if !HAVE_DECL_UINT32_MAX
-#define	UINT32_MAX (~(uint32_t)0)
+#define UINT32_MAX (~(uint32_t)0)
 #endif
 #if !HAVE_DECL_INT32_MAX
-#define	INT32_MAX ((int32_t)(UINT32_MAX >> 1))
+#define INT32_MAX ((int32_t)(UINT32_MAX >> 1))
 #endif
 #if !HAVE_DECL_INT32_MIN
-#define	INT32_MIN ((int32_t)(~INT32_MAX))
+#define INT32_MIN ((int32_t)(~INT32_MAX))
 #endif
 #if !HAVE_DECL_UINT64_MAX
-#define	UINT64_MAX (~(uint64_t)0)
+#define UINT64_MAX (~(uint64_t)0)
 #endif
 #if !HAVE_DECL_INT64_MAX
-#define	INT64_MAX ((int64_t)(UINT64_MAX >> 1))
+#define INT64_MAX ((int64_t)(UINT64_MAX >> 1))
 #endif
 #if !HAVE_DECL_INT64_MIN
-#define	INT64_MIN ((int64_t)(~INT64_MAX))
+#define INT64_MIN ((int64_t)(~INT64_MAX))
 #endif
 #if !HAVE_DECL_UINTMAX_MAX
-#define	UINTMAX_MAX (~(uintmax_t)0)
+#define UINTMAX_MAX (~(uintmax_t)0)
 #endif
 #if !HAVE_DECL_INTMAX_MAX
-#define	INTMAX_MAX ((intmax_t)(UINTMAX_MAX >> 1))
+#define INTMAX_MAX ((intmax_t)(UINTMAX_MAX >> 1))
 #endif
 #if !HAVE_DECL_INTMAX_MIN
-#define	INTMAX_MIN ((intmax_t)(~INTMAX_MAX))
+#define INTMAX_MIN ((intmax_t)(~INTMAX_MAX))
 #endif
 
 /* Some platforms lack the standard PRIxN/PRIdN definitions. */
@@ -902,43 +903,40 @@
  * If we can't restore metadata using a file descriptor, then
  * for compatibility's sake, close files before trying to restore metadata.
  */
-#if defined(HAVE_FCHMOD) || defined(HAVE_FUTIMES) || defined(HAVE_ACL_SET_FD) || defined(HAVE_ACL_SET_FD_NP) || defined(HAVE_FCHOWN)
-#define	CAN_RESTORE_METADATA_FD
+#if defined(HAVE_FCHMOD) || defined(HAVE_FUTIMES) ||                           \
+    defined(HAVE_ACL_SET_FD) || defined(HAVE_ACL_SET_FD_NP) ||                 \
+    defined(HAVE_FCHOWN)
+#define CAN_RESTORE_METADATA_FD
 #endif
 
 /* Set up defaults for internal error codes. */
 #ifndef ARCHIVE_ERRNO_FILE_FORMAT
 #if HAVE_EFTYPE
-#define	ARCHIVE_ERRNO_FILE_FORMAT EFTYPE
+#define ARCHIVE_ERRNO_FILE_FORMAT EFTYPE
 #else
 #if HAVE_EILSEQ
-#define	ARCHIVE_ERRNO_FILE_FORMAT EILSEQ
+#define ARCHIVE_ERRNO_FILE_FORMAT EILSEQ
 #else
-#define	ARCHIVE_ERRNO_FILE_FORMAT EINVAL
+#define ARCHIVE_ERRNO_FILE_FORMAT EINVAL
 #endif
 #endif
 #endif
 
 #ifndef ARCHIVE_ERRNO_PROGRAMMER
-#define	ARCHIVE_ERRNO_PROGRAMMER EINVAL
+#define ARCHIVE_ERRNO_PROGRAMMER EINVAL
 #endif
 
 #ifndef ARCHIVE_ERRNO_MISC
-#define	ARCHIVE_ERRNO_MISC (-1)
+#define ARCHIVE_ERRNO_MISC (-1)
 #endif
 
-
-
-
-
-
 #if defined(__linux__) || defined(__APPLE__)
-#include <limits.h>
-#include <string.h>
-#include <stdlib.h>
 #include <errno.h>
-#include <wchar.h>
+#include <limits.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/ioctl.h>
+#include <wchar.h>
 #ifndef HAVE_SYS_IOCTL_H
 #define HAVE_SYS_IOCTL_H 1
 #endif

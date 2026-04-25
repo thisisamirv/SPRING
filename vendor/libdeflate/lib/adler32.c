@@ -51,7 +51,7 @@
  * has value 0xFF and that s1 and s2 started with the highest possible values
  * modulo the divisor.
  */
-#define MAX_CHUNK_LEN	5552
+#define MAX_CHUNK_LEN 5552
 
 /*
  * Update the Adler-32 values s1 and s2 using n bytes from p, update p to p + n,
@@ -72,50 +72,48 @@
  * used by vectorized implementations.  This provides increased instruction-
  * level parallelism compared to the traditional 's1 += *p++; s2 += s1;'.
  */
-#define ADLER32_CHUNK(s1, s2, p, n)					\
-do {									\
-	if (n >= 4) {							\
-		u32 s1_sum = 0;						\
-		u32 byte_0_sum = 0;					\
-		u32 byte_1_sum = 0;					\
-		u32 byte_2_sum = 0;					\
-		u32 byte_3_sum = 0;					\
-									\
-		do {							\
-			s1_sum += s1;					\
-			s1 += p[0] + p[1] + p[2] + p[3];		\
-			byte_0_sum += p[0];				\
-			byte_1_sum += p[1];				\
-			byte_2_sum += p[2];				\
-			byte_3_sum += p[3];				\
-			p += 4;						\
-			n -= 4;						\
-		} while (n >= 4);					\
-		s2 += (4 * (s1_sum + byte_0_sum)) + (3 * byte_1_sum) +	\
-		      (2 * byte_2_sum) + byte_3_sum;			\
-	}								\
-	for (; n; n--, p++) {						\
-		s1 += *p;						\
-		s2 += s1;						\
-	}								\
-	s1 %= DIVISOR;							\
-	s2 %= DIVISOR;							\
-} while (0)
+#define ADLER32_CHUNK(s1, s2, p, n)                                            \
+  do {                                                                         \
+    if (n >= 4) {                                                              \
+      u32 s1_sum = 0;                                                          \
+      u32 byte_0_sum = 0;                                                      \
+      u32 byte_1_sum = 0;                                                      \
+      u32 byte_2_sum = 0;                                                      \
+      u32 byte_3_sum = 0;                                                      \
+                                                                               \
+      do {                                                                     \
+        s1_sum += s1;                                                          \
+        s1 += p[0] + p[1] + p[2] + p[3];                                       \
+        byte_0_sum += p[0];                                                    \
+        byte_1_sum += p[1];                                                    \
+        byte_2_sum += p[2];                                                    \
+        byte_3_sum += p[3];                                                    \
+        p += 4;                                                                \
+        n -= 4;                                                                \
+      } while (n >= 4);                                                        \
+      s2 += (4 * (s1_sum + byte_0_sum)) + (3 * byte_1_sum) +                   \
+            (2 * byte_2_sum) + byte_3_sum;                                     \
+    }                                                                          \
+    for (; n; n--, p++) {                                                      \
+      s1 += *p;                                                                \
+      s2 += s1;                                                                \
+    }                                                                          \
+    s1 %= DIVISOR;                                                             \
+    s2 %= DIVISOR;                                                             \
+  } while (0)
 
-static u32 MAYBE_UNUSED
-adler32_generic(u32 adler, const u8 *p, size_t len)
-{
-	u32 s1 = adler & 0xFFFF;
-	u32 s2 = adler >> 16;
+static u32 MAYBE_UNUSED adler32_generic(u32 adler, const u8 *p, size_t len) {
+  u32 s1 = adler & 0xFFFF;
+  u32 s2 = adler >> 16;
 
-	while (len) {
-		size_t n = MIN(len, MAX_CHUNK_LEN & ~3);
+  while (len) {
+    size_t n = MIN(len, MAX_CHUNK_LEN & ~3);
 
-		len -= n;
-		ADLER32_CHUNK(s1, s2, p, n);
-	}
+    len -= n;
+    ADLER32_CHUNK(s1, s2, p, n);
+  }
 
-	return (s2 << 16) | s1;
+  return (s2 << 16) | s1;
 }
 
 /* Include architecture-specific implementation(s) if available. */
@@ -123,13 +121,13 @@ adler32_generic(u32 adler, const u8 *p, size_t len)
 #undef arch_select_adler32_func
 typedef u32 (*adler32_func_t)(u32 adler, const u8 *p, size_t len);
 #if defined(ARCH_ARM32) || defined(ARCH_ARM64)
-#  include "arm/adler32_impl.h"
+#include "arm/adler32_impl.h"
 #elif defined(ARCH_X86_32) || defined(ARCH_X86_64)
-#  include "x86/adler32_impl.h"
+#include "x86/adler32_impl.h"
 #endif
 
 #ifndef DEFAULT_IMPL
-#  define DEFAULT_IMPL adler32_generic
+#define DEFAULT_IMPL adler32_generic
 #endif
 
 #ifdef arch_select_adler32_func
@@ -138,25 +136,23 @@ static u32 dispatch_adler32(u32 adler, const u8 *p, size_t len);
 static volatile adler32_func_t adler32_impl = dispatch_adler32;
 
 /* Choose the best implementation at runtime. */
-static u32 dispatch_adler32(u32 adler, const u8 *p, size_t len)
-{
-	adler32_func_t f = arch_select_adler32_func();
+static u32 dispatch_adler32(u32 adler, const u8 *p, size_t len) {
+  adler32_func_t f = arch_select_adler32_func();
 
-	if (f == NULL)
-		f = DEFAULT_IMPL;
+  if (f == NULL)
+    f = DEFAULT_IMPL;
 
-	adler32_impl = f;
-	return f(adler, p, len);
+  adler32_impl = f;
+  return f(adler, p, len);
 }
 #else
 /* The best implementation is statically known, so call it directly. */
 #define adler32_impl DEFAULT_IMPL
 #endif
 
-LIBDEFLATEAPI u32
-libdeflate_adler32(u32 adler, const void *buffer, size_t len)
-{
-	if (buffer == NULL) /* Return initial value. */
-		return 1;
-	return adler32_impl(adler, buffer, len);
+LIBDEFLATEAPI u32 libdeflate_adler32(u32 adler, const void *buffer,
+                                     size_t len) {
+  if (buffer == NULL) /* Return initial value. */
+    return 1;
+  return adler32_impl(adler, buffer, len);
 }

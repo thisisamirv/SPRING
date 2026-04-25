@@ -4,7 +4,8 @@ This code is based on PPMd var.H (2001): Dmitry Shkarin : Public domain */
 
 /* This code supports virtual RangeDecoder and includes the implementation
 of RangeCoder from 7z, instead of RangeCoder from original PPMd var.H.
-If you need the compatibility with original PPMd var.H, you can use external RangeDecoder */
+If you need the compatibility with original PPMd var.H, you can use external
+RangeDecoder */
 
 #ifndef ARCHIVE_PPMD7_PRIVATE_H_INCLUDED
 #define ARCHIVE_PPMD7_PRIVATE_H_INCLUDED
@@ -24,15 +25,14 @@ If you need the compatibility with original PPMd var.H, you can use external Ran
 struct CPpmd7_Context_;
 
 typedef
-  #ifdef PPMD_32BIT
+#ifdef PPMD_32BIT
     struct CPpmd7_Context_ *
-  #else
+#else
     UInt32
-  #endif
-  CPpmd7_Context_Ref;
+#endif
+        CPpmd7_Context_Ref;
 
-typedef struct CPpmd7_Context_
-{
+typedef struct CPpmd7_Context_ {
   UInt16 NumStats;
   UInt16 SummFreq;
   CPpmd_State_Ref Stats;
@@ -41,8 +41,7 @@ typedef struct CPpmd7_Context_
 
 #define Ppmd7Context_OneState(p) ((CPpmd_State *)&(p)->SummFreq)
 
-typedef struct
-{
+typedef struct {
   CPpmd7_Context *MinContext, *MaxContext;
   CPpmd_State *FoundState;
   unsigned OrderFall, InitEsc, PrevSuccess, MaxOrder, HiBitsFlag;
@@ -63,15 +62,13 @@ typedef struct
 
 /* ---------- Decode ---------- */
 
-typedef struct
-{
+typedef struct {
   UInt32 (*GetThreshold)(void *p, UInt32 total);
   void (*Decode)(void *p, UInt32 start, UInt32 size);
   UInt32 (*DecodeBit)(void *p, UInt32 size0);
 } IPpmd7_RangeDec;
 
-typedef struct
-{
+typedef struct {
   IPpmd7_RangeDec p;
   UInt32 Range;
   UInt32 Code;
@@ -82,8 +79,7 @@ typedef struct
 
 /* ---------- Encode ---------- */
 
-typedef struct
-{
+typedef struct {
   UInt64 Low;
   UInt32 Range;
   Byte Cache;
@@ -91,21 +87,20 @@ typedef struct
   IByteOut *Stream;
 } CPpmd7z_RangeEnc;
 
-typedef struct
-{
+typedef struct {
   /* Base Functions */
   void (*Ppmd7_Construct)(CPpmd7 *p);
   Bool (*Ppmd7_Alloc)(CPpmd7 *p, UInt32 size);
   void (*Ppmd7_Free)(CPpmd7 *p);
   void (*Ppmd7_Init)(CPpmd7 *p, unsigned maxOrder);
-  #define Ppmd7_WasAllocated(p) ((p)->Base != NULL)
+#define Ppmd7_WasAllocated(p) ((p)->Base != NULL)
 
   /* Decode Functions */
   void (*Ppmd7z_RangeDec_CreateVTable)(CPpmd7z_RangeDec *p);
   void (*PpmdRAR_RangeDec_CreateVTable)(CPpmd7z_RangeDec *p);
   Bool (*Ppmd7z_RangeDec_Init)(CPpmd7z_RangeDec *p);
   Bool (*PpmdRAR_RangeDec_Init)(CPpmd7z_RangeDec *p);
-  #define Ppmd7z_RangeDec_IsFinishedOK(p) ((p)->Code == 0)
+#define Ppmd7z_RangeDec_IsFinishedOK(p) ((p)->Code == 0)
   int (*Ppmd7_DecodeSymbol)(CPpmd7 *p, IPpmd7_RangeDec *rc);
 
   /* Encode Functions */

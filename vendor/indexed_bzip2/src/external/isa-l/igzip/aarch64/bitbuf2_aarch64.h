@@ -29,29 +29,44 @@
 
 #ifndef __BITBUF2_AARCH64_H__
 #define __BITBUF2_AARCH64_H__
-#include "options_aarch64.h"
 
 #ifdef __ASSEMBLY__
-.macro update_bits	stream:req,code:req,code_len:req,m_bits:req,m_bit_count:req \
-			m_out_buf:req
+.macro update_bits stream : req,
+    code : req,
+           code_len : req,
+                      m_bits : req,
+                               m_bit_count : req m_out_buf
+    : req
 
-	lsl	x_\code,x_\code,x_\m_bit_count
-	orr	x_\m_bits,x_\code,x_\m_bits
-	add	x_\m_bit_count,x_\code_len,x_\m_bit_count
+          lsl x_\code,
+      x_\code,
+      x_\m_bit_count orr x_\m_bits,
+      x_\code,
+      x_\m_bits add x_\m_bit_count,
+      x_\code_len,
+      x_\m_bit_count
 
-	str	x_\m_bits,[x_\m_out_buf]
+          str x_\m_bits,
+      [x_\m_out_buf]
 
-	and	w_\code,w_\m_bit_count,-8
-	lsr	w_\code_len,w_\m_bit_count,3
-	add	x_\m_out_buf,x_\m_out_buf,w_\code_len,uxtw
-	sub	w_\m_bit_count,w_\m_bit_count,w_\code
-	lsr	x_\m_bits,x_\m_bits,x_\code
+          and w_\code,
+      w_\m_bit_count,
+      -8 lsr w_\code_len,
+      w_\m_bit_count,
+      3 add x_\m_out_buf,
+      x_\m_out_buf,
+      w_\code_len,
+      uxtw sub w_\m_bit_count,
+      w_\m_bit_count,
+      w_\code lsr x_\m_bits,
+      x_\m_bits,
+      x_\code
 
-	str	x_\m_bits,[stream,_internal_state_bitbuf_m_bits]
-	str 	w_\m_bit_count,[stream,_internal_state_bitbuf_m_bit_count]
-	str	x_\m_out_buf,[stream,_internal_state_bitbuf_m_out_buf]
+          str x_\m_bits,
+      [ stream, _internal_state_bitbuf_m_bits ] str w_\m_bit_count,
+      [ stream, _internal_state_bitbuf_m_bit_count ] str x_\m_out_buf,
+      [ stream, _internal_state_bitbuf_m_out_buf ]
 
-
-.endm
+          .endm
 #endif
 #endif

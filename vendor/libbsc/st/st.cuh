@@ -39,22 +39,24 @@ extern "C" {
 
 #if !defined(LIBBSC_NO_SORT_TRANSFORM) && defined(LIBBSC_CUDA_SUPPORT)
 
-    /**
-    * You should call this function before you call any of the other functions in st.
-    * @param features   - the set of additional features.
-    * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
-    */
-    int bsc_st_cuda_init(int features);
+/**
+ * You should call this function before you call any of the other functions in
+ * st.
+ * @param features   - the set of additional features.
+ * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
+ */
+int bsc_st_cuda_init(int features);
 
-    /**
-    * Constructs the Sort Transform of order k transformed string of a given string.
-    * @param T          - the input/output string of n chars.
-    * @param n          - the length of the given string.
-    * @param k[3..8]    - the order of Sort Transform.
-    * @param features   - the set of additional features.
-    * @return the primary index if no error occurred, error code otherwise.
-    */
-    int bsc_st_encode_cuda(unsigned char * T, int n, int k, int features);
+/**
+ * Constructs the Sort Transform of order k transformed string of a given
+ * string.
+ * @param T          - the input/output string of n chars.
+ * @param n          - the length of the given string.
+ * @param k[3..8]    - the order of Sort Transform.
+ * @param features   - the set of additional features.
+ * @return the primary index if no error occurred, error code otherwise.
+ */
+int bsc_st_encode_cuda(unsigned char *T, int n, int k, int features);
 
 #endif
 

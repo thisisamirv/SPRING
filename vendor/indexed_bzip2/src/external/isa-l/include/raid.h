@@ -60,11 +60,11 @@ extern "C" {
  * @returns 0 pass, other fail
  */
 
-int
-xor_gen(int vects, int len, void **array);
+int xor_gen(int vects, int len, void **array);
 
 /**
- * @brief Checks that array has XOR parity sum of 0 across all vectors, runs appropriate version.
+ * @brief Checks that array has XOR parity sum of 0 across all vectors, runs
+ * appropriate version.
  *
  * This function determines what instruction sets are enabled and
  * selects the appropriate version at runtime.
@@ -77,8 +77,7 @@ xor_gen(int vects, int len, void **array);
  * @returns 0 pass, other fail
  */
 
-int
-xor_check(int vects, int len, void **array);
+int xor_check(int vects, int len, void **array);
 
 /**
  * @brief Generate P+Q parity vectors from N sources, runs appropriate version.
@@ -97,12 +96,11 @@ xor_check(int vects, int len, void **array);
  * @returns 0 pass, other fail
  */
 
-int
-pq_gen(int vects, int len, void **array);
+int pq_gen(int vects, int len, void **array);
 
 /**
- * @brief Checks that array of N sources, P and Q are consistent across all vectors, runs
- * appropriate version.
+ * @brief Checks that array of N sources, P and Q are consistent across all
+ * vectors, runs appropriate version.
  *
  * This function determines what instruction sets are enabled and
  * selects the appropriate version at runtime.
@@ -116,8 +114,7 @@ pq_gen(int vects, int len, void **array);
  * @returns 0 pass, other fail
  */
 
-int
-pq_check(int vects, int len, void **array);
+int pq_check(int vects, int len, void **array);
 
 /* Arch specific versions */
 // x86 only
@@ -136,8 +133,7 @@ pq_check(int vects, int len, void **array);
  * @returns 0 pass, other fail
  */
 
-int
-xor_gen_sse(int vects, int len, void **array);
+int xor_gen_sse(int vects, int len, void **array);
 
 /**
  * @brief Generate XOR parity vector from N sources.
@@ -152,8 +148,7 @@ xor_gen_sse(int vects, int len, void **array);
  * @returns 0 pass, other fail
  */
 
-int
-xor_gen_avx(int vects, int len, void **array);
+int xor_gen_avx(int vects, int len, void **array);
 
 /**
  * @brief Checks that array has XOR parity sum of 0 across all vectors.
@@ -167,8 +162,7 @@ xor_gen_avx(int vects, int len, void **array);
  * @returns 0 pass, other fail
  */
 
-int
-xor_check_sse(int vects, int len, void **array);
+int xor_check_sse(int vects, int len, void **array);
 
 /**
  * @brief Generate P+Q parity vectors from N sources.
@@ -185,8 +179,7 @@ xor_check_sse(int vects, int len, void **array);
  * @returns 0 pass, other fail
  */
 
-int
-pq_gen_sse(int vects, int len, void **array);
+int pq_gen_sse(int vects, int len, void **array);
 
 /**
  * @brief Generate P+Q parity vectors from N sources.
@@ -203,8 +196,7 @@ pq_gen_sse(int vects, int len, void **array);
  * @returns 0 pass, other fail
  */
 
-int
-pq_gen_avx(int vects, int len, void **array);
+int pq_gen_avx(int vects, int len, void **array);
 
 /**
  * @brief Generate P+Q parity vectors from N sources.
@@ -221,11 +213,11 @@ pq_gen_avx(int vects, int len, void **array);
  * @returns 0 pass, other fail
  */
 
-int
-pq_gen_avx2(int vects, int len, void **array);
+int pq_gen_avx2(int vects, int len, void **array);
 
 /**
- * @brief Checks that array of N sources, P and Q are consistent across all vectors.
+ * @brief Checks that array of N sources, P and Q are consistent across all
+ vectors.
  * @requires SSE4.1
  *
  * @param vects  Number of vectors in array including P&Q. Must be > 3.
@@ -236,8 +228,7 @@ pq_gen_avx2(int vects, int len, void **array);
  * @returns 0 pass, other fail
  */
 
-int
-pq_check_sse(int vects, int len, void **array);
+int pq_check_sse(int vects, int len, void **array);
 
 #endif
 
@@ -254,8 +245,7 @@ pq_check_sse(int vects, int len, void **array);
  * @returns 0 pass, other fail
  */
 
-int
-pq_gen_base(int vects, int len, void **array);
+int pq_gen_base(int vects, int len, void **array);
 
 /**
  * @brief Generate XOR parity vector from N sources, runs baseline version.
@@ -268,11 +258,11 @@ pq_gen_base(int vects, int len, void **array);
  * @returns 0 pass, other fail
  */
 
-int
-xor_gen_base(int vects, int len, void **array);
+int xor_gen_base(int vects, int len, void **array);
 
 /**
- * @brief Checks that array has XOR parity sum of 0 across all vectors, runs baseline version.
+ * @brief Checks that array has XOR parity sum of 0 across all vectors, runs
+ * baseline version.
  *
  * @param vects   Number of vectors in array. Must be > 1.
  * @param len     Length of each vector in bytes.
@@ -282,12 +272,11 @@ xor_gen_base(int vects, int len, void **array);
  * @returns 0 pass, other fail
  */
 
-int
-xor_check_base(int vects, int len, void **array);
+int xor_check_base(int vects, int len, void **array);
 
 /**
- * @brief Checks that array of N sources, P and Q are consistent across all vectors, runs baseline
- * version.
+ * @brief Checks that array of N sources, P and Q are consistent across all
+ * vectors, runs baseline version.
  *
  * @param vects  Number of vectors in array including P&Q. Must be > 3.
  * @param len    Length of each vector in bytes. Must be 16B aligned.
@@ -298,8 +287,7 @@ xor_check_base(int vects, int len, void **array);
  * @returns 0 pass, other fail
  */
 
-int
-pq_check_base(int vects, int len, void **array);
+int pq_check_base(int vects, int len, void **array);
 
 #ifdef __cplusplus
 }

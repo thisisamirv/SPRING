@@ -32,30 +32,33 @@
 
 #ifdef __ASSEMBLY__
 #ifdef LONGER_HUFFTABLE
-	#if (D > 8192)
-		#error History D is larger than 8K
-	#else
-		#define DIST_TABLE_SIZE 8192
-		#define DECODE_OFFSET 26
-	#endif
+#if (D > 8192)
+#error History D is larger than 8K
 #else
-	#define DIST_TABLE_SIZE 2
-	#define DECODE_OFFSET 0
+#define DIST_TABLE_SIZE 8192
+#define DECODE_OFFSET 26
+#endif
+#else
+#define DIST_TABLE_SIZE 2
+#define DECODE_OFFSET 0
 #endif
 
 #define LEN_TABLE_SIZE 256
 #define LIT_TABLE_SIZE 257
 
-#define DIST_TABLE_START (ISAL_DEF_MAX_HDR_SIZE + 8)	//328+8
-#define DIST_TABLE_OFFSET (DIST_TABLE_START + - 4 * 1)	//336-4
-#define LEN_TABLE_OFFSET (DIST_TABLE_START + DIST_TABLE_SIZE * 4 - 4*3) //332 + 2*4 -4*3 =328
-#define LIT_TABLE_OFFSET (DIST_TABLE_START + 4 * DIST_TABLE_SIZE + 4 * LEN_TABLE_SIZE)
+#define DIST_TABLE_START (ISAL_DEF_MAX_HDR_SIZE + 8)  // 328+8
+#define DIST_TABLE_OFFSET (DIST_TABLE_START + -4 * 1) // 336-4
+#define LEN_TABLE_OFFSET                                                       \
+  (DIST_TABLE_START + DIST_TABLE_SIZE * 4 - 4 * 3) // 332 + 2*4 -4*3 =328
+#define LIT_TABLE_OFFSET                                                       \
+  (DIST_TABLE_START + 4 * DIST_TABLE_SIZE + 4 * LEN_TABLE_SIZE)
 #define LIT_TABLE_SIZES_OFFSET (LIT_TABLE_OFFSET + 2 * LIT_TABLE_SIZE)
-#define DCODE_TABLE_OFFSET (LIT_TABLE_SIZES_OFFSET + LIT_TABLE_SIZE + 1 - DECODE_OFFSET * 2)
+#define DCODE_TABLE_OFFSET                                                     \
+  (LIT_TABLE_SIZES_OFFSET + LIT_TABLE_SIZE + 1 - DECODE_OFFSET * 2)
 #define DCODE_TABLE_SIZE_OFFSET (DCODE_TABLE_OFFSET + 2 * 30 - DECODE_OFFSET)
 
-#define IGZIP_DECODE_OFFSET	0
-#define IGZIP_DIST_TABLE_SIZE	2
+#define IGZIP_DECODE_OFFSET 0
+#define IGZIP_DIST_TABLE_SIZE 2
 
 .macro	get_len_code hufftables:req,length:req,code:req,code_len:req,tmp0:req
 	add x_\tmp0,\hufftables,LEN_TABLE_OFFSET

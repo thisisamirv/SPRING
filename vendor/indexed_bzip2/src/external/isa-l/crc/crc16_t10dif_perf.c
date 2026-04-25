@@ -27,12 +27,9 @@
   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 **********************************************************************/
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
 #include "crc.h"
 #include "test.h"
+#include <string.h>
 
 #ifndef GT_L3_CACHE
 #define GT_L3_CACHE 32 * 1024 * 1024 /* some number > last level cache */
@@ -40,11 +37,11 @@
 
 #if !defined(COLD_TEST) && !defined(TEST_CUSTOM)
 // Cached test, loop many times over small dataset
-#define TEST_LEN      8 * 1024
+#define TEST_LEN 8 * 1024
 #define TEST_TYPE_STR "_warm"
 #elif defined(COLD_TEST)
 // Uncached test.  Pull from large mem base.
-#define TEST_LEN      (2 * GT_L3_CACHE)
+#define TEST_LEN (2 * GT_L3_CACHE)
 #define TEST_TYPE_STR "_cold"
 #endif
 
@@ -54,30 +51,32 @@
 
 #define TEST_MEM TEST_LEN
 
-int
-main(int argc, char *argv[])
-{
-        void *buf;
-        uint16_t crc;
-        struct perf start;
+int main(int argc, char *argv[]) {
+  void *buf;
+  uint16_t crc;
+  struct perf start;
 
-        printf("crc16_t10dif_perf:\n");
+  (void)argc;
+  (void)argv;
 
-        if (posix_memalign(&buf, 1024, TEST_LEN)) {
-                printf("alloc error: Fail");
-                return -1;
-        }
+  printf("crc16_t10dif_perf:\n");
 
-        printf("Start timed tests\n");
-        fflush(0);
+  if (posix_memalign(&buf, 1024, TEST_LEN)) {
+    printf("alloc error: Fail");
+    return -1;
+  }
 
-        memset(buf, 0, TEST_LEN);
-        BENCHMARK(&start, BENCHMARK_TIME, crc = crc16_t10dif(TEST_SEED, buf, TEST_LEN));
-        printf("crc16_t10dif" TEST_TYPE_STR ": ");
-        perf_print(start, (long long) TEST_LEN);
+  printf("Start timed tests\n");
+  fflush(0);
 
-        printf("finish 0x%x\n", crc);
+  memset(buf, 0, TEST_LEN);
+  BENCHMARK(&start, BENCHMARK_TIME,
+            crc = crc16_t10dif(TEST_SEED, buf, TEST_LEN));
+  printf("crc16_t10dif" TEST_TYPE_STR ": ");
+  perf_print(start, (long long)TEST_LEN);
 
-        aligned_free(buf);
-        return 0;
+  printf("finish 0x%x\n", crc);
+
+  aligned_free(buf);
+  return 0;
 }

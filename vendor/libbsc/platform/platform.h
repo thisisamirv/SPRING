@@ -35,201 +35,209 @@ See also the bsc and libbsc web site:
 
 #define ALPHABET_SIZE (256)
 
-#define LIBBSC_CPU_FEATURE_NONE      0
-#define LIBBSC_CPU_FEATURE_A64       1
-#define LIBBSC_CPU_FEATURE_SSE2      2
-#define LIBBSC_CPU_FEATURE_SSE3      3
-#define LIBBSC_CPU_FEATURE_SSSE3     4
-#define LIBBSC_CPU_FEATURE_SSE41     5
-#define LIBBSC_CPU_FEATURE_SSE42     6
-#define LIBBSC_CPU_FEATURE_AVX       7
-#define LIBBSC_CPU_FEATURE_AVX2      8
-#define LIBBSC_CPU_FEATURE_AVX512CD  9
-#define LIBBSC_CPU_FEATURE_AVX512BW  10
+#define LIBBSC_CPU_FEATURE_NONE 0
+#define LIBBSC_CPU_FEATURE_A64 1
+#define LIBBSC_CPU_FEATURE_SSE2 2
+#define LIBBSC_CPU_FEATURE_SSE3 3
+#define LIBBSC_CPU_FEATURE_SSSE3 4
+#define LIBBSC_CPU_FEATURE_SSE41 5
+#define LIBBSC_CPU_FEATURE_SSE42 6
+#define LIBBSC_CPU_FEATURE_AVX 7
+#define LIBBSC_CPU_FEATURE_AVX2 8
+#define LIBBSC_CPU_FEATURE_AVX512CD 9
+#define LIBBSC_CPU_FEATURE_AVX512BW 10
 
-#if (defined(_M_AMD64) || defined(_M_X64) || defined(__amd64) || defined(__x86_64__)) && !defined(LIBBSC_x86_64)
-    #define LIBBSC_x86_64 1
+#if (defined(_M_AMD64) || defined(_M_X64) || defined(__amd64) ||               \
+     defined(__x86_64__)) &&                                                   \
+    !defined(LIBBSC_x86_64)
+#define LIBBSC_x86_64 1
 #endif
 
 #if (defined(_M_ARM64) || defined(__aarch64__)) && !defined(LIBBSC_AArch64)
-    #define LIBBSC_AArch64 1
+#define LIBBSC_AArch64 1
 #endif
 
 #ifndef LIBBSC_CPU_FEATURE
-    #if defined(__AVX512VL__) && defined(__AVX512BW__) && defined(__AVX512DQ__)
-        #define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_AVX512BW
-    #elif defined(__AVX512F__) && defined(__AVX512CD__)
-        #define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_AVX512CD
-    #elif defined(__AVX2__)
-        #define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_AVX2
-    #elif defined(__AVX__)
-        #define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_AVX
-    #elif defined(__SSE4_2__)
-        #define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_SSE42
-    #elif defined(__SSE4_1__)
-        #define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_SSE41
-    #elif defined(__SSSE3__)
-        #define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_SSSE3
-    #elif defined(__SSE3__)
-        #define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_SSE3
-    #elif defined(__SSE2__) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2) || defined(LIBBSC_x86_64)
-        #define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_SSE2
-    #elif defined(LIBBSC_AArch64)
-        #define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_A64
-    #else
-        #define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_NONE
-    #endif
+#if defined(__AVX512VL__) && defined(__AVX512BW__) && defined(__AVX512DQ__)
+#define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_AVX512BW
+#elif defined(__AVX512F__) && defined(__AVX512CD__)
+#define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_AVX512CD
+#elif defined(__AVX2__)
+#define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_AVX2
+#elif defined(__AVX__)
+#define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_AVX
+#elif defined(__SSE4_2__)
+#define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_SSE42
+#elif defined(__SSE4_1__)
+#define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_SSE41
+#elif defined(__SSSE3__)
+#define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_SSSE3
+#elif defined(__SSE3__)
+#define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_SSE3
+#elif defined(__SSE2__) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2) ||         \
+    defined(LIBBSC_x86_64)
+#define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_SSE2
+#elif defined(LIBBSC_AArch64)
+#define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_A64
+#else
+#define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_NONE
+#endif
 #endif
 
 #if defined(_OPENMP) && defined(LIBBSC_OPENMP_SUPPORT)
-    #include <omp.h>
-    #define LIBBSC_OPENMP
+#include <omp.h>
+#define LIBBSC_OPENMP
 #endif
 
 #if LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSE2
-    #if defined(_MSC_VER)
-        #include <intrin.h>
-    #elif defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))
-        #include <x86intrin.h>
-    #endif
+#if defined(_MSC_VER)
+#include <intrin.h>
+#elif defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))
+#include <x86intrin.h>
+#endif
 #elif LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_A64
-    #include <arm_neon.h>
+#include <arm_neon.h>
 #endif
 
 #if defined(__GNUC__)
-    #define INLINE __inline__
+#define INLINE __inline__
 #elif defined(_MSC_VER)
-    #define INLINE __forceinline
+#define INLINE __forceinline
 #elif defined(__IBMC__)
-    #define INLINE _Inline
+#define INLINE _Inline
 #elif defined(__cplusplus)
-    #define INLINE inline
+#define INLINE inline
 #else
-    #define INLINE /* */
+#define INLINE /* */
 #endif
 
 #if defined(_MSC_VER)
-    #define NOINLINE __declspec(noinline)
+#define NOINLINE __declspec(noinline)
 #elif defined(__GNUC__)
-    #define NOINLINE __attribute__ ((noinline))
+#define NOINLINE __attribute__((noinline))
 #else
-    #define NOINLINE /* */
+#define NOINLINE /* */
 #endif
 
 #if defined(_MSC_VER)
-    #define ALIGNED(x) __declspec(align(x))
+#define ALIGNED(x) __declspec(align(x))
 #elif defined(__GNUC__)
-    #define ALIGNED(x) __attribute__ ((aligned(x)))
+#define ALIGNED(x) __attribute__((aligned(x)))
 #endif
 
 #if defined(__GNUC__) || defined(__clang__) || defined(__CUDACC__)
-    #define RESTRICT __restrict__
+#define RESTRICT __restrict__
 #elif defined(_MSC_VER) || defined(__INTEL_COMPILER)
-    #define RESTRICT __restrict
+#define RESTRICT __restrict
 #else
-    #define RESTRICT /* */
+#define RESTRICT /* */
 #endif
 
 #if defined(__GNUC__) || defined(__clang__)
-    #define bsc_byteswap_uint64(x)    (__builtin_bswap64(x))
-    #define bsc_bit_scan_reverse(x)   (__builtin_clz(x) ^ 31)
-    #define bsc_bit_scan_reverse64(x) (__builtin_clzll(x) ^ 63)
-    #define bsc_bit_scan_forward(x)   (__builtin_ctz(x))
-    #define bsc_bit_scan_forward64(x) (__builtin_ctzll(x))
+#define bsc_byteswap_uint64(x) (__builtin_bswap64(x))
+#define bsc_bit_scan_reverse(x) (__builtin_clz(x) ^ 31)
+#define bsc_bit_scan_reverse64(x) (__builtin_clzll(x) ^ 63)
+#define bsc_bit_scan_forward(x) (__builtin_ctz(x))
+#define bsc_bit_scan_forward64(x) (__builtin_ctzll(x))
 #elif defined(_MSC_VER)
-    #define bsc_byteswap_uint64(x)  (_byteswap_uint64(x))
+#define bsc_byteswap_uint64(x) (_byteswap_uint64(x))
 
-    #pragma intrinsic(_BitScanReverse)
-    #pragma intrinsic(_BitScanForward)
+#pragma intrinsic(_BitScanReverse)
+#pragma intrinsic(_BitScanForward)
 
-    static inline __forceinline unsigned long bsc_bit_scan_reverse(unsigned long x) 
-    {
-       unsigned long index;
-       _BitScanReverse(&index, x);
-       return index;
-    }
+static inline __forceinline unsigned long
+bsc_bit_scan_reverse(unsigned long x) {
+  unsigned long index;
+  _BitScanReverse(&index, x);
+  return index;
+}
 
-    static inline __forceinline unsigned long bsc_bit_scan_forward(unsigned long x) 
-    {
-       unsigned long index;
-       _BitScanForward(&index, x);
-       return index;
-    }
+static inline __forceinline unsigned long
+bsc_bit_scan_forward(unsigned long x) {
+  unsigned long index;
+  _BitScanForward(&index, x);
+  return index;
+}
 
-    #if defined(_M_X64) || defined(_M_ARM64)
-    static inline __forceinline unsigned long bsc_bit_scan_reverse64(unsigned long long x) 
-    {
-       unsigned long index;
-        _BitScanReverse64(&index, x);
-       return index;
-    }
-    #endif
+#if defined(_M_X64) || defined(_M_ARM64)
+static inline __forceinline unsigned long
+bsc_bit_scan_reverse64(unsigned long long x) {
+  unsigned long index;
+  _BitScanReverse64(&index, x);
+  return index;
+}
+#endif
 
-    #if defined(_M_X64) || defined(_M_ARM64)
-    static inline __forceinline unsigned long bsc_bit_scan_forward64(unsigned long long x) 
-    {
-       unsigned long index;
-        _BitScanForward64(&index, x);
-       return index;
-    }
-    #endif
+#if defined(_M_X64) || defined(_M_ARM64)
+static inline __forceinline unsigned long
+bsc_bit_scan_forward64(unsigned long long x) {
+  unsigned long index;
+  _BitScanForward64(&index, x);
+  return index;
+}
+#endif
 #endif
 
 #ifndef LIBBSC_API
-  #ifdef _WIN32
-    #ifdef LIBBSC_SHARED
-      #ifdef LIBBSC_EXPORTS
-        #define LIBBSC_API __declspec(dllexport)
-      #else
-        #define LIBBSC_API __declspec(dllimport)
-      #endif
-    #else
-      #define LIBBSC_API
-    #endif
-  #else
-    #define LIBBSC_API
-  #endif
+#ifdef _WIN32
+#ifdef LIBBSC_SHARED
+#ifdef LIBBSC_EXPORTS
+#define LIBBSC_API __declspec(dllexport)
+#else
+#define LIBBSC_API __declspec(dllimport)
+#endif
+#else
+#define LIBBSC_API
+#endif
+#else
+#define LIBBSC_API
+#endif
 #endif
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-    /**
-    * You should call this function before you call any of the other platform specific functions.
-    * @param malloc      - function to use to allocate buffers
-    * @param zero_malloc - function to use to allocate zero-filled buffers
-    * @param free        - function used to free buffers
-    * @param features    - the set of additional features.
-    * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
-    */
-    int bsc_platform_init(int features, void* (* malloc)(size_t size), void* (* zero_malloc)(size_t size), void (* free)(void* address));
+/**
+ * You should call this function before you call any of the other platform
+ * specific functions.
+ * @param malloc      - function to use to allocate buffers
+ * @param zero_malloc - function to use to allocate zero-filled buffers
+ * @param free        - function used to free buffers
+ * @param features    - the set of additional features.
+ * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
+ */
+int bsc_platform_init(int features, void *(*malloc)(size_t size),
+                      void *(*zero_malloc)(size_t size),
+                      void (*free)(void *address));
 
-    /**
-    * Allocates memory blocks.
-    * @param size        - bytes to allocate.
-    * @return a pointer to allocated space or NULL if there is insufficient memory available.
-    */
-    LIBBSC_API void * bsc_malloc(size_t size);
+/**
+ * Allocates memory blocks.
+ * @param size        - bytes to allocate.
+ * @return a pointer to allocated space or NULL if there is insufficient memory
+ * available.
+ */
+LIBBSC_API void *bsc_malloc(size_t size);
 
-    /**
-    * Allocates memory blocks and initializes all its bits to zero.
-    * @param size        - bytes to allocate.
-    * @return a pointer to allocated space or NULL if there is insufficient memory available.
-    */
-    LIBBSC_API void * bsc_zero_malloc(size_t size);
+/**
+ * Allocates memory blocks and initializes all its bits to zero.
+ * @param size        - bytes to allocate.
+ * @return a pointer to allocated space or NULL if there is insufficient memory
+ * available.
+ */
+LIBBSC_API void *bsc_zero_malloc(size_t size);
 
-    /**
-    * Deallocates or frees a memory block.
-    * @param address     - previously allocated memory block to be freed.
-    */
-    LIBBSC_API void bsc_free(void * address);
+/**
+ * Deallocates or frees a memory block.
+ * @param address     - previously allocated memory block to be freed.
+ */
+LIBBSC_API void bsc_free(void *address);
 
-    /**
-    * Detects supported CPU features (Streaming SIMD Extensions).
-    * @return highest supported CPU feature.
-    */
-    LIBBSC_API int bsc_get_cpu_features(void);
+/**
+ * Detects supported CPU features (Streaming SIMD Extensions).
+ * @return highest supported CPU feature.
+ */
+LIBBSC_API int bsc_get_cpu_features(void);
 
 #ifdef __cplusplus
 }

@@ -36,5 +36,6 @@
 #include "archive_entry.h"
 
 void __archive_write_entry_filetype_unsupported(struct archive *a,
-    struct archive_entry *entry, const char *format);
+                                                struct archive_entry *entry,
+                                                const char *format);
 #endif

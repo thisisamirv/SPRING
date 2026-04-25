@@ -53,8 +53,7 @@ extern "C" {
  * @returns  0     - region is all zeros
  *           other - region has non zero bytes
  */
-int
-isal_zero_detect(void *mem, size_t len);
+int isal_zero_detect(void *mem, size_t len);
 
 #ifdef __cplusplus
 }

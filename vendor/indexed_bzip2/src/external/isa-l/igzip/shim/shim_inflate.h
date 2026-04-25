@@ -27,12 +27,12 @@
   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 **********************************************************************/
 
-#include "shim_deflate.h"
 #include "igzip_lib.h"
+#include "shim_deflate.h"
 
 typedef struct internal_state2 {
-        z_streamp strm;
-        int level;
-        int w_bits;
-        struct inflate_state *isal_strm_inflate;
+  z_streamp strm;
+  int level;
+  int w_bits;
+  struct inflate_state *isal_strm_inflate;
 } inflate_state2;

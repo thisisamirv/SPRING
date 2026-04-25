@@ -28,18 +28,15 @@
 **********************************************************************/
 #include "riscv64_multibinary.h"
 
-extern uint32_t
-adler32_rvv(uint32_t, uint8_t *, uint64_t);
-extern uint32_t
-adler32_base(uint32_t, uint8_t *, uint64_t);
+extern uint32_t adler32_rvv(uint32_t, uint8_t *, uint64_t);
+extern uint32_t adler32_base(uint32_t, uint8_t *, uint64_t);
 
-DEFINE_INTERFACE_DISPATCHER(isal_adler32)
-{
+DEFINE_INTERFACE_DISPATCHER(isal_adler32) {
 #if HAVE_RVV
-        const unsigned long hwcap = getauxval(AT_HWCAP);
-        if (hwcap & HWCAP_RV('V'))
-                return adler32_rvv;
-        else
+  const unsigned long hwcap = getauxval(AT_HWCAP);
+  if (hwcap & HWCAP_RV('V'))
+    return adler32_rvv;
+  else
 #endif
-                return adler32_base;
+    return adler32_base;
 }

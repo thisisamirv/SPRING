@@ -37,61 +37,57 @@ struct tree;
 struct archive_entry;
 
 struct archive_read_disk {
-	struct archive	archive;
+  struct archive archive;
 
-	/* Reused by archive_read_next_header() */
-	struct archive_entry *entry;
+  /* Reused by archive_read_next_header() */
+  struct archive_entry *entry;
 
-	/*
-	 * Symlink mode is one of 'L'ogical, 'P'hysical, or 'H'ybrid,
-	 * following an old BSD convention.  'L' follows all symlinks,
-	 * 'P' follows none, 'H' follows symlinks only for the first
-	 * item.
-	 */
-	char	symlink_mode;
+  /*
+   * Symlink mode is one of 'L'ogical, 'P'hysical, or 'H'ybrid,
+   * following an old BSD convention.  'L' follows all symlinks,
+   * 'P' follows none, 'H' follows symlinks only for the first
+   * item.
+   */
+  char symlink_mode;
 
-	/*
-	 * Since symlink interaction changes, we need to track whether
-	 * we're following symlinks for the current item, governed by the above
-	 * symlink_mode.  'L' sets this true, 'P' sets it false, 'H' changes it
-	 * as we traverse.
-	 */
-	char	follow_symlinks;  /* Either 0 or 1. */
+  /*
+   * Since symlink interaction changes, we need to track whether
+   * we're following symlinks for the current item, governed by the above
+   * symlink_mode.  'L' sets this true, 'P' sets it false, 'H' changes it
+   * as we traverse.
+   */
+  char follow_symlinks; /* Either 0 or 1. */
 
-	/* Directory traversals. */
-	struct tree *tree;
-	int	(*open_on_current_dir)(struct tree*, const char *, int);
-	int	(*tree_current_dir_fd)(struct tree*);
-	int	(*tree_enter_working_dir)(struct tree*);
+  /* Directory traversals. */
+  struct tree *tree;
+  int (*open_on_current_dir)(struct tree *, const char *, int);
+  int (*tree_current_dir_fd)(struct tree *);
+  int (*tree_enter_working_dir)(struct tree *);
 
-	/* Bitfield with ARCHIVE_READDISK_* tunables */
-	int	flags;
+  /* Bitfield with ARCHIVE_READDISK_* tunables */
+  int flags;
 
-	const char * (*lookup_gname)(void *private, int64_t gid);
-	void	(*cleanup_gname)(void *private);
-	void	 *lookup_gname_data;
-	const char * (*lookup_uname)(void *private, int64_t uid);
-	void	(*cleanup_uname)(void *private);
-	void	 *lookup_uname_data;
+  const char *(*lookup_gname)(void *private, int64_t gid);
+  void (*cleanup_gname)(void *private);
+  void *lookup_gname_data;
+  const char *(*lookup_uname)(void *private, int64_t uid);
+  void (*cleanup_uname)(void *private);
+  void *lookup_uname_data;
 
-	int	(*metadata_filter_func)(struct archive *, void *,
-			struct archive_entry *);
-	void	*metadata_filter_data;
+  int (*metadata_filter_func)(struct archive *, void *, struct archive_entry *);
+  void *metadata_filter_data;
 
-	/* ARCHIVE_MATCH object. */
-	struct archive	*matching;
-	/* Callback function, this will be invoked when ARCHIVE_MATCH
-	 * archive_match_*_excluded_ae return true. */
-	void	(*excluded_cb_func)(struct archive *, void *,
-			 struct archive_entry *);
-	void	*excluded_cb_data;
+  /* ARCHIVE_MATCH object. */
+  struct archive *matching;
+  /* Callback function, this will be invoked when ARCHIVE_MATCH
+   * archive_match_*_excluded_ae return true. */
+  void (*excluded_cb_func)(struct archive *, void *, struct archive_entry *);
+  void *excluded_cb_data;
 };
 
-const char *
-archive_read_disk_entry_setup_path(struct archive_read_disk *,
-    struct archive_entry *, int *);
+const char *archive_read_disk_entry_setup_path(struct archive_read_disk *,
+                                               struct archive_entry *, int *);
 
-int
-archive_read_disk_entry_setup_acls(struct archive_read_disk *,
-    struct archive_entry *, int *);
+int archive_read_disk_entry_setup_acls(struct archive_read_disk *,
+                                       struct archive_entry *, int *);
 #endif

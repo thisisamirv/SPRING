@@ -37,33 +37,38 @@ See also the bsc and libbsc web site:
 extern "C" {
 #endif
 
-    /**
-    * You should call this function before you call any of the other functions in coder.
-    * @param features   - the set of additional features.
-    * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
-    */
-    int bsc_coder_init(int features);
+/**
+ * You should call this function before you call any of the other functions in
+ * coder.
+ * @param features   - the set of additional features.
+ * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
+ */
+int bsc_coder_init(int features);
 
-    /**
-    * Compress a memory block using Quantized Local Frequency Coding.
-    * @param input      - the input memory block of n bytes.
-    * @param output     - the output memory block of n bytes.
-    * @param n          - the length of the input memory block.
-    * @param coder      - the entropy coding algorithm.
-    * @param features   - the set of additional features.
-    * @return the length of compressed memory block if no error occurred, error code otherwise.
-    */
-    int bsc_coder_compress(const unsigned char * input, unsigned char * output, int n, int coder, int features);
+/**
+ * Compress a memory block using Quantized Local Frequency Coding.
+ * @param input      - the input memory block of n bytes.
+ * @param output     - the output memory block of n bytes.
+ * @param n          - the length of the input memory block.
+ * @param coder      - the entropy coding algorithm.
+ * @param features   - the set of additional features.
+ * @return the length of compressed memory block if no error occurred, error
+ * code otherwise.
+ */
+int bsc_coder_compress(const unsigned char *input, unsigned char *output, int n,
+                       int coder, int features);
 
-    /**
-    * Decompress a memory block using Quantized Local Frequency Coding.
-    * @param input      - the input memory block.
-    * @param output     - the output memory block.
-    * @param coder      - the entropy coding algorithm.
-    * @param features   - the set of additional features.
-    * @return the length of decompressed memory block if no error occurred, error code otherwise.
-    */
-    int bsc_coder_decompress(const unsigned char * input, unsigned char * output, int coder, int features);
+/**
+ * Decompress a memory block using Quantized Local Frequency Coding.
+ * @param input      - the input memory block.
+ * @param output     - the output memory block.
+ * @param coder      - the entropy coding algorithm.
+ * @param features   - the set of additional features.
+ * @return the length of decompressed memory block if no error occurred, error
+ * code otherwise.
+ */
+int bsc_coder_decompress(const unsigned char *input, unsigned char *output,
+                         int coder, int features);
 
 #ifdef __cplusplus
 }

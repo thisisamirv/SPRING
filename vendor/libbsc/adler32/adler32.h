@@ -37,14 +37,14 @@ See also the bsc and libbsc web site:
 extern "C" {
 #endif
 
-    /**
-    * Calculates Adler-32 checksum for input memory block.
-    * @param T          - the input memory block of n bytes.
-    * @param n          - the length of the input memory block.
-    * @param features   - the set of additional features.
-    * @return the value of cyclic redundancy check.
-    */
-    unsigned int bsc_adler32(const unsigned char * T, int n, int features);
+/**
+ * Calculates Adler-32 checksum for input memory block.
+ * @param T          - the input memory block of n bytes.
+ * @param n          - the length of the input memory block.
+ * @param features   - the set of additional features.
+ * @return the value of cyclic redundancy check.
+ */
+unsigned int bsc_adler32(const unsigned char *T, int n, int features);
 
 #ifdef __cplusplus
 }

@@ -48,11 +48,11 @@ preprocessor macro LIBBSC_SORT_TRANSFORM_SUPPORT at compile time.
 #define _CRT_SECURE_NO_WARNINGS
 
 #include <math.h>
+#include <numeric>
+#include <stdexcept>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <numeric>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -122,8 +122,10 @@ class bsc_str_array_class {
     // put bsize bytes into buf from str_array
     int bytes_written = 0;
     while (true) {
-      if (bytes_written == bsize) break;
-      if (pos_in_str_array == size_str_array) break;
+      if (bytes_written == bsize)
+        break;
+      if (pos_in_str_array == size_str_array)
+        break;
       if (str_lengths[pos_in_str_array] == pos_in_current_str) {
         pos_in_str_array++;
         pos_in_current_str = 0;
@@ -150,12 +152,14 @@ class bsc_str_array_class {
     // put bsize bytes from buf into str_array
     int bytes_read = 0;
     while (true) {
-      if (bytes_read == bsize) break;
+      if (bytes_read == bsize)
+        break;
       if (pos_in_current_str == str_lengths[pos_in_str_array]) {
         pos_in_str_array++;
         pos_in_current_str = 0;
         if (pos_in_str_array >= size_str_array && bytes_read < bsize) {
-          throw std::runtime_error("BSC decompression error - string array not large enough.");
+          throw std::runtime_error(
+              "BSC decompression error - string array not large enough.");
         }
         str_array[pos_in_str_array].resize(str_lengths[pos_in_str_array]);
       }
@@ -193,7 +197,7 @@ class bsc_str_array_class {
 
     BSC_FILEOFFSET fileSize = 0;
     for (uint32_t i = 0; i < size_str_array; i++)
-        fileSize += str_lengths[i];
+      fileSize += str_lengths[i];
 
     if (paramBlockSize > fileSize) {
       paramBlockSize = (int)fileSize;
@@ -303,7 +307,8 @@ class bsc_str_array_class {
         //                }
         //            }
 
-        if (dataSize == 0) break;
+        if (dataSize == 0)
+          break;
 
         signed char recordSize = 1;
         // Commenting out below block because we always disable reordering
@@ -357,13 +362,13 @@ class bsc_str_array_class {
           if (sortingContexts < LIBBSC_NO_ERROR) {
             {
               switch (sortingContexts) {
-                case LIBBSC_NOT_ENOUGH_MEMORY:
-                  fprintf(stderr, "\nNot enough memory!\n");
-                  break;
-                default:
-                  fprintf(
-                      stderr,
-                      "\nInternal program error, please contact the author!\n");
+              case LIBBSC_NOT_ENOUGH_MEMORY:
+                fprintf(stderr, "\nNot enough memory!\n");
+                break;
+              default:
+                fprintf(
+                    stderr,
+                    "\nInternal program error, please contact the author!\n");
               }
               throw std::runtime_error("BSC error.");
             }
@@ -411,36 +416,35 @@ class bsc_str_array_class {
         if (blockSize < LIBBSC_NO_ERROR) {
           {
             switch (blockSize) {
-              case LIBBSC_NOT_ENOUGH_MEMORY:
-                fprintf(stderr,
-                        "\nNot enough memory! Please check README file for "
-                        "more information.\n");
-                break;
-              case LIBBSC_NOT_SUPPORTED:
-                fprintf(stderr,
-                        "\nSpecified compression method is not supported on "
-                        "this platform!\n");
-                break;
-              case LIBBSC_GPU_ERROR:
-                fprintf(stderr,
-                        "\nGeneral GPU failure! Please check README file for "
-                        "more information.\n");
-                break;
-              case LIBBSC_GPU_NOT_SUPPORTED:
-                fprintf(stderr,
-                        "\nYour GPU is not supported! Please check README file "
-                        "for more information.\n");
-                break;
-              case LIBBSC_GPU_NOT_ENOUGH_MEMORY:
-                fprintf(stderr,
-                        "\nNot enough GPU memory! Please check README file for "
-                        "more information.\n");
-                break;
+            case LIBBSC_NOT_ENOUGH_MEMORY:
+              fprintf(stderr,
+                      "\nNot enough memory! Please check README file for "
+                      "more information.\n");
+              break;
+            case LIBBSC_NOT_SUPPORTED:
+              fprintf(stderr,
+                      "\nSpecified compression method is not supported on "
+                      "this platform!\n");
+              break;
+            case LIBBSC_GPU_ERROR:
+              fprintf(stderr,
+                      "\nGeneral GPU failure! Please check README file for "
+                      "more information.\n");
+              break;
+            case LIBBSC_GPU_NOT_SUPPORTED:
+              fprintf(stderr,
+                      "\nYour GPU is not supported! Please check README file "
+                      "for more information.\n");
+              break;
+            case LIBBSC_GPU_NOT_ENOUGH_MEMORY:
+              fprintf(stderr,
+                      "\nNot enough GPU memory! Please check README file for "
+                      "more information.\n");
+              break;
 
-              default:
-                fprintf(
-                    stderr,
-                    "\nInternal program error, please contact the author!\n");
+            default:
+              fprintf(stderr,
+                      "\nInternal program error, please contact the author!\n");
             }
             throw std::runtime_error("BSC error.");
           }
@@ -553,10 +557,13 @@ class bsc_str_array_class {
             }
 
             if ((blockSize > bufferSize) || (dataSize > bufferSize)) {
-              if (blockSize > bufferSize) bufferSize = blockSize;
-              if (dataSize > bufferSize) bufferSize = dataSize;
+              if (blockSize > bufferSize)
+                bufferSize = blockSize;
+              if (dataSize > bufferSize)
+                bufferSize = dataSize;
 
-              if (buffer != NULL) bsc_free(buffer);
+              if (buffer != NULL)
+                bsc_free(buffer);
               buffer = (unsigned char *)bsc_malloc(bufferSize);
             }
 
@@ -577,41 +584,41 @@ class bsc_str_array_class {
           }
         }
 
-        if (dataSize == 0) break;
+        if (dataSize == 0)
+          break;
 
         int result = bsc_decompress(buffer, blockSize, buffer, dataSize,
                                     paramFeatures());
         if (result < LIBBSC_NO_ERROR) {
           {
             switch (result) {
-              case LIBBSC_DATA_CORRUPT:
-                fprintf(stderr, "\nThe compressed data is corrupted!\n");
-                break;
-              case LIBBSC_NOT_ENOUGH_MEMORY:
-                fprintf(stderr,
-                        "\nNot enough memory! Please check README file for "
-                        "more information.\n");
-                break;
-              case LIBBSC_GPU_ERROR:
-                fprintf(stderr,
-                        "\nGeneral GPU failure! Please check README file for "
-                        "more information.\n");
-                break;
-              case LIBBSC_GPU_NOT_SUPPORTED:
-                fprintf(stderr,
-                        "\nYour GPU is not supported! Please check README file "
-                        "for more information.\n");
-                break;
-              case LIBBSC_GPU_NOT_ENOUGH_MEMORY:
-                fprintf(stderr,
-                        "\nNot enough GPU memory! Please check README file for "
-                        "more information.\n");
-                break;
+            case LIBBSC_DATA_CORRUPT:
+              fprintf(stderr, "\nThe compressed data is corrupted!\n");
+              break;
+            case LIBBSC_NOT_ENOUGH_MEMORY:
+              fprintf(stderr,
+                      "\nNot enough memory! Please check README file for "
+                      "more information.\n");
+              break;
+            case LIBBSC_GPU_ERROR:
+              fprintf(stderr,
+                      "\nGeneral GPU failure! Please check README file for "
+                      "more information.\n");
+              break;
+            case LIBBSC_GPU_NOT_SUPPORTED:
+              fprintf(stderr,
+                      "\nYour GPU is not supported! Please check README file "
+                      "for more information.\n");
+              break;
+            case LIBBSC_GPU_NOT_ENOUGH_MEMORY:
+              fprintf(stderr,
+                      "\nNot enough GPU memory! Please check README file for "
+                      "more information.\n");
+              break;
 
-              default:
-                fprintf(
-                    stderr,
-                    "\nInternal program error, please contact the author!\n");
+            default:
+              fprintf(stderr,
+                      "\nInternal program error, please contact the author!\n");
             }
             throw std::runtime_error("BSC error.");
           }
@@ -634,15 +641,15 @@ class bsc_str_array_class {
           if (result != LIBBSC_NO_ERROR) {
             {
               switch (result) {
-                case LIBBSC_NOT_ENOUGH_MEMORY:
-                  fprintf(stderr,
-                          "\nNot enough memory! Please check README file for "
-                          "more information.\n");
-                  break;
-                default:
-                  fprintf(
-                      stderr,
-                      "\nInternal program error, please contact the author!\n");
+              case LIBBSC_NOT_ENOUGH_MEMORY:
+                fprintf(stderr,
+                        "\nNot enough memory! Please check README file for "
+                        "more information.\n");
+                break;
+              default:
+                fprintf(
+                    stderr,
+                    "\nInternal program error, please contact the author!\n");
               }
               throw std::runtime_error("BSC error.");
             }
@@ -661,7 +668,8 @@ class bsc_str_array_class {
         }
       }
 
-      if (buffer != NULL) bsc_free(buffer);
+      if (buffer != NULL)
+        bsc_free(buffer);
     }
 
     fclose(fInput);
@@ -717,92 +725,98 @@ class bsc_str_array_class {
 
     for (; *s != 0;) {
       switch (*s++) {
-        case 'b': {
-          char *strNum = s;
-          while ((*s >= '0') && (*s <= '9')) s++;
-          paramBlockSize = atoi(strNum) * 1024 * 1024;
-          if ((paramBlockSize < 1024 * 1024) ||
-              (paramBlockSize > 1024 * 1024 * 1024))
-            ShowUsage();
-          break;
-        }
+      case 'b': {
+        char *strNum = s;
+        while ((*s >= '0') && (*s <= '9'))
+          s++;
+        paramBlockSize = atoi(strNum) * 1024 * 1024;
+        if ((paramBlockSize < 1024 * 1024) ||
+            (paramBlockSize > 1024 * 1024 * 1024))
+          ShowUsage();
+        break;
+      }
 
-        case 'm': {
-          char *strNum = s;
-          while ((*s >= '0') && (*s <= '9')) s++;
-          switch (atoi(strNum)) {
-            case 0:
-              paramBlockSorter = LIBBSC_BLOCKSORTER_BWT;
-              break;
-            default:
-              ShowUsage();
-          }
+      case 'm': {
+        char *strNum = s;
+        while ((*s >= '0') && (*s <= '9'))
+          s++;
+        switch (atoi(strNum)) {
+        case 0:
+          paramBlockSorter = LIBBSC_BLOCKSORTER_BWT;
           break;
-        }
-
-        case 'c': {
-          switch (*s++) {
-            case 'f':
-              paramSortingContexts = LIBBSC_CONTEXTS_FOLLOWING;
-              break;
-            case 'p':
-              paramSortingContexts = LIBBSC_CONTEXTS_PRECEDING;
-              break;
-            case 'a':
-              paramSortingContexts = LIBBSC_CONTEXTS_AUTODETECT;
-              break;
-            default:
-              ShowUsage();
-          }
-          break;
-        }
-
-        case 'e': {
-          switch (*s++) {
-            case '1':
-              paramCoder = LIBBSC_CODER_QLFC_STATIC;
-              break;
-            case '2':
-              paramCoder = LIBBSC_CODER_QLFC_ADAPTIVE;
-              break;
-            default:
-              ShowUsage();
-          }
-          break;
-        }
-
-        case 'H': {
-          char *strNum = s;
-          while ((*s >= '0') && (*s <= '9')) s++;
-          paramLZPHashSize = atoi(strNum);
-          if ((paramLZPHashSize < 10) || (paramLZPHashSize > 28)) ShowUsage();
-          break;
-        }
-
-        case 'M': {
-          char *strNum = s;
-          while ((*s >= '0') && (*s <= '9')) s++;
-          paramLZPMinLen = atoi(strNum);
-          if ((paramLZPMinLen < 4) || (paramLZPMinLen > 255)) ShowUsage();
-          break;
-        }
-
-        case 'l':
-          paramEnableLZP = 1;
-          break;
-        case 's':
-          paramEnableSegmentation = 1;
-          break;
-        case 'r':
-          paramEnableReordering = 1;
-          break;
-
-        case 'p':
-          paramEnableLZP = paramEnableSegmentation = paramEnableReordering = 0;
-          break;
-
         default:
           ShowUsage();
+        }
+        break;
+      }
+
+      case 'c': {
+        switch (*s++) {
+        case 'f':
+          paramSortingContexts = LIBBSC_CONTEXTS_FOLLOWING;
+          break;
+        case 'p':
+          paramSortingContexts = LIBBSC_CONTEXTS_PRECEDING;
+          break;
+        case 'a':
+          paramSortingContexts = LIBBSC_CONTEXTS_AUTODETECT;
+          break;
+        default:
+          ShowUsage();
+        }
+        break;
+      }
+
+      case 'e': {
+        switch (*s++) {
+        case '1':
+          paramCoder = LIBBSC_CODER_QLFC_STATIC;
+          break;
+        case '2':
+          paramCoder = LIBBSC_CODER_QLFC_ADAPTIVE;
+          break;
+        default:
+          ShowUsage();
+        }
+        break;
+      }
+
+      case 'H': {
+        char *strNum = s;
+        while ((*s >= '0') && (*s <= '9'))
+          s++;
+        paramLZPHashSize = atoi(strNum);
+        if ((paramLZPHashSize < 10) || (paramLZPHashSize > 28))
+          ShowUsage();
+        break;
+      }
+
+      case 'M': {
+        char *strNum = s;
+        while ((*s >= '0') && (*s <= '9'))
+          s++;
+        paramLZPMinLen = atoi(strNum);
+        if ((paramLZPMinLen < 4) || (paramLZPMinLen > 255))
+          ShowUsage();
+        break;
+      }
+
+      case 'l':
+        paramEnableLZP = 1;
+        break;
+      case 's':
+        paramEnableSegmentation = 1;
+        break;
+      case 'r':
+        paramEnableReordering = 1;
+        break;
+
+      case 'p':
+        paramEnableLZP = paramEnableSegmentation = paramEnableReordering = 0;
+        break;
+
+      default:
+        ShowUsage();
       }
     }
   }
@@ -821,7 +835,7 @@ class bsc_str_array_class {
     }
   }
 
- public:
+public:
   int bsc_main(int argc, char *argv[], std::string *str_array_param,
                const uint32_t size_str_array_param,
                uint32_t *str_lengths_param) {
@@ -836,22 +850,22 @@ class bsc_str_array_class {
     size_str_array = size_str_array_param;
     str_lengths = str_lengths_param;
     switch (*argv[1]) {
-      case 'e':
-      case 'E':
-        Compression(argv);
-        break;
-      case 'd':
-      case 'D':
-        Decompression(argv);
-        break;
-      default:
-        ShowUsage();
+    case 'e':
+    case 'E':
+      Compression(argv);
+      break;
+    case 'd':
+    case 'D':
+      Decompression(argv);
+      break;
+    default:
+      ShowUsage();
     }
 
     return 0;
   }
 
-};  // end class bsc_class
+}; // end class bsc_class
 
 void BSC_str_array_compress(const char *outfile, std::string *str_array_param,
                             const uint32_t size_str_array_param,
@@ -863,7 +877,8 @@ void BSC_str_array_compress(const char *outfile, std::string *str_array_param,
   std::vector<std::string> arguments = {
       "", "e", "", outfile, "-b" + std::to_string(bsize), "-p", "-e1"};
   std::vector<char *> argv;
-  for (const auto &arg : arguments) argv.push_back((char *)arg.data());
+  for (const auto &arg : arguments)
+    argv.push_back((char *)arg.data());
   argv.push_back(nullptr);
   b.bsc_main(argv.size() - 1, argv.data(), str_array_param,
              size_str_array_param, str_lengths_param);
@@ -877,14 +892,15 @@ void BSC_str_array_decompress(const char *infile, std::string *str_array_param,
   // https://stackoverflow.com/questions/39883433/create-argc-argv-in-the-code
   std::vector<std::string> arguments = {"", "d", infile, ""};
   std::vector<char *> argv;
-  for (const auto &arg : arguments) argv.push_back((char *)arg.data());
+  for (const auto &arg : arguments)
+    argv.push_back((char *)arg.data());
   argv.push_back(nullptr);
   b.bsc_main(argv.size() - 1, argv.data(), str_array_param,
              size_str_array_param, str_lengths_param);
 }
 
-}  // namespace bsc
-}  // namespace spring
+} // namespace bsc
+} // namespace spring
 
 /*-----------------------------------------------------------*/
 /* End                                               bsc.cpp */

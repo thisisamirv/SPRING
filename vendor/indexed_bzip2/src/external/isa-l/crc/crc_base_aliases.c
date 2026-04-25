@@ -30,8 +30,7 @@
 #include "crc.h"
 #include <stdint.h>
 
-uint32_t
-crc32_gzip_refl(uint32_t seed, const unsigned char *buf, uint64_t len)
-{
-        return crc32_gzip_refl_base(seed, (uint8_t *) buf, len);
+uint32_t crc32_gzip_refl(uint32_t seed, const unsigned char *buf,
+                         uint64_t len) {
+  return crc32_gzip_refl_base(seed, (uint8_t *)buf, len);
 }

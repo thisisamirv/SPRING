@@ -73,7 +73,7 @@ static void la_arc4random_buf(void *, size_t);
 #endif
 
 #ifndef O_CLOEXEC
-#define O_CLOEXEC	0
+#define O_CLOEXEC 0
 #endif
 
 /*
@@ -81,48 +81,46 @@ static void la_arc4random_buf(void *, size_t);
  * This simply calls arc4random_buf function if the platform provides it.
  */
 
-int
-archive_random(void *buf, size_t nbytes)
-{
+int archive_random(void *buf, size_t nbytes) {
 #if defined(_WIN32) && !defined(__CYGWIN__)
-# if defined(HAVE_BCRYPT_H) && _WIN32_WINNT >= _WIN32_WINNT_VISTA
-	NTSTATUS status;
-	BCRYPT_ALG_HANDLE hAlg;
+#if defined(HAVE_BCRYPT_H) && _WIN32_WINNT >= _WIN32_WINNT_VISTA
+  NTSTATUS status;
+  BCRYPT_ALG_HANDLE hAlg;
 
-	status = BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_RNG_ALGORITHM, NULL, 0);
-	if (!BCRYPT_SUCCESS(status))
-		return ARCHIVE_FAILED;
-	status = BCryptGenRandom(hAlg, buf, (ULONG)nbytes, 0);
-	BCryptCloseAlgorithmProvider(hAlg, 0);
-	if (!BCRYPT_SUCCESS(status))
-		return ARCHIVE_FAILED;
+  status = BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_RNG_ALGORITHM, NULL, 0);
+  if (!BCRYPT_SUCCESS(status))
+    return ARCHIVE_FAILED;
+  status = BCryptGenRandom(hAlg, buf, (ULONG)nbytes, 0);
+  BCryptCloseAlgorithmProvider(hAlg, 0);
+  if (!BCRYPT_SUCCESS(status))
+    return ARCHIVE_FAILED;
 
-	return ARCHIVE_OK;
-# else
-	HCRYPTPROV hProv;
-	BOOL success;
-
-	success = CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL,
-	    CRYPT_VERIFYCONTEXT);
-	if (!success && GetLastError() == (DWORD)NTE_BAD_KEYSET) {
-		success = CryptAcquireContext(&hProv, NULL, NULL,
-		    PROV_RSA_FULL, CRYPT_NEWKEYSET);
-	}
-	if (success) {
-		success = CryptGenRandom(hProv, (DWORD)nbytes, (BYTE*)buf);
-		CryptReleaseContext(hProv, 0);
-		if (success)
-			return ARCHIVE_OK;
-	}
-	/* TODO: Does this case really happen? */
-	return ARCHIVE_FAILED;
-# endif
-#elif !defined(HAVE_ARC4RANDOM_BUF) && (!defined(_WIN32) || defined(__CYGWIN__))
-	la_arc4random_buf(buf, nbytes);
-	return ARCHIVE_OK;
+  return ARCHIVE_OK;
 #else
-	arc4random_buf(buf, nbytes);
-	return ARCHIVE_OK;
+  HCRYPTPROV hProv;
+  BOOL success;
+
+  success = CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL,
+                                CRYPT_VERIFYCONTEXT);
+  if (!success && GetLastError() == (DWORD)NTE_BAD_KEYSET) {
+    success =
+        CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_NEWKEYSET);
+  }
+  if (success) {
+    success = CryptGenRandom(hProv, (DWORD)nbytes, (BYTE *)buf);
+    CryptReleaseContext(hProv, 0);
+    if (success)
+      return ARCHIVE_OK;
+  }
+  /* TODO: Does this case really happen? */
+  return ARCHIVE_FAILED;
+#endif
+#elif !defined(HAVE_ARC4RANDOM_BUF) && (!defined(_WIN32) || defined(__CYGWIN__))
+  la_arc4random_buf(buf, nbytes);
+  return ARCHIVE_OK;
+#else
+  arc4random_buf(buf, nbytes);
+  return ARCHIVE_OK;
 #endif
 }
 
@@ -160,25 +158,25 @@ archive_random(void *buf, size_t nbytes)
 
 #ifdef __GNUC__
 #define inline __inline
-#else				/* !__GNUC__ */
+#else /* !__GNUC__ */
 #define inline
-#endif				/* !__GNUC__ */
+#endif /* !__GNUC__ */
 
 struct arc4_stream {
-	uint8_t i;
-	uint8_t j;
-	uint8_t s[256];
+  uint8_t i;
+  uint8_t j;
+  uint8_t s[256];
 };
 
-#define	RANDOMDEV	"/dev/urandom"
-#define	KEYSIZE		128
+#define RANDOMDEV "/dev/urandom"
+#define KEYSIZE 128
 #ifdef HAVE_PTHREAD_H
-static pthread_mutex_t	arc4random_mtx = PTHREAD_MUTEX_INITIALIZER;
-#define	_ARC4_LOCK()	pthread_mutex_lock(&arc4random_mtx);
-#define	_ARC4_UNLOCK()  pthread_mutex_unlock(&arc4random_mtx);
+static pthread_mutex_t arc4random_mtx = PTHREAD_MUTEX_INITIALIZER;
+#define _ARC4_LOCK() pthread_mutex_lock(&arc4random_mtx);
+#define _ARC4_UNLOCK() pthread_mutex_unlock(&arc4random_mtx);
 #else
-#define	_ARC4_LOCK()
-#define	_ARC4_UNLOCK()
+#define _ARC4_LOCK()
+#define _ARC4_UNLOCK()
 #endif
 
 static int rs_initialized;
@@ -189,112 +187,100 @@ static int arc4_count;
 static inline uint8_t arc4_getbyte(void);
 static void arc4_stir(void);
 
-static inline void
-arc4_init(void)
-{
-	int     n;
+static inline void arc4_init(void) {
+  int n;
 
-	for (n = 0; n < 256; n++)
-		rs.s[n] = n;
-	rs.i = 0;
-	rs.j = 0;
+  for (n = 0; n < 256; n++)
+    rs.s[n] = n;
+  rs.i = 0;
+  rs.j = 0;
 }
 
-static inline void
-arc4_addrandom(uint8_t *dat, int datlen)
-{
-	int     n;
-	uint8_t si;
+static inline void arc4_addrandom(uint8_t *dat, int datlen) {
+  int n;
+  uint8_t si;
 
-	rs.i--;
-	for (n = 0; n < 256; n++) {
-		rs.i = (rs.i + 1);
-		si = rs.s[rs.i];
-		rs.j = (rs.j + si + dat[n % datlen]);
-		rs.s[rs.i] = rs.s[rs.j];
-		rs.s[rs.j] = si;
-	}
-	rs.j = rs.i;
+  rs.i--;
+  for (n = 0; n < 256; n++) {
+    rs.i = (rs.i + 1);
+    si = rs.s[rs.i];
+    rs.j = (rs.j + si + dat[n % datlen]);
+    rs.s[rs.i] = rs.s[rs.j];
+    rs.s[rs.j] = si;
+  }
+  rs.j = rs.i;
 }
 
-static void
-arc4_stir(void)
-{
-	int done, fd, i;
-	struct {
-		struct timeval	tv;
-		pid_t		pid;
-		uint8_t		rnd[KEYSIZE];
-	} rdat;
+static void arc4_stir(void) {
+  int done, fd, i;
+  struct {
+    struct timeval tv;
+    pid_t pid;
+    uint8_t rnd[KEYSIZE];
+  } rdat;
 
-	if (!rs_initialized) {
-		arc4_init();
-		rs_initialized = 1;
-	}
-	done = 0;
-	fd = open(RANDOMDEV, O_RDONLY | O_CLOEXEC, 0);
-	if (fd >= 0) {
-		if (read(fd, &rdat, KEYSIZE) == KEYSIZE)
-			done = 1;
-		(void)close(fd);
-	}
-	if (!done) {
-		(void)gettimeofday(&rdat.tv, NULL);
-		rdat.pid = getpid();
-		/* We'll just take whatever was on the stack too... */
-	}
+  if (!rs_initialized) {
+    arc4_init();
+    rs_initialized = 1;
+  }
+  done = 0;
+  fd = open(RANDOMDEV, O_RDONLY | O_CLOEXEC, 0);
+  if (fd >= 0) {
+    if (read(fd, &rdat, KEYSIZE) == KEYSIZE)
+      done = 1;
+    (void)close(fd);
+  }
+  if (!done) {
+    (void)gettimeofday(&rdat.tv, NULL);
+    rdat.pid = getpid();
+    /* We'll just take whatever was on the stack too... */
+  }
 
-	arc4_addrandom((uint8_t *)&rdat, KEYSIZE);
+  arc4_addrandom((uint8_t *)&rdat, KEYSIZE);
 
-	/*
-	 * Discard early keystream, as per recommendations in:
-	 * "(Not So) Random Shuffles of RC4" by Ilya Mironov.
-	 * As per the Network Operations Division, cryptographic requirements
-	 * published on wikileaks on March 2017.
-	 */
+  /*
+   * Discard early keystream, as per recommendations in:
+   * "(Not So) Random Shuffles of RC4" by Ilya Mironov.
+   * As per the Network Operations Division, cryptographic requirements
+   * published on wikileaks on March 2017.
+   */
 
-	for (i = 0; i < 3072; i++)
-		(void)arc4_getbyte();
-	arc4_count = 1600000;
+  for (i = 0; i < 3072; i++)
+    (void)arc4_getbyte();
+  arc4_count = 1600000;
 }
 
-static void
-arc4_stir_if_needed(void)
-{
-	pid_t pid = getpid();
+static void arc4_stir_if_needed(void) {
+  pid_t pid = getpid();
 
-	if (arc4_count <= 0 || !rs_initialized || arc4_stir_pid != pid) {
-		arc4_stir_pid = pid;
-		arc4_stir();
-	}
+  if (arc4_count <= 0 || !rs_initialized || arc4_stir_pid != pid) {
+    arc4_stir_pid = pid;
+    arc4_stir();
+  }
 }
 
-static inline uint8_t
-arc4_getbyte(void)
-{
-	uint8_t si, sj;
+static inline uint8_t arc4_getbyte(void) {
+  uint8_t si, sj;
 
-	rs.i = (rs.i + 1);
-	si = rs.s[rs.i];
-	rs.j = (rs.j + si);
-	sj = rs.s[rs.j];
-	rs.s[rs.i] = sj;
-	rs.s[rs.j] = si;
-	return (rs.s[(si + sj) & 0xff]);
+  rs.i = (rs.i + 1);
+  si = rs.s[rs.i];
+  rs.j = (rs.j + si);
+  sj = rs.s[rs.j];
+  rs.s[rs.i] = sj;
+  rs.s[rs.j] = si;
+  return (rs.s[(si + sj) & 0xff]);
 }
 
-static void
-la_arc4random_buf(void *_buf, size_t n)
-{
-	uint8_t *buf = (uint8_t *)_buf;
-	_ARC4_LOCK();
-	arc4_stir_if_needed();
-	while (n--) {
-		if (--arc4_count <= 0)
-			arc4_stir();
-		buf[n] = arc4_getbyte();
-	}
-	_ARC4_UNLOCK();
+static void la_arc4random_buf(void *_buf, size_t n) {
+  uint8_t *buf = (uint8_t *)_buf;
+  _ARC4_LOCK();
+  arc4_stir_if_needed();
+  while (n--) {
+    if (--arc4_count <= 0)
+      arc4_stir();
+    buf[n] = arc4_getbyte();
+  }
+  _ARC4_UNLOCK();
 }
 
 #endif /* !HAVE_ARC4RANDOM_BUF */

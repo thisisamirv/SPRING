@@ -33,21 +33,20 @@
 #include <openssl/evp.h>
 #include <openssl/opensslv.h>
 
-#if OPENSSL_VERSION_NUMBER < 0x10100000L || \
-    (defined(LIBRESSL_VERSION_NUMBER) && LIBRESSL_VERSION_NUMBER < 0x2070000fL)
+#if OPENSSL_VERSION_NUMBER < 0x10100000L ||                                    \
+    (defined(LIBRESSL_VERSION_NUMBER) &&                                       \
+     LIBRESSL_VERSION_NUMBER < 0x2070000fL)
 #include <stdlib.h> /* malloc, free */
 #include <string.h> /* memset */
-static inline EVP_MD_CTX *EVP_MD_CTX_new(void)
-{
-	EVP_MD_CTX *ctx = calloc(1, sizeof(EVP_MD_CTX));
-	return ctx;
+static inline EVP_MD_CTX *EVP_MD_CTX_new(void) {
+  EVP_MD_CTX *ctx = calloc(1, sizeof(EVP_MD_CTX));
+  return ctx;
 }
 
-static inline void EVP_MD_CTX_free(EVP_MD_CTX *ctx)
-{
-	EVP_MD_CTX_cleanup(ctx);
-	memset(ctx, 0, sizeof(*ctx));
-	free(ctx);
+static inline void EVP_MD_CTX_free(EVP_MD_CTX *ctx) {
+  EVP_MD_CTX_cleanup(ctx);
+  memset(ctx, 0, sizeof(*ctx));
+  free(ctx);
 }
 #endif
 

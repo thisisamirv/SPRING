@@ -30,20 +30,20 @@
 #define _IGZIP_REPEATED_8K_CHAR_RESULT_H_
 
 /* The code for the literal being encoded */
-#define CODE_LIT        0x1
+#define CODE_LIT 0x1
 #define CODE_LIT_LENGTH 0x2
 
 /* The code for repeat 10. The Length includes the distance code length*/
-#define CODE_10        0x3
+#define CODE_10 0x3
 #define CODE_10_LENGTH 0x4
 
 /* The code for repeat 115-130. The Length includes the distance code length*/
-#define CODE_280              0x0f
-#define CODE_280_LENGTH       0x4
+#define CODE_280 0x0f
+#define CODE_280_LENGTH 0x4
 #define CODE_280_TOTAL_LENGTH CODE_280_LENGTH + 4 + 1
 
 /* Code representing the end of block. */
-#define END_OF_BLOCK     0x7
+#define END_OF_BLOCK 0x7
 #define END_OF_BLOCK_LEN 0x4
 
 /* MIN_REPEAT_LEN currently optimizes storage space, another possibility is to
@@ -60,11 +60,15 @@
  * This also contains the first literal character. */
 const uint32_t repeated_char_header[2][5] = {
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-        { 0x0121c0ec, 0xc30c0000, 0x7d57fab0, 0x49270938 }, /* Deflate header for 0x00 */
-        { 0x0121c0ec, 0xc30c0000, 0x7baaff30, 0x49270938 }  /* Deflate header for 0xFF */
+    {0x0121c0ec, 0xc30c0000, 0x7d57fab0,
+     0x49270938}, /* Deflate header for 0x00 */
+    {0x0121c0ec, 0xc30c0000, 0x7baaff30,
+     0x49270938} /* Deflate header for 0xFF */
 #else
-        { 0xecc02101, 0x00000cc3, 0xb0fa577d, 0x38092749 }, /* Deflate header for 0x00 */
-        { 0xecc02101, 0x00000cc3, 0x30ffaa7b, 0x38092749 }, /* Deflate header for 0xFF */
+    {0xecc02101, 0x00000cc3, 0xb0fa577d,
+     0x38092749}, /* Deflate header for 0x00 */
+    {0xecc02101, 0x00000cc3, 0x30ffaa7b,
+     0x38092749}, /* Deflate header for 0xFF */
 #endif
 
 };

@@ -69,10 +69,10 @@ void BSC_str_array_decompress(const char *infile, std::string *str_array_param,
                               const uint32_t size_str_array_param,
                               uint32_t *str_lengths_param);
 
-}  // namespace bsc
-}  // namespace spring
+} // namespace bsc
+} // namespace spring
 
-#endif  // SPRING_LIBBSC_BSC_H_
+#endif // SPRING_LIBBSC_BSC_H_
 
 /*-----------------------------------------------------------*/
 /* End                                               bsc.cpp */

@@ -33,9 +33,7 @@
 #include "archive_private.h"
 #include "archive_read_private.h"
 
-int
-archive_read_set_format(struct archive *_a, int code)
-{
+int archive_read_set_format(struct archive *_a, int code) {
   int r1, r2, slots, i;
   const char *str;
   struct archive_read *a = (struct archive_read *)_a;
@@ -46,57 +44,56 @@ archive_read_set_format(struct archive *_a, int code)
   r1 = r2 = (ARCHIVE_OK);
   if (a->format)
     r2 = (ARCHIVE_WARN);
-  switch (code & ARCHIVE_FORMAT_BASE_MASK)
-  {
-    case ARCHIVE_FORMAT_7ZIP:
-      str = "7zip";
-      break;
-    case ARCHIVE_FORMAT_AR:
-      str = "ar";
-      break;
-    case ARCHIVE_FORMAT_CAB:
-      str = "cab";
-      break;
-    case ARCHIVE_FORMAT_CPIO:
-      str = "cpio";
-      break;
-    case ARCHIVE_FORMAT_EMPTY:
-      str = "empty";
-      break;
-    case ARCHIVE_FORMAT_ISO9660:
-      str = "iso9660";
-      break;
-    case ARCHIVE_FORMAT_LHA:
-      str = "lha";
-      break;
-    case ARCHIVE_FORMAT_MTREE:
-      str = "mtree";
-      break;
-    case ARCHIVE_FORMAT_RAR:
-      str = "rar";
-      break;
-    case ARCHIVE_FORMAT_RAR_V5:
-      str = "rar5";
-      break;
-    case ARCHIVE_FORMAT_RAW:
-      str = "raw";
-      break;
-    case ARCHIVE_FORMAT_TAR:
-      str = "tar";
-      break;
-    case ARCHIVE_FORMAT_WARC:
-      str = "warc";
-      break;
-    case ARCHIVE_FORMAT_XAR:
-      str = "xar";
-      break;
-    case ARCHIVE_FORMAT_ZIP:
-      str = "zip";
-      break;
-    default:
-      archive_set_error(&a->archive, ARCHIVE_ERRNO_PROGRAMMER,
-          "Invalid format code specified");
-      return (ARCHIVE_FATAL);
+  switch (code & ARCHIVE_FORMAT_BASE_MASK) {
+  case ARCHIVE_FORMAT_7ZIP:
+    str = "7zip";
+    break;
+  case ARCHIVE_FORMAT_AR:
+    str = "ar";
+    break;
+  case ARCHIVE_FORMAT_CAB:
+    str = "cab";
+    break;
+  case ARCHIVE_FORMAT_CPIO:
+    str = "cpio";
+    break;
+  case ARCHIVE_FORMAT_EMPTY:
+    str = "empty";
+    break;
+  case ARCHIVE_FORMAT_ISO9660:
+    str = "iso9660";
+    break;
+  case ARCHIVE_FORMAT_LHA:
+    str = "lha";
+    break;
+  case ARCHIVE_FORMAT_MTREE:
+    str = "mtree";
+    break;
+  case ARCHIVE_FORMAT_RAR:
+    str = "rar";
+    break;
+  case ARCHIVE_FORMAT_RAR_V5:
+    str = "rar5";
+    break;
+  case ARCHIVE_FORMAT_RAW:
+    str = "raw";
+    break;
+  case ARCHIVE_FORMAT_TAR:
+    str = "tar";
+    break;
+  case ARCHIVE_FORMAT_WARC:
+    str = "warc";
+    break;
+  case ARCHIVE_FORMAT_XAR:
+    str = "xar";
+    break;
+  case ARCHIVE_FORMAT_ZIP:
+    str = "zip";
+    break;
+  default:
+    archive_set_error(&a->archive, ARCHIVE_ERRNO_PROGRAMMER,
+                      "Invalid format code specified");
+    return (ARCHIVE_FATAL);
   }
 
   slots = sizeof(a->formats) / sizeof(a->formats[0]);
@@ -105,10 +102,9 @@ archive_read_set_format(struct archive *_a, int code)
     if (!a->format->name || !strcmp(a->format->name, str))
       break;
   }
-  if (!a->format->name || strcmp(a->format->name, str))
-  {
+  if (!a->format->name || strcmp(a->format->name, str)) {
     archive_set_error(&a->archive, ARCHIVE_ERRNO_PROGRAMMER,
-        "Internal error: Unable to set format");
+                      "Internal error: Unable to set format");
     r1 = (ARCHIVE_FATAL);
   }
 

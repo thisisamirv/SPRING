@@ -30,7 +30,6 @@
 #ifndef __OPTIONS_AARCH64_H__
 #define __OPTIONS_AARCH64_H__
 
-
 #ifdef __ASSEMBLY__
 
 ///   Options:dir
@@ -64,8 +63,6 @@
 #define FIX_CACHE_READ
 
 #define ISAL_DEF_MAX_HDR_SIZE 328
-
-
 
 #endif
 #endif

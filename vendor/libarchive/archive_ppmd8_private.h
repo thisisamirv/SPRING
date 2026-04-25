@@ -15,17 +15,16 @@ This code is based on:
 struct CPpmd8_Context_;
 
 typedef
-  #ifdef PPMD_32BIT
+#ifdef PPMD_32BIT
     struct CPpmd8_Context_ *
-  #else
+#else
     UInt32
-  #endif
-  CPpmd8_Context_Ref;
+#endif
+        CPpmd8_Context_Ref;
 
 #pragma pack(push, 1)
 
-typedef struct CPpmd8_Context_
-{
+typedef struct CPpmd8_Context_ {
   Byte NumStats;
   Byte Flags;
   UInt16 SummFreq;
@@ -41,17 +40,16 @@ typedef struct CPpmd8_Context_
    code is not compatible with original code for some files compressed
    in FREEZE mode. So we disable FREEZE mode support. */
 
-enum
-{
+enum {
   PPMD8_RESTORE_METHOD_RESTART,
   PPMD8_RESTORE_METHOD_CUT_OFF
-  #ifdef PPMD8_FREEZE_SUPPORT
-  , PPMD8_RESTORE_METHOD_FREEZE
-  #endif
+#ifdef PPMD8_FREEZE_SUPPORT
+  ,
+  PPMD8_RESTORE_METHOD_FREEZE
+#endif
 };
 
-typedef struct
-{
+typedef struct {
   CPpmd8_Context *MinContext, *MaxContext;
   CPpmd_State *FoundState;
   unsigned OrderFall, InitEsc, PrevSuccess, MaxOrder;
@@ -67,8 +65,7 @@ typedef struct
   UInt32 Range;
   UInt32 Code;
   UInt32 Low;
-  union
-  {
+  union {
     IByteIn *In;
     IByteOut *Out;
   } Stream;
@@ -89,19 +86,19 @@ void Ppmd8_Free(CPpmd8 *p);
 void Ppmd8_Init(CPpmd8 *p, unsigned maxOrder, unsigned restoreMethod);
 #define Ppmd8_WasAllocated(p) ((p)->Base != NULL)
 
-
 /* ---------- Internal Functions ---------- */
 
 extern const Byte PPMD8_kExpEscape[16];
 
 #ifdef PPMD_32BIT
-  #define Ppmd8_GetPtr(p, ptr) (ptr)
-  #define Ppmd8_GetContext(p, ptr) (ptr)
-  #define Ppmd8_GetStats(p, ctx) ((ctx)->Stats)
+#define Ppmd8_GetPtr(p, ptr) (ptr)
+#define Ppmd8_GetContext(p, ptr) (ptr)
+#define Ppmd8_GetStats(p, ctx) ((ctx)->Stats)
 #else
-  #define Ppmd8_GetPtr(p, offs) ((void *)((p)->Base + (offs)))
-  #define Ppmd8_GetContext(p, offs) ((CPpmd8_Context *)Ppmd8_GetPtr((p), (offs)))
-  #define Ppmd8_GetStats(p, ctx) ((CPpmd_State *)Ppmd8_GetPtr((p), ((ctx)->Stats)))
+#define Ppmd8_GetPtr(p, offs) ((void *)((p)->Base + (offs)))
+#define Ppmd8_GetContext(p, offs) ((CPpmd8_Context *)Ppmd8_GetPtr((p), (offs)))
+#define Ppmd8_GetStats(p, ctx)                                                 \
+  ((CPpmd_State *)Ppmd8_GetPtr((p), ((ctx)->Stats)))
 #endif
 
 void Ppmd8_Update1(CPpmd8 *p);
@@ -109,34 +106,39 @@ void Ppmd8_Update1_0(CPpmd8 *p);
 void Ppmd8_Update2(CPpmd8 *p);
 void Ppmd8_UpdateBin(CPpmd8 *p);
 
-#define Ppmd8_GetBinSumm(p) \
-    &p->BinSumm[p->NS2Indx[Ppmd8Context_OneState(p->MinContext)->Freq - 1]][ \
-    p->NS2BSIndx[Ppmd8_GetContext(p, p->MinContext->Suffix)->NumStats] + \
-    p->PrevSuccess + p->MinContext->Flags + ((p->RunLength >> 26) & 0x20)]
+#define Ppmd8_GetBinSumm(p)                                                    \
+  &p->BinSumm                                                                  \
+       [p->NS2Indx[Ppmd8Context_OneState(p->MinContext)->Freq - 1]]            \
+       [p->NS2BSIndx[Ppmd8_GetContext(p, p->MinContext->Suffix)->NumStats] +   \
+        p->PrevSuccess + p->MinContext->Flags + ((p->RunLength >> 26) & 0x20)]
 
 CPpmd_See *Ppmd8_MakeEscFreq(CPpmd8 *p, unsigned numMasked, UInt32 *scale);
-
 
 /* ---------- Decode ---------- */
 
 Bool Ppmd8_RangeDec_Init(CPpmd8 *p);
 #define Ppmd8_RangeDec_IsFinishedOK(p) ((p)->Code == 0)
-int Ppmd8_DecodeSymbol(CPpmd8 *p); /* returns: -1 as EndMarker, -2 as DataError */
+int Ppmd8_DecodeSymbol(
+    CPpmd8 *p); /* returns: -1 as EndMarker, -2 as DataError */
 
 /* ---------- Encode ---------- */
 
-#define Ppmd8_RangeEnc_Init(p) { (p)->Low = 0; (p)->Range = 0xFFFFFFFF; }
+#define Ppmd8_RangeEnc_Init(p)                                                 \
+  {                                                                            \
+    (p)->Low = 0;                                                              \
+    (p)->Range = 0xFFFFFFFF;                                                   \
+  }
 void Ppmd8_RangeEnc_FlushData(CPpmd8 *p);
-void Ppmd8_EncodeSymbol(CPpmd8 *p, int symbol); /* symbol = -1 means EndMarker */
+void Ppmd8_EncodeSymbol(CPpmd8 *p,
+                        int symbol); /* symbol = -1 means EndMarker */
 
-typedef struct
-{
+typedef struct {
   /* Base Functions */
   void (*Ppmd8_Construct)(CPpmd8 *p);
   Bool (*Ppmd8_Alloc)(CPpmd8 *p, UInt32 size);
   void (*Ppmd8_Free)(CPpmd8 *p);
   void (*Ppmd8_Init)(CPpmd8 *p, unsigned max_order, unsigned restore_method);
-  #define Ppmd7_WasAllocated(p) ((p)->Base != NULL)
+#define Ppmd7_WasAllocated(p) ((p)->Base != NULL)
 
   /* Decode Functions */
   int (*Ppmd8_RangeDec_Init)(CPpmd8 *p);
