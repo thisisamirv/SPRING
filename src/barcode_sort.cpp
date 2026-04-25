@@ -207,7 +207,7 @@ void write_thread_slot(const std::string &basedir, int tid,
 
 } // namespace
 
-void barcode_sort(const std::string &temp_dir, compression_params &cp,
+bool barcode_sort(const std::string &temp_dir, compression_params &cp,
                   const std::string &cb_source_path) {
   const int num_thr = cp.encoding.num_thr;
   const bool paired_end = cp.encoding.paired_end;
@@ -280,6 +280,38 @@ void barcode_sort(const std::string &temp_dir, compression_params &cp,
     return reads_1[a].cb < reads_1[b].cb;
   });
 
+  uint64_t cb_unique = 0;
+  uint64_t longest_run = 0;
+  uint64_t current_run = 0;
+  std::string previous_cb;
+  for (uint32_t order_index : r1_order) {
+    const std::string &cb = reads_1[order_index].cb;
+    if (current_run == 0 || cb != previous_cb) {
+      cb_unique++;
+      longest_run = std::max(longest_run, current_run);
+      current_run = 1;
+      previous_cb = cb;
+    } else {
+      current_run++;
+    }
+  }
+  longest_run = std::max(longest_run, current_run);
+  const uint64_t avg_run_bp =
+      cb_unique == 0 ? 0 : (r1_order.size() * 100ULL) / cb_unique;
+
+  const uint64_t read_count = static_cast<uint64_t>(r1_order.size());
+  const bool low_barcode_diversity =
+      (read_count >= 10000) &&
+      (cb_unique < 128 || longest_run * 100ULL > read_count * 20ULL);
+  if (low_barcode_diversity) {
+    Logger::log_warning(
+        "barcode_sort disabled due to low CB diversity (reads=" +
+        std::to_string(read_count) + ", unique_cb=" + std::to_string(cb_unique) +
+        ", longest_run=" + std::to_string(longest_run) +
+        "). Falling back to overlap reordering.");
+    return false;
+  }
+
   // ── Distribute reads across thread slots (round-robin) ──────────────────
   std::vector<std::vector<PackedRead *>> slots_1(num_thr);
   std::vector<std::vector<PackedRead *>> slots_2(num_thr);
@@ -337,6 +369,7 @@ void barcode_sort(const std::string &temp_dir, compression_params &cp,
 
   SPRING_LOG_INFO("barcode_sort: done — " + std::to_string(total_reads_loaded) +
                   " reads sorted by CB.");
+  return true;
 }
 
 } // namespace spring

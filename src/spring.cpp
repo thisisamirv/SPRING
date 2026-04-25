@@ -1068,11 +1068,19 @@ void compress_standard(const std::string &temp_dir,
     const bool use_barcode_sort = is_sc_assay && !long_flag;
 
     if (use_barcode_sort) {
-      cp.encoding.barcode_sort = true;
+      cp.encoding.barcode_sort = false;
+      bool did_barcode_sort = false;
       run_timed_step("Barcode-sorting reads ...", "Barcode sort", [&] {
         progress.set_stage("Barcode sort", 0.25F, 0.50F);
-        barcode_sort(temp_dir, cp, cb_source_path);
+        did_barcode_sort = barcode_sort(temp_dir, cp, cb_source_path);
       });
+      cp.encoding.barcode_sort = did_barcode_sort;
+      if (!did_barcode_sort) {
+        run_timed_step("Reordering ...", "Reordering", [&] {
+          progress.set_stage("Reordering", 0.25F, 0.50F);
+          call_reorder(temp_dir, cp);
+        });
+      }
     } else {
       if (is_sc_assay && long_flag) {
         SPRING_LOG_INFO(

@@ -654,12 +654,17 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       std::vector<uint16_t> step_tail_info;
       if (apply_poly_at && reads_in_step > 0) {
         step_tail_info.resize(reads_in_step, 0);
+        bool any_stripped = false;
         // Strip serially — modifies read_array and read_lengths_array in place.
         for (uint32_t ri = 0; ri < reads_in_step; ++ri) {
-          step_tail_info[ri] =
+          const uint16_t strip_info =
               detect_and_strip_tail(read_array[ri], read_lengths_array[ri]);
+          step_tail_info[ri] = strip_info;
+          if ((strip_info >> 1) > 0) {
+            any_stripped = true;
+          }
         }
-        if (step_tail_info[0]) // at least one stripped (cheap early check)
+        if (any_stripped)
           cp.encoding.poly_at_stripped = true;
       }
 
@@ -966,6 +971,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                   std::to_string(cp.read_info.max_readlen));
   SPRING_LOG_INFO("Total number of reads: " +
                   std::to_string(cp.read_info.num_reads));
+
   if (cp.encoding.paired_end) {
     SPRING_LOG_INFO("Total number of reads without N: " +
                     std::to_string(cp.read_info.num_reads_clean[0] +

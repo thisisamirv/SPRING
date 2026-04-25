@@ -26,6 +26,20 @@
 
 namespace spring {
 
+namespace {
+
+bool deterministic_reorder_enabled() {
+  const char *value = std::getenv("SPRING_DETERMINISTIC_REORDER");
+  if (value == nullptr)
+    return true;
+  const std::string normalized(value);
+  return !(normalized.empty() || normalized == "0" ||
+           normalized == "false" || normalized == "FALSE" ||
+           normalized == "off" || normalized == "OFF");
+}
+
+} // namespace
+
 template <size_t bitset_size> struct reorder_global {
   uint32_t numreads;
   uint32_t numreads_array[2];
@@ -435,7 +449,8 @@ bool search_match(const std::bitset<bitset_size> &ref,
 
 template <size_t bitset_size>
 void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
-             uint16_t *read_lengths, const reorder_global<bitset_size> &rg) {
+             uint16_t *read_lengths, const reorder_global<bitset_size> &rg,
+             const bool deterministic_mode) {
   const uint32_t num_locks = NUM_LOCKS_REORDER;
   std::vector<OmpLock> dict_locks(num_locks);
   std::vector<OmpLock> read_locks(num_locks);
@@ -464,7 +479,7 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
     shared(rg, read, read_lengths, dict, dict_locks, read_locks,               \
                remaining_read_lock, length_masks_ptrs, index_masks,            \
                remaining_reads, unmatched_counts, open_stream_errors,          \
-               std::cerr, std::cout, first_read)
+               std::cerr, std::cout, first_read, deterministic_mode)
   {
     bool done = false;
     int thread_id = omp_get_thread_num();
@@ -496,6 +511,12 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
                               "files in reorder. Working directory: " +
                               rg.basedir;
       open_stream_errors[static_cast<size_t>(thread_id)] = error_msg;
+      done = true;
+    }
+
+    // Deterministic mode serializes match selection to thread 0 while still
+    // materializing empty per-thread shard files for downstream stages.
+    if (deterministic_mode && thread_id != 0) {
       done = true;
     }
 
@@ -847,12 +868,14 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
 
 template <size_t bitset_size>
 void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
-                 reorder_global<bitset_size> &rg) {
+                 reorder_global<bitset_size> &rg,
+                 const bool deterministic_mode) {
   std::vector<uint32_t> numreads_s_thr(rg.num_thr, 0);
   // Each thread materializes its reordered reads before the singleton merge
   // step.
 #pragma omp parallel default(none)                                             \
-    shared(rg, read, read_lengths, numreads_s_thr, std::cerr, std::cout)
+    shared(rg, read, read_lengths, numreads_s_thr, std::cerr, std::cout,       \
+               deterministic_mode)
   {
     int tid = omp_get_thread_num();
     std::ofstream fout(detail::thread_output_path(rg.outfile, tid),
@@ -869,35 +892,42 @@ void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
     uint32_t current;
     SPRING_LOG_DEBUG("writetofile: thread " + std::to_string(tid) +
                      " starting...");
-    char c;
-    uint32_t reads_written = 0;
-    while (inRC.get(c)) {
-      finorder.read(byte_ptr(&current), sizeof(uint32_t));
-      if (current >= rg.numreads) {
-        SPRING_LOG_DEBUG("writetofile ERROR: thread " + std::to_string(tid) +
-                         " read_id out of bounds: " + std::to_string(current) +
-                         " >= " + std::to_string(rg.numreads));
-        break;
+    if (!(deterministic_mode && tid != 0)) {
+      char c;
+      uint32_t reads_written = 0;
+      while (inRC.get(c)) {
+        finorder.read(byte_ptr(&current), sizeof(uint32_t));
+        if (current >= rg.numreads) {
+          SPRING_LOG_DEBUG("writetofile ERROR: thread " +
+                           std::to_string(tid) +
+                           " read_id out of bounds: " +
+                           std::to_string(current) + " >= " +
+                           std::to_string(rg.numreads));
+          break;
+        }
+        bitsettostring<bitset_size>(read[current], s, read_lengths[current],
+                                    rg);
+        if (c == 'd') {
+          write_dna_in_bits(s, fout);
+        } else {
+          reverse_complement(s, s1, read_lengths[current]);
+          write_dna_in_bits(s1, fout);
+        }
+        reads_written++;
+        if (reads_written % 100000 == 0) {
+          SPRING_LOG_DEBUG("writetofile: thread " + std::to_string(tid) +
+                           " wrote " + std::to_string(reads_written) +
+                           " reads");
+        }
       }
-      bitsettostring<bitset_size>(read[current], s, read_lengths[current], rg);
-      if (c == 'd') {
-        write_dna_in_bits(s, fout);
-      } else {
-        reverse_complement(s, s1, read_lengths[current]);
-        write_dna_in_bits(s1, fout);
-      }
-      reads_written++;
-      if (reads_written % 100000 == 0) {
-        SPRING_LOG_DEBUG("writetofile: thread " + std::to_string(tid) +
-                         " wrote " + std::to_string(reads_written) + " reads");
-      }
-    }
-    finorder_s.read(byte_ptr(&current), sizeof(uint32_t));
-    while (!finorder_s.eof()) {
-      numreads_s_thr[tid]++;
-      bitsettostring<bitset_size>(read[current], s, read_lengths[current], rg);
-      write_dnaN_in_bits(s, fout_s);
       finorder_s.read(byte_ptr(&current), sizeof(uint32_t));
+      while (!finorder_s.eof()) {
+        numreads_s_thr[tid]++;
+        bitsettostring<bitset_size>(read[current], s, read_lengths[current],
+                                    rg);
+        write_dnaN_in_bits(s, fout_s);
+        finorder_s.read(byte_ptr(&current), sizeof(uint32_t));
+      }
     }
     fout.close();
     fout_s.close();
@@ -966,9 +996,12 @@ void reorder_main(const std::string &temp_dir, const compression_params &cp) {
   rg.numreads_array[1] = cp.read_info.num_reads_clean[1];
   rg.numdict =
       (rg.numreads < DICT_SINGLE_STAGE_READ_THRESHOLD) ? 1 : NUM_DICT_REORDER;
+  const bool deterministic_mode = deterministic_reorder_enabled();
   SPRING_LOG_DEBUG("Reorder dictionary configuration: active_dicts=" +
                    std::to_string(rg.numdict) +
                    ", clean_reads=" + std::to_string(rg.numreads));
+  SPRING_LOG_INFO(std::string("Reorder mode: ") +
+                  (deterministic_mode ? "deterministic" : "parallel"));
 
   omp_set_num_threads(rg.num_thr);
   setglobalarrays(rg);
@@ -983,12 +1016,14 @@ void reorder_main(const std::string &temp_dir, const compression_params &cp) {
     SPRING_LOG_INFO("Constructing dictionaries");
     constructdictionary<bitset_size>(
         read.data(), dict.data(), read_lengths.data(), rg.numdict, rg.numreads,
-        2, rg.basedir, rg.num_thr, rg.depleted_base);
+        2, rg.basedir, deterministic_mode ? 1 : rg.num_thr, rg.depleted_base);
   }
   SPRING_LOG_INFO("Reordering reads");
-  reorder<bitset_size>(read.data(), dict.data(), read_lengths.data(), rg);
+  reorder<bitset_size>(read.data(), dict.data(), read_lengths.data(), rg,
+                       deterministic_mode);
   SPRING_LOG_INFO("Writing to file");
-  writetofile<bitset_size>(read.data(), read_lengths.data(), rg);
+  writetofile<bitset_size>(read.data(), read_lengths.data(), rg,
+                           deterministic_mode);
   SPRING_LOG_INFO("Done!");
 }
 
