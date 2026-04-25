@@ -52,6 +52,7 @@ CMakeUserPresets.json
 .vscode/clangd_compat/
 .clangd
 compile_commands.json
+scratch/
 
 # OS generated files
 .DS_Store

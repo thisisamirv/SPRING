@@ -47,48 +47,6 @@ include(CheckLinkerFlag)
 include(CheckIPOSupported)
 include(CheckSymbolExists)
 
-function(extract_archive_if_needed archive_path destination_parent expected_path)
-    file(SHA256 "${archive_path}" archive_hash)
-    get_filename_component(archive_name "${archive_path}" NAME)
-    set(stamp_path "${build_vendor_dir}/.${archive_name}.sha256")
-
-    set(should_extract TRUE)
-    if (EXISTS "${expected_path}" AND EXISTS "${stamp_path}")
-        file(READ "${stamp_path}" recorded_hash)
-        string(STRIP "${recorded_hash}" recorded_hash)
-        if (recorded_hash STREQUAL archive_hash)
-            set(should_extract FALSE)
-        endif ()
-    endif ()
-
-    if (should_extract)
-        file(MAKE_DIRECTORY "${destination_parent}")
-        message(NOTICE "Extracting ${archive_name}...")
-        # On Windows/MSYS2, GNU tar treats "C:" as a remote host. --force-local fixes this.
-        execute_process(COMMAND tar --version OUTPUT_VARIABLE tar_version ERROR_QUIET)
-        if (tar_version MATCHES "GNU tar")
-            set(force_local "--force-local")
-        endif()
-
-        execute_process(
-            COMMAND tar ${force_local} -xf "${archive_path}" -C "${destination_parent}" ${ARGN}
-            WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
-            RESULT_VARIABLE tar_result
-        )
-        if (NOT tar_result EQUAL 0)
-            execute_process(
-                COMMAND "${CMAKE_COMMAND}" -E tar xJf "${archive_path}"
-                WORKING_DIRECTORY "${destination_parent}"
-                RESULT_VARIABLE cmake_tar_result
-            )
-            if (NOT cmake_tar_result EQUAL 0)
-                message(FATAL_ERROR "Failed to extract ${archive_path}")
-            endif ()
-        endif()
-        file(WRITE "${stamp_path}" "${archive_hash}")
-    endif()
-endfunction()
-
 function(replace_in_file_if_needed file_path old_text new_text)
     if (NOT EXISTS "${file_path}")
         message(FATAL_ERROR "Cannot patch missing file: ${file_path}")
@@ -243,7 +201,7 @@ execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=include
                 OUTPUT_STRIP_TRAILING_WHITESPACE)
 set(source_dir ${CMAKE_SOURCE_DIR}/src)
 set(vendor_dir ${CMAKE_SOURCE_DIR}/vendor)
-set(build_vendor_dir ${CMAKE_BINARY_DIR}/vendor)
+set(build_vendor_dir ${vendor_dir})
 set(include_dir ${CMAKE_SOURCE_DIR}/src)
 
 # Emit a matching clangd configuration so editor diagnostics see the same
@@ -289,25 +247,7 @@ set(LIBDEFLATE_DIR ${build_vendor_dir}/libdeflate)
 set(QVZ_DIR ${build_vendor_dir}/qvz)
 set(LIBARCHIVE_DIR ${build_vendor_dir}/libarchive)
 set(include_dir ${CMAKE_SOURCE_DIR}/src)
-
-extract_archive_if_needed(
-    "${CMAKE_SOURCE_DIR}/vendor/cloudflare_zlib.tar.xz"
-    "${build_vendor_dir}"
-    "${CLOUDFLARE_ZLIB_DIR}/zlib.h"
-)
-
-extract_archive_if_needed(
-    "${CMAKE_SOURCE_DIR}/vendor/pthash.tar.xz"
-    "${build_vendor_dir}"
-    "${PTHASH_DIR}/CMakeLists.txt"
-)
 add_subdirectory("${PTHASH_DIR}" "${CMAKE_BINARY_DIR}/pthash-build")
-
-extract_archive_if_needed(
-    "${CMAKE_SOURCE_DIR}/vendor/zstd.tar.xz"
-    "${build_vendor_dir}"
-    "${ZSTD_DIR}/lib/zstd.h"
-)
 
 # Zstd build configuration
 set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
@@ -320,44 +260,14 @@ set(ZSTD_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 set(ZSTD_LEGACY_SUPPORT OFF CACHE BOOL "" FORCE)
 add_compile_definitions(ZSTD_NO_TRACE)
 add_subdirectory("${ZSTD_DIR}/cmake" "${CMAKE_BINARY_DIR}/zstd-build")
-
-extract_archive_if_needed(
-    "${CMAKE_SOURCE_DIR}/vendor/libbsc.tar.xz"
-    "${build_vendor_dir}"
-    "${LIBBSC_DIR}/CMakeLists.txt"
-)
 add_subdirectory("${LIBBSC_DIR}" "${CMAKE_BINARY_DIR}/libbsc-build")
 if (TARGET libbsc AND SPRING_OPENMP_INCLUDE_DIRS)
     target_include_directories(libbsc SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
 endif()
-
-extract_archive_if_needed(
-    "${CMAKE_SOURCE_DIR}/vendor/qvz.tar.xz"
-    "${build_vendor_dir}"
-    "${QVZ_DIR}/CMakeLists.txt"
-)
 add_subdirectory("${QVZ_DIR}" "${CMAKE_BINARY_DIR}/qvz-build")
 if (TARGET qvz AND SPRING_OPENMP_INCLUDE_DIRS)
     target_include_directories(qvz SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
 endif()
-
-extract_archive_if_needed(
-    "${CMAKE_SOURCE_DIR}/vendor/libdeflate.tar.xz"
-    "${build_vendor_dir}"
-    "${LIBDEFLATE_DIR}/libdeflate.h"
-)
-
-extract_archive_if_needed(
-    "${CMAKE_SOURCE_DIR}/vendor/indexed_bzip2.tar.xz"
-    "${build_vendor_dir}"
-    "${INDEXED_BZIP2_DIR}/CMakeLists.txt"
-)
-
-extract_archive_if_needed(
-    "${CMAKE_SOURCE_DIR}/vendor/libarchive.tar.xz"
-    "${build_vendor_dir}"
-    "${LIBARCHIVE_DIR}/CMakeLists.txt"
-)
 
 check_symbol_exists(wcrtomb wchar.h HAVE_WCRTOMB)
 if (HAVE_WCRTOMB)

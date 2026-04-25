@@ -18,6 +18,8 @@
 ### Changed
 
 - Changed the compression CLI to require `-R1/--R1` for read 1 and accept optional `-R2/--R2` for paired-end mode; compression no longer uses `-i/--input`.
+- Changed reordering algorithm to use deterministic matching.
+- Replace archived vendors with direct dependencies.
 
 ## V1.0.0-beta
 
