@@ -93,7 +93,8 @@ struct distortion_t *gen_lorentzian_distortion(uint8_t symbols) {
 
   for (x = 0; x < symbols; ++x) {
     for (y = 0; y < symbols; ++y) {
-      rtn->distortion[x + y * symbols] = log2(1.0 + (double)abs((int)x - (int)y));
+      rtn->distortion[x + y * symbols] =
+          log2(1.0 + (double)abs((int)x - (int)y));
     }
   }
 

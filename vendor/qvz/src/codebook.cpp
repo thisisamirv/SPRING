@@ -291,7 +291,8 @@ double optimize_for_entropy(struct pmf_t *pmf, struct distortion_t *dist,
   double lo_entropy, hi_entropy;
   struct pmf_t *pmf_temp = alloc_pmf(pmf->alphabet);
 
-  // Short-circuit for target entropy that exceeds source entropy (e.g., ratio >= 1.0)
+  // Short-circuit for target entropy that exceeds source entropy (e.g., ratio
+  // >= 1.0)
   double source_entropy = get_entropy(pmf);
   if (target >= source_entropy || target <= 0.0) {
     uint32_t final_states = (target <= 0.0) ? 1 : pmf->alphabet->size;
@@ -375,13 +376,13 @@ void compute_qpmf_list(struct pmf_list_t *qpmf_list,
   for (k = 0; k < qpmf_list->size; k++) {
     // compute P(Q_i | X_i = k)
     for (j = 0; j < prev_q_alphabet_union->size; j++) {
-      // Calculate p_temp once for (k, j) - it doesn't depend on the output symbol (idx)
+      // Calculate p_temp once for (k, j) - it doesn't depend on the output
+      // symbol (idx)
       double p_temp = 0.0;
       for (x = 0; x < prev_qpmf_list->size; ++x) {
-        p_temp +=
-            get_probability(prev_qpmf_list->pmfs[(uint8_t)x], j) *
-            get_probability(get_cond_pmf(in_pmfs, column - 1, x), k) *
-            get_probability(in_pmfs->marginal_pmfs->pmfs[column - 2], x);
+        p_temp += get_probability(prev_qpmf_list->pmfs[(uint8_t)x], j) *
+                  get_probability(get_cond_pmf(in_pmfs, column - 1, x), k) *
+                  get_probability(in_pmfs->marginal_pmfs->pmfs[column - 2], x);
       }
       if (p_temp == 0.0)
         continue;
@@ -392,8 +393,10 @@ void compute_qpmf_list(struct pmf_list_t *qpmf_list,
 
       // Quantizers map symbol k to specific output symbols.
       // Update those symbols in qpmf_list for context j.
-      uint32_t idx_lo = get_symbol_index(q_alphabet_union, (symbol_t)q_lo->q[k]);
-      uint32_t idx_hi = get_symbol_index(q_alphabet_union, (symbol_t)q_hi->q[k]);
+      uint32_t idx_lo =
+          get_symbol_index(q_alphabet_union, (symbol_t)q_lo->q[k]);
+      uint32_t idx_hi =
+          get_symbol_index(q_alphabet_union, (symbol_t)q_hi->q[k]);
 
       if (idx_lo != ALPHABET_SYMBOL_NOT_FOUND)
         qpmf_list->pmfs[k]->pmf[idx_lo] += q_lo->ratio * p_temp;

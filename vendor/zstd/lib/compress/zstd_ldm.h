@@ -11,18 +11,17 @@
 #ifndef ZSTD_LDM_H
 #define ZSTD_LDM_H
 
-#include "zstd_compress_internal.h"   /* ldmParams_t, U32 */
-#include "../zstd.h"   /* ZSTD_CCtx, size_t */
+#include "../zstd.h"                /* ZSTD_CCtx, size_t */
+#include "zstd_compress_internal.h" /* ldmParams_t, U32 */
 
 /*-*************************************
-*  Long distance matching
-***************************************/
+ *  Long distance matching
+ ***************************************/
 
 #define ZSTD_LDM_DEFAULT_WINDOW_LOG ZSTD_WINDOWLOG_LIMIT_DEFAULT
 
-void ZSTD_ldm_fillHashTable(
-            ldmState_t* state, const BYTE* ip,
-            const BYTE* iend, ldmParams_t const* params);
+void ZSTD_ldm_fillHashTable(ldmState_t *state, const BYTE *ip, const BYTE *iend,
+                            ldmParams_t const *params);
 
 /**
  * ZSTD_ldm_generateSequences():
@@ -38,9 +37,9 @@ void ZSTD_ldm_fillHashTable(
  * NOTE: This function returns an error if it runs out of space to store
  *       sequences.
  */
-size_t ZSTD_ldm_generateSequences(
-            ldmState_t* ldms, RawSeqStore_t* sequences,
-            ldmParams_t const* params, void const* src, size_t srcSize);
+size_t ZSTD_ldm_generateSequences(ldmState_t *ldms, RawSeqStore_t *sequences,
+                                  ldmParams_t const *params, void const *src,
+                                  size_t srcSize);
 
 /**
  * ZSTD_ldm_blockCompress():
@@ -60,10 +59,10 @@ size_t ZSTD_ldm_generateSequences(
  * two. We handle that case correctly, and update `rawSeqStore` appropriately.
  * NOTE: This function does not return any errors.
  */
-size_t ZSTD_ldm_blockCompress(RawSeqStore_t* rawSeqStore,
-            ZSTD_MatchState_t* ms, SeqStore_t* seqStore, U32 rep[ZSTD_REP_NUM],
-            ZSTD_ParamSwitch_e useRowMatchFinder,
-            void const* src, size_t srcSize);
+size_t ZSTD_ldm_blockCompress(RawSeqStore_t *rawSeqStore, ZSTD_MatchState_t *ms,
+                              SeqStore_t *seqStore, U32 rep[ZSTD_REP_NUM],
+                              ZSTD_ParamSwitch_e useRowMatchFinder,
+                              void const *src, size_t srcSize);
 
 /**
  * ZSTD_ldm_skipSequences():
@@ -72,15 +71,15 @@ size_t ZSTD_ldm_blockCompress(RawSeqStore_t* rawSeqStore,
  * Avoids emitting matches less than `minMatch` bytes.
  * Must be called for data that is not passed to ZSTD_ldm_blockCompress().
  */
-void ZSTD_ldm_skipSequences(RawSeqStore_t* rawSeqStore, size_t srcSize,
-    U32 const minMatch);
+void ZSTD_ldm_skipSequences(RawSeqStore_t *rawSeqStore, size_t srcSize,
+                            U32 const minMatch);
 
 /* ZSTD_ldm_skipRawSeqStoreBytes():
- * Moves forward in rawSeqStore by nbBytes, updating fields 'pos' and 'posInSequence'.
- * Not to be used in conjunction with ZSTD_ldm_skipSequences().
+ * Moves forward in rawSeqStore by nbBytes, updating fields 'pos' and
+ * 'posInSequence'. Not to be used in conjunction with ZSTD_ldm_skipSequences().
  * Must be called for data with is not passed to ZSTD_ldm_blockCompress().
  */
-void ZSTD_ldm_skipRawSeqStoreBytes(RawSeqStore_t* rawSeqStore, size_t nbBytes);
+void ZSTD_ldm_skipRawSeqStoreBytes(RawSeqStore_t *rawSeqStore, size_t nbBytes);
 
 /** ZSTD_ldm_getTableSize() :
  *  Estimate the space needed for long distance matching tables or 0 if LDM is
@@ -103,7 +102,7 @@ size_t ZSTD_ldm_getMaxNbSeq(ldmParams_t params, size_t maxChunkSize);
  *
  *  Ensures that the minMatchLength >= targetLength during optimal parsing.
  */
-void ZSTD_ldm_adjustParameters(ldmParams_t* params,
-                               ZSTD_compressionParameters const* cParams);
+void ZSTD_ldm_adjustParameters(ldmParams_t *params,
+                               ZSTD_compressionParameters const *cParams);
 
 #endif /* ZSTD_FAST_H */

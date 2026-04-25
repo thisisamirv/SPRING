@@ -11,7 +11,7 @@
 #ifndef ZSTD_PRESPLIT_H
 #define ZSTD_PRESPLIT_H
 
-#include <stddef.h>  /* size_t */
+#include <stddef.h> /* size_t */
 
 #define ZSTD_SLIPBLOCK_WORKSPACESIZE 8208
 
@@ -26,8 +26,7 @@
  * While this could be extended to smaller sizes in the future,
  * it is not yet clear if this would be useful. TBD.
  */
-size_t ZSTD_splitBlock(const void* blockStart, size_t blockSize,
-                    int level,
-                    void* workspace, size_t wkspSize);
+size_t ZSTD_splitBlock(const void *blockStart, size_t blockSize, int level,
+                       void *workspace, size_t wkspSize);
 
 #endif /* ZSTD_PRESPLIT_H */

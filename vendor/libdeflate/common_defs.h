@@ -395,15 +395,21 @@ static forceinline u64 bswap64(u64 v) {
     (defined(ARCH_X86_64) || defined(ARCH_X86_32) ||                           \
      defined(__ARM_FEATURE_UNALIGNED) || defined(__powerpc64__) ||             \
      defined(__powerpc__) || defined(__POWERPC__) ||                           \
-     defined(__riscv_misaligned_fast) ||                                       \
-     /*                                                                        \
-      * For all compilation purposes, WebAssembly behaves like any other CPU   \
-      * instruction set. Even though WebAssembly engine might be running on    \
-      * top of different actual CPU architectures, the WebAssembly spec        \
-      * itself permits unaligned access and it will be fast on most of those   \
-      * platforms, and simulated at the engine level on others, so it's        \
-      * worth treating it as a CPU architecture with fast unaligned access.    \
-      */                                                                       \
+     defined(                                                                  \
+         __riscv_misaligned_fast) || /*                                        \
+                                      * For all compilation purposes,          \
+                                      * WebAssembly behaves like any other CPU \
+                                      * instruction set. Even though           \
+                                      * WebAssembly engine might be running on \
+                                      * top of different actual CPU            \
+                                      * architectures, the WebAssembly spec    \
+                                      * itself permits unaligned access and it \
+                                      * will be fast on most of those          \
+                                      * platforms, and simulated at the engine \
+                                      * level on others, so it's worth                                                                         \
+                                      * treating it as a CPU architecture with \
+                                      * fast unaligned access.                 \
+                                      */                                       \
      defined(__wasm__))
 #define UNALIGNED_ACCESS_IS_FAST 1
 #elif defined(_MSC_VER)

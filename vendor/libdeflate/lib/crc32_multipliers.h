@@ -100,7 +100,8 @@
 #define CRC32_X4127_MODG 0x1072db28 /* x^4127 mod G(x) */
 #define CRC32_X4063_MODG 0x0c30f51d /* x^4063 mod G(x) */
 
-#define CRC32_BARRETT_CONSTANT_1 0xb4e5b025f7011641ULL /* floor(x^95 / G(x))   \
+#define CRC32_BARRETT_CONSTANT_1                                               \
+  0xb4e5b025f7011641ULL                                /* floor(x^95 / G(x))   \
                                                         */
 #define CRC32_BARRETT_CONSTANT_2 0x00000001db710641ULL /* G(x) */
 

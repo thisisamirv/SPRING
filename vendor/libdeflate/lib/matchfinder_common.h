@@ -8,7 +8,7 @@
 #include "lib_common.h"
 
 #ifndef MATCHFINDER_WINDOW_ORDER
-#  error "MATCHFINDER_WINDOW_ORDER must be defined!"
+#error "MATCHFINDER_WINDOW_ORDER must be defined!"
 #endif
 
 /*
@@ -17,13 +17,11 @@
  * bits contain the first 3 bytes, arranged in octets in a platform-dependent
  * order, at the memory location from which the input 32-bit value was loaded.
  */
-static forceinline u32
-loaded_u32_to_u24(u32 v)
-{
-	if (CPU_IS_LITTLE_ENDIAN())
-		return v & 0xFFFFFF;
-	else
-		return v >> 8;
+static forceinline u32 loaded_u32_to_u24(u32 v) {
+  if (CPU_IS_LITTLE_ENDIAN())
+    return v & 0xFFFFFF;
+  else
+    return v >> 8;
 }
 
 /*
@@ -31,16 +29,14 @@ loaded_u32_to_u24(u32 v)
  * The order in which the 3 bytes will be arranged as octets in the 24 bits is
  * platform-dependent.  At least 4 bytes (not 3) must be available at @p.
  */
-static forceinline u32
-load_u24_unaligned(const u8 *p)
-{
+static forceinline u32 load_u24_unaligned(const u8 *p) {
 #if UNALIGNED_ACCESS_IS_FAST
-	return loaded_u32_to_u24(load_u32_unaligned(p));
+  return loaded_u32_to_u24(load_u32_unaligned(p));
 #else
-	if (CPU_IS_LITTLE_ENDIAN())
-		return ((u32)p[0] << 0) | ((u32)p[1] << 8) | ((u32)p[2] << 16);
-	else
-		return ((u32)p[2] << 0) | ((u32)p[1] << 8) | ((u32)p[0] << 16);
+  if (CPU_IS_LITTLE_ENDIAN())
+    return ((u32)p[0] << 0) | ((u32)p[1] << 8) | ((u32)p[2] << 16);
+  else
+    return ((u32)p[2] << 0) | ((u32)p[1] << 8) | ((u32)p[0] << 16);
 #endif
 }
 
@@ -48,7 +44,7 @@ load_u24_unaligned(const u8 *p)
 
 typedef s16 mf_pos_t;
 
-#define MATCHFINDER_INITVAL ((mf_pos_t)-MATCHFINDER_WINDOW_SIZE)
+#define MATCHFINDER_INITVAL ((mf_pos_t) - MATCHFINDER_WINDOW_SIZE)
 
 /*
  * This is the memory address alignment, in bytes, required for the matchfinder
@@ -63,7 +59,7 @@ typedef s16 mf_pos_t;
  * Currently the maximum memory address alignment required is 32 bytes, needed
  * by the AVX-2 matchfinder functions.
  */
-#define MATCHFINDER_MEM_ALIGNMENT	32
+#define MATCHFINDER_MEM_ALIGNMENT 32
 
 /*
  * This declares a size, in bytes, that is guaranteed to divide the sizes of the
@@ -78,21 +74,21 @@ typedef s16 mf_pos_t;
  * actual sizes that result from the current matchfinder struct definitions.
  * This value can safely be changed to any power of two that is >= 128.
  */
-#define MATCHFINDER_SIZE_ALIGNMENT	1024
+#define MATCHFINDER_SIZE_ALIGNMENT 1024
 
 #undef matchfinder_init
 #undef matchfinder_rebase
 #ifdef _aligned_attribute
-#  define MATCHFINDER_ALIGNED _aligned_attribute(MATCHFINDER_MEM_ALIGNMENT)
-#  if defined(ARCH_ARM32) || defined(ARCH_ARM64)
-#    include "arm/matchfinder_impl.h"
-#  elif defined(ARCH_RISCV)
-#    include "riscv/matchfinder_impl.h"
-#  elif defined(ARCH_X86_32) || defined(ARCH_X86_64)
-#    include "x86/matchfinder_impl.h"
-#  endif
+#define MATCHFINDER_ALIGNED _aligned_attribute(MATCHFINDER_MEM_ALIGNMENT)
+#if defined(ARCH_ARM32) || defined(ARCH_ARM64)
+#include "arm/matchfinder_impl.h"
+#elif defined(ARCH_RISCV)
+#include "riscv/matchfinder_impl.h"
+#elif defined(ARCH_X86_32) || defined(ARCH_X86_64)
+#include "x86/matchfinder_impl.h"
+#endif
 #else
-#  define MATCHFINDER_ALIGNED
+#define MATCHFINDER_ALIGNED
 #endif
 
 /*
@@ -104,14 +100,12 @@ typedef s16 mf_pos_t;
  * 'size' must be a multiple of MATCHFINDER_SIZE_ALIGNMENT.
  */
 #ifndef matchfinder_init
-static forceinline void
-matchfinder_init(mf_pos_t *data, size_t size)
-{
-	size_t num_entries = size / sizeof(*data);
-	size_t i;
+static forceinline void matchfinder_init(mf_pos_t *data, size_t size) {
+  size_t num_entries = size / sizeof(*data);
+  size_t i;
 
-	for (i = 0; i < num_entries; i++)
-		data[i] = MATCHFINDER_INITVAL;
+  for (i = 0; i < num_entries; i++)
+    data[i] = MATCHFINDER_INITVAL;
 }
 #endif
 
@@ -133,28 +127,26 @@ matchfinder_init(mf_pos_t *data, size_t size)
  * must be a multiple of MATCHFINDER_SIZE_ALIGNMENT.
  */
 #ifndef matchfinder_rebase
-static forceinline void
-matchfinder_rebase(mf_pos_t *data, size_t size)
-{
-	size_t num_entries = size / sizeof(*data);
-	size_t i;
+static forceinline void matchfinder_rebase(mf_pos_t *data, size_t size) {
+  size_t num_entries = size / sizeof(*data);
+  size_t i;
 
-	if (MATCHFINDER_WINDOW_SIZE == 32768) {
-		/*
-		 * Branchless version for 32768-byte windows.  Clear all bits if
-		 * the value was already negative, then set the sign bit.  This
-		 * is equivalent to subtracting 32768 with signed saturation.
-		 */
-		for (i = 0; i < num_entries; i++)
-			data[i] = 0x8000 | (data[i] & ~(data[i] >> 15));
-	} else {
-		for (i = 0; i < num_entries; i++) {
-			if (data[i] >= 0)
-				data[i] -= (mf_pos_t)-MATCHFINDER_WINDOW_SIZE;
-			else
-				data[i] = (mf_pos_t)-MATCHFINDER_WINDOW_SIZE;
-		}
-	}
+  if (MATCHFINDER_WINDOW_SIZE == 32768) {
+    /*
+     * Branchless version for 32768-byte windows.  Clear all bits if
+     * the value was already negative, then set the sign bit.  This
+     * is equivalent to subtracting 32768 with signed saturation.
+     */
+    for (i = 0; i < num_entries; i++)
+      data[i] = 0x8000 | (data[i] & ~(data[i] >> 15));
+  } else {
+    for (i = 0; i < num_entries; i++) {
+      if (data[i] >= 0)
+        data[i] -= (mf_pos_t)-MATCHFINDER_WINDOW_SIZE;
+      else
+        data[i] = (mf_pos_t)-MATCHFINDER_WINDOW_SIZE;
+    }
+  }
 }
 #endif
 
@@ -165,60 +157,57 @@ matchfinder_rebase(mf_pos_t *data, size_t size)
  * next-highest @num_bits bits of the product as the hash value, as those have
  * the most randomness.
  */
-static forceinline u32
-lz_hash(u32 seq, unsigned num_bits)
-{
-	return (u32)(seq * 0x1E35A7BD) >> (32 - num_bits);
+static forceinline u32 lz_hash(u32 seq, unsigned num_bits) {
+  return (u32)(seq * 0x1E35A7BD) >> (32 - num_bits);
 }
 
 /*
  * Return the number of bytes at @matchptr that match the bytes at @strptr, up
  * to a maximum of @max_len.  Initially, @start_len bytes are matched.
  */
-static forceinline u32
-lz_extend(const u8 * const strptr, const u8 * const matchptr,
-	  const u32 start_len, const u32 max_len)
-{
-	u32 len = start_len;
-	machine_word_t v_word;
+static forceinline u32 lz_extend(const u8 *const strptr,
+                                 const u8 *const matchptr, const u32 start_len,
+                                 const u32 max_len) {
+  u32 len = start_len;
+  machine_word_t v_word;
 
-	if (UNALIGNED_ACCESS_IS_FAST) {
+  if (UNALIGNED_ACCESS_IS_FAST) {
 
-		if (likely(max_len - len >= 4 * WORDBYTES)) {
+    if (likely(max_len - len >= 4 * WORDBYTES)) {
 
-		#define COMPARE_WORD_STEP				\
-			v_word = load_word_unaligned(&matchptr[len]) ^	\
-				 load_word_unaligned(&strptr[len]);	\
-			if (v_word != 0)				\
-				goto word_differs;			\
-			len += WORDBYTES;				\
+#define COMPARE_WORD_STEP                                                      \
+  v_word =                                                                     \
+      load_word_unaligned(&matchptr[len]) ^ load_word_unaligned(&strptr[len]); \
+  if (v_word != 0)                                                             \
+    goto word_differs;                                                         \
+  len += WORDBYTES;
 
-			COMPARE_WORD_STEP
-			COMPARE_WORD_STEP
-			COMPARE_WORD_STEP
-			COMPARE_WORD_STEP
-		#undef COMPARE_WORD_STEP
-		}
+      COMPARE_WORD_STEP
+      COMPARE_WORD_STEP
+      COMPARE_WORD_STEP
+      COMPARE_WORD_STEP
+#undef COMPARE_WORD_STEP
+    }
 
-		while (len + WORDBYTES <= max_len) {
-			v_word = load_word_unaligned(&matchptr[len]) ^
-				 load_word_unaligned(&strptr[len]);
-			if (v_word != 0)
-				goto word_differs;
-			len += WORDBYTES;
-		}
-	}
+    while (len + WORDBYTES <= max_len) {
+      v_word = load_word_unaligned(&matchptr[len]) ^
+               load_word_unaligned(&strptr[len]);
+      if (v_word != 0)
+        goto word_differs;
+      len += WORDBYTES;
+    }
+  }
 
-	while (len < max_len && matchptr[len] == strptr[len])
-		len++;
-	return len;
+  while (len < max_len && matchptr[len] == strptr[len])
+    len++;
+  return len;
 
 word_differs:
-	if (CPU_IS_LITTLE_ENDIAN())
-		len += (bsfw(v_word) >> 3);
-	else
-		len += (WORDBITS - 1 - bsrw(v_word)) >> 3;
-	return len;
+  if (CPU_IS_LITTLE_ENDIAN())
+    len += (bsfw(v_word) >> 3);
+  else
+    len += (WORDBITS - 1 - bsrw(v_word)) >> 3;
+  return len;
 }
 
 #endif /* LIB_MATCHFINDER_COMMON_H */

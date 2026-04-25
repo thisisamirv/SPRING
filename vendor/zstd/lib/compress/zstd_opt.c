@@ -521,7 +521,7 @@ static ZSTD_ALLOW_POINTER_OVERFLOW_ATTR U32 ZSTD_insertBt1(
       if (matchIndex <= btLow) {
         smallerPtr = &dummy32;
         break;
-      }                         /* beyond tree size, stop the search */
+      } /* beyond tree size, stop the search */
       smallerPtr = nextPtr + 1; /* new "smaller" => larger of match */
       matchIndex = nextPtr[1]; /* new matchIndex larger than previous (closer to
                                   current) */
@@ -575,7 +575,7 @@ static ZSTD_ALLOW_POINTER_OVERFLOW_ATTR U32 ZSTD_insertBt1(
       if (matchIndex <= btLow) {
         smallerPtr = &dummy32;
         break;
-      }                         /* beyond tree size, stop searching */
+      } /* beyond tree size, stop searching */
       smallerPtr = nextPtr + 1; /* new "candidate" => larger than match, which
                                    was smaller than target */
       matchIndex = nextPtr[1];  /* new matchIndex, larger than previous and
@@ -861,7 +861,7 @@ U32 ZSTD_insertBtAndGetAllMatches(
       if (matchIndex <= btLow) {
         smallerPtr = &dummy32;
         break;
-      }                         /* beyond tree size, stop the search */
+      } /* beyond tree size, stop the search */
       smallerPtr = nextPtr + 1; /* new candidate => larger than match, which was
                                    smaller than current */
       matchIndex = nextPtr[1];  /* new matchIndex, larger than previous, closer

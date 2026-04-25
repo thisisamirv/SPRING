@@ -32,21 +32,21 @@
 
 /* SSE2 and AVX2 implementations.  Used on older CPUs. */
 #if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
-#  define adler32_x86_sse2	adler32_x86_sse2
-#  define SUFFIX			   _sse2
-#  define ATTRIBUTES		_target_attribute("sse2")
-#  define VL			16
-#  define USE_VNNI		0
-#  define USE_AVX512		0
-#  include "adler32_template.h"
+#define adler32_x86_sse2 adler32_x86_sse2
+#define SUFFIX _sse2
+#define ATTRIBUTES _target_attribute("sse2")
+#define VL 16
+#define USE_VNNI 0
+#define USE_AVX512 0
+#include "adler32_template.h"
 
-#  define adler32_x86_avx2	adler32_x86_avx2
-#  define SUFFIX			   _avx2
-#  define ATTRIBUTES		_target_attribute("avx2")
-#  define VL			32
-#  define USE_VNNI		0
-#  define USE_AVX512		0
-#  include "adler32_template.h"
+#define adler32_x86_avx2 adler32_x86_avx2
+#define SUFFIX _avx2
+#define ATTRIBUTES _target_attribute("avx2")
+#define VL 32
+#define USE_VNNI 0
+#define USE_AVX512 0
+#include "adler32_template.h"
 #endif
 
 /*
@@ -60,19 +60,20 @@
  * instead of gcc 11.  (libdeflate supports direct compilation without a
  * configure step, so checking the binutils version is not always an option.)
  */
-#if (GCC_PREREQ(12, 1) || CLANG_PREREQ(12, 0, 13000000) || MSVC_PREREQ(1930)) && \
-	!defined(LIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_AVX_VNNI)
-#  define adler32_x86_avx2_vnni	adler32_x86_avx2_vnni
-#  define SUFFIX			   _avx2_vnni
-#  define ATTRIBUTES		_target_attribute("avx2,avxvnni")
-#  define VL			32
-#  define USE_VNNI		1
-#  define USE_AVX512		0
-#  include "adler32_template.h"
+#if (GCC_PREREQ(12, 1) || CLANG_PREREQ(12, 0, 13000000) ||                     \
+     MSVC_PREREQ(1930)) &&                                                     \
+    !defined(LIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_AVX_VNNI)
+#define adler32_x86_avx2_vnni adler32_x86_avx2_vnni
+#define SUFFIX _avx2_vnni
+#define ATTRIBUTES _target_attribute("avx2,avxvnni")
+#define VL 32
+#define USE_VNNI 1
+#define USE_AVX512 0
+#include "adler32_template.h"
 #endif
 
 #if (GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 10000000) || MSVC_PREREQ(1920)) && \
-	!defined(LIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_AVX512VNNI)
+    !defined(LIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_AVX512VNNI)
 /*
  * AVX512VNNI implementation using 256-bit vectors.  This is very similar to the
  * AVX-VNNI implementation but takes advantage of masking and more registers.
@@ -80,56 +81,54 @@
  * Lake, which support AVX512VNNI but downclock a bit too eagerly when ZMM
  * registers are used.
  */
-#  define adler32_x86_avx512_vl256_vnni	adler32_x86_avx512_vl256_vnni
-#  define SUFFIX				   _avx512_vl256_vnni
-#  define ATTRIBUTES		_target_attribute("avx512bw,avx512vl,avx512vnni")
-#  define VL			32
-#  define USE_VNNI		1
-#  define USE_AVX512		1
-#  include "adler32_template.h"
+#define adler32_x86_avx512_vl256_vnni adler32_x86_avx512_vl256_vnni
+#define SUFFIX _avx512_vl256_vnni
+#define ATTRIBUTES _target_attribute("avx512bw,avx512vl,avx512vnni")
+#define VL 32
+#define USE_VNNI 1
+#define USE_AVX512 1
+#include "adler32_template.h"
 
 /*
  * AVX512VNNI implementation using 512-bit vectors.  This is used on CPUs that
  * have a good AVX-512 implementation including AVX512VNNI.
  */
-#  define adler32_x86_avx512_vl512_vnni	adler32_x86_avx512_vl512_vnni
-#  define SUFFIX				   _avx512_vl512_vnni
-#  define ATTRIBUTES		_target_attribute("avx512bw,avx512vnni")
-#  define VL			64
-#  define USE_VNNI		1
-#  define USE_AVX512		1
-#  include "adler32_template.h"
+#define adler32_x86_avx512_vl512_vnni adler32_x86_avx512_vl512_vnni
+#define SUFFIX _avx512_vl512_vnni
+#define ATTRIBUTES _target_attribute("avx512bw,avx512vnni")
+#define VL 64
+#define USE_VNNI 1
+#define USE_AVX512 1
+#include "adler32_template.h"
 #endif
 
-static inline adler32_func_t
-arch_select_adler32_func(void)
-{
-	const u32 features MAYBE_UNUSED = get_x86_cpu_features();
+static inline adler32_func_t arch_select_adler32_func(void) {
+  const u32 features MAYBE_UNUSED = get_x86_cpu_features();
 
 #ifdef adler32_x86_avx512_vl512_vnni
-	if ((features & X86_CPU_FEATURE_ZMM) &&
-	    HAVE_AVX512BW(features) && HAVE_AVX512VNNI(features))
-		return adler32_x86_avx512_vl512_vnni;
+  if ((features & X86_CPU_FEATURE_ZMM) && HAVE_AVX512BW(features) &&
+      HAVE_AVX512VNNI(features))
+    return adler32_x86_avx512_vl512_vnni;
 #endif
 #ifdef adler32_x86_avx512_vl256_vnni
-	if (HAVE_AVX512BW(features) && HAVE_AVX512VL(features) &&
-	    HAVE_AVX512VNNI(features))
-		return adler32_x86_avx512_vl256_vnni;
+  if (HAVE_AVX512BW(features) && HAVE_AVX512VL(features) &&
+      HAVE_AVX512VNNI(features))
+    return adler32_x86_avx512_vl256_vnni;
 #endif
 #ifdef adler32_x86_avx2_vnni
-	if (HAVE_AVX2(features) && HAVE_AVXVNNI(features))
-		return adler32_x86_avx2_vnni;
+  if (HAVE_AVX2(features) && HAVE_AVXVNNI(features))
+    return adler32_x86_avx2_vnni;
 #endif
 #ifdef adler32_x86_avx2
-	if (HAVE_AVX2(features))
-		return adler32_x86_avx2;
+  if (HAVE_AVX2(features))
+    return adler32_x86_avx2;
 #endif
 #ifdef adler32_x86_sse2
-	if (HAVE_SSE2(features))
-		return adler32_x86_sse2;
+  if (HAVE_SSE2(features))
+    return adler32_x86_sse2;
 #endif
-	return NULL;
+  return NULL;
 }
-#define arch_select_adler32_func	arch_select_adler32_func
+#define arch_select_adler32_func arch_select_adler32_func
 
 #endif /* LIB_X86_ADLER32_IMPL_H */

@@ -1,7 +1,7 @@
-#include <cstdint>
+#include "qvz/include/qv_compressor.h"
 #include "qvz/include/codebook.h"
 #include "qvz/include/lines.h"
-#include "qvz/include/qv_compressor.h"
+#include <cstdint>
 
 namespace spring {
 namespace qvz {
