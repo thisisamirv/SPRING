@@ -208,7 +208,8 @@ inline constexpr bool is_owning_span_v = is_owning_span<T>::value;
 
 struct json_lines {
   struct property {
-    property(std::string n, std::string v) : name(n), value(v) {}
+    property(std::string n, std::string v)
+        : name(std::move(n)), value(std::move(v)) {}
 
     std::string name;
     std::string value;

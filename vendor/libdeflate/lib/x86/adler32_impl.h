@@ -75,7 +75,8 @@
  * adler32_func_t is defined in adler32.c, but we need it here for standalone
  * parsing by the IDE.
  */
-#ifndef adler32_func_t
+#ifndef ADLER32_FUNC_T_DEFINED
+#define ADLER32_FUNC_T_DEFINED
 typedef u32 (*adler32_func_t)(u32 adler, const u8 *p, size_t len);
 #endif
 

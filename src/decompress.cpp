@@ -311,9 +311,10 @@ uint32_t compute_thread_read_count(const uint32_t step_read_count,
 
 } // namespace
 
+namespace {
 // Restore a stripped poly-A/T tail onto a read (and optionally its quality).
-static void append_tail(std::string &read_str, std::string *quality_str,
-                        uint16_t tail_info, const std::string *tail_qual) {
+void append_tail(std::string &read_str, std::string *quality_str,
+                 uint16_t tail_info, const std::string *tail_qual) {
   if (tail_info == 0)
     return;
   const char base = (tail_info & 1) ? 'T' : 'A';
@@ -327,6 +328,7 @@ static void append_tail(std::string &read_str, std::string *quality_str,
     }
   }
 }
+} // namespace
 
 void write_fastq_block(std::ostream &output_stream, std::string *id_buffer,
                        std::string *read_buffer,
@@ -448,7 +450,8 @@ void decode_packed_sequence_chunk(const std::string &packed_seq_base_path,
         for (int k = 0; k < 5 && bases_decoded < num_bases; k++) {
           uint8_t val = byte % 3;
           byte /= 3;
-          unpacked_output.put(val == 0 ? 'A' : (val == 1 ? 'G' : 'T'));
+          static constexpr char kBases[3] = {'A', 'G', 'T'};
+          unpacked_output.put(kBases[val]);
           bases_decoded++;
         }
       } else {

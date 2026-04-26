@@ -647,7 +647,7 @@ static int process_extra(struct archive_read *a, struct archive_entry *entry,
       /* Flag bits indicate which dates are present. */
       if (flags & 0x01) {
 #ifdef DEBUG
-        fprintf(stderr, "mtime: %lld -> %d\n", (long long)zip_entry->mtime,
+        fprintf(stderr, "mtime: %lld -> %u\n", (long long)zip_entry->mtime,
                 archive_le32dec(p + offset));
 #endif
         if (datasize < 4)

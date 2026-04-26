@@ -2,6 +2,7 @@
 
 #include <atomic> // for std::atomic
 #include <mutex>
+#include <thread>
 #include <vector>
 
 #include "bit_vector.hpp"

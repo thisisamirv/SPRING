@@ -37,7 +37,7 @@
 struct inflate_state stream;
 
 int main(int argc, char *argv[]) {
-  uint8_t inbuf[BUF_SIZE], outbuf[BUF_SIZE];
+  uint8_t inbuf[BUF_SIZE], outbuf[BUF_SIZE] = {0};
   FILE *in, *out;
   int ret;
   int eof;

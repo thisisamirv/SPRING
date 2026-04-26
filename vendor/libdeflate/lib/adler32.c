@@ -120,7 +120,10 @@ static u32 MAYBE_UNUSED adler32_generic(u32 adler, const u8 *p, size_t len) {
 /* Include architecture-specific implementation(s) if available. */
 #undef DEFAULT_IMPL
 #undef arch_select_adler32_func
+#ifndef ADLER32_FUNC_T_DEFINED
+#define ADLER32_FUNC_T_DEFINED
 typedef u32 (*adler32_func_t)(u32 adler, const u8 *p, size_t len);
+#endif
 #if defined(ARCH_ARM32) || defined(ARCH_ARM64)
 #include "arm/adler32_impl.h"
 #elif defined(ARCH_X86_32) || defined(ARCH_X86_64)

@@ -224,3 +224,5 @@ void libdeflate_init_arm_cpu_features(void) {
 
 #endif /* ARM_CPU_FEATURES_KNOWN */
 #endif /* __arm__ || __aarch64__ */
+
+typedef int libdeflate_arm_cpu_features_dummy;

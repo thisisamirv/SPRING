@@ -1584,7 +1584,7 @@ int compress_stateless(uint8_t *data, uint32_t data_size,
     else if (ret == INVALID_FLUSH)
       return INVALID_FLUSH_ERROR;
     else {
-      printf("Return due to ret = %d with level = %d or %d\n", ret, level,
+      printf("Return due to ret = %d with level = %u or %u\n", ret, level,
              stream.level);
       return COMPRESS_GENERAL_ERROR;
     }

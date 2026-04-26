@@ -152,7 +152,7 @@ void print_string(char *str, uint32_t str_max_len, char *prepend) {
   const int line_size = 64;
   uint32_t i = 0;
 
-  while (str[i] != 0 && i < str_max_len) {
+  while (i < str_max_len && str[i] != 0) {
     if (i == 0)
       printf("%s0x%04x\t", prepend, i);
     else if ((i % line_size) == 0)
@@ -386,7 +386,7 @@ int gen_rand_gzip_header(struct isal_gzip_header *gz_hdr) {
   rand_string(gz_hdr->name, gz_hdr->name_buf_len);
   rand_string(gz_hdr->comment, gz_hdr->comment_buf_len);
 
-  return ret;
+  return 0;
 }
 
 void gen_rand_zlib_header(struct isal_zlib_header *z_hdr) {
@@ -409,7 +409,7 @@ int write_gzip_header(uint8_t *hdr_buf, uint32_t hdr_buf_len,
   len = isal_write_gzip_header(&stream, gz_hdr);
 
   if (len != hdr_len) {
-    printf("len = %d, hdr_buf_len = %d\n", len, hdr_len);
+    printf("len = %u, hdr_buf_len = %u\n", len, hdr_len);
     print_gzip_final_verbose(hdr_buf, hdr_buf_len, gz_hdr, NULL);
     print_error(INCORRECT_HDR_LEN);
     return INCORRECT_HDR_LEN;

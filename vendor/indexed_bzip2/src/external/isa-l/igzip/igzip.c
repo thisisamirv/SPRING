@@ -1665,7 +1665,7 @@ int isal_deflate(struct isal_zstream *stream) {
     stream->avail_in -= future_size;
   }
 
-  return ret;
+  return COMP_OK;
 }
 
 // Helper function to avoid code duplication.

@@ -2,6 +2,7 @@
 
 set -euo pipefail
 
+# shellcheck disable=SC1091
 source "$(cd -- "$(dirname -- "$0")" && pwd)/common.sh"
 
 if [[ $# -gt 0 ]]; then

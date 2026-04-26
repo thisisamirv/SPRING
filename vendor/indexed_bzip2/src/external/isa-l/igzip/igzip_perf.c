@@ -222,7 +222,7 @@ int usage(void) {
 }
 
 void print_perf_info_line(struct perf_info *info) {
-  printf("igzip_perf-> compress level: %d flush_type: %d block_size: %d\n",
+  printf("igzip_perf-> compress level: %d flush_type: %u block_size: %u\n",
          info->strategy.level, info->flush_type, info->inblock_size);
 }
 

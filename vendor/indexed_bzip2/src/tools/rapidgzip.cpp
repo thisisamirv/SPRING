@@ -631,11 +631,6 @@ int rapidgzipCLI(int argc, char const *const *argv) {
 
   /* Actually do things as requested. */
 
-  if (!inputFile) {
-    std::cerr << "Could not open input file: " << inputFilePath << "!\n";
-    return 1;
-  }
-
   std::unique_ptr<OutputFile> outputFile;
   std::unique_ptr<OutputFile> stdoutFile;
   if (decompress) {

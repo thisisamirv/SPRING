@@ -305,6 +305,7 @@ void gen_trees_header(void) {
   int i;
 
   Assert(header != NULL, "Can't open trees.h");
+  if (header == NULL) return;
   fprintf(header, "/* header created automatically with -DGEN_TREES_H */\n\n");
 
   fprintf(header, "static const ct_data static_ltree[L_CODES+2] = {\n");
@@ -336,13 +337,13 @@ void gen_trees_header(void) {
 
   fprintf(header, "static const int base_length[LENGTH_CODES] = {\n");
   for (i = 0; i < LENGTH_CODES; i++) {
-    fprintf(header, "%1u%s", base_length[i],
+    fprintf(header, "%1d%s", base_length[i],
             SEPARATOR(i, LENGTH_CODES - 1, 20));
   }
 
   fprintf(header, "static const int base_dist[D_CODES] = {\n");
   for (i = 0; i < D_CODES; i++) {
-    fprintf(header, "%5u%s", base_dist[i], SEPARATOR(i, D_CODES - 1, 10));
+    fprintf(header, "%5d%s", base_dist[i], SEPARATOR(i, D_CODES - 1, 10));
   }
 
   fclose(header);

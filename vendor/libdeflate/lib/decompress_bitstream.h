@@ -26,7 +26,10 @@
  * The type for the bitbuffer variable.  For best performance, this should have
  * size equal to a machine word.
  */
+#ifndef BITBUF_T_DEFINED
+#define BITBUF_T_DEFINED
 typedef machine_word_t bitbuf_t;
+#endif
 #define BITBUF_NBITS (8 * (int)sizeof(bitbuf_t))
 
 /* BITMASK(n) returns a bitmask of length 'n'. */

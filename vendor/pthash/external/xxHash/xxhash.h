@@ -3268,7 +3268,7 @@ XXH_PUBLIC_API void XXH32_copyState(XXH32_state_t *dstState,
 /*! @ingroup XXH32_family */
 XXH_PUBLIC_API XXH_errorcode XXH32_reset(XXH32_state_t *statePtr,
                                          XXH32_hash_t seed) {
-  XXH_ASSERT(statePtr != NULL);
+  if (statePtr == NULL) return XXH_ERROR;
   memset(statePtr, 0, sizeof(*statePtr));
   statePtr->v[0] = seed + XXH_PRIME32_1 + XXH_PRIME32_2;
   statePtr->v[1] = seed + XXH_PRIME32_2;
@@ -3724,7 +3724,7 @@ XXH_PUBLIC_API void XXH64_copyState(XXH_NOESCAPE XXH64_state_t *dstState,
 /*! @ingroup XXH64_family */
 XXH_PUBLIC_API XXH_errorcode XXH64_reset(XXH_NOESCAPE XXH64_state_t *statePtr,
                                          XXH64_hash_t seed) {
-  XXH_ASSERT(statePtr != NULL);
+  if (statePtr == NULL) return XXH_ERROR;
   memset(statePtr, 0, sizeof(*statePtr));
   statePtr->v[0] = seed + XXH_PRIME64_1 + XXH_PRIME64_2;
   statePtr->v[1] = seed + XXH_PRIME64_2;
@@ -4662,7 +4662,7 @@ static xxh_u64 XXH3_mul128_fold64(xxh_u64 lhs, xxh_u64 rhs) {
 /*! Seems to produce slightly better code on GCC for some reason. */
 XXH_FORCE_INLINE XXH_CONSTF xxh_u64 XXH_xorshift64(xxh_u64 v64, int shift) {
   XXH_ASSERT(0 <= shift && shift < 64);
-  return v64 ^ (v64 >> shift);
+  return v64 ^ (v64 >> (shift & 63));
 }
 
 /*
@@ -4730,7 +4730,7 @@ XXH_FORCE_INLINE XXH_PUREF XXH64_hash_t XXH3_len_1to3_64b(const xxh_u8 *input,
                                                           XXH64_hash_t seed) {
   XXH_ASSERT(input != NULL);
   XXH_ASSERT(1 <= len && len <= 3);
-  XXH_ASSERT(secret != NULL);
+  if (secret == NULL) return 0;
   /*
    * len = 1: combined = { input[0], 0x01, input[0], input[0] }
    * len = 2: combined = { input[1], 0x02, input[0], input[1] }
@@ -6390,7 +6390,7 @@ static void XXH3_reset_internal(XXH3_state_t *statePtr, XXH64_hash_t seed,
   size_t const initLength =
       offsetof(XXH3_state_t, nbStripesPerBlock) - initStart;
   XXH_ASSERT(offsetof(XXH3_state_t, nbStripesPerBlock) > initStart);
-  XXH_ASSERT(statePtr != NULL);
+  if (statePtr == NULL) return;
   /* set members from bufferedSize to nbStripesPerBlock (excluded) to 0 */
   memset((char *)statePtr + initStart, 0, initLength);
   statePtr->acc[0] = XXH_PRIME32_3;
@@ -6530,7 +6530,7 @@ XXH_FORCE_INLINE XXH_errorcode XXH3_update(
     return XXH_OK;
   }
 
-  XXH_ASSERT(state != NULL);
+  if (state == NULL) return XXH_OK;
   {
     const xxh_u8 *const bEnd = input + len;
     const unsigned char *const secret =
@@ -6681,7 +6681,7 @@ XXH_FORCE_INLINE XXH_PUREF XXH128_hash_t XXH3_len_1to3_128b(
   /* A doubled version of 1to3_64b with different constants. */
   XXH_ASSERT(input != NULL);
   XXH_ASSERT(1 <= len && len <= 3);
-  XXH_ASSERT(secret != NULL);
+  if (secret == NULL) { XXH128_hash_t const h = {0, 0}; return h; }
   /*
    * len = 1: combinedl = { input[0], 0x01, input[0], input[0] }
    * len = 2: combinedl = { input[1], 0x02, input[0], input[1] }
@@ -7293,9 +7293,9 @@ XXH_PUBLIC_API XXH_errorcode XXH3_generateSecret(
 XXH_PUBLIC_API void
 XXH3_generateSecret_fromSeed(XXH_NOESCAPE void *secretBuffer,
                              XXH64_hash_t seed) {
+  if (secretBuffer == NULL) return;
   XXH_ALIGN(XXH_SEC_ALIGN) xxh_u8 secret[XXH_SECRET_DEFAULT_SIZE];
   XXH3_initCustomSecret(secret, seed);
-  XXH_ASSERT(secretBuffer != NULL);
   memcpy(secretBuffer, secret, XXH_SECRET_DEFAULT_SIZE);
 }
 

@@ -204,7 +204,7 @@ int test(uint8_t *compressed_stream, uint64_t *compressed_length,
 
   if (uncompressed_test_stream_length != uncompressed_length) {
     printf("incorrect amount of data was decompressed from compressed data\n");
-    printf("%d decompressed of %d compressed", uncompressed_test_stream_length,
+    printf("%u decompressed of %u compressed", uncompressed_test_stream_length,
            uncompressed_length);
     return -1;
   }
@@ -213,7 +213,7 @@ int test(uint8_t *compressed_stream, uint64_t *compressed_length,
     uint32_t i;
     for (i = 0; i < uncompressed_length; i++) {
       if (uncompressed_stream[i] != uncompressed_test_stream[i]) {
-        printf("first error at %d, 0x%x != 0x%x\n", i, uncompressed_stream[i],
+        printf("first error at %u, 0x%x != 0x%x\n", i, uncompressed_stream[i],
                uncompressed_test_stream[i]);
       }
     }

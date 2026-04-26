@@ -105,7 +105,10 @@
  * 64-bit platforms have a significant advantage: they get a bigger bitbuffer
  * which they don't have to refill as often.
  */
+#ifndef BITBUF_T_DEFINED
+#define BITBUF_T_DEFINED
 typedef machine_word_t bitbuf_t;
+#endif
 #define BITBUF_NBITS (8 * (int)sizeof(bitbuf_t))
 
 /* BITMASK(n) returns a bitmask of length 'n'. */

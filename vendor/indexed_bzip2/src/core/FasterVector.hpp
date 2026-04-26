@@ -43,15 +43,16 @@ namespace rapidgzip {
   (void)sizeof(std::enable_if<true>);
 
   // Reference functions to satisfy clangd
-  (void)std::fill((int *)nullptr, (int *)nullptr, 0);
-  (void)std::copy((int *)nullptr, (int *)nullptr, (int *)nullptr);
-  (void)std::equal((int *)nullptr, (int *)nullptr, (int *)nullptr);
+  int dummy_arr[1] = {0};
+  (void)std::fill(dummy_arr, dummy_arr, 0);
+  (void)std::copy(dummy_arr, dummy_arr, dummy_arr);
+  (void)std::equal(dummy_arr, dummy_arr, dummy_arr);
   (void)std::max(0, 0);
   (void)std::min(0, 0);
-  (void)std::accumulate((int *)nullptr, (int *)nullptr, 0);
+  (void)std::accumulate(dummy_arr, dummy_arr, 0);
   (void)std::ceil(0.0);
-  (void)std::log2(0.0);
-  (void)std::memmove(nullptr, nullptr, 0);
+  (void)std::log2(1.0);
+  (void)std::memmove(dummy_arr, dummy_arr, 0);
 
 #ifdef LIBRAPIDARCHIVE_WITH_RPMALLOC
   (void)&rpmalloc;

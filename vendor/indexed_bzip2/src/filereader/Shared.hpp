@@ -436,10 +436,9 @@ ensureSharedFileReader(UniqueFileReader &&fileReader) {
     throw std::invalid_argument("File reader must not be null!");
   }
 
-  if (auto *const casted = dynamic_cast<SharedFileReader *>(fileReader.get());
-      casted != nullptr) {
-    fileReader.release(); // NOLINT(bugprone-unused-return-value)
-    return std::unique_ptr<SharedFileReader>(casted);
+  if (dynamic_cast<SharedFileReader *>(fileReader.get()) != nullptr) {
+    return std::unique_ptr<SharedFileReader>(
+        static_cast<SharedFileReader *>(fileReader.release()));
   }
 
   if (!fileReader->seekable()) {

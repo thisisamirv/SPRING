@@ -127,6 +127,7 @@ int main(int argc, char *argv[]) {
   dst_raw = (u8 *)malloc(TEST_LEN);
   if (NULL == dst_raw) {
     printf("alloc error: Fail");
+    free(src_raw);
     return -1;
   }
   src = src_raw;

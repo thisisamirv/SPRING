@@ -1,5 +1,4 @@
 #include "dna_utils.h"
-#include "core_utils.h"
 #include <array>
 #include <cstdint>
 #include <stdexcept>
@@ -62,8 +61,9 @@ const std::array<char, 5> &int_to_dna_n_lookup() {
 
 template <size_t BufferSize>
 void write_encoded_read(const std::string &read, std::ofstream &fout,
-                        const uint8_t *dna_to_int, const uint8_t bits_per_base,
-                        const uint8_t bases_per_byte) {
+                        [[maybe_unused]] const uint8_t *dna_to_int,
+                        [[maybe_unused]] const uint8_t bits_per_base,
+                        [[maybe_unused]] const uint8_t bases_per_byte) {
   const uint32_t readlen = static_cast<uint32_t>(read.size());
   fout.write(reinterpret_cast<const char *>(&readlen), sizeof(uint32_t));
   fout.write(read.data(), static_cast<std::streamsize>(readlen));
@@ -75,9 +75,10 @@ void write_encoded_read(const std::string &read, std::ofstream &fout,
 
 template <size_t BufferSize>
 void read_encoded_read(std::string &read, std::ifstream &fin,
-                       const char *int_to_dna, const uint8_t bit_mask,
-                       const uint8_t bits_per_base,
-                       const uint8_t bases_per_byte) {
+                       [[maybe_unused]] const char *int_to_dna,
+                       [[maybe_unused]] const uint8_t bit_mask,
+                       [[maybe_unused]] const uint8_t bits_per_base,
+                       [[maybe_unused]] const uint8_t bases_per_byte) {
   uint32_t readlen;
   if (!fin.read(reinterpret_cast<char *>(&readlen), sizeof(uint32_t))) {
     if (fin.eof())

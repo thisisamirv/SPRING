@@ -253,11 +253,12 @@ bool barcode_sort(const std::string &temp_dir, compression_params &cp,
   // ── Load R2 reads (paired-end) ───────────────────────────────────────────
   std::vector<PackedRead> reads_2;
   if (paired_end) {
-    uint32_t dummy_cb_len = detected_cb_len;
+    uint32_t r2_detected_len = detected_cb_len;
+    const uint32_t r2_cb_len = detected_cb_len;
     reads_2 = load_all_reads(temp_dir, 1, reads_per_stream,
                              cp.read_info.num_reads_clean[1],
                              reads_per_stream - cp.read_info.num_reads_clean[1],
-                             dummy_cb_len, nullptr, detected_cb_len);
+                             r2_detected_len, nullptr, r2_cb_len);
 
     // Paired-end read_order.bin uses global read indices where R2 occupies the
     // second half [reads_per_stream, 2*reads_per_stream). This keeps
@@ -296,9 +297,6 @@ bool barcode_sort(const std::string &temp_dir, compression_params &cp,
     }
   }
   longest_run = std::max(longest_run, current_run);
-  const uint64_t avg_run_bp =
-      cb_unique == 0 ? 0 : (r1_order.size() * 100ULL) / cb_unique;
-
   const uint64_t read_count = static_cast<uint64_t>(r1_order.size());
   const bool low_barcode_diversity =
       (read_count >= 10000) &&

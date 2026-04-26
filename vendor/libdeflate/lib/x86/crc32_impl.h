@@ -41,7 +41,8 @@
 #ifndef crc32_slice1
 extern u32 crc32_slice1(u32 crc, const u8 *p, size_t len);
 #endif
-#ifndef crc32_func_t
+#ifndef CRC32_FUNC_T_DEFINED
+#define CRC32_FUNC_T_DEFINED
 typedef u32 (*crc32_func_t)(u32 crc, const u8 *p, size_t len);
 #endif
 

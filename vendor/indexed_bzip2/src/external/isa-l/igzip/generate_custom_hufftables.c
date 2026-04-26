@@ -405,6 +405,7 @@ int main(int argc, char *argv[]) {
     hist_file_length -= ftell(hist_file);
     if ((size_t)hist_file_length > sizeof(histogram)) {
       printf("Histogram file too long\n");
+      fclose(hist_file);
       return 1;
     }
     if (fread(&histogram, 1, (size_t)hist_file_length, hist_file) !=

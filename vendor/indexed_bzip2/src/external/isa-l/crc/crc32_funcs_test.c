@@ -240,7 +240,7 @@ int seeds_sizes_test(func_case_t *test_func) {
     rand_buffer(buf, MAX_BUF * TEST_SIZE); // new pseudo-rand data
 
 #ifdef TEST_VERBOSE
-    printf("seed = 0x%lx\n", r);
+    printf("seed = 0x%llx\n", (unsigned long long)r);
 #endif
 
     for (i = 0; i < TEST_SIZE; i++) {

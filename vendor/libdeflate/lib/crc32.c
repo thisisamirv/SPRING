@@ -218,7 +218,10 @@ static forceinline u32 MAYBE_UNUSED crc32_slice1(u32 crc, const u8 *p,
 /* Include architecture-specific implementation(s) if available. */
 #undef DEFAULT_IMPL
 #undef arch_select_crc32_func
+#ifndef CRC32_FUNC_T_DEFINED
+#define CRC32_FUNC_T_DEFINED
 typedef u32 (*crc32_func_t)(u32 crc, const u8 *p, size_t len);
+#endif
 #if defined(ARCH_ARM32) || defined(ARCH_ARM64)
 #include "arm/crc32_impl.h"
 #elif defined(ARCH_X86_32) || defined(ARCH_X86_64)

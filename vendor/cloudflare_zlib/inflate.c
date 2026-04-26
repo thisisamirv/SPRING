@@ -1495,7 +1495,7 @@ int ZEXPORT inflateSync(z_streamp strm) {
   unsigned len;          /* number of bytes to look at or looked at */
   int flags;             /* temporary to save header status */
   unsigned long in, out; /* temporary to save total_in and total_out */
-  unsigned char buf[4];  /* to restore bit buffer to byte string */
+  unsigned char buf[4] = {0};  /* to restore bit buffer to byte string */
   struct inflate_state FAR *state;
 
   /* check parameters */

@@ -135,6 +135,7 @@ void semi_dyn_stateless_perf(struct isal_zstream *stream, uint8_t *inbuf,
     stream->hufftables = &hufftable;
     remaining -= chunk_size;
     isal_deflate_stateless(stream);
+    stream->hufftables = NULL;
     if (stream->avail_in != 0)
       break;
   }
@@ -177,6 +178,7 @@ void semi_dyn_stateful_perf(struct isal_zstream *stream, uint8_t *inbuf,
     stream->hufftables = &hufftable;
     remaining -= chunk_size;
     isal_deflate(stream);
+    stream->hufftables = NULL;
     if (stream->internal_state.state != ZSTATE_NEW_HDR)
       break;
   }

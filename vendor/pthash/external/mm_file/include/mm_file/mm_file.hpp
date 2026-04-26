@@ -26,7 +26,12 @@ static const int sequential = POSIX_MADV_SEQUENTIAL;
 template <typename T> struct file {
   file() { init(); }
 
-  ~file() { close(); }
+  ~file() {
+    try {
+      close();
+    } catch (...) {
+    }
+  }
 
   file(file const &) = delete;            // non construction-copyable
   file &operator=(file const &) = delete; // non copyable

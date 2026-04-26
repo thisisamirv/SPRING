@@ -72,7 +72,7 @@ void append_uint16(std::string &buffer, const uint16_t value) {
 // Returns a uint16_t encoding: bit 0 = base (0=A,1=T), bits 15:1 = run length.
 // Returns 0 if nothing was stripped. Modifies read_str and read_length in
 // place.
-static uint16_t detect_and_strip_tail(std::string &read_str,
+uint16_t detect_and_strip_tail(std::string &read_str,
                                       uint32_t &read_length) {
   if (read_length <= POLY_AT_TAIL_MIN_LEN)
     return 0;
@@ -527,7 +527,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       !cp.encoding.long_flag && !cp.encoding.preserve_order &&
       (cp.read_info.assay == "rna" || cp.read_info.assay == "sc-rna") &&
       (cp.read_info.assay_confidence == "N/A" ||
-       cp.read_info.assay_confidence.rfind("high", 0) == 0);
+       cp.read_info.assay_confidence.starts_with("high"));
 
   std::array<std::ofstream, 2> tail_outputs;
   if (apply_poly_at) {

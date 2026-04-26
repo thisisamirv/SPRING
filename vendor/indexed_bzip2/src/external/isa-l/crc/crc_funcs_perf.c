@@ -194,21 +194,21 @@ run_standard_crc_benchmark(struct perf *start, const crc_func_info_t *func_info,
     switch (func_info->result_type) {
     case RESULT_CRC32:
       BENCHMARK_COLD(
-          start, BENCHMARK_TIME,
-          current_buffer_idx = (current_buffer_idx + 1) % num_buffers,
-          func.crc32(TEST_SEED, buffer_list[current_buffer_idx], len));
+          start, BENCHMARK_TIME, (void)0,
+          (current_buffer_idx = (current_buffer_idx + 1) % num_buffers,
+           func.crc32(TEST_SEED, buffer_list[current_buffer_idx], len)));
       break;
     case RESULT_CRC16:
       BENCHMARK_COLD(
-          start, BENCHMARK_TIME,
-          current_buffer_idx = (current_buffer_idx + 1) % num_buffers,
-          func.crc16(TEST_SEED, buffer_list[current_buffer_idx], len));
+          start, BENCHMARK_TIME, (void)0,
+          (current_buffer_idx = (current_buffer_idx + 1) % num_buffers,
+           func.crc16(TEST_SEED, buffer_list[current_buffer_idx], len)));
       break;
     case RESULT_CRC64:
       BENCHMARK_COLD(
-          start, BENCHMARK_TIME,
-          current_buffer_idx = (current_buffer_idx + 1) % num_buffers,
-          func.crc64(TEST_SEED, buffer_list[current_buffer_idx], len));
+          start, BENCHMARK_TIME, (void)0,
+          (current_buffer_idx = (current_buffer_idx + 1) % num_buffers,
+           func.crc64(TEST_SEED, buffer_list[current_buffer_idx], len)));
       break;
     }
   } else {
@@ -465,6 +465,8 @@ static size_t parse_size_value(const char *const size_str) {
   char *endptr;
   size_t multiplier = 1;
   char *str_copy = strdup(size_str);
+  if (str_copy == NULL)
+    return 0;
 
   // Check for size suffixes (K for KB, M for MB)
   const int len = strlen(str_copy);
@@ -515,7 +517,7 @@ static void run_crc_type_range(const crc_type_t type, const void *buf,
       "Jones Normal CRC64",   "Rocksoft Reflected CRC64",
       "Rocksoft Normal CRC64"};
 
-  if (!csv_output && type < CRC_ALL) {
+  if (!csv_output && (size_t)type < sizeof(type_names) / sizeof(*type_names)) {
     printf("\n%s:\n", type_names[type]);
   }
 
@@ -604,7 +606,7 @@ static void run_crc_type_size_list(const crc_type_t type, const void *buf,
       "Jones Normal CRC64",   "Rocksoft Reflected CRC64",
       "Rocksoft Normal CRC64"};
 
-  if (!csv_output && type < CRC_ALL) {
+  if (!csv_output && (size_t)type < sizeof(type_names) / sizeof(*type_names)) {
     printf("\n%s:\n", type_names[type]);
   }
 
@@ -633,7 +635,7 @@ static void run_crc_type_default(const crc_type_t type, const void *buf,
       "Jones Normal CRC64",   "Rocksoft Reflected CRC64",
       "Rocksoft Normal CRC64"};
 
-  if (!csv_output && type < CRC_ALL) {
+  if (!csv_output && (size_t)type < sizeof(type_names) / sizeof(*type_names)) {
     printf("\n%s:\n", type_names[type]);
   }
 
@@ -959,7 +961,7 @@ int main(const int argc, char *const argv[]) {
   if (use_range) {
     if (use_cold_cache && min_len <= COLD_CACHE_MIN_LEN)
       printf("Error: Cold cache tests require buffer sizes larger than "
-             "%u bytes.",
+             "%d bytes.",
              COLD_CACHE_MIN_LEN);
 
     // Use range-based sizes
@@ -975,7 +977,7 @@ int main(const int argc, char *const argv[]) {
   } else if (use_size_list) {
     if (use_cold_cache && size_list[0] <= COLD_CACHE_MIN_LEN)
       printf("Error: Cold cache tests require buffer sizes larger than "
-             "%u bytes.",
+             "%d bytes.",
              COLD_CACHE_MIN_LEN);
 
     // Use list of specific sizes
