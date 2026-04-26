@@ -1,9 +1,12 @@
 #pragma once
 
+#include "essentials.hpp"
+#include "utils/hasher.hpp"
 #include <array>
+#include <chrono>
 #include <iomanip> // for std::setprecision
+#include <iostream>
 #include <sstream> // for std::stringbuf
-
 
 namespace pthash {
 
@@ -20,9 +23,10 @@ constexpr auto hashed_pilots_cache =
 
 struct search_logger {
   search_logger(uint64_t num_keys, uint64_t num_buckets)
-      : m_num_keys(num_keys), m_num_buckets(num_buckets),
+      : num_pilots(0), num_large_pilots(0), m_num_keys(num_keys),
+        m_num_buckets(num_buckets),
         m_step(m_num_buckets > 20 ? m_num_buckets / 20 : 1), m_bucket(0),
-        m_placed_keys(0), num_pilots(0), num_large_pilots(0) {}
+        m_placed_keys(0) {}
 
   void init() {
     essentials::logger("search starts");

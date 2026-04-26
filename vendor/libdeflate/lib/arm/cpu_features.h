@@ -28,9 +28,8 @@
 #ifndef LIB_ARM_CPU_FEATURES_H
 #define LIB_ARM_CPU_FEATURES_H
 
+#if defined(__arm__) || defined(__aarch64__)
 #include "../lib_common.h"
-
-#if defined(ARCH_ARM32) || defined(ARCH_ARM64)
 
 #define ARM_CPU_FEATURE_NEON (1 << 0)
 #define ARM_CPU_FEATURE_PMULL (1 << 1)
@@ -215,6 +214,6 @@ static inline u32 get_arm_cpu_features(void) { return 0; }
 #define HAVE_DOTPROD_INTRIN 0
 #endif
 
-#endif /* ARCH_ARM32 || ARCH_ARM64 */
+#endif /* __arm__ || __aarch64__ */
 
 #endif /* LIB_ARM_CPU_FEATURES_H */

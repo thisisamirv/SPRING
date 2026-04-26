@@ -30,10 +30,6 @@
 #error "archive_platform.h must be included first"
 #endif
 
-#ifdef HAVE_ERRNO_H
-#include <errno.h>
-#endif
-#include <limits.h>
 #include <time.h>
 #ifdef HAVE_ZLIB_H
 #include <zlib.h> /* crc32 */

@@ -2,7 +2,7 @@
 
 #include "builders/internal_memory_builder_single_phf.hpp"
 #include "builders/util.hpp"
-
+#include "utils/bucketers.hpp"
 
 namespace pthash {
 
@@ -174,14 +174,14 @@ struct internal_memory_builder_partitioned_phf {
     // }
 
     if (config.minimal) {
-      auto start = clock_type::now();
+      auto minimal_start = clock_type::now();
       m_free_slots.clear();
-      taken t(m_builders);
-      assert(t.size() >= num_keys);
-      m_free_slots.reserve(t.size() - num_keys);
-      fill_free_slots(t, num_keys, m_free_slots, m_table_size);
+      taken taken_bits(m_builders);
+      assert(taken_bits.size() >= num_keys);
+      m_free_slots.reserve(taken_bits.size() - num_keys);
+      fill_free_slots(taken_bits, num_keys, m_free_slots, m_table_size);
       auto stop = clock_type::now();
-      timings.searching_microseconds += to_microseconds(stop - start);
+      timings.searching_microseconds += to_microseconds(stop - minimal_start);
     }
 
     return timings;

@@ -40,7 +40,7 @@
 #include <string.h>
 #endif
 
-#include "lib_common.h"
+#include "../common_defs.h"
 
 struct cpu_feature {
   u32 bit;

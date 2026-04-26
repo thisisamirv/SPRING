@@ -1,4 +1,44 @@
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) ||             \
+    defined(_M_IX86)
+#include "../../common_defs.h"
+#include <immintrin.h>
+
 /*
+ * Default definitions of template parameters for standalone IDE parsing.
+ * These are overridden when this file is included as a template.
+ */
+#define CONCAT_IMPL(a, b) a##b
+#define CONCAT(a, b) CONCAT_IMPL(a, b)
+#define ADD_SUFFIX(name) CONCAT(name, SUFFIX)
+#ifndef SUFFIX
+#define SUFFIX _adler32_dummy
+#define ATTRIBUTES _target_attribute("avx2")
+
+#define VL 32
+#define USE_VNNI 0
+#define USE_AVX512 0
+#endif
+
+#ifndef DIVISOR
+#define DIVISOR 65521
+#define MAX_CHUNK_LEN 5552
+#endif
+
+#ifndef ADLER32_CHUNK
+#define ADLER32_CHUNK(s1, s2, p, n)                                            \
+  do {                                                                         \
+    while (n) {                                                                \
+      s1 += *p++;                                                              \
+      s2 += s1;                                                                \
+      n--;                                                                     \
+    }                                                                          \
+    s1 %= DIVISOR;                                                             \
+    s2 %= DIVISOR;                                                             \
+  } while (0)
+#endif
+
+/*
+
  * x86/adler32_template.h - template for vectorized Adler-32 implementations
  *
  * Copyright 2016 Eric Biggers
@@ -128,8 +168,9 @@
 
 /* Sum the 32-bit elements of v_s1 and add them to s1, and likewise for s2. */
 #undef reduce_to_32bits
-static forceinline ATTRIBUTES void
+static inline ATTRIBUTES void
 ADD_SUFFIX(reduce_to_32bits)(vec_t v_s1, vec_t v_s2, u32 *s1_p, u32 *s2_p) {
+
   __m128i v_s1_128, v_s2_128;
 #if VL == 16
   {
@@ -175,8 +216,10 @@ ADD_SUFFIX(reduce_to_32bits)(vec_t v_s1, vec_t v_s2, u32 *s1_p, u32 *s2_p) {
 }
 #define reduce_to_32bits ADD_SUFFIX(reduce_to_32bits)
 
-static ATTRIBUTES u32 ADD_SUFFIX(adler32_x86)(u32 adler, const u8 *p,
-                                              size_t len) {
+static ATTRIBUTES MAYBE_UNUSED u32 ADD_SUFFIX(adler32_x86)(u32 adler,
+                                                           const u8 *p,
+                                                           size_t len) {
+
 #if USE_VNNI
   /* This contains the bytes [VL, VL-1, VL-2, ..., 1]. */
   static const u8 _aligned_attribute(VL) raw_mults[VL] = {
@@ -492,9 +535,14 @@ static ATTRIBUTES u32 ADD_SUFFIX(adler32_x86)(u32 adler, const u8 *p,
 #undef VSLL32
 #undef VUNPACKLO8
 #undef VUNPACKHI8
+#undef reduce_to_32bits
 
 #undef SUFFIX
 #undef ATTRIBUTES
 #undef VL
 #undef USE_VNNI
 #undef USE_AVX512
+#undef CONCAT_IMPL
+#undef CONCAT
+#undef ADD_SUFFIX
+#endif /* __x86_64__ || __i386__ || _M_X64 || _M_IX86 */

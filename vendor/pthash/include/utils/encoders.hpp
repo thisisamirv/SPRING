@@ -6,10 +6,8 @@
 #include "rice_sequence.hpp"
 #include "util.hpp"
 
-
 #include <cassert>
 #include <vector>
-
 
 namespace pthash {
 

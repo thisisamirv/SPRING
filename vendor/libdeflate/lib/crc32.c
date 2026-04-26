@@ -167,10 +167,10 @@
  * On CPUs that support fast carryless multiplication, CRCs can be computed even
  * more quickly via "folding".  See e.g. the x86 PCLMUL implementations.
  */
-
-#include "crc32_multipliers.h"
-#include "crc32_tables.h"
 #include "lib_common.h"
+// lib_common.h first, then ../libdeflate.h, then crc32_tables.h
+#include "../libdeflate.h"
+#include "crc32_tables.h"
 
 /* This is the default implementation.  It uses the slice-by-8 method. */
 static u32 MAYBE_UNUSED crc32_slice8(u32 crc, const u8 *p, size_t len) {

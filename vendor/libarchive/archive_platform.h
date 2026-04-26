@@ -114,7 +114,7 @@ typedef unsigned int uid_t;
 typedef unsigned int gid_t;
 #define _GID_T_DECLARED
 #endif
-#if !defined(pid_t)
+#if !defined(pid_t) && !defined(_PID_T_) && !defined(_PID_T_DECLARED)
 typedef int pid_t;
 #define _PID_T_DECLARED
 #endif
@@ -944,7 +944,7 @@ static inline void __la_mark_archive_windows_used(void) { (void)sizeof(LONG); }
 #if !HAVE_DECL_SIZE_MAX
 #define SIZE_MAX (~(size_t)0)
 #endif
-#if !HAVE_DECL_SSIZE_MAX
+#if !HAVE_DECL_SSIZE_MAX && !defined(SSIZE_MAX)
 #define SSIZE_MAX ((ssize_t)(SIZE_MAX >> 1))
 #endif
 #if !HAVE_DECL_UINT32_MAX

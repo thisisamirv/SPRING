@@ -525,8 +525,8 @@ uint32_t compute_num_reads_cur_step(const uint32_t num_reads,
 int resolve_archive_encoding_thread_count(const compression_params &cp) {
   const int declared = cp.encoding.num_thr;
   if (declared <= 0 ||
-      std::cmp_greater(
-          declared, compression_params::ReadMetadata::kFileLenThrSize)) {
+      std::cmp_greater(declared,
+                       compression_params::ReadMetadata::kFileLenThrSize)) {
     throw std::runtime_error(
         "Invalid encoding thread count in archive metadata: " +
         std::to_string(declared));
@@ -543,11 +543,10 @@ int resolve_archive_encoding_thread_count(const compression_params &cp) {
 
   const int resolved = std::max(declared, inferred);
   if (resolved != declared) {
-    SPRING_LOG_DEBUG(
-        "Archive metadata thread count mismatch: declared=" +
-        std::to_string(declared) +
-        ", inferred_from_lengths=" + std::to_string(inferred) +
-        ", using=" + std::to_string(resolved));
+    SPRING_LOG_DEBUG("Archive metadata thread count mismatch: declared=" +
+                     std::to_string(declared) +
+                     ", inferred_from_lengths=" + std::to_string(inferred) +
+                     ", using=" + std::to_string(resolved));
   }
   return resolved;
 }
@@ -676,9 +675,9 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
     }
   }
 
-  const uint64_t num_reads_per_step = compute_num_reads_per_step(
-      num_reads, num_reads_per_block, archive_encoding_thread_count,
-      paired_end);
+  const uint64_t num_reads_per_step =
+      compute_num_reads_per_step(num_reads, num_reads_per_block,
+                                 archive_encoding_thread_count, paired_end);
 
   std::vector<std::string> read_buffer_1(
       static_cast<size_t>(num_reads_per_step));
@@ -1075,12 +1074,12 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
   bool paired_end = cp.encoding.paired_end;
   bool preserve_id = cp.encoding.preserve_id;
   bool preserve_quality = cp.encoding.preserve_quality;
-    const int archive_encoding_thread_count =
+  const int archive_encoding_thread_count =
       resolve_archive_encoding_thread_count(cp);
 
-  const uint64_t num_reads_per_step = compute_num_reads_per_step(
-      num_reads, num_reads_per_block, archive_encoding_thread_count,
-      paired_end);
+  const uint64_t num_reads_per_step =
+      compute_num_reads_per_step(num_reads, num_reads_per_block,
+                                 archive_encoding_thread_count, paired_end);
 
   std::vector<std::string> read_buffer(static_cast<size_t>(num_reads_per_step));
   std::vector<std::string> id_buffer(static_cast<size_t>(num_reads_per_step));
@@ -1208,6 +1207,12 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
       ", decoding_threads=" + std::to_string(decoding_thread_count));
   const std::string monolithic_compressed_path = packed_seq_base_path + ".bsc";
   const std::string monolithic_packed_path = packed_seq_base_path + ".packed";
+
+  if (std::filesystem::exists(monolithic_compressed_path) &&
+      std::filesystem::file_size(monolithic_compressed_path) == 0) {
+    SPRING_LOG_DEBUG("Skipping sequence unpack: monolithic archive is empty.");
+    return;
+  }
 
   // Decompress the monolithic archive block into raw packed sequence data.
   safe_bsc_decompress(monolithic_compressed_path, monolithic_packed_path);

@@ -28,7 +28,22 @@
 #ifndef LIB_X86_CRC32_IMPL_H
 #define LIB_X86_CRC32_IMPL_H
 
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) ||             \
+    defined(_M_IX86)
+#include "../../common_defs.h"
 #include "cpu_features.h"
+#include <immintrin.h>
+
+/*
+ * crc32_slice1 and crc32_func_t are defined in crc32.c, but we need them here
+ * for standalone parsing by the IDE.
+ */
+#ifndef crc32_slice1
+extern u32 crc32_slice1(u32 crc, const u8 *p, size_t len);
+#endif
+#ifndef crc32_func_t
+typedef u32 (*crc32_func_t)(u32 crc, const u8 *p, size_t len);
+#endif
 
 /*
  * pshufb(x, shift_tab[len..len+15]) left shifts x by 16-len bytes.
@@ -152,5 +167,7 @@ static inline crc32_func_t arch_select_crc32_func(void) {
   return NULL;
 }
 #define arch_select_crc32_func arch_select_crc32_func
+
+#endif /* __x86_64__ || __i386__ || _M_X64 || _M_IX86 */
 
 #endif /* LIB_X86_CRC32_IMPL_H */

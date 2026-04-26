@@ -38,6 +38,14 @@
 #define LIBDEFLATEAPI LIBDEFLATE_EXPORT_SYM LIBDEFLATE_ALIGN_STACK
 
 #include "../common_defs.h"
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+
+/* Ensure that the common definitions are available and visible to the analyzer
+ */
+typedef u8 libdeflate_byte_t;
 
 typedef void *(*malloc_func_t)(size_t);
 typedef void (*free_func_t)(void *);

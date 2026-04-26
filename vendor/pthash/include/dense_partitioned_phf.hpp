@@ -1,6 +1,9 @@
 #pragma once
 
 #include "builders/internal_memory_builder_partitioned_phf.hpp"
+#include "external/bits/include/elias_fano.hpp"
+#include "utils/bucketers.hpp"
+#include "utils/dense_encoders.hpp"
 
 namespace pthash {
 

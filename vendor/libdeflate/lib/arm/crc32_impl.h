@@ -28,7 +28,17 @@
 #ifndef LIB_ARM_CRC32_IMPL_H
 #define LIB_ARM_CRC32_IMPL_H
 
+#if defined(__arm__) || defined(__aarch64__)
+#include "../lib_common.h"
 #include "cpu_features.h"
+
+/*
+ * crc32_func_t is defined in crc32.c, but we need it here for standalone
+ * parsing by the IDE.
+ */
+#ifndef crc32_func_t
+typedef u32 (*crc32_func_t)(u32 crc, const u8 *p, size_t len);
+#endif
 
 /*
  * crc32_arm_crc() - implementation using crc32 instructions (only)
@@ -44,7 +54,8 @@
  * processing if there is a lot of data to checksum.  This also means that a
  * variable chunk length wouldn't help much, so we just support a fixed length.
  */
-#if HAVE_CRC32_INTRIN
+#if defined(HAVE_CRC32_INTRIN) && HAVE_CRC32_INTRIN
+
 #ifdef __clang__
 #define ATTRIBUTES _target_attribute("crc")
 #else
@@ -215,7 +226,9 @@ static ATTRIBUTES u32 crc32_arm_crc(u32 crc, const u8 *p, size_t len) {
  * checksummed chunks, not for folding the data itself.  See crc32_arm_pmull*()
  * for implementations that use pmull for folding the data itself.
  */
-#if HAVE_CRC32_INTRIN && HAVE_PMULL_INTRIN
+#if (defined(HAVE_CRC32_INTRIN) && HAVE_CRC32_INTRIN) &&                       \
+    (defined(HAVE_PMULL_INTRIN) && HAVE_PMULL_INTRIN)
+
 #ifdef __clang__
 #define ATTRIBUTES _target_attribute("crc,aes")
 #else
@@ -413,7 +426,8 @@ static ATTRIBUTES u32 crc32_arm_crc_pmullcombine(u32 crc, const u8 *p,
  * This implementation is intended for CPUs that support pmull instructions but
  * not crc32 instructions.
  */
-#if HAVE_PMULL_INTRIN
+#if defined(HAVE_PMULL_INTRIN) && HAVE_PMULL_INTRIN
+
 #define crc32_arm_pmullx4 crc32_arm_pmullx4
 #define SUFFIX _pmullx4
 #ifdef __clang__
@@ -525,7 +539,9 @@ static ATTRIBUTES u32 crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len) {
  *
  * See crc32_pmull_wide.h for explanation.
  */
-#if HAVE_PMULL_INTRIN && HAVE_CRC32_INTRIN
+#if (defined(HAVE_PMULL_INTRIN) && HAVE_PMULL_INTRIN) &&                       \
+    (defined(HAVE_CRC32_INTRIN) && HAVE_CRC32_INTRIN)
+
 #define crc32_arm_pmullx12_crc crc32_arm_pmullx12_crc
 #define SUFFIX _pmullx12_crc
 #ifdef __clang__
@@ -543,8 +559,11 @@ static ATTRIBUTES u32 crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len) {
  * This like crc32_arm_pmullx12_crc(), but it adds the eor3 instruction (from
  * the sha3 extension) for even better performance.
  */
-#if HAVE_PMULL_INTRIN && HAVE_CRC32_INTRIN && HAVE_SHA3_INTRIN &&              \
+#if (defined(HAVE_PMULL_INTRIN) && HAVE_PMULL_INTRIN) &&                       \
+    (defined(HAVE_CRC32_INTRIN) && HAVE_CRC32_INTRIN) &&                       \
+    (defined(HAVE_SHA3_INTRIN) && HAVE_SHA3_INTRIN) &&                         \
     !defined(LIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_SHA3)
+
 #define crc32_arm_pmullx12_crc_eor3 crc32_arm_pmullx12_crc_eor3
 #define SUFFIX _pmullx12_crc_eor3
 #ifdef __clang__
@@ -599,5 +618,7 @@ static inline crc32_func_t arch_select_crc32_func(void) {
   return NULL;
 }
 #define arch_select_crc32_func arch_select_crc32_func
+
+#endif /* __arm__ || __aarch64__ */
 
 #endif /* LIB_ARM_CRC32_IMPL_H */

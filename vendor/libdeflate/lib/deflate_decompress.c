@@ -42,8 +42,8 @@
  *   instructions enabled and is used automatically at runtime when supported.
  */
 
-#include "deflate_constants.h"
-#include "lib_common.h"
+#define LIBDEFLATE_DECOMPRESS_MAIN
+#include "decompress_defs.h"
 
 /*
  * If the expression passed to SAFETY_CHECK() evaluates to false, then the
@@ -385,10 +385,6 @@ typedef machine_word_t bitbuf_t;
  * appropriately-formatted decode table entry.  See the definitions of the
  * *_decode_results[] arrays below, where the entry format is described.
  */
-static forceinline u32 make_decode_table_entry(const u32 decode_results[],
-                                               u32 sym, u32 len) {
-  return decode_results[sym] + (len << 8) + len;
-}
 
 /*
  * Here is the format of our precode decode table entries.  Bits not explicitly
@@ -842,53 +838,6 @@ static const u32 offset_decode_results[] = {
 };
 
 /*
- * The main DEFLATE decompressor structure.  Since libdeflate only supports
- * full-buffer decompression, this structure doesn't store the entire
- * decompression state, most of which is in stack variables.  Instead, this
- * struct just contains the decode tables and some temporary arrays used for
- * building them, as these are too large to comfortably allocate on the stack.
- *
- * Storing the decode tables in the decompressor struct also allows the decode
- * tables for the static codes to be reused whenever two static Huffman blocks
- * are decoded without an intervening dynamic block, even across streams.
- */
-struct libdeflate_decompressor {
-
-  /*
-   * The arrays aren't all needed at the same time.  'precode_lens' and
-   * 'precode_decode_table' are unneeded after 'lens' has been filled.
-   * Furthermore, 'lens' need not be retained after building the litlen
-   * and offset decode tables.  In fact, 'lens' can be in union with
-   * 'litlen_decode_table' provided that 'offset_decode_table' is separate
-   * and is built first.
-   */
-
-  union {
-    u8 precode_lens[DEFLATE_NUM_PRECODE_SYMS];
-
-    struct {
-      u8 lens[DEFLATE_NUM_LITLEN_SYMS + DEFLATE_NUM_OFFSET_SYMS +
-              DEFLATE_MAX_LENS_OVERRUN];
-
-      u32 precode_decode_table[PRECODE_ENOUGH];
-    } l;
-
-    u32 litlen_decode_table[LITLEN_ENOUGH];
-  } u;
-
-  u32 offset_decode_table[OFFSET_ENOUGH];
-
-  /* used only during build_decode_table() */
-  u16 sorted_syms[DEFLATE_MAX_NUM_SYMS];
-
-  bool static_codes_loaded;
-  unsigned litlen_tablebits;
-
-  /* The free() function for this struct, chosen at allocation time */
-  free_func_t free_func;
-};
-
-/*
  * Build a table for fast decoding of symbols from a Huffman code.  As input,
  * this function takes the codeword length of each symbol which may be used in
  * the code.  As output, it produces a decode table for the canonical Huffman
@@ -1205,7 +1154,8 @@ static bool build_decode_table(u32 decode_table[], const u8 lens[],
 }
 
 /* Build the decode table for the precode.  */
-static bool build_precode_decode_table(struct libdeflate_decompressor *d) {
+DECOMP_INTERNAL MAYBE_UNUSED bool
+build_precode_decode_table(struct libdeflate_decompressor *d) {
   /* When you change TABLEBITS, you must change ENOUGH, and vice versa! */
   STATIC_ASSERT(PRECODE_TABLEBITS == 7 && PRECODE_ENOUGH == 128);
 
@@ -1218,9 +1168,9 @@ static bool build_precode_decode_table(struct libdeflate_decompressor *d) {
 }
 
 /* Build the decode table for the literal/length code.  */
-static bool build_litlen_decode_table(struct libdeflate_decompressor *d,
-                                      unsigned num_litlen_syms,
-                                      unsigned num_offset_syms) {
+DECOMP_INTERNAL MAYBE_UNUSED bool
+build_litlen_decode_table(struct libdeflate_decompressor *d,
+                          unsigned num_litlen_syms, unsigned num_offset_syms) {
   /* When you change TABLEBITS, you must change ENOUGH, and vice versa! */
   STATIC_ASSERT(LITLEN_TABLEBITS == 11 && LITLEN_ENOUGH == 2342);
 
@@ -1233,9 +1183,9 @@ static bool build_litlen_decode_table(struct libdeflate_decompressor *d,
 }
 
 /* Build the decode table for the offset code.  */
-static bool build_offset_decode_table(struct libdeflate_decompressor *d,
-                                      unsigned num_litlen_syms,
-                                      unsigned num_offset_syms) {
+DECOMP_INTERNAL MAYBE_UNUSED bool
+build_offset_decode_table(struct libdeflate_decompressor *d,
+                          unsigned num_litlen_syms, unsigned num_offset_syms) {
   /* When you change TABLEBITS, you must change ENOUGH, and vice versa! */
   STATIC_ASSERT(OFFSET_TABLEBITS == 8 && OFFSET_ENOUGH == 402);
 
@@ -1251,11 +1201,6 @@ static bool build_offset_decode_table(struct libdeflate_decompressor *d,
  *                         Main decompression routine
  *****************************************************************************/
 
-typedef enum libdeflate_result (*decompress_func_t)(
-    struct libdeflate_decompressor *restrict d, const void *restrict in,
-    size_t in_nbytes, void *restrict out, size_t out_nbytes_avail,
-    size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret);
-
 #define FUNCNAME deflate_decompress_default
 #undef ATTRIBUTES
 #undef EXTRACT_VARBITS
@@ -1264,7 +1209,7 @@ typedef enum libdeflate_result (*decompress_func_t)(
 
 /* Include architecture-specific implementation(s) if available. */
 #undef DEFAULT_IMPL
-#undef arch_select_decompress_func
+#undef LIBDEFLATE_HAVE_ARCH_SELECT_DECOMPRESS_FUNC
 #if defined(ARCH_X86_32) || defined(ARCH_X86_64)
 #include "x86/decompress_impl.h"
 #endif
@@ -1273,7 +1218,7 @@ typedef enum libdeflate_result (*decompress_func_t)(
 #define DEFAULT_IMPL deflate_decompress_default
 #endif
 
-#ifdef arch_select_decompress_func
+#ifdef LIBDEFLATE_HAVE_ARCH_SELECT_DECOMPRESS_FUNC
 static enum libdeflate_result
 dispatch_decomp(struct libdeflate_decompressor *d, const void *in,
                 size_t in_nbytes, void *out, size_t out_nbytes_avail,

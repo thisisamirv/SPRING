@@ -1,6 +1,9 @@
 #pragma once
 
+#include <stdexcept>
+#include <string>
 #include <xxh3.h>
+
 
 namespace pthash {
 

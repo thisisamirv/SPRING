@@ -3,10 +3,8 @@
 #include "builders/search.hpp"
 #include "builders/util.hpp"
 #include "mm_file/mm_file.hpp"
-#include "utils/bucketers.hpp"
 #include "utils/hasher.hpp"
 #include "utils/logger.hpp"
-
 
 namespace pthash {
 
@@ -105,17 +103,17 @@ struct external_memory_builder_single_phf {
     try {
       auto start = clock_type::now();
       {
-        auto start = clock_type::now();
+        auto step_start = clock_type::now();
         std::vector<pairs_t> pairs_blocks;
         map(keys, num_keys, pairs_blocks, tfm, config);
-        auto stop = clock_type::now();
+        auto step_stop = clock_type::now();
         if (config.verbose) {
           std::cout << " == map+sort " << tfm.get_num_pairs_files()
                     << " files(s) took: "
-                    << to_microseconds(stop - start) / 1'000'000 << " seconds"
-                    << std::endl;
+                    << to_microseconds(step_stop - step_start) / 1'000'000
+                    << " seconds" << std::endl;
         }
-        start = clock_type::now();
+        step_start = clock_type::now();
         buckets_t buckets = tfm.buckets(config);
         merge(pairs_blocks, buckets, config.verbose);
         buckets.flush();
@@ -123,11 +121,11 @@ struct external_memory_builder_single_phf {
           pairs_block.close();
         num_non_empty_buckets = buckets.num_buckets();
         tfm.remove_all_pairs_files();
-        stop = clock_type::now();
+        step_stop = clock_type::now();
         if (config.verbose) {
           std::cout << " == merge+check took: "
-                    << to_microseconds(stop - start) / 1'000'000 << " seconds"
-                    << std::endl;
+                    << to_microseconds(step_stop - step_start) / 1'000'000
+                    << " seconds" << std::endl;
           std::cout << " == max bucket size = " << int(tfm.max_bucket_size())
                     << std::endl;
         }

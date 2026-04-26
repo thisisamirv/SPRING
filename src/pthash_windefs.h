@@ -18,8 +18,15 @@
 // definitions.
 #include <windows.h>
 
+#include <fcntl.h>
 #include <psapi.h>
+#include <sys/stat.h>
 #include <sys/types.h>
+
+#if !defined(_MODE_T_DECLARED) && !defined(_MODE_T_)
+typedef int mode_t;
+#define _MODE_T_DECLARED
+#endif
 
 // Resource usage
 #define RUSAGE_SELF 0
@@ -95,6 +102,8 @@ inline void *mmap(void *addr, size_t length, int prot, int flags, int fd,
 inline int munmap(void *addr, size_t length) {
   return UnmapViewOfFile(addr) ? 0 : -1;
 }
+
+inline int ftruncate(int fd, long long length) { return _chsize_s(fd, length); }
 
 #ifndef O_BINARY
 #define O_BINARY 0x8000

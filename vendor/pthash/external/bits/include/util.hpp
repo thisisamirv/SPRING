@@ -1,7 +1,9 @@
 #pragma once
 
+#include <bit>
 #include <cassert>
 #include <cstdint>
+
 
 #if defined(__x86_64__)
 #include <immintrin.h>

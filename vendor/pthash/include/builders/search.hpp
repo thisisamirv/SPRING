@@ -5,11 +5,9 @@
 #include <vector>
 
 #include "bit_vector.hpp"
-#include "essentials.hpp"
 #include "search_util.hpp"
 #include "util.hpp"
 #include "utils/hasher.hpp"
-
 
 namespace pthash {
 

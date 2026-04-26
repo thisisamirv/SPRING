@@ -1,7 +1,10 @@
 #pragma once
 
-#include <bitset>
+#include <iostream>
+#include <stdexcept>
+#include <vector>
 
+#include "essentials.hpp"
 #include "util.hpp"
 
 namespace bits {

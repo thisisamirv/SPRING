@@ -32,12 +32,9 @@ See also the bsc and libbsc web site:
 
 #include <memory.h>
 #include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
 
 #include "adler32.h"
 
-#include "../libbsc.h"
 #include "../platform/platform.h"
 
 #define BASE 65521UL

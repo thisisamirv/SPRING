@@ -31,7 +31,6 @@ See also the bsc and libbsc web site:
 --*/
 
 #include <memory.h>
-#include <stdlib.h>
 
 #include "../filters.h"
 

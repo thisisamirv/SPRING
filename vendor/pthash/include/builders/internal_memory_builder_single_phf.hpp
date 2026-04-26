@@ -2,10 +2,7 @@
 
 #include "builders/search.hpp"
 #include "builders/util.hpp"
-#include "utils/bucketers.hpp"
 #include "utils/hasher.hpp"
-#include "utils/logger.hpp"
-
 
 namespace pthash {
 
@@ -86,18 +83,17 @@ struct internal_memory_builder_single_phf {
 
     buckets_t buckets;
     {
-      auto start = clock_type::now();
+      auto step_start = clock_type::now();
       std::vector<pairs_t> pairs_blocks;
       map(hashes, num_keys, pairs_blocks, config);
-      auto elapsed = to_microseconds(clock_type::now() - start);
+      auto elapsed = to_microseconds(clock_type::now() - step_start);
       if (config.verbose) {
         std::cout << " == map+sort took: " << elapsed / 1'000'000 << " seconds"
                   << std::endl;
       }
-
-      start = clock_type::now();
+      step_start = clock_type::now();
       merge(pairs_blocks, buckets, config.verbose);
-      elapsed = to_microseconds(clock_type::now() - start);
+      elapsed = to_microseconds(clock_type::now() - step_start);
       if (config.verbose) {
         std::cout << " == merge+check took: " << elapsed / 1'000'000
                   << " seconds" << std::endl;

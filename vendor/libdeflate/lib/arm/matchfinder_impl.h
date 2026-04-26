@@ -28,9 +28,13 @@
 #ifndef LIB_ARM_MATCHFINDER_IMPL_H
 #define LIB_ARM_MATCHFINDER_IMPL_H
 
+#if defined(__arm__) || defined(__aarch64__)
+#include "../lib_common.h"
+#include "../matchfinder_defs.h"
 #include "cpu_features.h"
 
-#if HAVE_NEON_NATIVE
+#if defined(HAVE_NEON_NATIVE) && HAVE_NEON_NATIVE
+
 static forceinline void matchfinder_init_neon(mf_pos_t *data, size_t size) {
   int16x8_t *p = (int16x8_t *)data;
   int16x8_t v = vdupq_n_s16(MATCHFINDER_INITVAL);
@@ -70,5 +74,7 @@ static forceinline void matchfinder_rebase_neon(mf_pos_t *data, size_t size) {
 #define matchfinder_rebase matchfinder_rebase_neon
 
 #endif /* HAVE_NEON_NATIVE */
+
+#endif /* __arm__ || __aarch64__ */
 
 #endif /* LIB_ARM_MATCHFINDER_IMPL_H */

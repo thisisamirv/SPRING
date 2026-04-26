@@ -25,8 +25,9 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef LIB_RISCV_MATCHFINDER_IMPL_H
-#define LIB_RISCV_MATCHFINDER_IMPL_H
+#if defined(__riscv) || defined(__riscv__)
+#include "../../common_defs.h"
+#include "../matchfinder_defs.h"
 
 #if defined(ARCH_RISCV) && defined(__riscv_vector)
 #include <riscv_vector.h>
@@ -87,4 +88,4 @@ static forceinline void matchfinder_rebase_rvv(mf_pos_t *p, size_t size) {
 
 #endif /* ARCH_RISCV && __riscv_vector */
 
-#endif /* LIB_RISCV_MATCHFINDER_IMPL_H */
+#endif /* __riscv */

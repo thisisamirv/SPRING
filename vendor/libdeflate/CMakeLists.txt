@@ -24,8 +24,8 @@ string(REGEX REPLACE ${VERSION_REGEX} "\\1" VERSION_STRING "${VERSION_STRING}")
 
 # Declare the project.
 project(libdeflate
-        LANGUAGES C
-        VERSION ${VERSION_STRING})
+    LANGUAGES C
+    VERSION ${VERSION_STRING})
 if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
     set(LIBDEFLATE_IS_TOP_LEVEL_PROJECT ON)
 else()
@@ -45,14 +45,14 @@ option(LIBDEFLATE_DECOMPRESSION_SUPPORT "Support decompression" ON)
 option(LIBDEFLATE_ZLIB_SUPPORT "Support the zlib format" ON)
 option(LIBDEFLATE_GZIP_SUPPORT "Support the gzip format" ON)
 option(LIBDEFLATE_FREESTANDING
-       "Build a freestanding library, i.e. a library that doesn't link to any
+    "Build a freestanding library, i.e. a library that doesn't link to any
        libc functions like malloc(), free(), and memcpy().  Library users will
-       need to provide a custom memory allocator." OFF)
+       need to provide a custom memory allocator."    OFF)
 option(LIBDEFLATE_BUILD_GZIP "Build the libdeflate-gzip program" ON)
 option(LIBDEFLATE_BUILD_TESTS "Build the test programs" OFF)
 option(LIBDEFLATE_USE_SHARED_LIB
-       "Link the libdeflate-gzip and test programs to the shared library instead
-       of the static library" OFF)
+    "Link the libdeflate-gzip and test programs to the shared library instead
+       of the static library"    OFF)
 option(LIBDEFLATE_INSTALL "Install all targets built" ${LIBDEFLATE_IS_TOP_LEVEL_PROJECT})
 
 if(APPLE)
@@ -65,7 +65,7 @@ endif()
 
 # The gzip program can't be built if any library feature it needs is disabled.
 if(NOT LIBDEFLATE_COMPRESSION_SUPPORT OR NOT LIBDEFLATE_DECOMPRESSION_SUPPORT
-   OR NOT LIBDEFLATE_GZIP_SUPPORT)
+    OR NOT LIBDEFLATE_GZIP_SUPPORT)
     set(LIBDEFLATE_BUILD_GZIP OFF)
 endif()
 
@@ -125,9 +125,9 @@ function(configure_framework libtype)
 
         set(RES_DEST_DIR "$<TARGET_FILE_DIR:${libtype}>/Resources")
         add_custom_command(TARGET ${libtype} POST_BUILD
-          COMMAND ${CMAKE_COMMAND} -E make_directory "${RES_DEST_DIR}"
-          COMMAND ${CMAKE_COMMAND} -E copy_if_different ${LIBDEFLATE_RESOURCES} "${RES_DEST_DIR}/"
-          COMMENT "Copying resource files to ${libtype}.framework/Resources"
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${RES_DEST_DIR}"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${LIBDEFLATE_RESOURCES} "${RES_DEST_DIR}/"
+            COMMENT "Copying resource files to ${libtype}.framework/Resources"
         )
     endif()
 endfunction()
@@ -145,11 +145,11 @@ endfunction()
 # to provide a fallback for users who may be unable to fix their toolchain.
 # These don't solve the problem for users not using CMake, though such users can
 # add specific -DLIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_* flags they need.
-function(check_assembler_support  feature assembly_code)
+function(check_assembler_support feature assembly_code)
     execute_process(COMMAND echo "${assembly_code}"
-                    COMMAND ${CMAKE_C_COMPILER} -c -x assembler -o /dev/null -
-                    RESULT_VARIABLE result
-                    ERROR_QUIET)
+        COMMAND ${CMAKE_C_COMPILER} -c -x assembler -o /dev/null -
+        RESULT_VARIABLE result
+        ERROR_QUIET)
     if(NOT ${result} EQUAL 0)
         add_definitions(-DLIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_${feature})
         message(STATUS "Your gcc supports ${feature} instructions but it is paired with an assembler that does not.  Upgrading binutils is recommended.")
@@ -157,7 +157,7 @@ function(check_assembler_support  feature assembly_code)
 endfunction()
 if(UNIX AND CMAKE_C_COMPILER_ID STREQUAL "GNU")
     execute_process(COMMAND ${CMAKE_C_COMPILER} -dumpmachine
-                    OUTPUT_VARIABLE machine)
+        OUTPUT_VARIABLE machine)
     if(${machine} MATCHES "^(x86_64|i[3-6]86)")
         if(${CMAKE_C_COMPILER_VERSION} VERSION_GREATER_EQUAL 8.1)
             # Set LIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_AVX512VNNI if needed.
@@ -198,31 +198,31 @@ set(LIB_SOURCES
 )
 if(LIBDEFLATE_COMPRESSION_SUPPORT)
     list(APPEND LIB_SOURCES
-         lib/arm/matchfinder_impl.h
-         lib/bt_matchfinder.h
-         lib/deflate_compress.c
-         lib/deflate_compress.h
-         lib/hc_matchfinder.h
-         lib/ht_matchfinder.h
-         lib/matchfinder_common.h
-         lib/riscv/matchfinder_impl.h
-         lib/x86/matchfinder_impl.h
+        lib/arm/matchfinder_impl.h
+        lib/bt_matchfinder.h
+        lib/deflate_compress.c
+        lib/deflate_compress.h
+        lib/hc_matchfinder.h
+        lib/ht_matchfinder.h
+        lib/matchfinder_common.h
+        lib/riscv/matchfinder_impl.h
+        lib/x86/matchfinder_impl.h
     )
 endif()
 if(LIBDEFLATE_DECOMPRESSION_SUPPORT)
     list(APPEND LIB_SOURCES
-         lib/decompress_template.h
-         lib/deflate_decompress.c
-         lib/x86/decompress_impl.h
+        lib/decompress_template.h
+        lib/deflate_decompress.c
+        lib/x86/decompress_impl.h
     )
 endif()
 if(LIBDEFLATE_ZLIB_SUPPORT)
     list(APPEND LIB_SOURCES
-         lib/adler32.c
-         lib/arm/adler32_impl.h
-         lib/x86/adler32_impl.h
-         lib/x86/adler32_template.h
-         lib/zlib_constants.h
+        lib/adler32.c
+        lib/arm/adler32_impl.h
+        lib/x86/adler32_impl.h
+        lib/x86/adler32_template.h
+        lib/zlib_constants.h
     )
     if(LIBDEFLATE_COMPRESSION_SUPPORT)
         list(APPEND LIB_SOURCES lib/zlib_compress.c)
@@ -233,15 +233,15 @@ if(LIBDEFLATE_ZLIB_SUPPORT)
 endif()
 if(LIBDEFLATE_GZIP_SUPPORT)
     list(APPEND LIB_SOURCES
-         lib/arm/crc32_impl.h
-         lib/arm/crc32_pmull_helpers.h
-         lib/arm/crc32_pmull_wide.h
-         lib/crc32.c
-         lib/crc32_multipliers.h
-         lib/crc32_tables.h
-         lib/gzip_constants.h
-         lib/x86/crc32_impl.h
-         lib/x86/crc32_pclmul_template.h
+        lib/arm/crc32_impl.h
+        lib/arm/crc32_pmull_helpers.h
+        lib/arm/crc32_pmull_wide.h
+        lib/crc32.c
+        lib/crc32_multipliers.h
+        lib/crc32_tables.h
+        lib/gzip_constants.h
+        lib/x86/crc32_impl.h
+        lib/x86/crc32_pclmul_template.h
     )
     if(LIBDEFLATE_COMPRESSION_SUPPORT)
         list(APPEND LIB_SOURCES lib/gzip_compress.c)
@@ -261,7 +261,7 @@ set(LIB_INCLUDE_DIRS
 )
 
 if(LIBDEFLATE_APPLE_FRAMEWORK)
-# Define resource files for Apple Framework
+    # Define resource files for Apple Framework
     set(LIBDEFLATE_RESOURCES
         "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
         "${CMAKE_CURRENT_SOURCE_DIR}/COPYING"
@@ -285,8 +285,8 @@ if(LIBDEFLATE_BUILD_STATIC_LIB)
         set(STATIC_LIB_NAME deflate)
     endif()
     set_target_properties(libdeflate_static PROPERTIES
-                          OUTPUT_NAME ${STATIC_LIB_NAME}
-                          PUBLIC_HEADER libdeflate.h)
+        OUTPUT_NAME ${STATIC_LIB_NAME}
+        PUBLIC_HEADER libdeflate.h)
     configure_framework(libdeflate_static)
     target_include_directories(libdeflate_static PUBLIC ${LIB_INCLUDE_DIRS})
     target_compile_definitions(libdeflate_static PRIVATE ${LIB_COMPILE_DEFINITIONS})
@@ -303,10 +303,10 @@ if(LIBDEFLATE_BUILD_SHARED_LIB)
     add_library(libdeflate::libdeflate_shared ALIAS libdeflate_shared)
 
     set_target_properties(libdeflate_shared PROPERTIES
-                          OUTPUT_NAME deflate
-                          PUBLIC_HEADER libdeflate.h
-                          C_VISIBILITY_PRESET hidden
-                          SOVERSION 0)
+        OUTPUT_NAME deflate
+        PUBLIC_HEADER libdeflate.h
+        C_VISIBILITY_PRESET hidden
+        SOVERSION 0)
     configure_framework(libdeflate_shared)
     target_include_directories(libdeflate_shared PUBLIC ${LIB_INCLUDE_DIRS})
     target_compile_definitions(libdeflate_shared PUBLIC LIBDEFLATE_DLL)
@@ -319,13 +319,13 @@ endif()
 # Install the static and/or shared library.
 if(LIBDEFLATE_INSTALL)
     install(TARGETS ${LIB_TARGETS}
-            EXPORT libdeflate_exported_targets
-            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-            FRAMEWORK DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT runtime OPTIONAL
-            INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+        EXPORT libdeflate_exported_targets
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        FRAMEWORK DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT runtime OPTIONAL
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 endif()
 
 # Install resource files to Resources/ directory in the framework
@@ -353,36 +353,36 @@ endif()
 configure_file(libdeflate.pc.in libdeflate.pc @ONLY)
 if(LIBDEFLATE_INSTALL)
     install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libdeflate.pc
-            DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 endif()
 
 # Generate a "libdeflate-targets.cmake" file in the build tree that can be
 # included by outside projects to import targets from the build tree.
 export(TARGETS ${LIB_TARGETS}
-       NAMESPACE libdeflate::
-       FILE libdeflate-targets.cmake)
+    NAMESPACE libdeflate::
+    FILE libdeflate-targets.cmake)
 
 # Generate and install a separate "libdeflate-targets.cmake" file that can be
 # included by outside projects to import targets from the installation tree.
 if(LIBDEFLATE_INSTALL)
     install(EXPORT libdeflate_exported_targets
-            NAMESPACE libdeflate::
-            FILE libdeflate-targets.cmake
-            DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libdeflate)
+        NAMESPACE libdeflate::
+        FILE libdeflate-targets.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libdeflate)
 endif()
 
 # Generate and install the CMake package version and config files.
 write_basic_package_version_file(libdeflate-config-version.cmake
-                                 VERSION ${PROJECT_VERSION}
-                                 COMPATIBILITY AnyNewerVersion)
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY AnyNewerVersion)
 configure_package_config_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/libdeflate-config.cmake.in
     libdeflate-config.cmake
     INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libdeflate)
 if(LIBDEFLATE_INSTALL)
     install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libdeflate-config.cmake
-            ${CMAKE_CURRENT_BINARY_DIR}/libdeflate-config-version.cmake
-            DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libdeflate)
+        ${CMAKE_CURRENT_BINARY_DIR}/libdeflate-config-version.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libdeflate)
 endif()
 
 # Build the programs subdirectory if needed.

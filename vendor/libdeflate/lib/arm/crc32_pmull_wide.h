@@ -1,4 +1,20 @@
+#if defined(__arm__) || defined(__aarch64__)
+#include "../lib_common.h"
+
 /*
+ * Default definitions of template parameters for standalone IDE parsing.
+ * These are overridden when this file is included as a template.
+ */
+#ifndef SUFFIX
+#define SUFFIX _pmull_wide_dummy
+#define ATTRIBUTES
+#define CONCAT_IMPL(a, b) a##b
+#define CONCAT(a, b) CONCAT_IMPL(a, b)
+#define ADD_SUFFIX(name) CONCAT(name, SUFFIX)
+#endif
+
+/*
+
  * arm/crc32_pmull_wide.h - gzip CRC-32 with PMULL (extra-wide version)
  *
  * Copyright 2022 Eric Biggers
@@ -222,3 +238,7 @@ tail:
 #undef SUFFIX
 #undef ATTRIBUTES
 #undef ENABLE_EOR3
+#undef CONCAT_IMPL
+#undef CONCAT
+#undef ADD_SUFFIX
+#endif /* __arm__ || __aarch64__ */

@@ -25,6 +25,8 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include "lib_common.h"
+// lib_common first
 #include "deflate_compress.h"
 #include "deflate_constants.h"
 

@@ -4,7 +4,6 @@
 #include "compact_vector.hpp"
 #include "darray.hpp"
 
-
 #include <iterator>
 
 namespace bits {

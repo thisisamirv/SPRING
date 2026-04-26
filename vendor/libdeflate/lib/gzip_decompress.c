@@ -25,8 +25,8 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include "decompress_defs.h"
 #include "gzip_constants.h"
-#include "lib_common.h"
 
 LIBDEFLATEAPI enum libdeflate_result libdeflate_gzip_decompress_ex(
     struct libdeflate_decompressor *d, const void *in, size_t in_nbytes,

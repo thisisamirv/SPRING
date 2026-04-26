@@ -1,4 +1,40 @@
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) ||             \
+    defined(_M_IX86)
+#include "../../common_defs.h"
+
+#include <immintrin.h>
+
 /*
+ * Default definitions of template parameters for standalone IDE parsing.
+ * These are overridden when this file is included as a template.
+ */
+#define CONCAT_IMPL(a, b) a##b
+#define CONCAT(a, b) CONCAT_IMPL(a, b)
+#define ADD_SUFFIX(name) CONCAT(name, SUFFIX)
+#include "../crc32_multipliers.h"
+#ifndef SUFFIX
+#define SUFFIX _pclmul_dummy
+#define ATTRIBUTES _target_attribute("pclmul,sse4.1")
+
+#define VL 16
+#define USE_AVX512 0
+/*
+ * Declarations for standalone IDE parsing.
+ */
+extern const u8 shift_tab[48];
+#ifndef crc32_slice1
+static u32 crc32_slice1(u32 crc, const u8 *p, size_t len) {
+
+  (void)crc;
+  (void)p;
+  (void)len;
+  return 0;
+}
+#endif
+#endif
+
+/*
+
  * x86/crc32_pclmul_template.h - gzip CRC-32 with PCLMULQDQ instructions
  *
  * Copyright 2016 Eric Biggers
@@ -103,8 +139,9 @@
 #endif
 
 #undef fold_vec128
-static forceinline ATTRIBUTES __m128i
+static inline ATTRIBUTES __m128i
 ADD_SUFFIX(fold_vec128)(__m128i src, __m128i dst, __m128i /* __v2du */ mults) {
+
   dst = _mm_xor_si128(dst, _mm_clmulepi64_si128(src, mults, 0x00));
   dst = _mm_xor_si128(dst, _mm_clmulepi64_si128(src, mults, 0x11));
   return dst;
@@ -113,8 +150,9 @@ ADD_SUFFIX(fold_vec128)(__m128i src, __m128i dst, __m128i /* __v2du */ mults) {
 
 #if VL >= 32
 #undef fold_vec256
-static forceinline ATTRIBUTES __m256i
+static inline ATTRIBUTES __m256i
 ADD_SUFFIX(fold_vec256)(__m256i src, __m256i dst, __m256i /* __v4du */ mults) {
+
 #if USE_AVX512
   /* vpternlog with immediate 0x96 is a three-argument XOR. */
   return _mm256_ternarylogic_epi32(_mm256_clmulepi64_epi128(src, mults, 0x00),
@@ -131,8 +169,9 @@ ADD_SUFFIX(fold_vec256)(__m256i src, __m256i dst, __m256i /* __v4du */ mults) {
 
 #if VL >= 64
 #undef fold_vec512
-static forceinline ATTRIBUTES __m512i
+static inline ATTRIBUTES __m512i
 ADD_SUFFIX(fold_vec512)(__m512i src, __m512i dst, __m512i /* __v8du */ mults) {
+
   /* vpternlog with immediate 0x96 is a three-argument XOR. */
   return _mm512_ternarylogic_epi32(_mm512_clmulepi64_epi128(src, mults, 0x00),
                                    _mm512_clmulepi64_epi128(src, mults, 0x11),
@@ -149,8 +188,10 @@ ADD_SUFFIX(fold_vec512)(__m512i src, __m512i dst, __m512i /* __v8du */ mults) {
  * Assumes that 'p + len - 16' is in-bounds.
  */
 #undef fold_lessthan16bytes
-static forceinline ATTRIBUTES __m128i ADD_SUFFIX(fold_lessthan16bytes)(
-    __m128i x, const u8 *p, size_t len, __m128i /* __v2du */ mults_128b) {
+static inline ATTRIBUTES
+    __m128i ADD_SUFFIX(fold_lessthan16bytes)(__m128i x, const u8 *p, size_t len,
+                                             __m128i /* __v2du */ mults_128b) {
+
   __m128i lshift = _mm_loadu_si128((const void *)&shift_tab[len]);
   __m128i rshift = _mm_loadu_si128((const void *)&shift_tab[len + 16]);
   __m128i x0, x1;
@@ -171,7 +212,9 @@ static forceinline ATTRIBUTES __m128i ADD_SUFFIX(fold_lessthan16bytes)(
 }
 #define fold_lessthan16bytes ADD_SUFFIX(fold_lessthan16bytes)
 
-static ATTRIBUTES u32 ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p, size_t len) {
+static ATTRIBUTES MAYBE_UNUSED u32 ADD_SUFFIX(crc32_x86)(u32 crc, const u8 *p,
+                                                         size_t len) {
+
   /*
    * mults_{N}v are the vectors of multipliers for folding across N vec_t
    * vectors, i.e. N*VL*8 bits.  mults_128b are the two multipliers for
@@ -399,8 +442,16 @@ reduce_x0:
 #undef MULTS_4V
 #undef MULTS_2V
 #undef MULTS_1V
+#undef fold_vec128
+#undef fold_vec256
+#undef fold_vec512
+#undef fold_lessthan16bytes
 
 #undef SUFFIX
 #undef ATTRIBUTES
 #undef VL
 #undef USE_AVX512
+#undef CONCAT_IMPL
+#undef CONCAT
+#undef ADD_SUFFIX
+#endif /* __x86_64__ || __i386__ || _M_X64 || _M_IX86 */

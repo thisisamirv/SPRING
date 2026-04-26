@@ -36,6 +36,7 @@
 #define _DARWIN_C_SOURCE /* for sysctlbyname() */
 #endif
 
+#if defined(__arm__) || defined(__aarch64__)
 #include "cpu_features.h"
 #include "../cpu_features_common.h" /* must be included first */
 
@@ -222,3 +223,4 @@ void libdeflate_init_arm_cpu_features(void) {
 }
 
 #endif /* ARM_CPU_FEATURES_KNOWN */
+#endif /* __arm__ || __aarch64__ */

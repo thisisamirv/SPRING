@@ -32,7 +32,6 @@ See also the bsc and libbsc web site:
 
 #include <memory.h>
 #include <stddef.h>
-#include <stdlib.h>
 
 #include "qlfc.h"
 

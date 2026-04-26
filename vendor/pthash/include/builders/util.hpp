@@ -1,12 +1,9 @@
 #pragma once
 
 #include <cmath> // log, sqrt
-#include <fstream>
 #include <iostream>
 #include <numeric>
-#include <thread>
 #include <unordered_map>
-
 
 #include "utils/logger.hpp"
 #include "utils/util.hpp"

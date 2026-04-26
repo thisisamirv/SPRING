@@ -25,7 +25,7 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "lib_common.h"
+#include "decompress_defs.h"
 #include "zlib_constants.h"
 
 LIBDEFLATEAPI enum libdeflate_result libdeflate_zlib_decompress_ex(

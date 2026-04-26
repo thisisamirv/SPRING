@@ -48,7 +48,6 @@ preprocessor macro LIBBSC_SORT_TRANSFORM_SUPPORT at compile time.
 #define _CRT_SECURE_NO_WARNINGS
 
 #include <math.h>
-#include <numeric>
 #include <stdexcept>
 #include <stdio.h>
 #include <stdlib.h>
@@ -60,7 +59,6 @@ preprocessor macro LIBBSC_SORT_TRANSFORM_SUPPORT at compile time.
 #include "libbsc/filters.h"
 #include "libbsc/libbsc.h"
 #include "libbsc/platform/platform.h"
-#include "params.h"
 
 namespace spring {
 namespace bsc {

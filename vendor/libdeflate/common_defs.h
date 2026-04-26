@@ -28,8 +28,6 @@
 #ifndef COMMON_DEFS_H
 #define COMMON_DEFS_H
 
-#include "libdeflate.h"
-
 #include <stdbool.h>
 #include <stddef.h> /* for size_t */
 #include <stdint.h>
@@ -406,7 +404,7 @@ static forceinline u64 bswap64(u64 v) {
                                       * itself permits unaligned access and it \
                                       * will be fast on most of those          \
                                       * platforms, and simulated at the engine \
-                                      * level on others, so it's worth                                                                         \
+                                      * level on others, so it's worth         \
                                       * treating it as a CPU architecture with \
                                       * fast unaligned access.                 \
                                       */                                       \

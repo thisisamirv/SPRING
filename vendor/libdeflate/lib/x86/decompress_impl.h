@@ -1,6 +1,7 @@
 #ifndef LIB_X86_DECOMPRESS_IMPL_H
 #define LIB_X86_DECOMPRESS_IMPL_H
 
+#include "../decompress_defs.h"
 #include "cpu_features.h"
 
 /*
@@ -41,6 +42,7 @@
 
 #if defined(deflate_decompress_bmi2) && HAVE_BMI2_NATIVE
 #define DEFAULT_IMPL deflate_decompress_bmi2
+#define LIBDEFLATE_HAVE_ARCH_SELECT_DECOMPRESS_FUNC
 #else
 static inline decompress_func_t arch_select_decompress_func(void) {
 #ifdef deflate_decompress_bmi2
@@ -49,7 +51,7 @@ static inline decompress_func_t arch_select_decompress_func(void) {
 #endif
   return NULL;
 }
-#define arch_select_decompress_func arch_select_decompress_func
+#define LIBDEFLATE_HAVE_ARCH_SELECT_DECOMPRESS_FUNC
 #endif
 
 #endif /* LIB_X86_DECOMPRESS_IMPL_H */

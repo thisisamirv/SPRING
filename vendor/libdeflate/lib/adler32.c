@@ -24,8 +24,9 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
  * OTHER DEALINGS IN THE SOFTWARE.
  */
-
 #include "lib_common.h"
+// lib_common.h first, then ../libdeflate.h
+#include "../libdeflate.h"
 
 /* The Adler-32 divisor, or "base", value */
 #define DIVISOR 65521

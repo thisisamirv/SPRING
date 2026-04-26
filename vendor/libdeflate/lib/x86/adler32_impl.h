@@ -28,7 +28,56 @@
 #ifndef LIB_X86_ADLER32_IMPL_H
 #define LIB_X86_ADLER32_IMPL_H
 
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) ||             \
+    defined(_M_IX86)
+#include "../../common_defs.h"
+
+#ifndef DIVISOR
+#define DIVISOR 65521
+#define MAX_CHUNK_LEN 5552
+#endif
+
+#ifndef ADLER32_CHUNK
+#define ADLER32_CHUNK(s1, s2, p, n)                                            \
+  do {                                                                         \
+    if (n >= 4) {                                                              \
+      u32 s1_sum = 0;                                                          \
+      u32 byte_0_sum = 0;                                                      \
+      u32 byte_1_sum = 0;                                                      \
+      u32 byte_2_sum = 0;                                                      \
+      u32 byte_3_sum = 0;                                                      \
+                                                                               \
+      do {                                                                     \
+        s1_sum += s1;                                                          \
+        s1 += p[0] + p[1] + p[2] + p[3];                                       \
+        byte_0_sum += p[0];                                                    \
+        byte_1_sum += p[1];                                                    \
+        byte_2_sum += p[2];                                                    \
+        byte_3_sum += p[3];                                                    \
+        p += 4;                                                                \
+        n -= 4;                                                                \
+      } while (n >= 4);                                                        \
+      s2 += (4 * (s1_sum + byte_0_sum)) + (3 * byte_1_sum) +                   \
+            (2 * byte_2_sum) + byte_3_sum;                                     \
+    }                                                                          \
+    for (; n; n--, p++) {                                                      \
+      s1 += *p;                                                                \
+      s2 += s1;                                                                \
+    }                                                                          \
+    s1 %= DIVISOR;                                                             \
+    s2 %= DIVISOR;                                                             \
+  } while (0)
+#endif
+
 #include "cpu_features.h"
+
+/*
+ * adler32_func_t is defined in adler32.c, but we need it here for standalone
+ * parsing by the IDE.
+ */
+#ifndef adler32_func_t
+typedef u32 (*adler32_func_t)(u32 adler, const u8 *p, size_t len);
+#endif
 
 /* SSE2 and AVX2 implementations.  Used on older CPUs. */
 #if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
@@ -130,5 +179,7 @@ static inline adler32_func_t arch_select_adler32_func(void) {
   return NULL;
 }
 #define arch_select_adler32_func arch_select_adler32_func
+
+#endif /* __x86_64__ || __i386__ || _M_X64 || _M_IX86 */
 
 #endif /* LIB_X86_ADLER32_IMPL_H */

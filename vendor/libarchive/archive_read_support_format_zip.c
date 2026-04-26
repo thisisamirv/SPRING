@@ -45,13 +45,6 @@
  * added in Nov 2011.  Zip64 support (including a significant code
  * refactoring) was added in 2014.
  */
-
-#ifdef HAVE_ERRNO_H
-#include <errno.h>
-#endif
-#ifdef HAVE_STDLIB_H
-#include <stdlib.h>
-#endif
 #ifdef HAVE_ZLIB_H
 #include <zlib.h>
 #endif

@@ -1,4 +1,21 @@
+#if defined(__arm__) || defined(__aarch64__)
+#include "../lib_common.h"
+
 /*
+ * Default definitions of template parameters for standalone IDE parsing.
+ * These are overridden when this file is included as a template.
+ */
+#ifndef SUFFIX
+#define SUFFIX _pmull_dummy
+#define ATTRIBUTES
+#define ENABLE_EOR3 0
+#define CONCAT_IMPL(a, b) a##b
+#define CONCAT(a, b) CONCAT_IMPL(a, b)
+#define ADD_SUFFIX(name) CONCAT(name, SUFFIX)
+#endif
+
+/*
+
  * arm/crc32_pmull_helpers.h - helper functions for CRC-32 folding with PMULL
  *
  * Copyright 2022 Eric Biggers
@@ -84,7 +101,8 @@ static forceinline ATTRIBUTES uint8x16_t ADD_SUFFIX(clmul_high)(uint8x16_t a,
 static forceinline ATTRIBUTES uint8x16_t ADD_SUFFIX(eor3)(uint8x16_t a,
                                                           uint8x16_t b,
                                                           uint8x16_t c) {
-#if ENABLE_EOR3
+#if defined(ENABLE_EOR3) && ENABLE_EOR3
+
   return veor3q_u8(a, b, c);
 #else
   return veorq_u8(veorq_u8(a, b), c);
@@ -143,3 +161,7 @@ ADD_SUFFIX(fold_partial_vec)(uint8x16_t v, const u8 *p, size_t len,
   return fold_vec(x0, x1, multipliers_1);
 }
 #define fold_partial_vec ADD_SUFFIX(fold_partial_vec)
+#undef CONCAT_IMPL
+#undef CONCAT
+#undef ADD_SUFFIX
+#endif /* __arm__ || __aarch64__ */

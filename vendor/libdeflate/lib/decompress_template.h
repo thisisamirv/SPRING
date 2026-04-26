@@ -30,6 +30,7 @@
  * deflate_decompress.c so that it can be compiled multiple times with different
  * target instruction sets.
  */
+#include "decompress_bitstream.h"
 
 #ifndef ATTRIBUTES
 #define ATTRIBUTES

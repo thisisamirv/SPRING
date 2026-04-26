@@ -28,6 +28,7 @@
 #ifndef LIB_X86_MATCHFINDER_IMPL_H
 #define LIB_X86_MATCHFINDER_IMPL_H
 
+#include "../matchfinder_defs.h"
 #include "cpu_features.h"
 
 #ifdef __AVX2__

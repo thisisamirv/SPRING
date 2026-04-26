@@ -31,17 +31,6 @@
 #error "archive_platform.h must be included first"
 #endif
 
-#ifdef HAVE_ERRNO_H
-#include <errno.h>
-#endif
-#include <stddef.h>
-#ifdef HAVE_STDLIB_H
-#include <stdlib.h>
-#endif
-#ifdef HAVE_STRING_H
-#include <string.h>
-#endif
-
 #include "archive.h"
 
 #ifndef ARCHIVE_H_INCLUDED

@@ -40,8 +40,6 @@ See also the bsc and libbsc web site:
 #include "../libbsc.h"
 #include "../platform/platform.h"
 
-#include "st.cuh"
-
 #define ALPHABET_SQRT_SIZE (16)
 
 int bsc_st_init(int features) {

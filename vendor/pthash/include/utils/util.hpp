@@ -1,10 +1,15 @@
 #pragma once
 
+#include <cassert>
 #include <chrono>
+#include <random>
 #include <string>
 
-#include "essentials.hpp"
-#include "hasher.hpp"
+#if defined(_WIN32)
+#include "pthash_windefs.h"
+#else
+#include <unistd.h>
+#endif
 
 #define PTHASH_LIKELY(expr) __builtin_expect((bool)(expr), true)
 

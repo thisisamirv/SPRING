@@ -29,18 +29,6 @@
 #error "archive_platform.h must be included first"
 #endif
 
-#ifdef HAVE_ERRNO_H
-#include <errno.h>
-#endif
-#if HAVE_STDINT_H
-#include <stdint.h>
-#endif
-#ifdef HAVE_STDLIB_H
-#include <stdlib.h>
-#endif
-#ifdef HAVE_LIMITS_H
-#include <limits.h>
-#endif
 #ifdef HAVE_BZLIB_H
 #include <bzlib.h>
 #endif

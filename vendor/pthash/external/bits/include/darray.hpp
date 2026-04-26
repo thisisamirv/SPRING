@@ -3,7 +3,6 @@
 #include "bit_vector.hpp"
 #include "util.hpp"
 
-
 namespace bits {
 
 /*

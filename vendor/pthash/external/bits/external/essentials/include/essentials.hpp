@@ -9,10 +9,13 @@
 #include <memory>
 #include <numeric>
 #include <random>
+#include <string>
 #include <type_traits>
+#include <typeinfo>
 #include <vector>
 
 #ifndef _WIN32
+#include <cxxabi.h>
 #include <dirent.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
@@ -33,7 +36,6 @@
 #include <fcntl.h>
 #include <locale>
 #include <memory>
-
 
 #ifdef __GNUG__
 #include <cxxabi.h> // for name demangling
@@ -472,12 +474,17 @@ private:
 };
 
 [[maybe_unused]] static std::string demangle(char const *mangled_name) {
+  (void)sizeof(std::type_info);
+#ifndef _WIN32
   size_t len = 0;
   int status = 0;
   std::unique_ptr<char, decltype(&std::free)> ptr(
       __cxxabiv1::__cxa_demangle(mangled_name, nullptr, &len, &status),
       &std::free);
-  return ptr.get();
+  if (ptr)
+    return ptr.get();
+#endif
+  return mangled_name;
 }
 
 struct sizer {

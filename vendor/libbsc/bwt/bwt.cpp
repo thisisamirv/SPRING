@@ -38,7 +38,6 @@ See also the bsc and libbsc web site:
 #include "../libbsc.h"
 #include "../platform/platform.h"
 
-#include "libcubwt/libcubwt.cuh"
 #include "libsais/libsais.h"
 
 #if defined(LIBBSC_OPENMP) && !defined(LIBSAIS_OPENMP)

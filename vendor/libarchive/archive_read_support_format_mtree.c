@@ -31,23 +31,7 @@
 #error "archive_platform.h must be included first"
 #endif
 
-#ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>
-#endif
-#ifdef HAVE_ERRNO_H
-#include <errno.h>
-#endif
-#ifdef HAVE_FCNTL_H
-#include <fcntl.h>
-#endif
 #include <stddef.h>
-/* #include <stdint.h> */ /* See archive_platform.h */
-#ifdef HAVE_STDLIB_H
-#include <stdlib.h>
-#endif
-#ifdef HAVE_STRING_H
-#include <string.h>
-#endif
 #ifdef HAVE_CTYPE_H
 #include <ctype.h>
 #endif

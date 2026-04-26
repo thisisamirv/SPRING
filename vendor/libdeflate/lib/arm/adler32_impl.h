@@ -28,10 +28,14 @@
 #ifndef LIB_ARM_ADLER32_IMPL_H
 #define LIB_ARM_ADLER32_IMPL_H
 
+#if defined(__arm__) || defined(__aarch64__)
+
 #include "cpu_features.h"
 
 /* Regular NEON implementation */
+
 #if HAVE_NEON_INTRIN && CPU_IS_LITTLE_ENDIAN()
+
 #define adler32_arm_neon adler32_arm_neon
 #if HAVE_NEON_NATIVE
 /*
@@ -202,6 +206,7 @@ static ATTRIBUTES MAYBE_UNUSED u32 adler32_arm_neon(u32 adler, const u8 *p,
 /* NEON+dotprod implementation */
 #if HAVE_DOTPROD_INTRIN && CPU_IS_LITTLE_ENDIAN() &&                           \
     !defined(LIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_DOTPROD)
+
 #define adler32_arm_neon_dotprod adler32_arm_neon_dotprod
 #ifdef __clang__
 #define ATTRIBUTES _target_attribute("dotprod")
@@ -345,5 +350,7 @@ static inline adler32_func_t arch_select_adler32_func(void) {
 }
 #define arch_select_adler32_func arch_select_adler32_func
 #endif
+
+#endif /* __arm__ || __aarch64__ */
 
 #endif /* LIB_ARM_ADLER32_IMPL_H */

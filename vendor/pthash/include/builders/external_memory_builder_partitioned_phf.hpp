@@ -5,7 +5,6 @@
 #include "builders/util.hpp"
 #include "mm_file/mm_file.hpp"
 
-
 namespace pthash {
 
 template <typename Hasher, typename Bucketer>

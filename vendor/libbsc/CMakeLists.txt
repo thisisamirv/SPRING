@@ -21,6 +21,6 @@ add_library(libbsc STATIC
 target_include_directories(libbsc PUBLIC . .. adler32 bwt coder filters libbsc lzp platform st bwt/libsais coder/qlfc ${CMAKE_SOURCE_DIR}/src)
 set_target_properties(libbsc PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-if (TARGET OpenMP::OpenMP_CXX)
+if(TARGET OpenMP::OpenMP_CXX)
     target_link_libraries(libbsc PUBLIC OpenMP::OpenMP_CXX)
 endif()

@@ -28,9 +28,9 @@
 #ifndef LIB_X86_CPU_FEATURES_H
 #define LIB_X86_CPU_FEATURES_H
 
-#include "../lib_common.h"
-
-#if defined(ARCH_X86_32) || defined(ARCH_X86_64)
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) ||             \
+    defined(_M_IX86)
+#include "../../common_defs.h"
 
 #define X86_CPU_FEATURE_SSE2 (1 << 0)
 #define X86_CPU_FEATURE_PCLMULQDQ (1 << 1)
@@ -164,6 +164,6 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #define HAVE_AVXVNNI(features) ((features) & X86_CPU_FEATURE_AVXVNNI)
 #endif
 
-#endif /* ARCH_X86_32 || ARCH_X86_64 */
+#endif /* __x86_64__ || __i386__ || _M_X64 || _M_IX86 */
 
 #endif /* LIB_X86_CPU_FEATURES_H */

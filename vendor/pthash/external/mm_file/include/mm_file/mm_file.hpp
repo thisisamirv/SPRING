@@ -12,9 +12,8 @@
 #include "pthash_windefs.h"
 #endif
 
+#include <stdexcept>
 #include <string>
-#include <type_traits>
-
 
 namespace mm {
 

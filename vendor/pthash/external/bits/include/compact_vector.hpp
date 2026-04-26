@@ -5,7 +5,6 @@
 #include <iterator>
 #include <vector>
 
-
 #include "essentials.hpp"
 
 namespace bits {
