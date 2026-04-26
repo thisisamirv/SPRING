@@ -244,7 +244,7 @@ static ZSTD_ALLOW_POINTER_OVERFLOW_ATTR size_t ZSTD_DUBT_findBetterDictMatch(
     if (match[matchLength] < ip[matchLength]) {
       if (dictMatchIndex <= btLow) {
         break;
-      }                                  /* beyond tree size, stop the search */
+      } /* beyond tree size, stop the search */
       commonLengthSmaller = matchLength; /* all smaller will now have at least
                                             this guaranteed common length */
       dictMatchIndex = nextPtr[1];       /* new matchIndex larger than previous
@@ -398,7 +398,7 @@ static ZSTD_ALLOW_POINTER_OVERFLOW_ATTR size_t ZSTD_DUBT_findBestMatch(
         if (matchIndex <= btLow) {
           smallerPtr = &dummy32;
           break;
-        }                         /* beyond tree size, stop the search */
+        } /* beyond tree size, stop the search */
         smallerPtr = nextPtr + 1; /* new "smaller" => larger of match */
         matchIndex = nextPtr[1];  /* new matchIndex larger than previous (closer
                                      to current) */
@@ -882,7 +882,8 @@ FORCE_INLINE_TEMPLATE U32 ZSTD_row_nextIndex(BYTE *const tagRow,
 /* ZSTD_isAligned():
  * Checks that a pointer is aligned to "align" bytes which must be a power of 2.
  */
-MEM_STATIC int ZSTD_isAligned(void const *ptr, size_t align) {
+MEM_STATIC __attribute__((unused)) int ZSTD_isAligned(void const *ptr,
+                                                      size_t align) {
   assert((align & (align - 1)) == 0);
   return (((size_t)ptr) & (align - 1)) == 0;
 }

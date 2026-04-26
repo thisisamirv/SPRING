@@ -4634,8 +4634,7 @@ static size_t ZSTD_compressBlock_internal(ZSTD_CCtx *zc, void *dst,
        * because doing so will cause the decoder (cli only) to throw a "should
        * consume all input error." This is only an issue for zstd <= v1.4.3
        */
-      !zc->isFirstBlock &&
-      cSize < rleMaxLength && ZSTD_isRLE(ip, srcSize)) {
+      !zc->isFirstBlock && cSize < rleMaxLength && ZSTD_isRLE(ip, srcSize)) {
     cSize = 1;
     op[0] = ip[0];
   }

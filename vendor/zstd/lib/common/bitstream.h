@@ -28,6 +28,7 @@
 #include "debug.h"         /* assert(), DEBUGLOG(), RAWLOG() */
 #include "error_private.h" /* error codes and messages */
 #include "mem.h"           /* unaligned access routines */
+#include <string.h>        /* memset */
 
 /*=========================================
 *  Target specific

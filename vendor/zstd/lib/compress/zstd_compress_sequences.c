@@ -361,9 +361,9 @@ FORCE_INLINE_TEMPLATE size_t ZSTD_encodeSequences_body(
       /* 32b*/ /* 64b*/
       /* (7)*/ /* (7)*/
       FSE_encodeSymbol(&blockStream, &stateOffsetBits, ofCode);
-          /* 15 */ /* 15 */
+      /* 15 */ /* 15 */
       FSE_encodeSymbol(&blockStream, &stateMatchLength, mlCode);
-          /* 24 */ /* 24 */
+      /* 24 */ /* 24 */
       if (MEM_32bits())
         BIT_flushBits(&blockStream);                                    /* (7)*/
       FSE_encodeSymbol(&blockStream, &stateLitLength, llCode); /* 16 */ /* 33 */

@@ -35,20 +35,20 @@ endif()
 
 file(GLOB CommonSources ${LIBRARY_DIR}/common/*.c)
 file(GLOB CompressSources ${LIBRARY_DIR}/compress/*.c)
-if (NOT ZSTD_MULTITHREAD_SUPPORT)
+if(NOT ZSTD_MULTITHREAD_SUPPORT)
     list(REMOVE_ITEM CompressSources "${LIBRARY_DIR}/compress/zstdmt_compress.c")
 endif()
 file(GLOB DecompressSources ${LIBRARY_DIR}/decompress/*.c)
-if (MSVC)
+if(MSVC)
     add_compile_options(-DZSTD_DISABLE_ASM)
-else ()
+else()
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "amd64.*|AMD64.*|x86_64.*|X86_64.*" AND ${ZSTD_HAS_NOEXECSTACK})
         enable_language(ASM)
         set(DecompressSources ${DecompressSources} ${LIBRARY_DIR}/decompress/huf_decompress_amd64.S)
     else()
         add_compile_options(-DZSTD_DISABLE_ASM)
     endif()
-endif ()
+endif()
 file(GLOB DictBuilderSources ${LIBRARY_DIR}/dictBuilder/*.c)
 file(GLOB DeprecatedSources ${LIBRARY_DIR}/deprecated/*.c)
 
@@ -60,52 +60,52 @@ file(GLOB DecompressHeaders ${LIBRARY_DIR}/decompress/*.h)
 
 set(Sources ${CommonSources})
 set(Headers ${PublicHeaders} ${CommonHeaders})
-if (ZSTD_BUILD_COMPRESSION)
+if(ZSTD_BUILD_COMPRESSION)
     set(Sources ${Sources} ${CompressSources})
     set(Headers ${Headers} ${CompressHeaders})
 endif()
-if (ZSTD_BUILD_DECOMPRESSION)
+if(ZSTD_BUILD_DECOMPRESSION)
     set(Sources ${Sources} ${DecompressSources})
     set(Headers ${Headers} ${DecompressHeaders})
 endif()
-if (ZSTD_BUILD_DICTBUILDER)
+if(ZSTD_BUILD_DICTBUILDER)
     set(Sources ${Sources} ${DictBuilderSources})
     set(Headers ${Headers} ${DictBuilderHeaders})
 endif()
-if (ZSTD_BUILD_DEPRECATED)
+if(ZSTD_BUILD_DEPRECATED)
     set(Sources ${Sources} ${DeprecatedSources})
     set(Headers ${Headers} ${DeprecatedHeaders})
 endif()
 
-if (ZSTD_LEGACY_SUPPORT)
+if(ZSTD_LEGACY_SUPPORT)
     set(LIBRARY_LEGACY_DIR ${LIBRARY_DIR}/legacy)
 
     set(Sources ${Sources}
-            ${LIBRARY_LEGACY_DIR}/zstd_v01.c
-            ${LIBRARY_LEGACY_DIR}/zstd_v02.c
-            ${LIBRARY_LEGACY_DIR}/zstd_v03.c
-            ${LIBRARY_LEGACY_DIR}/zstd_v04.c
-            ${LIBRARY_LEGACY_DIR}/zstd_v05.c
-            ${LIBRARY_LEGACY_DIR}/zstd_v06.c
-            ${LIBRARY_LEGACY_DIR}/zstd_v07.c)
+        ${LIBRARY_LEGACY_DIR}/zstd_v01.c
+        ${LIBRARY_LEGACY_DIR}/zstd_v02.c
+        ${LIBRARY_LEGACY_DIR}/zstd_v03.c
+        ${LIBRARY_LEGACY_DIR}/zstd_v04.c
+        ${LIBRARY_LEGACY_DIR}/zstd_v05.c
+        ${LIBRARY_LEGACY_DIR}/zstd_v06.c
+        ${LIBRARY_LEGACY_DIR}/zstd_v07.c)
 
     set(Headers ${Headers}
-            ${LIBRARY_LEGACY_DIR}/zstd_legacy.h
-            ${LIBRARY_LEGACY_DIR}/zstd_v01.h
-            ${LIBRARY_LEGACY_DIR}/zstd_v02.h
-            ${LIBRARY_LEGACY_DIR}/zstd_v03.h
-            ${LIBRARY_LEGACY_DIR}/zstd_v04.h
-            ${LIBRARY_LEGACY_DIR}/zstd_v05.h
-            ${LIBRARY_LEGACY_DIR}/zstd_v06.h
-            ${LIBRARY_LEGACY_DIR}/zstd_v07.h)
-endif ()
+        ${LIBRARY_LEGACY_DIR}/zstd_legacy.h
+        ${LIBRARY_LEGACY_DIR}/zstd_v01.h
+        ${LIBRARY_LEGACY_DIR}/zstd_v02.h
+        ${LIBRARY_LEGACY_DIR}/zstd_v03.h
+        ${LIBRARY_LEGACY_DIR}/zstd_v04.h
+        ${LIBRARY_LEGACY_DIR}/zstd_v05.h
+        ${LIBRARY_LEGACY_DIR}/zstd_v06.h
+        ${LIBRARY_LEGACY_DIR}/zstd_v07.h)
+endif()
 
-if (MSVC AND NOT (CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
+if(MSVC AND NOT (CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
     set(MSVC_RESOURCE_DIR ${ZSTD_SOURCE_DIR}/build/VS2010/libzstd-dll)
     set(PlatformDependResources ${MSVC_RESOURCE_DIR}/libzstd-dll.rc)
 else()
     set(PlatformDependResources)
-endif ()
+endif()
 
 # Explicitly set the language to C for all files, including ASM files.
 # Our assembly expects to be compiled by a C compiler, and is only enabled for
@@ -115,145 +115,145 @@ if(NOT CMAKE_ASM_COMPILER STREQUAL CMAKE_C_COMPILER)
     set_source_files_properties(${Sources} PROPERTIES LANGUAGE C)
 endif()
 
-macro (add_definition target var)
-    if (NOT ("${${var}}" STREQUAL ""))
+macro(add_definition target var)
+    if(NOT ("${${var}}" STREQUAL ""))
         target_compile_definitions(${target} PUBLIC "${var}=__attribute__((visibility(\"${${var}}\")))")
-    endif ()
-endmacro ()
+    endif()
+endmacro()
 
 # Define directories containing the library's public headers
 set(PUBLIC_INCLUDE_DIRS ${LIBRARY_DIR})
 set(CMAKE_RC_FLAGS "${CMAKE_RC_FLAGS} /I \"${LIBRARY_DIR}\"")
 # Split project to static and shared libraries build
-if (ZSTD_BUILD_SHARED)
+if(ZSTD_BUILD_SHARED)
     add_library(libzstd_shared SHARED ${Sources} ${Headers} ${PlatformDependResources})
     target_include_directories(libzstd_shared INTERFACE $<BUILD_INTERFACE:${PUBLIC_INCLUDE_DIRS}>)
-    if (ZSTD_MULTITHREAD_SUPPORT)
+    if(ZSTD_MULTITHREAD_SUPPORT)
         target_compile_definitions(libzstd_shared PUBLIC ZSTD_MULTITHREAD)
-        if (UNIX)
+        if(UNIX)
             target_link_libraries(libzstd_shared ${THREADS_LIBS})
-        endif ()
-    endif ()
+        endif()
+    endif()
     add_definition(libzstd_shared ZSTDLIB_VISIBLE)
     add_definition(libzstd_shared ZSTDERRORLIB_VISIBLE)
     add_definition(libzstd_shared ZDICTLIB_VISIBLE)
-endif ()
-if (ZSTD_BUILD_STATIC)
+endif()
+if(ZSTD_BUILD_STATIC)
     add_library(libzstd_static STATIC ${Sources} ${Headers})
     target_include_directories(libzstd_static INTERFACE $<BUILD_INTERFACE:${PUBLIC_INCLUDE_DIRS}>)
-    if (ZSTD_MULTITHREAD_SUPPORT)
+    if(ZSTD_MULTITHREAD_SUPPORT)
         target_compile_definitions(libzstd_static PUBLIC ZSTD_MULTITHREAD)
-        if (UNIX)
+        if(UNIX)
             target_link_libraries(libzstd_static ${THREADS_LIBS})
-        endif ()
-    endif ()
+        endif()
+    endif()
     add_definition(libzstd_static ZSTDLIB_VISIBLE)
     add_definition(libzstd_static ZSTDERRORLIB_VISIBLE)
     add_definition(libzstd_static ZDICTLIB_VISIBLE)
     add_definition(libzstd_static ZSTDLIB_STATIC_API)
     add_definition(libzstd_static ZDICTLIB_STATIC_API)
-endif ()
-if (ZSTD_BUILD_SHARED AND NOT ZSTD_BUILD_STATIC)
-    if (NOT BUILD_SHARED_LIBS)
+endif()
+if(ZSTD_BUILD_SHARED AND NOT ZSTD_BUILD_STATIC)
+    if(NOT BUILD_SHARED_LIBS)
         message(WARNING "BUILD_SHARED_LIBS is OFF, but ZSTD_BUILD_SHARED is ON and ZSTD_BUILD_STATIC is OFF, which takes precedence, so libzstd is a shared library")
-    endif ()
+    endif()
     add_library(libzstd INTERFACE)
     target_link_libraries(libzstd INTERFACE libzstd_shared)
-endif ()
-if (ZSTD_BUILD_STATIC AND NOT ZSTD_BUILD_SHARED)
-    if (BUILD_SHARED_LIBS)
+endif()
+if(ZSTD_BUILD_STATIC AND NOT ZSTD_BUILD_SHARED)
+    if(BUILD_SHARED_LIBS)
         message(WARNING "BUILD_SHARED_LIBS is ON, but ZSTD_BUILD_SHARED is OFF and ZSTD_BUILD_STATIC is ON, which takes precedence, is set so libzstd is a static library")
-    endif ()
+    endif()
     add_library(libzstd INTERFACE)
     target_link_libraries(libzstd INTERFACE libzstd_static)
-endif ()
-if (ZSTD_BUILD_SHARED AND ZSTD_BUILD_STATIC)
+endif()
+if(ZSTD_BUILD_SHARED AND ZSTD_BUILD_STATIC)
     # If both ZSTD_BUILD_SHARED and ZSTD_BUILD_STATIC are set, which is the
     # default, fallback to using BUILD_SHARED_LIBS to determine whether to
     # set libzstd to static or shared.
-    if (BUILD_SHARED_LIBS)
+    if(BUILD_SHARED_LIBS)
         add_library(libzstd INTERFACE)
         target_link_libraries(libzstd INTERFACE libzstd_shared)
-    else ()
+    else()
         add_library(libzstd INTERFACE)
         target_link_libraries(libzstd INTERFACE libzstd_static)
-    endif ()
-endif ()
+    endif()
+endif()
 
 # Add specific compile definitions for MSVC project
-if (MSVC)
-    if (ZSTD_BUILD_SHARED)
+if(MSVC)
+    if(ZSTD_BUILD_SHARED)
         set_property(TARGET libzstd_shared APPEND PROPERTY COMPILE_DEFINITIONS "ZSTD_DLL_EXPORT=1;ZSTD_HEAPMODE=0;_CONSOLE;_CRT_SECURE_NO_WARNINGS")
-    endif ()
-    if (ZSTD_BUILD_STATIC)
+    endif()
+    if(ZSTD_BUILD_STATIC)
         set_property(TARGET libzstd_static APPEND PROPERTY COMPILE_DEFINITIONS "ZSTD_HEAPMODE=0;_CRT_SECURE_NO_WARNINGS")
-    endif ()
-endif ()
+    endif()
+endif()
 
 # With MSVC static library needs to be renamed to avoid conflict with import library
-if (MSVC OR (WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT MINGW))
+if(MSVC OR (WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT MINGW))
     set(STATIC_LIBRARY_BASE_NAME zstd_static)
-else ()
+else()
     set(STATIC_LIBRARY_BASE_NAME zstd)
-endif ()
+endif()
 
 # Define static and shared library names
-if (ZSTD_BUILD_SHARED)
+if(ZSTD_BUILD_SHARED)
     set_target_properties(
+        libzstd_shared
+        PROPERTIES
+        OUTPUT_NAME zstd
+        VERSION ${ZSTD_FULL_VERSION}
+        SOVERSION ${zstd_VERSION_MAJOR})
+
+    if(ZSTD_FRAMEWORK)
+        set_target_properties(
             libzstd_shared
             PROPERTIES
-            OUTPUT_NAME zstd
-            VERSION ${ZSTD_FULL_VERSION}
-            SOVERSION ${zstd_VERSION_MAJOR})
+            FRAMEWORK TRUE
+            FRAMEWORK_VERSION "${ZSTD_FULL_VERSION}"
+            PRODUCT_BUNDLE_IDENTIFIER "github.com/facebook/zstd"
+            XCODE_ATTRIBUTE_INSTALL_PATH "@rpath"
+            PUBLIC_HEADER "${PublicHeaders}"
+            OUTPUT_NAME "zstd"
+            XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
+            XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+            XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
+            MACOSX_FRAMEWORK_IDENTIFIER "github.com/facebook/zstd"
+            MACOSX_FRAMEWORK_BUNDLE_VERSION "${ZSTD_FULL_VERSION}"
+            MACOSX_FRAMEWORK_SHORT_VERSION_STRING "${ZSTD_SHORT_VERSION}"
+            MACOSX_RPATH TRUE
+            RESOURCE ${PublicHeaders})
+    endif()
+endif()
 
-    if (ZSTD_FRAMEWORK)
-        set_target_properties(
-                libzstd_shared
-                PROPERTIES
-                FRAMEWORK TRUE
-                FRAMEWORK_VERSION "${ZSTD_FULL_VERSION}"
-                PRODUCT_BUNDLE_IDENTIFIER "github.com/facebook/zstd"
-                XCODE_ATTRIBUTE_INSTALL_PATH "@rpath"
-                PUBLIC_HEADER "${PublicHeaders}"
-                OUTPUT_NAME "zstd"
-                XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
-                XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
-                XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
-                MACOSX_FRAMEWORK_IDENTIFIER "github.com/facebook/zstd"
-                MACOSX_FRAMEWORK_BUNDLE_VERSION "${ZSTD_FULL_VERSION}"
-                MACOSX_FRAMEWORK_SHORT_VERSION_STRING "${ZSTD_SHORT_VERSION}"
-                MACOSX_RPATH TRUE
-                RESOURCE ${PublicHeaders})
-    endif ()
-endif ()
-
-if (ZSTD_BUILD_STATIC)
+if(ZSTD_BUILD_STATIC)
     set_target_properties(
+        libzstd_static
+        PROPERTIES
+        POSITION_INDEPENDENT_CODE On
+        OUTPUT_NAME ${STATIC_LIBRARY_BASE_NAME})
+
+    if(ZSTD_FRAMEWORK)
+        set_target_properties(
             libzstd_static
             PROPERTIES
-            POSITION_INDEPENDENT_CODE On
-            OUTPUT_NAME ${STATIC_LIBRARY_BASE_NAME})
-
-    if (ZSTD_FRAMEWORK)
-        set_target_properties(
-                libzstd_static
-                PROPERTIES
-                FRAMEWORK TRUE
-                FRAMEWORK_VERSION "${ZSTD_FULL_VERSION}"
-                PRODUCT_BUNDLE_IDENTIFIER "github.com/facebook/zstd/${STATIC_LIBRARY_BASE_NAME}"
-                XCODE_ATTRIBUTE_INSTALL_PATH "@rpath"
-                PUBLIC_HEADER "${PublicHeaders}"
-                OUTPUT_NAME "${STATIC_LIBRARY_BASE_NAME}"
-                XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
-                XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
-                XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
-                MACOSX_FRAMEWORK_IDENTIFIER "github.com/facebook/zstd/${STATIC_LIBRARY_BASE_NAME}"
-                MACOSX_FRAMEWORK_BUNDLE_VERSION "${ZSTD_FULL_VERSION}"
-                MACOSX_FRAMEWORK_SHORT_VERSION_STRING "${ZSTD_SHORT_VERSION}"
-                MACOSX_RPATH TRUE
-                RESOURCE ${PublicHeaders})
-    endif ()
-endif ()
+            FRAMEWORK TRUE
+            FRAMEWORK_VERSION "${ZSTD_FULL_VERSION}"
+            PRODUCT_BUNDLE_IDENTIFIER "github.com/facebook/zstd/${STATIC_LIBRARY_BASE_NAME}"
+            XCODE_ATTRIBUTE_INSTALL_PATH "@rpath"
+            PUBLIC_HEADER "${PublicHeaders}"
+            OUTPUT_NAME "${STATIC_LIBRARY_BASE_NAME}"
+            XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
+            XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+            XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
+            MACOSX_FRAMEWORK_IDENTIFIER "github.com/facebook/zstd/${STATIC_LIBRARY_BASE_NAME}"
+            MACOSX_FRAMEWORK_BUNDLE_VERSION "${ZSTD_FULL_VERSION}"
+            MACOSX_FRAMEWORK_SHORT_VERSION_STRING "${ZSTD_SHORT_VERSION}"
+            MACOSX_RPATH TRUE
+            RESOURCE ${PublicHeaders})
+    endif()
+endif()
 
 # pkg-config
 include(JoinPaths) # can be replaced by cmake_path(APPEND) in CMake 3.20
@@ -281,7 +281,7 @@ foreach(target_suffix IN ITEMS "_shared" "_static" "")
             BUNDLE DESTINATION "${CMAKE_INSTALL_BINDIR}"
             FRAMEWORK DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT runtime OPTIONAL
             PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-            )
+        )
     endif()
 endforeach()
 

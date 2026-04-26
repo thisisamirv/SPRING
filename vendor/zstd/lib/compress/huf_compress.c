@@ -602,7 +602,8 @@ static void HUF_swapNodes(nodeElt *a, nodeElt *b) {
 }
 
 /* Returns 0 if the huffNode array is not sorted by descending count */
-MEM_STATIC int HUF_isSorted(nodeElt huffNode[], U32 const maxSymbolValue1) {
+MEM_STATIC __attribute__((unused)) int HUF_isSorted(nodeElt huffNode[],
+                                                    U32 const maxSymbolValue1) {
   U32 i;
   for (i = 1; i < maxSymbolValue1; ++i) {
     if (huffNode[i].count > huffNode[i - 1].count) {

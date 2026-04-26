@@ -9,7 +9,6 @@
 
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 
 #include "qvz/include/distortion.h"
 #include "qvz/include/lines.h"

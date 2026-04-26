@@ -61,7 +61,7 @@ if(TARGET isal)
     target_include_directories(${LIBRARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}/include")
 else()
     # Building standalone - find and link with installed isal library
-    if (NOT DEFINED ISAL_INSTALL_DIR)
+    if(NOT DEFINED ISAL_INSTALL_DIR)
         # Link the library with isal
         find_library(ISAL_LIBRARY isal REQUIRED)
         target_link_libraries(${LIBRARY_NAME} PRIVATE ${ISAL_LIBRARY})

@@ -18,6 +18,7 @@
 #include "debug.h"     /* DEBUG_STATIC_ASSERT */
 #include "zstd_deps.h" /* ZSTD_memcpy */
 #include <stddef.h>    /* size_t, ptrdiff_t */
+#include <string.h>    /* memcpy */
 
 /*-****************************************
  *  Compiler specifics

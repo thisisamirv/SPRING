@@ -13,6 +13,7 @@
 
 #define ZSTD_DEPS_NEED_MALLOC
 #include "zstd_deps.h" /* ZSTD_malloc, ZSTD_calloc, ZSTD_free, ZSTD_memset */
+#include <string.h>
 
 #include "compiler.h" /* MEM_STATIC */
 #define ZSTD_STATIC_LINKING_ONLY

@@ -33,12 +33,12 @@
 #define HASH_READ_SIZE 8
 #define ZSTD_DUBT_UNSORTED_MARK                                                \
   1 /* For btlazy2 strategy, index ZSTD_DUBT_UNSORTED_MARK==1 means            \
-       "unsorted". It could be confused for a real successor at index "1", if                    \
-       sorted as larger than its predecessor. It's not a big deal though :                                                  \
-       candidate will just be sorted again. Additionally, candidate position 1                                            \
-       will be lost. But candidate 1 cannot hide a large tree of candidates,                       \
-       so it's a minimal loss. The benefit is that ZSTD_DUBT_UNSORTED_MARK                                   \
-       cannot be mishandled after table reuse with a different strategy. This                                                                          \
+       "unsorted". It could be confused for a real successor at index "1", if  \
+       sorted as larger than its predecessor. It's not a big deal though :     \
+       candidate will just be sorted again. Additionally, candidate position 1 \
+       will be lost. But candidate 1 cannot hide a large tree of candidates,   \
+       so it's a minimal loss. The benefit is that ZSTD_DUBT_UNSORTED_MARK     \
+       cannot be mishandled after table reuse with a different strategy. This  \
        constant is required by ZSTD_compressBlock_btlazy2() and                \
        ZSTD_reduceTable_internal() */
 
@@ -294,10 +294,10 @@ typedef struct ZSTD_MatchState_t ZSTD_MatchState_t;
 struct ZSTD_MatchState_t {
   ZSTD_window_t window; /* State for window round buffer management */
   U32 loadedDictEnd;    /* index of end of dictionary, within context's
-                         * referential.    When loadedDictEnd != 0, a dictionary is in
-                         * use, and still valid.    This relies on a mechanism to set
-                         * loadedDictEnd=0 when dictionary is no longer within
-                         * distance.    Such mechanism is provided within
+                         * referential.    When loadedDictEnd != 0, a dictionary is
+                         * in    use, and still valid.    This relies on a mechanism
+                         * to set    loadedDictEnd=0 when dictionary is no longer
+                         * within    distance.    Such mechanism is provided within
                          * ZSTD_window_enforceMaxDist() and
                          * ZSTD_checkDictValidity().    When dict referential is
                          * copied into active context (i.e. not attached),

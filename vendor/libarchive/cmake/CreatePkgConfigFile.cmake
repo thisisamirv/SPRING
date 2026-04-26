@@ -2,32 +2,32 @@
 #
 
 # Set the required variables (we use the same input file as autotools)
-SET(prefix ${CMAKE_INSTALL_PREFIX})
-SET(exec_prefix \${prefix})
-SET(libdir \${exec_prefix}/lib)
-SET(includedir \${prefix}/include)
+set(prefix ${CMAKE_INSTALL_PREFIX})
+set(exec_prefix \${prefix})
+set(libdir \${exec_prefix}/lib)
+set(includedir \${prefix}/include)
 # Now, this is not particularly pretty, nor is it terribly accurate...
 # Loop over all our additional libs
-FOREACH(mylib ${ADDITIONAL_LIBS})
-	# Extract the filename from the absolute path
-	GET_FILENAME_COMPONENT(mylib_name ${mylib} NAME_WE)
-	# Strip the lib prefix
-	STRING(REGEX REPLACE "^lib" "" mylib_name ${mylib_name})
-	# Append it to our LIBS string
-	SET(LIBS "${LIBS} -l${mylib_name}")
-ENDFOREACH()
+foreach(mylib ${ADDITIONAL_LIBS})
+    # Extract the filename from the absolute path
+    get_filename_component(mylib_name ${mylib} NAME_WE)
+    # Strip the lib prefix
+    string(REGEX REPLACE "^lib" "" mylib_name ${mylib_name})
+    # Append it to our LIBS string
+    set(LIBS "${LIBS} -l${mylib_name}")
+endforeach()
 # libxml2 is easier, since it's already using pkg-config
-FOREACH(mylib ${PC_LIBXML_STATIC_LDFLAGS})
-	SET(LIBS "${LIBS} ${mylib}")
-ENDFOREACH()
+foreach(mylib ${PC_LIBXML_STATIC_LDFLAGS})
+    set(LIBS "${LIBS} ${mylib}")
+endforeach()
 # FIXME: The order of the libraries doesn't take dependencies into account,
 #	 thus there's a good chance it'll make some binutils versions unhappy...
 #	 This only affects Libs.private (looked up for static builds) though.
-CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/build/pkgconfig/libarchive.pc.in
-		${CMAKE_CURRENT_BINARY_DIR}/build/pkgconfig/libarchive.pc
-		@ONLY)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/build/pkgconfig/libarchive.pc.in
+    ${CMAKE_CURRENT_BINARY_DIR}/build/pkgconfig/libarchive.pc
+    @ONLY)
 # And install it, of course ;).
-IF(ENABLE_INSTALL)
-  INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/build/pkgconfig/libarchive.pc
-          DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
-ENDIF()
+if(ENABLE_INSTALL)
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/build/pkgconfig/libarchive.pc
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
+endif()

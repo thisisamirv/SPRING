@@ -21,7 +21,7 @@ if(ZSTD_MULTITHREAD_SUPPORT AND UNIX)
         set(THREADS_PREFER_PTHREAD_FLAG ON)
         find_package(Threads REQUIRED)
     endif()
-    
+
     if(CMAKE_USE_PTHREADS_INIT)
         set(THREADS_LIBS "${CMAKE_THREAD_LIBS_INIT}")
     else()

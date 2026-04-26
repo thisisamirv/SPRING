@@ -2,10 +2,8 @@
 #define SPRING_QVZ_QV_COMPRESSOR_H_
 
 #include <math.h>
-#include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <unistd.h>
 
 #define m_arith 22
 

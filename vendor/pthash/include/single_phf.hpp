@@ -3,10 +3,8 @@
 #include "builders/external_memory_builder_single_phf.hpp"
 #include "builders/internal_memory_builder_single_phf.hpp"
 #include "builders/util.hpp"
-#include "utils/bucketers.hpp"
+#include "elias_fano.hpp"
 #include "utils/dense_encoders.hpp"
-#include "utils/encoders.hpp"
-
 
 namespace pthash {
 

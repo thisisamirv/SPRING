@@ -1720,9 +1720,9 @@ static void ZSTD_assertValidSequence(ZSTD_DCtx const *dctx, BYTE const *op,
 #ifndef ZSTD_FORCE_DECOMPRESS_SEQUENCES_LONG
 
 FORCE_INLINE_TEMPLATE
-    size_t DONT_VECTORIZE ZSTD_decompressSequences_bodySplitLitBuffer(
-        ZSTD_DCtx *dctx, void *dst, size_t maxDstSize, const void *seqStart,
-        size_t seqSize, int nbSeq, const ZSTD_longOffset_e isLongOffset) {
+size_t DONT_VECTORIZE ZSTD_decompressSequences_bodySplitLitBuffer(
+    ZSTD_DCtx *dctx, void *dst, size_t maxDstSize, const void *seqStart,
+    size_t seqSize, int nbSeq, const ZSTD_longOffset_e isLongOffset) {
   BYTE *const ostart = (BYTE *)dst;
   BYTE *const oend =
       (BYTE *)ZSTD_maybeNullPtrAdd(ostart, (ptrdiff_t)maxDstSize);
@@ -1800,8 +1800,8 @@ FORCE_INLINE_TEMPLATE
                              * the literal buffer
                              *   - ZSTD_decompressSequences_body
                              * Alignment choices are made to minimize large swings on bad cases and
-                             * influence on performance                       from changes external to this code, rather
-                             * than to overoptimize on the current commit.
+                             * influence on performance                       from changes external to
+                             * this code, rather                       than to overoptimize on the current commit.
                              *
                              * If you are seeing performance stability this script can help test.
                              * It tests on 4 commits in zstd where I saw performance change.

@@ -41,8 +41,9 @@ const char *HUF_getErrorName(
 #define HUF_TABLELOG_MAX                                                       \
   12 /* max runtime value of tableLog (due to static allocation); can be       \
         modified up to HUF_TABLELOG_ABSOLUTEMAX */
-#define HUF_TABLELOG_DEFAULT 11 /* default tableLog value when none specified  \
-                                 */
+#define HUF_TABLELOG_DEFAULT                                                   \
+  11 /* default tableLog value when none specified                             \
+      */
 #define HUF_SYMBOLVALUE_MAX 255
 
 #define HUF_TABLELOG_ABSOLUTEMAX                                               \

@@ -17,6 +17,6 @@ add_library(qvz STATIC
 target_include_directories(qvz PUBLIC . .. src)
 set_target_properties(qvz PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     set_source_files_properties(src/codebook.cpp PROPERTIES COMPILE_OPTIONS "-Wno-unused-result")
 endif()

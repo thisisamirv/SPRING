@@ -6,7 +6,6 @@
 #include "builders/internal_memory_builder_partitioned_phf.hpp"
 #include "single_phf.hpp"
 
-
 namespace pthash {
 
 template <typename Hasher, typename Bucketer, typename Encoder, bool Minimal>

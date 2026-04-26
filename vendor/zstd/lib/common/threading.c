@@ -15,8 +15,6 @@
  * This file will hold wrapper for systems, which do not support pthreads
  */
 
-#include "threading.h"
-
 /* create fake symbol to avoid empty translation unit warning */
 int g_ZSTD_threading_useless_symbol;
 

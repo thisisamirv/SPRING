@@ -18,14 +18,14 @@ foreach(target_suffix IN ITEMS "_shared" "_static" "")
     if(TARGET "libzstd${target_suffix}")
         # Export targets for build directory
         export(EXPORT "zstdExports${target_suffix}"
-                FILE "${CMAKE_CURRENT_BINARY_DIR}/zstdTargets${target_suffix}.cmake"
-                NAMESPACE zstd::
+            FILE "${CMAKE_CURRENT_BINARY_DIR}/zstdTargets${target_suffix}.cmake"
+            NAMESPACE zstd::
         )
         # Install exported targets
         install(EXPORT "zstdExports${target_suffix}"
-                FILE "zstdTargets${target_suffix}.cmake"
-                NAMESPACE zstd::
-                DESTINATION ${ConfigPackageLocation}
+            FILE "zstdTargets${target_suffix}.cmake"
+            NAMESPACE zstd::
+            DESTINATION ${ConfigPackageLocation}
         )
     endif()
 endforeach()

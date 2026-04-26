@@ -12,13 +12,13 @@ endif()
 
 set(LIBRAPIDARCHIVE_NEEDS_RPMALLOC_SUBMODULE OFF)
 if(LIBRAPIDARCHIVE_WITH_RPMALLOC AND
-   NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/external/rpmalloc/rpmalloc/rpmalloc.h)
+    NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/external/rpmalloc/rpmalloc/rpmalloc.h)
     set(LIBRAPIDARCHIVE_NEEDS_RPMALLOC_SUBMODULE ON)
 endif()
 
 if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/external/cxxopts/include/cxxopts.hpp OR
-   LIBRAPIDARCHIVE_NEEDS_ZLIB_SUBMODULE OR
-   LIBRAPIDARCHIVE_NEEDS_RPMALLOC_SUBMODULE)
+    LIBRAPIDARCHIVE_NEEDS_ZLIB_SUBMODULE OR
+    LIBRAPIDARCHIVE_NEEDS_RPMALLOC_SUBMODULE)
     find_package(Git REQUIRED)
 
     execute_process(
@@ -58,7 +58,7 @@ if(LIBRAPIDARCHIVE_WITH_RPMALLOC)
     endif()
 
     option(ENABLE_RPMALLOC_STATISTICS "Enables statistics for rpmalloc" OFF)
-    if (ENABLE_RPMALLOC_STATISTICS)
+    if(ENABLE_RPMALLOC_STATISTICS)
         target_compile_definitions(rpmalloc PRIVATE -DENABLE_STATISTICS=1)
     endif()
 endif()
@@ -131,7 +131,7 @@ elseif(NOT LIBRAPIDARCHIVE_USE_SYSTEM_ZLIB)
     target_sources(zlibstatic PRIVATE
         ${ZLIB_HOME}/inflate.c
         ${ZLIB_HOME}/inflate.h
-        ${ZLIB_HOME}/adler32.c  # zutil.h is the corresponding header
+        ${ZLIB_HOME}/adler32.c # zutil.h is the corresponding header
         ${ZLIB_HOME}/crc32.c
         ${ZLIB_HOME}/crc32.h
         ${ZLIB_HOME}/inffixed.h
@@ -166,12 +166,12 @@ endif()
 if(LIBRAPIDARCHIVE_WITH_ISAL)
     include(FetchContent)
 
-    FetchContent_Declare(isal_project SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/isa-l)
+    fetchcontent_declare(isal_project SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/isa-l)
     # https://discourse.cmake.org/t/fetchcontent-declare-with-cmake-args-does-not-work/11227
     # https://discourse.cmake.org/t/what-is-the-correct-way-to-set-options-of-a-project-before-fetch-content/268
     set(ISAL_BUILD_TESTS OFF CACHE BOOL "Disable ISA-L tests" FORCE)
     set(ISAL_BUILD_SHARED_LIBS OFF CACHE BOOL "Build static ISA-L" FORCE)
-    FetchContent_MakeAvailable(isal_project)
+    fetchcontent_makeavailable(isal_project)
 
     # I am not using the guarded <isa-l/igzip_lib.h> includes because it would not work in the current setup.py :(.
     # The guarded includes are also not necessary or possible with FetchContent, only with ExternalProject_Add!
@@ -184,9 +184,9 @@ add_subdirectory(filereader)
 add_subdirectory(huffman)
 add_subdirectory(rapidgzip)
 add_subdirectory(tools)
-if (LIBRAPIDARCHIVE_BUILD_BENCHMARKS)
+if(LIBRAPIDARCHIVE_BUILD_BENCHMARKS)
     add_subdirectory(benchmarks)
 endif()
-if (LIBRAPIDARCHIVE_BUILD_TESTS)
+if(LIBRAPIDARCHIVE_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
