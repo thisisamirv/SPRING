@@ -53,14 +53,16 @@ static const struct {
        archive_write_set_format_iso9660 }, { ARCHIVE_FORMAT_MTREE,
        archive_write_set_format_mtree },
     */
-    {ARCHIVE_FORMAT_RAW, archive_write_set_format_raw},
     /*
+            { ARCHIVE_FORMAT_RAW,		archive_write_set_format_raw },
             { ARCHIVE_FORMAT_SHAR,		archive_write_set_format_shar },
             { ARCHIVE_FORMAT_SHAR_BASE,	archive_write_set_format_shar },
             { ARCHIVE_FORMAT_SHAR_DUMP,	archive_write_set_format_shar_dump },
     */
     {ARCHIVE_FORMAT_TAR, archive_write_set_format_pax_restricted},
-    {ARCHIVE_FORMAT_TAR_GNUTAR, archive_write_set_format_gnutar},
+    /*
+            { ARCHIVE_FORMAT_TAR_GNUTAR,	archive_write_set_format_gnutar },
+    */
     {ARCHIVE_FORMAT_TAR_PAX_INTERCHANGE, archive_write_set_format_pax},
     {ARCHIVE_FORMAT_TAR_PAX_RESTRICTED,
      archive_write_set_format_pax_restricted},

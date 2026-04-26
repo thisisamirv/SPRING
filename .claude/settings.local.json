@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(xargs -I{} basename {})",
-      "Bash(rm -f archive_read_support_filter_all.c archive_read_support_filter_program.c archive_write_add_filter_program.c archive_read_support_format_all.c archive_read_support_format_7zip.c archive_read_support_format_ar.c archive_read_support_format_cab.c archive_read_support_format_cpio.c archive_read_support_format_iso9660.c archive_read_support_format_lha.c archive_read_support_format_mtree.c archive_read_support_format_rar.c archive_read_support_format_rar5.c archive_read_support_format_warc.c archive_read_support_format_xar.c archive_read_support_format_zip.c archive_write_set_format_7zip.c archive_write_set_format_ar.c archive_write_set_format_cpio.c archive_write_set_format_cpio_binary.c archive_write_set_format_cpio_newc.c archive_write_set_format_cpio_odc.c archive_write_set_format_iso9660.c archive_write_set_format_mtree.c archive_write_set_format_shar.c archive_write_set_format_warc.c archive_write_set_format_xar.c archive_write_set_format_zip.c archive_blake2.h archive_blake2_impl.h archive_blake2s_ref.c archive_blake2sp_ref.c archive_read_disk_set_standard_lookup.c config_freebsd.h CTestConfig.cmake module.modulemap '*.3' '*.5')",
-      "Bash(rm -rf cmake/)"
-    ]
-  }
-}
