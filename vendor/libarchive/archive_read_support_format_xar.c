@@ -28,12 +28,6 @@
 #error "archive_platform.h must be included first"
 #endif
 
-#ifdef HAVE_ERRNO_H
-#include <errno.h>
-#endif
-#ifdef HAVE_STDLIB_H
-#include <stdlib.h>
-#endif
 #if HAVE_LIBXML_XMLREADER_H
 #include <libxml/xmlreader.h>
 #elif HAVE_BSDXML_H
@@ -67,22 +61,10 @@
 #error "archive_digest_private.h must be included"
 #endif
 
-#include "archive_endian.h"
-
-#ifndef ARCHIVE_ENDIAN_H_INCLUDED
-#error "archive_endian.h must be included"
-#endif
-
 #include "archive_entry.h"
 
 #ifndef ARCHIVE_ENTRY_H_INCLUDED
 #error "archive_entry.h must be included"
-#endif
-
-#include "archive_entry_locale.h"
-
-#ifndef ARCHIVE_ENTRY_LOCALE_H_INCLUDED
-#error "archive_entry_locale.h must be included"
 #endif
 
 #include "archive_private.h"

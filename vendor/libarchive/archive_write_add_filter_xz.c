@@ -30,16 +30,6 @@
 #error "archive_platform.h must be included first"
 #endif
 
-#ifdef HAVE_ERRNO_H
-#include <errno.h>
-#endif
-#ifdef HAVE_STDLIB_H
-#include <stdlib.h>
-#endif
-#ifdef HAVE_STRING_H
-#include <string.h>
-#endif
-#include <time.h>
 #ifdef HAVE_LZMA_H
 #include <lzma.h>
 #endif
@@ -48,12 +38,6 @@
 
 #ifndef ARCHIVE_H_INCLUDED
 #error "archive.h must be included"
-#endif
-
-#include "archive_endian.h"
-
-#ifndef ARCHIVE_ENDIAN_H_INCLUDED
-#error "archive_endian.h must be included"
 #endif
 
 #include "archive_private.h"

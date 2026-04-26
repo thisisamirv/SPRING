@@ -25,6 +25,10 @@
 
 #include "archive_platform.h"
 
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
+#endif
+
 #if defined(_WIN32) && !defined(__CYGWIN__)
 #include "archive_cmdline_private.h"
 #include "archive_string.h"

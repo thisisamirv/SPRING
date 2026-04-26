@@ -23,8 +23,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "archive_platform.h"
-
 #include "archive_options_private.h"
 #include "archive_write_private.h"
 

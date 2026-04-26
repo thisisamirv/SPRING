@@ -24,7 +24,9 @@
  */
 #define __LIBARCHIVE_CONFIG_H_INCLUDED 1
 
+#ifdef __FreeBSD__
 #include <osreldate.h>
+#endif
 
 /* FreeBSD 5.0 and later has ACL and extattr support. */
 #if __FreeBSD__ > 4

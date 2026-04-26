@@ -29,13 +29,9 @@
 #error "archive_platform.h must be included first"
 #endif
 
-#ifdef HAVE_ERRNO_H
-#include <errno.h>
-#endif
 #ifdef HAVE_LIMITS_H
 #include <limits.h>
 #endif
-#include <stdlib.h>
 #if HAVE_LIBXML_XMLWRITER_H
 #include <libxml/xmlwriter.h>
 #if defined(LIBXML_VERSION) && LIBXML_VERSION >= 20703
@@ -69,22 +65,10 @@
 #error "archive_digest_private.h must be included"
 #endif
 
-#include "archive_endian.h"
-
-#ifndef ARCHIVE_ENDIAN_H_INCLUDED
-#error "archive_endian.h must be included"
-#endif
-
 #include "archive_entry.h"
 
 #ifndef ARCHIVE_ENTRY_H_INCLUDED
 #error "archive_entry.h must be included"
-#endif
-
-#include "archive_entry_locale.h"
-
-#ifndef ARCHIVE_ENTRY_LOCALE_H_INCLUDED
-#error "archive_entry_locale.h must be included"
 #endif
 
 #include "archive_private.h"
@@ -99,11 +83,6 @@
 #error "archive_rb.h must be included"
 #endif
 
-#include "archive_string.h"
-
-#ifndef ARCHIVE_STRING_H_INCLUDED
-#error "archive_string.h must be included"
-#endif
 
 #include "archive_write_private.h"
 

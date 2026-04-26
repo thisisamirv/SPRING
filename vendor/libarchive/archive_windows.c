@@ -58,7 +58,7 @@
 
 #include "archive_platform_stat.h"
 
-#ifndef ARCHIVE_PLATFORM_STAT_H
+#ifndef ARCHIVE_PLATFORM_STAT_H_INCLUDED
 #error "archive_platform_stat.h must be included"
 #endif
 
@@ -79,7 +79,6 @@
 #ifdef HAVE_SYS_UTIME_H
 #include <sys/utime.h>
 #endif
-#include <locale.h>
 #include <process.h>
 #include <share.h>
 #include <stdlib.h>

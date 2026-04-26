@@ -84,9 +84,7 @@ typedef int pid_t;
 
 #include "archive_platform_stat.h"
 
-#if defined(__MINGW32__) || defined(__MINGW64__)
 typedef unsigned int id_t;
-#endif
 
 #if defined(__BORLANDC__)
 #pragma warn - 8068 /* Constant out of range in comparison. */

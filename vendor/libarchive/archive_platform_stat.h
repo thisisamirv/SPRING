@@ -15,12 +15,17 @@
  * minimal conservative typedefs so this header can be parsed. Real builds
  * should define __LIBARCHIVE_BUILD and get correct system definitions. */
 #include <stdint.h>
+#ifdef _WIN32
+/* Let ucrt provide ino_t/dev_t to avoid redefinition conflicts. */
+#include <sys/types.h>
+#else
 #if !defined(ino_t)
 typedef uint64_t ino_t;
 #endif
 #if !defined(dev_t)
 typedef uint64_t dev_t;
 #endif
+#endif /* _WIN32 */
 #if !defined(uid_t)
 typedef unsigned int uid_t;
 #endif

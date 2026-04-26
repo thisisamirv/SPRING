@@ -29,11 +29,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 You can contact the author at :
 - xxHash source repository : http://code.google.com/p/xxhash/
 */
-#include "archive_platform.h"
-
-#include <stdlib.h>
-#include <string.h>
-
 #include "archive_xxhash.h"
 
 #ifndef ARCHIVE_XXHASH_H_INCLUDED
@@ -41,6 +36,9 @@ You can contact the author at :
 #endif
 
 #ifdef HAVE_LIBLZ4
+
+#include <stdlib.h>
+#include <string.h>
 
 /***************************************
 ** Tuning parameters
@@ -104,9 +102,6 @@ set the #define below to 1.
 /***************************************
 ** Includes & Memory related functions
 ****************************************/
-#define XXH_malloc malloc
-#define XXH_free free
-#define XXH_memcpy memcpy
 
 static unsigned int XXH32(const void *, unsigned int, unsigned int);
 static void *XXH32_init(unsigned int);
@@ -385,7 +380,7 @@ static XXH_errorcode XXH32_resetState(void *state_in, U32 seed) {
 }
 
 static void *XXH32_init(U32 seed) {
-  void *state = XXH_malloc(sizeof(struct XXH_state32_t));
+  void *state = malloc(sizeof(struct XXH_state32_t));
   XXH32_resetState(state, seed);
   return state;
 }
@@ -407,14 +402,14 @@ static FORCE_INLINE XXH_errorcode XXH32_update_endian(void *state_in,
 
   if (state->memsize + len < 16) /* fill in tmp buffer */
   {
-    XXH_memcpy(state->memory + state->memsize, input, len);
+    memcpy(state->memory + state->memsize, input, len);
     state->memsize += len;
     return XXH_OK;
   }
 
   if (state->memsize) /* some data left from previous update */
   {
-    XXH_memcpy(state->memory + state->memsize, input, 16 - state->memsize);
+    memcpy(state->memory + state->memsize, input, 16 - state->memsize);
     {
       const U32 *p32 = (const U32 *)state->memory;
       state->v1 += XXH_readLE32(p32, endian) * PRIME32_2;
@@ -471,7 +466,7 @@ static FORCE_INLINE XXH_errorcode XXH32_update_endian(void *state_in,
   }
 
   if (p < bEnd) {
-    XXH_memcpy(state->memory, p, bEnd - p);
+    memcpy(state->memory, p, bEnd - p);
     state->memsize = (int)(bEnd - p);
   }
 
@@ -537,7 +532,7 @@ static U32 XXH32_intermediateDigest(void *state_in) {
 static U32 XXH32_digest(void *state_in) {
   U32 h32 = XXH32_intermediateDigest(state_in);
 
-  XXH_free(state_in);
+  free(state_in);
 
   return h32;
 }

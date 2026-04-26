@@ -35,7 +35,6 @@
 
 #include "archive_acl_private.h"
 #include "archive_entry.h"
-#include "archive_platform_acl.h"
 
 struct archive_write_disk;
 

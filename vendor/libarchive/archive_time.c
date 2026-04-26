@@ -23,21 +23,22 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "archive_platform.h"
+#include "archive_time_private.h"
+
+#ifndef ARCHIVE_TIME_PRIVATE_H_INCLUDED
+#error "archive_time_private.h must be included"
+#endif
+
 #include "archive_private.h"
 
 #ifndef ARCHIVE_PRIVATE_H_INCLUDED
 #error "archive_private.h must be included"
 #endif
 
-#include "archive_time_private.h"
-
-#ifndef ARCHIVE_TIME_PRIVATE_H_INCLUDED
-#error "archive_time_private.h must be included"
-#endif
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define NTFS_EPOC_TIME ARCHIVE_LITERAL_ULL(11644473600)
 #define NTFS_TICKS ARCHIVE_LITERAL_ULL(10000000)

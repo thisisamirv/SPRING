@@ -2431,7 +2431,8 @@ static long get_gmoffset(struct tm *tm) {
 
 #if defined(HAVE__GET_TIMEZONE)
   _get_timezone(&offset);
-#elif defined(__CYGWIN__) || defined(__MINGW32__) || defined(__BORLANDC__)
+#elif defined(__CYGWIN__) || defined(__MINGW32__) || defined(__BORLANDC__) || \
+    defined(_WIN32)
   offset = _timezone;
 #else
   offset = timezone;
@@ -5651,11 +5652,12 @@ static void idr_set_num(unsigned char *p, int num) {
                               'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q',
                               'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'};
 
-  num %= sizeof(xdig) * sizeof(xdig) * sizeof(xdig);
-  p[0] = xdig[(num / (sizeof(xdig) * sizeof(xdig)))];
-  num %= sizeof(xdig) * sizeof(xdig);
-  p[1] = xdig[(num / sizeof(xdig))];
-  num %= sizeof(xdig);
+  const size_t base = sizeof(xdig);
+  num %= (int)(base * base * base);
+  p[0] = xdig[(num / (int)(base * base))];
+  num %= (int)(base * base);
+  p[1] = xdig[(num / (int)base)];
+  num %= (int)base;
   p[2] = xdig[num];
 }
 

@@ -26,6 +26,10 @@
 
 #include "archive_platform.h"
 
+#ifndef ARCHIVE_PLATFORM_H_INCLUDED
+#error "archive_platform.h must be included first"
+#endif
+
 /* This capability is only available on POSIX systems. */
 #if defined(HAVE_PIPE) && defined(HAVE_FCNTL) &&                               \
     (defined(HAVE_FORK) || defined(HAVE_VFORK) || defined(HAVE_POSIX_SPAWNP))
