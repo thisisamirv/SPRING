@@ -9,7 +9,6 @@ SPRING_BIN="$BUILD_DIR/spring2"
 COMPILE_COMMANDS="$BUILD_DIR/compile_commands.json"
 readonly DEFAULT_CPP_ROOTS=("$ROOT_DIR/src" "$ROOT_DIR/experimental" "$ROOT_DIR/tests")
 readonly DEFAULT_PY_ROOTS=("$ROOT_DIR/experimental" "$ROOT_DIR/tests" "$ROOT_DIR/dev")
-readonly VENDOR_ROOT="$ROOT_DIR/vendor"
 readonly COMPILE_COMMANDS_FILE_SET_PATH="$BUILD_DIR/.compile_commands_file_set"
 COMPILE_COMMANDS_FILE_SET_INITIALIZED=false
 
@@ -137,30 +136,6 @@ normalize_repo_path() {
 	esac
 }
 
-is_vendored_path() {
-	case "$1" in
-	"$VENDOR_ROOT" | "$VENDOR_ROOT"/*) return 0 ;;
-	*) return 1 ;;
-	esac
-}
-
-collect_first_party_paths() {
-	local path
-
-	for path in "$@"; do
-		path=$(normalize_repo_path "$path")
-
-		if is_vendored_path "$path"; then
-			printf 'Skipping vendored path %s.\n' "$path" >&2
-			continue
-		fi
-
-		if [[ -e "$path" ]]; then
-			printf '%s\n' "$path"
-		fi
-	done
-}
-
 collect_cpp_sources() {
 	local -a paths=()
 	local path
@@ -170,14 +145,6 @@ collect_cpp_sources() {
 		paths=("$@")
 	else
 		paths=("${DEFAULT_CPP_ROOTS[@]}")
-	fi
-
-	if [[ $# -gt 0 ]]; then
-		local -a filtered_paths=()
-		while IFS= read -r path; do
-			filtered_paths+=("$path")
-		done < <(collect_first_party_paths "${paths[@]}")
-		paths=("${filtered_paths[@]}")
 	fi
 
 	for path in "${paths[@]}"; do
@@ -203,14 +170,6 @@ collect_python_sources() {
 		paths=("$@")
 	else
 		paths=("${DEFAULT_PY_ROOTS[@]}")
-	fi
-
-	if [[ $# -gt 0 ]]; then
-		local -a filtered_paths=()
-		while IFS= read -r path; do
-			filtered_paths+=("$path")
-		done < <(collect_first_party_paths "${paths[@]}")
-		paths=("${filtered_paths[@]}")
 	fi
 
 	for path in "${paths[@]}"; do

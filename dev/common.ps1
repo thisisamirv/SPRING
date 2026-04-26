@@ -19,7 +19,6 @@ $DEFAULT_PY_ROOTS = @(
     (Join-Path $ROOT_DIR "dev")
 )
 
-$VENDOR_ROOT = Join-Path $ROOT_DIR "vendor"
 $global:CompileCommandsFileSet = $null
 
 function NormalizeCompileDbPath {
@@ -123,31 +122,12 @@ function Resolve-RepoPath {
     return (Join-Path $ROOT_DIR $path)
 }
 
-function Test-VendoredPath {
-    param ($path)
-    $resolvedPath = Resolve-RepoPath $path
-    return $resolvedPath.StartsWith($VENDOR_ROOT, [System.StringComparison]::OrdinalIgnoreCase)
-}
-
-function Get-FirstPartyPaths {
-    param ([string[]]$paths)
-    $results = @()
-    foreach ($p in $paths) {
-        $resolved = Resolve-RepoPath $p
-        if (Test-VendoredPath $resolved) {
-            Write-Host "Skipping vendored path: $resolved" -ForegroundColor Gray
-            continue
-        }
-        if (Test-Path $resolved) {
-            $results += $resolved
-        }
-    }
-    return $results
-}
 
 function Get-CppSources {
     param ([string[]]$targetPaths)
-    $searchPaths = if ($targetPaths) { Get-FirstPartyPaths $targetPaths } else { $DEFAULT_CPP_ROOTS }
+    $searchPaths = if ($targetPaths) {
+        $targetPaths | ForEach-Object { Resolve-RepoPath $_ } | Where-Object { Test-Path $_ }
+    } else { $DEFAULT_CPP_ROOTS }
     $results = @()
     foreach ($p in $searchPaths) {
         if (Test-Path $p -PathType Container) {
@@ -162,7 +142,9 @@ function Get-CppSources {
 
 function Get-PythonSources {
     param ([string[]]$targetPaths)
-    $searchPaths = if ($targetPaths) { Get-FirstPartyPaths $targetPaths } else { $DEFAULT_PY_ROOTS }
+    $searchPaths = if ($targetPaths) {
+        $targetPaths | ForEach-Object { Resolve-RepoPath $_ } | Where-Object { Test-Path $_ }
+    } else { $DEFAULT_PY_ROOTS }
     $results = @()
     foreach ($p in $searchPaths) {
         if (Test-Path $p -PathType Container) {

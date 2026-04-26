@@ -4,6 +4,8 @@ $ErrorActionPreference = 'Stop'
 # Import common utilities
 . (Join-Path $PSScriptRoot "common.ps1")
 
+$VENDOR_ROOT = Join-Path $ROOT_DIR "vendor"
+
 # Locate clang-tidy
 $clangTidyBin = ""
 foreach ($candidate in @("clang-tidy", "clang-tidy-18", "clang-tidy-17", "clang-tidy-16")) {
