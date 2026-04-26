@@ -129,145 +129,145 @@ populate_resource_vars() {
 # --- Main Logic ---
 
 run_single_file_benchmark() {
-    local input_path="$1"
-    INPUT_ABS=$(realpath -m -- "$input_path")
-    INPUT_BASENAME=$(basename -- "$INPUT_ABS")
-    INPUT_STEM=${INPUT_BASENAME%.*}
-    WORK_DIR="$WORK_ROOT_DIR/$INPUT_STEM.work"
-    OUTPUT_FILE="$OUTPUT_DIR/$INPUT_STEM.sp"
-    DECOMPRESSED_OUTPUT_FILE="$OUTPUT_DIR/$INPUT_STEM.roundtrip.fastq"
+	local input_path="$1"
+	INPUT_ABS=$(realpath -m -- "$input_path")
+	INPUT_BASENAME=$(basename -- "$INPUT_ABS")
+	INPUT_STEM=${INPUT_BASENAME%.*}
+	WORK_DIR="$WORK_ROOT_DIR/$INPUT_STEM.work"
+	OUTPUT_FILE="$OUTPUT_DIR/$INPUT_STEM.sp"
+	DECOMPRESSED_OUTPUT_FILE="$OUTPUT_DIR/$INPUT_STEM.roundtrip.fastq"
 
-    echo -e "\n=== Benchmarking $INPUT_BASENAME ==="
-    
-    MAX_READ_LENGTH=$(awk 'NR % 4 == 2 { if (length($0) > max_len) max_len = length($0) } END { print max_len + 0 }' "$INPUT_ABS")
+	echo -e "\n=== Benchmarking $INPUT_BASENAME ==="
 
-    mkdir -p "$INPUT_DIR" "$LOG_DIR" "$OUTPUT_DIR" "$WORK_ROOT_DIR"
-    rm -rf "$WORK_DIR"
-    mkdir -p "$WORK_DIR"
-    rm -f "$OUTPUT_FILE"
-    rm -f "$DECOMPRESSED_OUTPUT_FILE"
+	MAX_READ_LENGTH=$(awk 'NR % 4 == 2 { if (length($0) > max_len) max_len = length($0) } END { print max_len + 0 }' "$INPUT_ABS")
 
-    echo "Running Spring lossless compression (auto-assay)"
-    spring_args=(
-        -c
-        --R1 "$INPUT_ABS"
-        -o "$OUTPUT_FILE"
-        -w "$WORK_DIR"
-        -t "$THREADS"
-        -q lossless
-        --assay auto
-    )
-    run_with_resource_log "$COMPRESS_RESOURCE_LOG" "$SPRING_BIN" "${spring_args[@]}"
+	mkdir -p "$INPUT_DIR" "$LOG_DIR" "$OUTPUT_DIR" "$WORK_ROOT_DIR"
+	rm -rf "$WORK_DIR"
+	mkdir -p "$WORK_DIR"
+	rm -f "$OUTPUT_FILE"
+	rm -f "$DECOMPRESSED_OUTPUT_FILE"
 
-    echo "Running Spring decompression"
-    decompress_args=(
-        -d
-        -i "$OUTPUT_FILE"
-        -o "$DECOMPRESSED_OUTPUT_FILE"
-        -w "$WORK_DIR"
-    )
-    run_with_resource_log "$DECOMPRESS_RESOURCE_LOG" "$SPRING_BIN" "${decompress_args[@]}"
+	echo "Running Spring lossless compression (auto-assay)"
+	spring_args=(
+		-c
+		--R1 "$INPUT_ABS"
+		-o "$OUTPUT_FILE"
+		-w "$WORK_DIR"
+		-t "$THREADS"
+		-q lossless
+		--assay auto
+	)
+	run_with_resource_log "$COMPRESS_RESOURCE_LOG" "$SPRING_BIN" "${spring_args[@]}"
 
-    INPUT_SIZE=$(stat -c%s "$INPUT_ABS")
-    OUTPUT_SIZE=$(stat -c%s "$OUTPUT_FILE")
-    
-    roundtrip_status="different"
-    if [[ "$INPUT_ABS" == *.gz ]]; then
-        if cmp -s <(gzip -dc "$INPUT_ABS") "$DECOMPRESSED_OUTPUT_FILE"; then
-            roundtrip_status="identical"
-        fi
-    else
-        if cmp -s "$INPUT_ABS" "$DECOMPRESSED_OUTPUT_FILE"; then
-            roundtrip_status="identical"
-        fi
-    fi
+	echo "Running Spring decompression"
+	decompress_args=(
+		-d
+		-i "$OUTPUT_FILE"
+		-o "$DECOMPRESSED_OUTPUT_FILE"
+		-w "$WORK_DIR"
+	)
+	run_with_resource_log "$DECOMPRESS_RESOURCE_LOG" "$SPRING_BIN" "${decompress_args[@]}"
 
-    echo "  Results for $INPUT_BASENAME"
-    echo "    Compressed size: $OUTPUT_SIZE bytes"
-    echo "    Bit-perfect:     $roundtrip_status"
+	INPUT_SIZE=$(stat -c%s "$INPUT_ABS")
+	OUTPUT_SIZE=$(stat -c%s "$OUTPUT_FILE")
+
+	roundtrip_status="different"
+	if [[ "$INPUT_ABS" == *.gz ]]; then
+		if cmp -s <(gzip -dc "$INPUT_ABS") "$DECOMPRESSED_OUTPUT_FILE"; then
+			roundtrip_status="identical"
+		fi
+	else
+		if cmp -s "$INPUT_ABS" "$DECOMPRESSED_OUTPUT_FILE"; then
+			roundtrip_status="identical"
+		fi
+	fi
+
+	echo "  Results for $INPUT_BASENAME"
+	echo "    Compressed size: $OUTPUT_SIZE bytes"
+	echo "    Bit-perfect:     $roundtrip_status"
 }
 
 run_assay_suite() {
-    echo -e "\n--- Running Assay Benchmark Suite ---"
+	echo -e "\n--- Running Assay Benchmark Suite ---"
 
-    samples=(
-        "Methylation (test_3);test_3_R1.fastq.gz;test_3_R2.fastq.gz;;;methyl"
-        "sc-ATAC (test_4);test_4_R1.fastq.gz;test_4_R2.fastq.gz;test_4_R3.fastq.gz;test_4_I1.fastq.gz;sc-atac"
-        "sc-RNA (test_5);test_5_R1.fastq.gz;test_5_R2.fastq.gz;test_5_I1.fastq.gz;test_5_I2.fastq.gz;sc-rna"
-    )
+	samples=(
+		"Methylation (test_3);test_3_R1.fastq.gz;test_3_R2.fastq.gz;;;methyl"
+		"sc-ATAC (test_4);test_4_R1.fastq.gz;test_4_R2.fastq.gz;test_4_R3.fastq.gz;test_4_I1.fastq.gz;sc-atac"
+		"sc-RNA (test_5);test_5_R1.fastq.gz;test_5_R2.fastq.gz;test_5_I1.fastq.gz;test_5_I2.fastq.gz;sc-rna"
+	)
 
-    for s in "${samples[@]}"; do
-        IFS=';' read -r name r1 r2 r3 i1 assay <<< "$s"
-        
-        if [[ ! -f "$INPUT_DIR/$r1" ]]; then continue; fi
-        echo -e "\n>>> Assay: $name"
+	for s in "${samples[@]}"; do
+		IFS=';' read -r name r1 r2 r3 i1 assay <<<"$s"
 
-        work="$WORK_ROOT_DIR/${r1%.*}.bench"
-        rm -rf "$work" && mkdir -p "$work"
-        out_auto="$OUTPUT_DIR/${r1%.*}.auto.sp"
-        out_dna="$OUTPUT_DIR/${r1%.*}.dna.sp"
+		if [[ ! -f "$INPUT_DIR/$r1" ]]; then continue; fi
+		echo -e "\n>>> Assay: $name"
 
-        files=("$r1")
-        [[ -n "$r2" ]] && files+=("$r2")
-        [[ -n "$r3" ]] && files+=("$r3")
-        [[ -n "$i1" ]] && files+=("$i1")
-        [[ -n "$i2" ]] && files+=("$i2")
+		work="$WORK_ROOT_DIR/${r1%.*}.bench"
+		rm -rf "$work" && mkdir -p "$work"
+		out_auto="$OUTPUT_DIR/${r1%.*}.auto.sp"
+		out_dna="$OUTPUT_DIR/${r1%.*}.dna.sp"
 
-        base_args=()
-        for f in "${files[@]}"; do
-            abs="$INPUT_DIR/$f"
-            # Extract R1, R2, etc. from filename
-            key=$(echo "$f" | grep -oP '(R|I)[0-9]')
-            base_args+=("--$key" "$abs")
-        done
+		files=("$r1")
+		[[ -n "$r2" ]] && files+=("$r2")
+		[[ -n "$r3" ]] && files+=("$r3")
+		[[ -n "$i1" ]] && files+=("$i1")
+		[[ -n "$i2" ]] && files+=("$i2")
 
-        # 1. Auto-detected assay
-        echo "  Step 1: Compression with --assay auto (expected: $assay)"
-        "$SPRING_BIN" -c "${base_args[@]}" -o "$out_auto" -w "$work" -t "$THREADS" -q lossless --assay auto
-        size_auto=$(stat -c%s "$out_auto")
+		base_args=()
+		for f in "${files[@]}"; do
+			abs="$INPUT_DIR/$f"
+			# Extract R1, R2, etc. from filename
+			key=$(echo "$f" | grep -oP '(R|I)[0-9]')
+			base_args+=("--$key" "$abs")
+		done
 
-        # 2. Restoration check (Full Round-Trip)
-        echo "  Step 2: Verifying bit-perfect restoration..."
-        decomp_dir="$work/decomp"
-        mkdir -p "$decomp_dir"
-        decomp_files=()
-        for f in "${files[@]}"; do
-            decomp_files+=("$decomp_dir/${f%.gz}")
-        done
-        "$SPRING_BIN" -d -i "$out_auto" -o "${decomp_files[@]}" -w "$work"
+		# 1. Auto-detected assay
+		echo "  Step 1: Compression with --assay auto (expected: $assay)"
+		"$SPRING_BIN" -c "${base_args[@]}" -o "$out_auto" -w "$work" -t "$THREADS" -q lossless --assay auto
+		size_auto=$(stat -c%s "$out_auto")
 
-        all_identical=true
-        for i in "${!files[@]}"; do
-            orig="$INPUT_DIR/${files[$i]}"
-            restored="${decomp_files[$i]}"
-            if ! cmp -s <(gzip -dc "$orig") "$restored"; then
-                echo "    Mismatch in ${files[$i]}!"
-                all_identical=false
-            fi
-        done
+		# 2. Restoration check (Full Round-Trip)
+		echo "  Step 2: Verifying bit-perfect restoration..."
+		decomp_dir="$work/decomp"
+		mkdir -p "$decomp_dir"
+		decomp_files=()
+		for f in "${files[@]}"; do
+			decomp_files+=("$decomp_dir/${f%.gz}")
+		done
+		"$SPRING_BIN" -d -i "$out_auto" -o "${decomp_files[@]}" -w "$work"
 
-        if [ "$all_identical" = true ]; then
-            echo "    Bit-perfect: YES"
-        else
-            echo "    Bit-perfect: NO"
-        fi
+		all_identical=true
+		for i in "${!files[@]}"; do
+			orig="$INPUT_DIR/${files[$i]}"
+			restored="${decomp_files[$i]}"
+			if ! cmp -s <(gzip -dc "$orig") "$restored"; then
+				echo "    Mismatch in ${files[$i]}!"
+				all_identical=false
+			fi
+		done
 
-        # 3. DNA-mode comparison
-        echo "  Step 3: Compression with --assay dna"
-        "$SPRING_BIN" -c "${base_args[@]}" -o "$out_dna" -w "$work" -t "$THREADS" -q lossless --assay dna
-        size_dna=$(stat -c%s "$out_dna")
+		if [ "$all_identical" = true ]; then
+			echo "    Bit-perfect: YES"
+		else
+			echo "    Bit-perfect: NO"
+		fi
 
-        # 4. Results
-        gain=$(( (size_dna - size_auto) * 100 / size_dna ))
-        echo -e "\n  Assay-specific Optimization Results:"
-        echo "    Auto-detected size ($assay): $size_auto bytes"
-        echo "    Generic DNA-mode size:       $size_dna bytes"
-        echo "    Optimization Gain:           $gain%"
-    done
+		# 3. DNA-mode comparison
+		echo "  Step 3: Compression with --assay dna"
+		"$SPRING_BIN" -c "${base_args[@]}" -o "$out_dna" -w "$work" -t "$THREADS" -q lossless --assay dna
+		size_dna=$(stat -c%s "$out_dna")
+
+		# 4. Results
+		gain=$(((size_dna - size_auto) * 100 / size_dna))
+		echo -e "\n  Assay-specific Optimization Results:"
+		echo "    Auto-detected size ($assay): $size_auto bytes"
+		echo "    Generic DNA-mode size:       $size_dna bytes"
+		echo "    Optimization Gain:           $gain%"
+	done
 }
 
 if [[ $# -eq 0 ]] && [[ -f "$INPUT_DIR/test_3_R1.fastq.gz" ]]; then
-    run_assay_suite
+	run_assay_suite
 else
-    run_single_file_benchmark "$INPUT_FASTQ"
+	run_single_file_benchmark "$INPUT_FASTQ"
 fi

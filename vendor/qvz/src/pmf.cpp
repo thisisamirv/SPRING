@@ -408,7 +408,7 @@ void alphabet_compute_index(struct alphabet_t *A) {
 void print_alphabet(const struct alphabet_t *alphabet) {
   uint32_t i;
   for (i = 0; i < alphabet->size; ++i) {
-    printf("(%d): '%c' <%d>\n", i, alphabet->symbols[i], alphabet->symbols[i]);
+    printf("(%u): '%c' <%d>\n", i, alphabet->symbols[i], alphabet->symbols[i]);
   }
 }
 
@@ -422,7 +422,7 @@ void print_pmf(struct pmf_t *pmf) {
     recalculate_pmf(pmf);
 
   for (i = 0; i < pmf->alphabet->size; ++i) {
-    printf("<%d>: %.5f (%d/%d)\n", pmf->alphabet->symbols[i], pmf->pmf[i],
+    printf("<%d>: %.5f (%u/%u)\n", pmf->alphabet->symbols[i], pmf->pmf[i],
            pmf->counts[i], pmf->total);
   }
 }

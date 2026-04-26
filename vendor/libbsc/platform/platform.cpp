@@ -135,7 +135,7 @@ int bsc_get_cpu_features(void) {
   if ((regs[1] & (1 << 17)) == 0) {
     return g_cpu_features = LIBBSC_CPU_FEATURE_AVX512CD;
   } // no AVX512DQ
-  if ((regs[1] & (1 << 31)) == 0) {
+  if ((regs[1] & (1u << 31)) == 0) {
     return g_cpu_features = LIBBSC_CPU_FEATURE_AVX512CD;
   } // no AVX512VL
   if ((regs[1] & (1 << 30)) == 0) {

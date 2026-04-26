@@ -22,7 +22,7 @@ $DEFAULT_PY_ROOTS = @(
 $VENDOR_ROOT = Join-Path $ROOT_DIR "vendor"
 $global:CompileCommandsFileSet = $null
 
-function Normalize-CompileDbPath {
+function NormalizeCompileDbPath {
     param ([string]$path)
     if ([string]::IsNullOrWhiteSpace($path)) {
         return ""
@@ -57,7 +57,7 @@ function Initialize-CompileCommandsFileSet {
             Join-Path $ROOT_DIR $entryFile
         }
 
-        [void]$global:CompileCommandsFileSet.Add((Normalize-CompileDbPath $resolvedPath))
+        [void]$global:CompileCommandsFileSet.Add((NormalizeCompileDbPath $resolvedPath))
     }
 }
 
@@ -66,7 +66,8 @@ function Test-Command {
     try {
         $found = Get-Command $commandName -ErrorAction SilentlyContinue
         return $null -ne $found
-    } catch {
+    }
+    catch {
         return $false
     }
 }
@@ -151,7 +152,8 @@ function Get-CppSources {
     foreach ($p in $searchPaths) {
         if (Test-Path $p -PathType Container) {
             $results += Get-ChildItem -Path $p -Recurse -File -Include *.c, *.cc, *.cpp, *.cxx | Select-Object -ExpandProperty FullName | Sort-Object
-        } elseif (Test-Path $p -PathType Leaf) {
+        }
+        elseif (Test-Path $p -PathType Leaf) {
             if (Test-CppSource $p) { $results += $p }
         }
     }
@@ -165,7 +167,8 @@ function Get-PythonSources {
     foreach ($p in $searchPaths) {
         if (Test-Path $p -PathType Container) {
             $results += Get-ChildItem -Path $p -Recurse -File -Filter *.py | Select-Object -ExpandProperty FullName | Sort-Object
-        } elseif (Test-Path $p -PathType Leaf) {
+        }
+        elseif (Test-Path $p -PathType Leaf) {
             if (Test-PythonSource $p) { $results += $p }
         }
     }
@@ -175,6 +178,6 @@ function Get-PythonSources {
 function Test-CompileCommandsContains {
     param ($filePath)
     Initialize-CompileCommandsFileSet
-    $normalizedTarget = Normalize-CompileDbPath $filePath
+    $normalizedTarget = NormalizeCompileDbPath $filePath
     return $global:CompileCommandsFileSet.Contains($normalizedTarget)
 }

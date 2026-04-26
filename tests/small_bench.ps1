@@ -69,8 +69,8 @@ function Expand-GzipToFile($inputPath, $outputPath) {
     }
 
     # Fallback: use built-in .NET stream decompression when rapidgzip is unavailable.
-    $input = [System.IO.File]::OpenRead($inputPath)
-    $gzip = New-Object System.IO.Compression.GZipStream($input, [System.IO.Compression.CompressionMode]::Decompress)
+    $input_file = [System.IO.File]::OpenRead($inputPath)
+    $gzip = New-Object System.IO.Compression.GZipStream($input_file, [System.IO.Compression.CompressionMode]::Decompress)
     $output = [System.IO.File]::Create($outputPath)
     try {
         $gzip.CopyTo($output)
@@ -78,7 +78,7 @@ function Expand-GzipToFile($inputPath, $outputPath) {
     finally {
         $output.Close()
         $gzip.Close()
-        $input.Close()
+        $input_file.Close()
     }
 }
 
@@ -135,7 +135,6 @@ function Initialize-SpringBinary {
     if ((Test-Path $SPRING_BIN) -and (Test-Path $RAPIDGZIP_BIN)) { return }
     
     Write-Host "Spring binary not found; building..." -ForegroundColor Yellow
-    $buildLog = Join-Path $LOG_DIR "build.log"
 
     # Set environment variables for MinGW if applicable
     if ($IsWindows) {

@@ -487,7 +487,7 @@ run_benchmark() {
 		((input_size += $(stat -c%s "$INPUT_ABS_2")))
 	fi
 	output_size=$(stat -c%s "$output_file")
-	
+
 	if [[ -f "$decompressed_output_file" ]]; then
 		decompressed_size=$(stat -c%s "$decompressed_output_file")
 	else

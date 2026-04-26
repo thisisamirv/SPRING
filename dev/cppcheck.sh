@@ -23,7 +23,7 @@ if [[ $# -gt 0 ]]; then
 		targets+=("$(normalize_repo_path "$arg")")
 	done
 else
-	targets=("${DEFAULT_CPP_ROOTS[@]}")
+	targets=("$ROOT_DIR/src" "$ROOT_DIR/vendor" "$ROOT_DIR/tests")
 fi
 
 if [[ ${#targets[@]} -eq 0 ]]; then
@@ -51,9 +51,16 @@ cppcheck \
 	--suppress="unknownMacro:*vendor/libarchive/*" \
 	--suppress="resourceLeak:*vendor/libbsc/*" \
 	--suppress="preprocessorErrorDirective:*vendor/libbsc/*" \
+	--suppress="nullPointerOutOfMemory:*vendor/qvz/*" \
 	--suppress="duplInheritedMember:*vendor/indexed_bzip2/*" \
 	--suppress="identicalConditionAfterEarlyExit:*vendor/indexed_bzip2/src/rapidgzip/chunkdecoding/GzipChunk.hpp" \
 	--suppress="sameIteratorExpression:*vendor/indexed_bzip2/src/core/FasterVector.hpp" \
+	--suppress="identicalInnerCondition:*vendor/libbsc/filters/detectors.cpp" \
+	--suppress="legacyUninitvar:*vendor/libbsc/st/st.cpp" \
+	--suppress="arrayIndexOutOfBoundsCond:*vendor/libdeflate/*" \
+	--suppress="unknownMacro:*vendor/pthash/*" \
+	--suppress="ctunullpointerOutOfMemory:*vendor/qvz/*" \
+	--suppress="ctuuninitvar:*vendor/libarchive/*" \
 	-I "$ROOT_DIR/src" \
 	-I "$ROOT_DIR/vendor" \
 	-I "$ZSTD_INCLUDE_DIR" \

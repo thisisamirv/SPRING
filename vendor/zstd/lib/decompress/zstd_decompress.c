@@ -811,6 +811,7 @@ static size_t ZSTD_decodeFrameHeader(ZSTD_DCtx *dctx, const void *src,
 
 static ZSTD_frameSizeInfo ZSTD_errorFrameSizeInfo(size_t ret) {
   ZSTD_frameSizeInfo frameSizeInfo;
+  ZSTD_memset(&frameSizeInfo, 0, sizeof(frameSizeInfo));
   frameSizeInfo.compressedSize = ret;
   frameSizeInfo.decompressedBound = ZSTD_CONTENTSIZE_ERROR;
   return frameSizeInfo;

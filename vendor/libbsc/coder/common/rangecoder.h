@@ -176,7 +176,7 @@ public:
 
   INLINE void EncodeWord(unsigned int word) {
     for (int bit = 31; bit >= 0; --bit) {
-      EncodeBit(word & (1 << bit));
+      EncodeBit(word & (1u << bit));
     }
   };
 

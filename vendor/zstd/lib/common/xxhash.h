@@ -3113,7 +3113,7 @@ XXH_PUBLIC_API void XXH32_copyState(XXH32_state_t* dstState, const XXH32_state_t
 /*! @ingroup XXH32_family */
 XXH_PUBLIC_API XXH_errorcode XXH32_reset(XXH32_state_t* statePtr, XXH32_hash_t seed)
 {
-    XXH_ASSERT(statePtr != NULL);
+    if (statePtr == NULL) return XXH_ERROR;
     memset(statePtr, 0, sizeof(*statePtr));
     statePtr->v[0] = seed + XXH_PRIME32_1 + XXH_PRIME32_2;
     statePtr->v[1] = seed + XXH_PRIME32_2;
@@ -3559,7 +3559,7 @@ XXH_PUBLIC_API void XXH64_copyState(XXH_NOESCAPE XXH64_state_t* dstState, const 
 /*! @ingroup XXH64_family */
 XXH_PUBLIC_API XXH_errorcode XXH64_reset(XXH_NOESCAPE XXH64_state_t* statePtr, XXH64_hash_t seed)
 {
-    XXH_ASSERT(statePtr != NULL);
+    if (statePtr == NULL) return XXH_ERROR;
     memset(statePtr, 0, sizeof(*statePtr));
     statePtr->v[0] = seed + XXH_PRIME64_1 + XXH_PRIME64_2;
     statePtr->v[1] = seed + XXH_PRIME64_2;

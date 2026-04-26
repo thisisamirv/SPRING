@@ -2953,6 +2953,7 @@ static ZSTD_symbolEncodingTypeStats_t ZSTD_buildSequencesStatistics(
   const BYTE *const llCodeTable = seqStorePtr->llCode;
   const BYTE *const mlCodeTable = seqStorePtr->mlCode;
   ZSTD_symbolEncodingTypeStats_t stats;
+  memset(&stats, 0, sizeof(stats));
 
   stats.lastCountSize = 0;
   /* convert length/distances into codes */
@@ -8402,6 +8403,7 @@ BlockSummary ZSTD_get1BlockSummary(const ZSTD_Sequence *seqs, size_t nbSeqs) {
   /* At this point n == nbSeqs, so no end terminator. */
   {
     BlockSummary bs;
+    memset(&bs, 0, sizeof(bs));
     bs.nbSequences = ERROR(externalSequences_invalid);
     return bs;
   }

@@ -64,15 +64,20 @@ $commonTidyArgs = @(
 )
 
 # Collect files from args or default locations
-$cppFiles = Get-CppSources $args
-$pythonFiles = Get-PythonSources $args
+$lintTargets = if ($args) { $args } else {
+    @(
+        (Join-Path $ROOT_DIR "src"),
+        (Join-Path $ROOT_DIR "vendor"),
+        (Join-Path $ROOT_DIR "tests")
+    )
+}
+$cppFiles = Get-CppSources $lintTargets
+$pythonFiles = Get-PythonSources $lintTargets
 
 if ($null -eq $cppFiles -and $null -eq $pythonFiles) {
     Write-Host "No source files found to lint." -ForegroundColor Yellow
     exit 0
 }
-
-$testsDirPath = [System.IO.Path]::GetFullPath((Join-Path $ROOT_DIR "tests"))
 
 if ($cppFiles) {
     Assert-BuildDir
@@ -112,7 +117,8 @@ if ($cppFiles) {
         $sanitizedContent | Set-Content (Join-Path $tidyDbDir "compile_commands.json") -Encoding UTF8
         $hasCompileCommands = $true
         Write-Host "Using sanitized compilation database at: $tidyDbDir" -ForegroundColor Gray
-    } else {
+    }
+    else {
         Write-Error "Expected compilation database at $COMPILE_COMMANDS"
         exit 1
     }
@@ -121,11 +127,6 @@ if ($cppFiles) {
     $standaloneFiles = @()
 
     foreach ($file in $cppFiles) {
-        $fullFilePath = [System.IO.Path]::GetFullPath($file)
-        if ($fullFilePath.StartsWith($testsDirPath + [System.IO.Path]::DirectorySeparatorChar,
-                [System.StringComparison]::OrdinalIgnoreCase)) {
-            continue
-        }
         if ($hasCompileCommands -and (Test-CompileCommandsContains $file)) {
             $compileDbFiles += $file
         }

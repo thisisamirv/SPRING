@@ -161,18 +161,24 @@ run_clang_tidy() {
 		2> >(grep -Ev '^[0-9]+ warnings? generated\.$|^[0-9]+ warnings? and [0-9]+ errors? generated\.$' >&2)
 }
 
+if [[ $# -gt 0 ]]; then
+	lint_targets=("$@")
+else
+	lint_targets=("$ROOT_DIR/src" "$ROOT_DIR/vendor" "$ROOT_DIR/tests")
+fi
+
 files=()
 while IFS= read -r file; do
 	if [[ "$file" == *"doctest.h" ]]; then
 		continue
 	fi
 	files+=("$file")
-done < <(collect_cpp_sources "$@")
+done < <(collect_cpp_sources "${lint_targets[@]}")
 
 python_files=()
 while IFS= read -r file; do
 	python_files+=("$file")
-done < <(collect_python_sources "$@")
+done < <(collect_python_sources "${lint_targets[@]}")
 
 if [[ ${#files[@]} -eq 0 && ${#python_files[@]} -eq 0 ]]; then
 	echo "No C/C++ or Python source files found to lint."

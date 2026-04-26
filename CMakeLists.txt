@@ -207,7 +207,7 @@ set(include_dir ${CMAKE_SOURCE_DIR}/src)
 
 # Emit a matching clangd configuration so editor diagnostics see the same
 # compiler include path and OpenMP flags as the CMake build.
-set(SPRING_CLANGD_FLAGS "\"-fopenmp\", \"-I${include_dir}\", \"-I${vendor_dir}\", \"-I${build_vendor_dir}\", \"-I${vendor_dir}/zstd/lib\"")
+set(SPRING_CLANGD_FLAGS "\"-fopenmp\", \"-I${include_dir}\", \"-I${vendor_dir}\", \"-I${vendor_dir}/zstd/lib\"")
 string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/pthash/include\"")
 string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/pthash/external/bits/include\"")
 string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/pthash/external/mm_file/include\"")
@@ -219,7 +219,7 @@ string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/libdeflate\"")
 foreach(openmp_include_dir IN LISTS SPRING_OPENMP_INCLUDE_DIRS)
     string(APPEND SPRING_CLANGD_FLAGS ", \"-I${openmp_include_dir}\"")
 endforeach()
-set(CLANGD_CONTENT "CompileFlags:\n  Add: [${SPRING_CLANGD_FLAGS}, \"-Wno-empty-translation-unit\"]\n---\nIf:\n  PathMatch: '.*\\.(hpp|cpp|cc|cxx)$'\nCompileFlags:\n  Add: [\"-std=c++20\"]\n---\nIf:\n  PathMatch: 'src/.*\\.h$'\nCompileFlags:\n  Add: [\"-std=c++20\"]\n---\nIf:\n  PathMatch: 'vendor/libarchive/cmake/.*'\nDiagnostics:\n  Suppress: ['*']\n---\nIf:\n  PathMatch: '.*\\.in$'\nDiagnostics:\n  Suppress: ['*']\nCompileFlags:\n  Add: ['-ferror-limit=0', '-w']\n")
+set(CLANGD_CONTENT "CompileFlags:\n  Add: [${SPRING_CLANGD_FLAGS}, \"-Wno-empty-translation-unit\"]\n---\nIf:\n  PathMatch: ['.*\\.(hpp|cpp|cc|cxx)$', 'src/.*\\.h$']\nCompileFlags:\n  Add: [\"-std=c++20\"]\n---\nIf:\n  PathMatch: 'vendor/libarchive/cmake/.*'\nDiagnostics:\n  Suppress: ['*']\n---\nIf:\n  PathMatch: '.*\\.in$'\nDiagnostics:\n  Suppress: ['*']\nCompileFlags:\n  Add: ['-ferror-limit=0', '-w']\n")
 
 
 

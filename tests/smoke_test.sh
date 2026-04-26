@@ -13,28 +13,28 @@ usage() {
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
-		--build|-b)
-			if [[ $# -lt 2 ]]; then
-				echo "Missing value for $1" >&2
-				usage >&2
-				exit 1
-			fi
-			BUILD_DIR="$2"
-			shift 2
-			;;
-		--build=*)
-			BUILD_DIR="${1#*=}"
-			shift
-			;;
-		-h|--help)
-			usage
-			exit 0
-			;;
-		*)
-			echo "Unknown argument: $1" >&2
+	--build | -b)
+		if [[ $# -lt 2 ]]; then
+			echo "Missing value for $1" >&2
 			usage >&2
 			exit 1
-			;;
+		fi
+		BUILD_DIR="$2"
+		shift 2
+		;;
+	--build=*)
+		BUILD_DIR="${1#*=}"
+		shift
+		;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*)
+		echo "Unknown argument: $1" >&2
+		usage >&2
+		exit 1
+		;;
 	esac
 done
 
@@ -286,8 +286,8 @@ compare_lines() {
 	local right_path="$2"
 	local left_lines
 	local right_lines
-	left_lines=$(wc -l < "$left_path")
-	right_lines=$(wc -l < "$right_path")
+	left_lines=$(wc -l <"$left_path")
+	right_lines=$(wc -l <"$right_path")
 	if [[ "$left_lines" != "$right_lines" ]]; then
 		echo "Line count differ: $left_path ($left_lines) vs $right_path ($right_lines)" >&2
 		return 1
@@ -465,7 +465,7 @@ compare_files tmp "$ASSET_DIR/test_1.fastq"
 
 announce_case "archive notes & previewer validation"
 run_spring -c --R1 "$ASSET_DIR/test_1.fastq" -n "SMOKE_TEST_NOTE" -o abcd
-"${SPRING_PREVIEW_BIN_CMD[@]}" abcd > preview.out
+"${SPRING_PREVIEW_BIN_CMD[@]}" abcd >preview.out
 if ! grep -q "SMOKE_TEST_NOTE" preview.out; then
 	echo "Failed to find custom note in preview tool output" >&2
 	exit 1

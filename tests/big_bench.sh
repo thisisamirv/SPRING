@@ -16,13 +16,13 @@ NO_DEBUG=0
 
 while (($#)); do
 	case "$1" in
-		--no_debug)
-			NO_DEBUG=1
-			;;
-		*)
-			echo "Unknown argument: $1" >&2
-			exit 1
-			;;
+	--no_debug)
+		NO_DEBUG=1
+		;;
+	*)
+		echo "Unknown argument: $1" >&2
+		exit 1
+		;;
 	esac
 	shift
 done
@@ -53,23 +53,24 @@ remove_empty_dir_if_present() {
 trap 'remove_empty_dir_if_present "$TMP_WORK_DIR"' EXIT
 
 download_file() {
-    local url="$1"; local dest="$2"
-    if [[ -f "$dest" ]]; then return; fi
-    echo "Downloading $(basename "$dest")..."
-    if type curl >/dev/null 2>&1; then
-        curl -L -# -o "$dest" "$url"
-    elif type wget >/dev/null 2>&1; then
-        wget --progress=bar:force -O "$dest" "$url"
-    else
-        echo "Error: Neither curl nor wget found." >&2
-        exit 1
-    fi
+	local url="$1"
+	local dest="$2"
+	if [[ -f "$dest" ]]; then return; fi
+	echo "Downloading $(basename "$dest")..."
+	if type curl >/dev/null 2>&1; then
+		curl -L -# -o "$dest" "$url"
+	elif type wget >/dev/null 2>&1; then
+		wget --progress=bar:force -O "$dest" "$url"
+	else
+		echo "Error: Neither curl nor wget found." >&2
+		exit 1
+	fi
 }
 
 ensure_benchmark_input() {
 	mkdir -p "$TMP_INPUT_DIR" "$TMP_LOG_DIR" "$TMP_OUTPUT_DIR" "$TMP_WORK_DIR"
-    download_file "$URL_R1" "$PATH_R1"
-    download_file "$URL_R2" "$PATH_R2"
+	download_file "$URL_R1" "$PATH_R1"
+	download_file "$URL_R2" "$PATH_R2"
 }
 
 ensure_spring_binary() {
@@ -81,21 +82,23 @@ ensure_spring_binary() {
 }
 
 run_with_resource_log() {
-	local log_file="$1"; shift
+	local log_file="$1"
+	shift
 	rm -f "$log_file"
-    local time_bin=""
-    if [[ -x /usr/bin/time ]]; then time_bin=/usr/bin/time; elif [[ -n "$(type -P time)" ]]; then time_bin=$(type -P time); fi
+	local time_bin=""
+	if [[ -x /usr/bin/time ]]; then time_bin=/usr/bin/time; elif [[ -n "$(type -P time)" ]]; then time_bin=$(type -P time); fi
 	if [[ -n "$time_bin" ]]; then
 		"$time_bin" -f 'elapsed_seconds=%e\nuser_seconds=%U\nsystem_seconds=%S\ncpu_percent=%P\nmax_rss_kb=%M' -o "$log_file" "$@"
 		return
 	fi
 	TIMEFORMAT=$'elapsed_seconds=%3R\nuser_seconds=%3U\nsystem_seconds=%3S\ncpu_percent=unavailable\nmax_rss_kb=unavailable'
-	{ time "$@" ; } 2>"$log_file"
+	{ time "$@"; } 2>"$log_file"
 }
 
 populate_resource_vars() {
-	local prefix="$1"; local log_file="$2"
-    if [[ ! -f "$log_file" ]]; then return; fi
+	local prefix="$1"
+	local log_file="$2"
+	if [[ ! -f "$log_file" ]]; then return; fi
 	while IFS='=' read -r key value; do
 		case "$key" in
 		elapsed_seconds) printf -v "${prefix}_elapsed_seconds" '%s' "$value" ;;
@@ -141,10 +144,11 @@ echo "  compression pass time:    ${compress_elapsed_seconds:-unavailable}s"
 echo "  decompression pass time:  ${decompress_elapsed_seconds:-unavailable}s"
 
 check_hash() {
-    local orig="$1"; local decomp="$2"
-    local h1=$(gzip -dc "$orig" | sha256sum | awk '{print $1}')
-    local h2=$(sha256sum "$decomp" | awk '{print $1}')
-    if [[ "$h1" == "$h2" ]]; then echo "MATCH"; else echo "MISMATCH"; fi
+	local orig="$1"
+	local decomp="$2"
+	local h1=$(gzip -dc "$orig" | sha256sum | awk '{print $1}')
+	local h2=$(sha256sum "$decomp" | awk '{print $1}')
+	if [[ "$h1" == "$h2" ]]; then echo "MATCH"; else echo "MISMATCH"; fi
 }
 
 echo -e "\nVerifying integrity..."

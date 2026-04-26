@@ -125,16 +125,17 @@ struct distortion_t *gen_custom_distortion(uint8_t symbols,
   x = 0;
   while (x < symbols && fgets(line, 1024, fp) != NULL) {
     missing = 0;
-    field = line - 1;
+    field = line;
     y = 0;
 
     if (line[0] == '#')
       continue;
 
     while (y < symbols && field != NULL) {
-      field += 1;
       dist->distortion[x + symbols * y] = atof(field);
       field = strchr(field, ',');
+      if (field != NULL)
+        field += 1;
       y += 1;
     }
 

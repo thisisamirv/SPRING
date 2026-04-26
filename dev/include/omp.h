@@ -1,7 +1,13 @@
 #ifndef SPRING_LINT_OMP_H_
 #define SPRING_LINT_OMP_H_
 
-typedef int omp_lock_t;
+/* Provide minimal OpenMP stubs for static analysis on systems where the real
+   omp.h is not on the include path.  If a compiler-supplied omp.h has already
+   been included (detected via its guard macro), skip everything. */
+#if !defined(__OMP_H)
+#define __OMP_H
+
+typedef struct omp_lock_t { void *_lk; } omp_lock_t;
 
 #ifdef __cplusplus
 extern "C" {
@@ -22,4 +28,5 @@ int omp_test_lock(omp_lock_t *lock);
 }
 #endif
 
-#endif
+#endif /* !defined(__OMP_H) */
+#endif /* SPRING_LINT_OMP_H_ */

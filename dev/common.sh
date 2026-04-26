@@ -48,11 +48,11 @@ initialize_compile_commands_file_set() {
 	fi
 
 	require_compile_commands
-	: > "$COMPILE_COMMANDS_FILE_SET_PATH"
+	: >"$COMPILE_COMMANDS_FILE_SET_PATH"
 
 	while IFS= read -r normalized_entry; do
 		if [[ -n "$normalized_entry" ]]; then
-			printf '%s\n' "$normalized_entry" >> "$COMPILE_COMMANDS_FILE_SET_PATH"
+			printf '%s\n' "$normalized_entry" >>"$COMPILE_COMMANDS_FILE_SET_PATH"
 		fi
 	done < <(
 		python3 - "$COMPILE_COMMANDS" <<'PY'

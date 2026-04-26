@@ -36,21 +36,13 @@ $INCLUDE_ARGS = @(
 )
 
 # Configure targets
-$targets = if ($args) { $args | ForEach-Object { Resolve-RepoPath $_ } } else { $DEFAULT_CPP_ROOTS }
-
-# Skip tests from cppcheck to avoid third-party doctest noise.
-$testsDirPath = [System.IO.Path]::GetFullPath((Join-Path $ROOT_DIR "tests"))
-$filteredTargets = @()
-foreach ($target in $targets) {
-    $fullTarget = [System.IO.Path]::GetFullPath($target)
-    if ($fullTarget -ieq $testsDirPath -or
-        $fullTarget.StartsWith($testsDirPath + [System.IO.Path]::DirectorySeparatorChar,
-            [System.StringComparison]::OrdinalIgnoreCase)) {
-        continue
-    }
-    $filteredTargets += $target
+$targets = if ($args) { $args | ForEach-Object { Resolve-RepoPath $_ } } else {
+    @(
+        (Join-Path $ROOT_DIR "src"),
+        (Join-Path $ROOT_DIR "vendor"),
+        (Join-Path $ROOT_DIR "tests")
+    )
 }
-$targets = $filteredTargets
 
 if ($null -eq $targets -or $targets.Count -eq 0) {
     Write-Error "No targets selected for cppcheck."
@@ -67,6 +59,7 @@ $cppcheckArgs = @(
     "--suppress=missingIncludeSystem",
     "--suppress=normalCheckLevelMaxBranches",
     "--suppress=toomanyconfigs",
+    "--suppress=*:$($ROOT_DIR.Replace('\', '/') + '/tests/doctest.h')",
     "--suppress=preprocessorErrorDirective:*vendor/libarchive/*",
     "--suppress=syntaxError:*vendor/libarchive/*",
     "--suppress=sizeofwithnumericparameter:*vendor/libarchive/*",
@@ -79,9 +72,16 @@ $cppcheckArgs = @(
     "--suppress=unknownMacro:*vendor/libarchive/*",
     "--suppress=resourceLeak:*vendor/libbsc/*",
     "--suppress=preprocessorErrorDirective:*vendor/libbsc/*",
+    "--suppress=nullPointerOutOfMemory:*vendor/qvz/*",
     "--suppress=duplInheritedMember:*vendor/indexed_bzip2/*",
     "--suppress=identicalConditionAfterEarlyExit:*vendor/indexed_bzip2/src/rapidgzip/chunkdecoding/GzipChunk.hpp",
-    "--suppress=sameIteratorExpression:*vendor/indexed_bzip2/src/core/FasterVector.hpp"
+    "--suppress=sameIteratorExpression:*vendor/indexed_bzip2/src/core/FasterVector.hpp",
+    "--suppress=identicalInnerCondition:*vendor/libbsc/filters/detectors.cpp",
+    "--suppress=legacyUninitvar:*vendor/libbsc/st/st.cpp",
+    "--suppress=arrayIndexOutOfBoundsCond:*vendor/libdeflate/*",
+    "--suppress=unknownMacro:*vendor/pthash/*",
+    "--suppress=ctunullpointerOutOfMemory:*vendor/qvz/*",
+    "--suppress=ctuuninitvar:*vendor/libarchive/*"
 )
 
 $cppcheckArgs += $INCLUDE_ARGS
