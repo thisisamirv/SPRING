@@ -670,22 +670,25 @@ U32 ZSTD_insertBtAndGetAllMatches(
 
   const ZSTD_MatchState_t *dms =
       dictMode == ZSTD_dictMatchState ? ms->dictMatchState : NULL;
-  const ZSTD_compressionParameters *const dmsCParams =
-      dictMode == ZSTD_dictMatchState ? &dms->cParams : NULL;
   const BYTE *const dmsBase =
-      dictMode == ZSTD_dictMatchState ? dms->window.base : NULL;
-  const BYTE *const dmsEnd =
-      dictMode == ZSTD_dictMatchState ? dms->window.nextSrc : NULL;
-  U32 const dmsHighLimit =
-      dictMode == ZSTD_dictMatchState ? (U32)(dmsEnd - dmsBase) : 0;
+      dictMode == ZSTD_dictMatchState ? ms->dictMatchState->window.base : NULL;
+  const BYTE *const dmsEnd = dictMode == ZSTD_dictMatchState
+                                 ? ms->dictMatchState->window.nextSrc
+                                 : NULL;
+  U32 const dmsHighLimit = dictMode == ZSTD_dictMatchState
+                               ? (U32)(ms->dictMatchState->window.nextSrc -
+                                       ms->dictMatchState->window.base)
+                               : 0;
   U32 const dmsLowLimit =
-      dictMode == ZSTD_dictMatchState ? dms->window.lowLimit : 0;
+      dictMode == ZSTD_dictMatchState ? ms->dictMatchState->window.lowLimit : 0;
   U32 const dmsIndexDelta =
       dictMode == ZSTD_dictMatchState ? windowLow - dmsHighLimit : 0;
-  U32 const dmsHashLog =
-      dictMode == ZSTD_dictMatchState ? dmsCParams->hashLog : hashLog;
-  U32 const dmsBtLog =
-      dictMode == ZSTD_dictMatchState ? dmsCParams->chainLog - 1 : btLog;
+  U32 const dmsHashLog = dictMode == ZSTD_dictMatchState
+                             ? ms->dictMatchState->cParams.hashLog
+                             : hashLog;
+  U32 const dmsBtLog = dictMode == ZSTD_dictMatchState
+                           ? ms->dictMatchState->cParams.chainLog - 1
+                           : btLog;
   U32 const dmsBtMask =
       dictMode == ZSTD_dictMatchState ? (1U << dmsBtLog) - 1 : 0;
   U32 const dmsBtLow =

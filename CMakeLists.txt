@@ -333,6 +333,21 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 add_subdirectory("${LIBARCHIVE_DIR}" "${CMAKE_BINARY_DIR}/libarchive-build" EXCLUDE_FROM_ALL)
 
 # Core source files shared between spring2 and spring2-preview.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/generated)
+set(REFERENCE_GENERATED ${CMAKE_BINARY_DIR}/generated/reference_data.cpp)
+add_custom_command(
+    OUTPUT ${REFERENCE_GENERATED}
+    COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_SOURCE_DIR}/cmake/embed_reference.py
+    ${CMAKE_SOURCE_DIR}/reference/ref_hg38_gencode49.fa
+    ${REFERENCE_GENERATED}
+    DEPENDS
+    ${CMAKE_SOURCE_DIR}/reference/ref_hg38_gencode49.fa
+    ${CMAKE_SOURCE_DIR}/cmake/embed_reference.py
+    COMMENT "Embedding reference data into binary"
+)
+
 set(core_source_files
     ${source_dir}/spring.cpp
     ${source_dir}/params.cpp
@@ -353,6 +368,7 @@ set(core_source_files
     ${source_dir}/bgzf.cpp
     ${source_dir}/assay_detector.cpp
     ${source_dir}/barcode_sort.cpp
+    ${REFERENCE_GENERATED}
 )
 
 
@@ -635,12 +651,6 @@ add_dev_script_target(dev-valgrind-smoke valgrind-smoke.sh)
 add_dependencies(dev-lint spring2)
 add_dependencies(dev-valgrind-smoke spring2)
 
-# Symlink the reference directory into the build tree so binaries running from
-# build/ (e.g. the spring2 subprocess spawned by integration-tests) find it.
-if(NOT WIN32 AND NOT EXISTS ${CMAKE_BINARY_DIR}/reference)
-    file(CREATE_LINK ${CMAKE_SOURCE_DIR}/reference ${CMAKE_BINARY_DIR}/reference SYMBOLIC)
-endif()
-
 # Unit testing integration using doctest.
 enable_testing()
 add_executable(spring2-tests tests/unit_tests.cpp ${core_source_files})
@@ -656,7 +666,6 @@ if(SPRING_OPENMP_INCLUDE_DIRS)
     target_include_directories(spring2-tests SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
 endif()
 target_compile_definitions(spring2-tests PRIVATE SPRING_RAPIDGZIP_EXECUTABLE=\"$<TARGET_FILE:rapidgzip>\")
-target_compile_definitions(spring2-tests PRIVATE SPRING_REFERENCE_PATH=\"${CMAKE_SOURCE_DIR}/reference\")
 add_test(NAME unit_tests COMMAND spring2-tests)
 
 add_executable(integration-tests tests/integration_tests.cpp ${core_source_files})
@@ -673,7 +682,6 @@ if(SPRING_OPENMP_INCLUDE_DIRS)
 endif()
 target_compile_definitions(integration-tests PRIVATE SPRING_RAPIDGZIP_EXECUTABLE=\"$<TARGET_FILE:rapidgzip>\")
 target_compile_definitions(integration-tests PRIVATE SPRING2_EXECUTABLE=\"$<TARGET_FILE:spring2>\")
-target_compile_definitions(integration-tests PRIVATE SPRING_REFERENCE_PATH=\"${CMAKE_SOURCE_DIR}/reference\")
 add_test(NAME integration_tests COMMAND integration-tests)
 
 if(WIN32)

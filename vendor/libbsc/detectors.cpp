@@ -221,13 +221,11 @@ int bsc_detect_segments_parallel(BscSegmentationModel *RESTRICT model0,
           }
         }
 
-        if (globalBestEntropy > localBestEntropy) {
 #pragma omp critical
-          {
-            if (globalBestEntropy > localBestEntropy) {
-              globalBlockSize = localBlockSize;
-              globalBestEntropy = localBestEntropy;
-            }
+        {
+          if (globalBestEntropy > localBestEntropy) {
+            globalBlockSize = localBlockSize;
+            globalBestEntropy = localBestEntropy;
           }
         }
       }

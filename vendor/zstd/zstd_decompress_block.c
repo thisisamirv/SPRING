@@ -11,7 +11,7 @@
 /* zstd_decompress_block :
  * this module takes care of decompressing _compressed_ block */
 
-#include "compiler.h" /* prefetch */
+#include "compiler.h"  /* prefetch */
 #include "mem.h"       /* low level memory routines */
 #include "zstd_deps.h" /* ZSTD_memcpy, ZSTD_memmove, ZSTD_memset */
 #include <stddef.h>
@@ -19,9 +19,9 @@
 #include "bits.h" /* ZSTD_highbit32 */
 #include "fse.h"
 #include "huf.h"
-#include "zstd_internal.h"
 #include "zstd_decompress_block.h"
 #include "zstd_decompress_internal.h" /* ZSTD_DCtx */
+#include "zstd_internal.h"
 
 /*_*******************************************************
  *  Macros
@@ -1052,7 +1052,7 @@ size_t ZSTD_execSequenceEnd(BYTE *op, BYTE *const oend, seq_t sequence,
                   "last match must fit within dstBuffer");
   RETURN_ERROR_IF(sequence.litLength > (size_t)(litLimit - *litPtr),
                   corruption_detected, "try to read beyond literal buffer");
-  assert(op < op + sequenceLength);
+  assert(sequenceLength > 0);
   assert(oLitEnd < op + sequenceLength);
 
   /* copy literals */
@@ -1108,7 +1108,7 @@ size_t ZSTD_execSequenceEndSplitLitBuffer(BYTE *op, BYTE *const oend,
                   "last match must fit within dstBuffer");
   RETURN_ERROR_IF(sequence.litLength > (size_t)(litLimit - *litPtr),
                   corruption_detected, "try to read beyond literal buffer");
-  assert(op < op + sequenceLength);
+  assert(sequenceLength > 0);
   assert(oLitEnd < op + sequenceLength);
 
   /* copy literals */

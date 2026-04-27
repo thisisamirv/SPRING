@@ -454,6 +454,18 @@ static ATTRIBUTES u32 crc32_arm_crc_pmullcombine(u32 crc, const u8 *p,
 #define ENABLE_EOR3 0
 #include "crc32_pmull_helpers.h"
 
+/* crc32_pmull_helpers.h undefines ADD_SUFFIX and all shorthand macros at its
+ * end (they are designed for template-style includes).  Redefine them here so
+ * the function body below can use them. */
+#define CONCAT_IMPL(a, b) a##b
+#define CONCAT(a, b) CONCAT_IMPL(a, b)
+#define ADD_SUFFIX(name) CONCAT(name, SUFFIX)
+#define u32_to_bytevec ADD_SUFFIX(u32_to_bytevec)
+#define load_multipliers ADD_SUFFIX(load_multipliers)
+#define clmul_low ADD_SUFFIX(clmul_low)
+#define fold_vec ADD_SUFFIX(fold_vec)
+#define fold_partial_vec ADD_SUFFIX(fold_partial_vec)
+
 static ATTRIBUTES u32 crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len) {
   static const u64 _aligned_attribute(16) mults[3][2] = {
       {CRC32_X159_MODG, CRC32_X95_MODG},  /* 1 vecs */

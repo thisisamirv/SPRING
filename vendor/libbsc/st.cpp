@@ -251,7 +251,7 @@ static int bsc_st3_transform_parallel(unsigned char *RESTRICT T,
 
   if (int *RESTRICT bucket1 =
           (int *)bsc_zero_malloc(ALPHABET_SIZE * ALPHABET_SIZE * sizeof(int))) {
-    int pos, index = 0;
+    int pos = 0, index = 0;
 
     for (int i = 0; i < LIBBSC_HEADER_SIZE; ++i)
       T[n + i] = T[i];
@@ -376,7 +376,7 @@ static int bsc_st4_transform_parallel(unsigned char *RESTRICT T,
           (int *)bsc_zero_malloc(ALPHABET_SIZE * ALPHABET_SIZE * sizeof(int))) {
     if (int *RESTRICT bucket1 = (int *)bsc_zero_malloc(
             ALPHABET_SIZE * ALPHABET_SIZE * sizeof(int))) {
-      int pos, index = 0;
+      int pos = 0, index = 0;
 
       for (int i = 0; i < LIBBSC_HEADER_SIZE; ++i)
         T[n + i] = T[i];
@@ -502,7 +502,7 @@ static int bsc_st5_transform_parallel(unsigned char *RESTRICT T,
                                       int *RESTRICT bucket0, int n) {
   if (int *RESTRICT bucket1 = (int *)bsc_zero_malloc(
           ALPHABET_SQRT_SIZE * ALPHABET_SIZE * ALPHABET_SIZE * sizeof(int))) {
-    int pos, index = 0;
+    int pos = 0, index = 0;
 
     for (int i = 0; i < LIBBSC_HEADER_SIZE; ++i)
       T[n + i] = T[i];
@@ -668,7 +668,7 @@ static int bsc_st6_transform_parallel(unsigned char *RESTRICT T,
           ALPHABET_SIZE * ALPHABET_SIZE * ALPHABET_SIZE * sizeof(int))) {
     if (int *RESTRICT bucket1 = (int *)bsc_zero_malloc(
             ALPHABET_SIZE * ALPHABET_SIZE * ALPHABET_SIZE * sizeof(int))) {
-      int pos, index = 0;
+      int pos = 0, index = 0;
 
       for (int i = 0; i < LIBBSC_HEADER_SIZE; ++i)
         T[n + i] = T[i];

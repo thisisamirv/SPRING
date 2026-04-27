@@ -1,8 +1,7 @@
 #include "assay_detector.h"
 #include <algorithm>
-#include <fstream>
-#include <iostream>
 #include <limits>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <zlib.h>
@@ -56,35 +55,33 @@ uint64_t canonical_kmer(uint64_t code, int k) {
   return code < rc ? code : rc;
 }
 
-std::string get_reference_path() {
-#ifdef SPRING_REFERENCE_PATH
-  return SPRING_REFERENCE_PATH "/ref_hg38_gencode49.fa";
-#else
-  return "reference/ref_hg38_gencode49.fa";
-#endif
-}
-
 } // namespace
 
-void AssayDetector::load_reference(const std::string &ref_path) {
+// Declared in generated/reference_data.cpp
+extern const unsigned char kEmbeddedReference[];
+extern const std::size_t kEmbeddedReferenceCompressedSize;
+extern const std::size_t kEmbeddedReferenceUncompressedSize;
+
+void AssayDetector::load_reference() {
   if (reference_loaded_)
     return;
 
-  std::ifstream in(ref_path);
-  if (!in.is_open()) {
-    std::cerr << "Warning: Could not open diagnostic reference at " << ref_path
-              << ".\n";
-    return; // we'll gracefully handle lack of reference in evaluate_stages
-  }
+  std::string raw(kEmbeddedReferenceUncompressedSize, '\0');
+  uLongf dest_len = static_cast<uLongf>(kEmbeddedReferenceUncompressedSize);
+  if (uncompress(reinterpret_cast<Bytef *>(raw.data()), &dest_len,
+                 kEmbeddedReference,
+                 static_cast<uLong>(kEmbeddedReferenceCompressedSize)) != Z_OK)
+    return;
+  raw.resize(dest_len);
 
+  std::istringstream in(std::move(raw));
   std::string line;
   BlockID current_block = BlockID::NONE;
   std::string current_seq;
 
   auto process_seq = [&]() {
     if (current_seq.length() >= kKmerSize && current_block != BlockID::NONE) {
-      for (size_t i = 0; i <= current_seq.length() - kKmerSize;
-           i += 5) { // Subsample k-mers to save memory
+      for (size_t i = 0; i <= current_seq.length() - kKmerSize; i += 5) {
         uint64_t code = encode_kmer(current_seq, i, kKmerSize);
         if (code != std::numeric_limits<uint64_t>::max()) {
           uint64_t can = canonical_kmer(code, kKmerSize);
@@ -372,8 +369,7 @@ AssayDetector::detect(const std::string &r1_path, const std::string &r2_path,
                       const std::string &i2_path) {
   bool explicit_sc = (!r3_path.empty() || !i1_path.empty() || !i2_path.empty());
 
-  // Attempt to load reference from working directory
-  load_reference(get_reference_path());
+  load_reference();
 
   ReadStats stats;
   process_reads(r1_path, r2_path, stats);

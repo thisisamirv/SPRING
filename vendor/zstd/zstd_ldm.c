@@ -357,8 +357,10 @@ ZSTD_ldm_generateSequences_internal(ldmState_t *ldmState,
   U32 const lowestIndex = extDict ? ldmState->window.lowLimit : dictLimit;
   BYTE const *const base = ldmState->window.base;
   BYTE const *const dictBase = extDict ? ldmState->window.dictBase : NULL;
-  BYTE const *const dictStart = extDict ? dictBase + lowestIndex : NULL;
-  BYTE const *const dictEnd = extDict ? dictBase + dictLimit : NULL;
+  BYTE const *const dictStart =
+      extDict ? ldmState->window.dictBase + lowestIndex : NULL;
+  BYTE const *const dictEnd =
+      extDict ? ldmState->window.dictBase + dictLimit : NULL;
   BYTE const *const lowPrefixPtr = base + dictLimit;
   /* Input bounds */
   BYTE const *const istart = (BYTE const *)src;

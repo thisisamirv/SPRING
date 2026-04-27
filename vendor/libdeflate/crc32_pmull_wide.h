@@ -8,6 +8,12 @@
 #ifndef SUFFIX
 #define SUFFIX _pmull_wide_dummy
 #define ATTRIBUTES
+#endif
+/* CONCAT_IMPL/CONCAT/ADD_SUFFIX must be defined before crc32_pmull_helpers.h.
+ * Use #ifndef so this is safe both for standalone IDE parsing (SUFFIX just
+ * set above) and for re-invocations where the caller already set SUFFIX but
+ * a previous crc32_pmull_helpers.h run undefed these at its end. */
+#ifndef CONCAT_IMPL
 #define CONCAT_IMPL(a, b) a##b
 #define CONCAT(a, b) CONCAT_IMPL(a, b)
 #define ADD_SUFFIX(name) CONCAT(name, SUFFIX)
@@ -62,6 +68,11 @@
  */
 
 #include "crc32_pmull_helpers.h"
+/* crc32_pmull_helpers.h undefines CONCAT_IMPL/CONCAT/ADD_SUFFIX at its end.
+ * Redefine them so the function body below can use ADD_SUFFIX. */
+#define CONCAT_IMPL(a, b) a##b
+#define CONCAT(a, b) CONCAT_IMPL(a, b)
+#define ADD_SUFFIX(name) CONCAT(name, SUFFIX)
 
 static ATTRIBUTES u32 ADD_SUFFIX(crc32_arm)(u32 crc, const u8 *p, size_t len) {
   uint8x16_t v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11;

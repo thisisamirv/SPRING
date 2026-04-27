@@ -49,18 +49,25 @@ cppcheck \
 	--suppress="literalWithCharPtrCompare:*vendor/libarchive/*" \
 	--suppress="internalAstError:*vendor/libarchive/*" \
 	--suppress="unknownMacro:*vendor/libarchive/*" \
+	--suppress="nullPointerOutOfMemory:*vendor/libarchive/*" \
+	--suppress="nullPointerArithmeticRedundantCheck:*vendor/libarchive/*" \
 	--suppress="resourceLeak:*vendor/libbsc/*" \
 	--suppress="preprocessorErrorDirective:*vendor/libbsc/*" \
+	--suppress="dangerousTypeCast:*vendor/libbsc/*" \
+	--suppress="identicalInnerCondition:*vendor/libbsc/detectors.cpp" \
 	--suppress="nullPointerOutOfMemory:*vendor/qvz/*" \
 	--suppress="duplInheritedMember:*vendor/indexed_bzip2/*" \
 	--suppress="identicalConditionAfterEarlyExit:*vendor/indexed_bzip2/src/rapidgzip/chunkdecoding/GzipChunk.hpp" \
 	--suppress="sameIteratorExpression:*vendor/indexed_bzip2/src/core/FasterVector.hpp" \
-	--suppress="identicalInnerCondition:*vendor/libbsc/filters/detectors.cpp" \
-	--suppress="legacyUninitvar:*vendor/libbsc/st/st.cpp" \
+	--suppress="uninitvar:*vendor/indexed_bzip2/isa-l/*" \
 	--suppress="arrayIndexOutOfBoundsCond:*vendor/libdeflate/*" \
 	--suppress="unknownMacro:*vendor/pthash/*" \
 	--suppress="ctunullpointerOutOfMemory:*vendor/qvz/*" \
 	--suppress="ctuuninitvar:*vendor/libarchive/*" \
+	--suppress="invalidPrintfArgType_sint:*vendor/zstd/*" \
+	--suppress="invalidPrintfArgType_uint:*vendor/zstd/*" \
+	-D__BYTE_ORDER__=1 \
+	-D__ORDER_LITTLE_ENDIAN__=1 \
 	-I "$ROOT_DIR/src" \
 	-I "$ROOT_DIR/vendor" \
 	-I "$ZSTD_INCLUDE_DIR" \

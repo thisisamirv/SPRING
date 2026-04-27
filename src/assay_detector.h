@@ -50,7 +50,7 @@ private:
     GENOME_BACKBONE = 4
   };
 
-  void load_reference(const std::string &ref_path);
+  void load_reference();
   void process_reads(const std::string &r1_path, const std::string &r2_path,
                      ReadStats &stats);
   DetectionResult evaluate_stages(const ReadStats &stats,
