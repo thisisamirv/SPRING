@@ -1385,7 +1385,7 @@ ZSTD_updateFseStateWithDInfo(ZSTD_fseState *DStatePtr, BIT_DStream_t *bitD,
        : 0)
 
 typedef enum {
-  ZSTD_lo_isRegularOffset,
+  ZSTD_lo_isRegularOffset = 0,
   ZSTD_lo_isLongOffset = 1
 } ZSTD_longOffset_e;
 
@@ -1801,7 +1801,8 @@ size_t DONT_VECTORIZE ZSTD_decompressSequences_bodySplitLitBuffer(
                              *   - ZSTD_decompressSequences_body
                              * Alignment choices are made to minimize large swings on bad cases and
                              * influence on performance                       from changes external to
-                             * this code, rather                       than to overoptimize on the current commit.
+                             * this code, rather                       than to overoptimize on the
+                             * current commit.
                              *
                              * If you are seeing performance stability this script can help test.
                              * It tests on 4 commits in zstd where I saw performance change.

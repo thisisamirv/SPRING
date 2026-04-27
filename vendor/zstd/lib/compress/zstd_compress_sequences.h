@@ -21,10 +21,10 @@ typedef enum {
 } ZSTD_DefaultPolicy_e;
 
 SymbolEncodingType_e ZSTD_selectEncodingType(
-    FSE_repeat *repeatMode, unsigned const *count, unsigned const max,
-    size_t const mostFrequent, size_t nbSeq, unsigned const FSELog,
-    FSE_CTable const *prevCTable, short const *defaultNorm, U32 defaultNormLog,
-    ZSTD_DefaultPolicy_e const isDefaultAllowed, ZSTD_strategy const strategy);
+    FSE_repeat *repeatMode, const unsigned *count, unsigned max,
+    size_t mostFrequent, size_t nbSeq, unsigned FSELog,
+    const FSE_CTable *prevCTable, const short *defaultNorm, U32 defaultNormLog,
+    ZSTD_DefaultPolicy_e isDefaultAllowed, ZSTD_strategy strategy);
 
 size_t ZSTD_buildCTable(void *dst, size_t dstCapacity, FSE_CTable *nextCTable,
                         U32 FSELog, SymbolEncodingType_e type, unsigned *count,
@@ -43,9 +43,9 @@ size_t ZSTD_encodeSequences(void *dst, size_t dstCapacity,
                             BYTE const *llCodeTable, SeqDef const *sequences,
                             size_t nbSeq, int longOffsets, int bmi2);
 
-size_t ZSTD_fseBitCost(FSE_CTable const *ctable, unsigned const *count,
-                       unsigned const max);
+size_t ZSTD_fseBitCost(const FSE_CTable *ctable, const unsigned *count,
+                       unsigned max);
 
-size_t ZSTD_crossEntropyCost(short const *norm, unsigned accuracyLog,
-                             unsigned const *count, unsigned const max);
+size_t ZSTD_crossEntropyCost(const short *norm, unsigned accuracyLog,
+                             const unsigned *count, unsigned max);
 #endif /* ZSTD_COMPRESS_SEQUENCES_H */

@@ -28,15 +28,15 @@
     !defined(ZSTD_EXCLUDE_LAZY2_BLOCK_COMPRESSOR) ||                           \
     !defined(ZSTD_EXCLUDE_BTLAZY2_BLOCK_COMPRESSOR)
 U32 ZSTD_insertAndFindFirstIndex(ZSTD_MatchState_t *ms, const BYTE *ip);
-void ZSTD_row_update(ZSTD_MatchState_t *const ms, const BYTE *ip);
+void ZSTD_row_update(ZSTD_MatchState_t *ms, const BYTE *ip);
 
 void ZSTD_dedicatedDictSearch_lazy_loadDictionary(ZSTD_MatchState_t *ms,
-                                                  const BYTE *const ip);
+                                                  const BYTE *ip);
 
 void ZSTD_preserveUnsortedMark(
-    U32 *const table, U32 const size,
-    U32 const reducerValue); /*! used in ZSTD_reduceIndex(). preemptively
-                                increase value of ZSTD_DUBT_UNSORTED_MARK */
+    U32 *table, U32 size,
+    U32 reducerValue); /*! used in ZSTD_reduceIndex(). preemptively
+                  increase value of ZSTD_DUBT_UNSORTED_MARK */
 #endif
 
 #ifndef ZSTD_EXCLUDE_GREEDY_BLOCK_COMPRESSOR

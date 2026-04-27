@@ -103,7 +103,7 @@ static size_t ZSTD_compressSubBlock_literal(
     }
     /* If we are writing headers then allow expansion that doesn't change our
      * header size. */
-    if (lhSize < (size_t)(3 + (cLitSize >= 1 KB) + (cLitSize >= 16 KB))) {
+    if (lhSize < 3 + (size_t)(cLitSize >= 1 KB) + (size_t)(cLitSize >= 16 KB)) {
       assert(cLitSize > litSize);
       DEBUGLOG(5, "Literals expanded beyond allowed header size");
       return ZSTD_noCompressLiterals(dst, dstSize, literals, litSize);

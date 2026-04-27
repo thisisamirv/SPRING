@@ -72,7 +72,7 @@ size_t ZSTD_ldm_blockCompress(RawSeqStore_t *rawSeqStore, ZSTD_MatchState_t *ms,
  * Must be called for data that is not passed to ZSTD_ldm_blockCompress().
  */
 void ZSTD_ldm_skipSequences(RawSeqStore_t *rawSeqStore, size_t srcSize,
-                            U32 const minMatch);
+                            U32 minMatch);
 
 /* ZSTD_ldm_skipRawSeqStoreBytes():
  * Moves forward in rawSeqStore by nbBytes, updating fields 'pos' and

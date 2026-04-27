@@ -295,10 +295,10 @@ struct ZSTD_MatchState_t {
   ZSTD_window_t window; /* State for window round buffer management */
   U32 loadedDictEnd;    /* index of end of dictionary, within context's
                          * referential.    When loadedDictEnd != 0, a dictionary is
-                         * in    use, and still valid.    This relies on a mechanism
-                         * to set    loadedDictEnd=0 when dictionary is no longer
-                         * within    distance.    Such mechanism is provided within
-                         * ZSTD_window_enforceMaxDist() and
+                         * in    use, and still valid.    This relies on a
+                         * mechanism    to set    loadedDictEnd=0 when dictionary is
+                         * no longer    within    distance.    Such mechanism is
+                         * provided within    ZSTD_window_enforceMaxDist() and
                          * ZSTD_checkDictValidity().    When dict referential is
                          * copied into active context (i.e. not attached),
                          * loadedDictEnd == dictSize, since referential starts from
@@ -1658,7 +1658,7 @@ MEM_STATIC int ZSTD_comparePackedTags(size_t packedTag1, size_t packedTag2) {
  * tables) assumptions : magic number supposed already checked and dictSize >= 8
  */
 size_t ZSTD_loadCEntropy(ZSTD_compressedBlockState_t *bs, void *workspace,
-                         const void *const dict, size_t dictSize);
+                         const void *dict, size_t dictSize);
 
 void ZSTD_reset_compressedBlockState(ZSTD_compressedBlockState_t *bs);
 
@@ -1669,8 +1669,7 @@ typedef struct {
 } ZSTD_SequencePosition;
 
 /* for benchmark */
-size_t ZSTD_convertBlockSequences(ZSTD_CCtx *cctx,
-                                  const ZSTD_Sequence *const inSeqs,
+size_t ZSTD_convertBlockSequences(ZSTD_CCtx *cctx, const ZSTD_Sequence *inSeqs,
                                   size_t nbSequences, int repcodeResolution);
 
 typedef struct {

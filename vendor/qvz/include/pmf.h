@@ -59,7 +59,6 @@ void free_pmf_list(struct pmf_list_t *);
 
 // PMF access
 uint32_t is_pmf_valid(struct pmf_t *);
-uint32_t get_symbol_index(const struct alphabet_t *alphabet, symbol_t symbol);
 double get_probability(struct pmf_t *pmf, uint32_t idx);
 double get_symbol_probability(struct pmf_t *pmf, symbol_t symbol);
 double get_entropy(struct pmf_t *pmf);

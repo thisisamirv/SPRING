@@ -887,9 +887,10 @@ size_t ZSTD_CCtxParams_setParameter(ZSTD_CCtx_params *CCtxParams,
     return CCtxParams->cParams.targetLength;
 
   case ZSTD_c_strategy:
-    if (value != 0) /* 0 => use default */
+    if (value != 0) { /* 0 => use default */
       BOUNDCHECK(ZSTD_c_strategy, value);
-    CCtxParams->cParams.strategy = (ZSTD_strategy)value;
+      CCtxParams->cParams.strategy = (ZSTD_strategy)value;
+    }
     return (size_t)CCtxParams->cParams.strategy;
 
   case ZSTD_c_contentSizeFlag:
@@ -1323,8 +1324,7 @@ size_t ZSTD_CCtx_setPledgedSrcSize(ZSTD_CCtx *cctx,
 }
 
 static ZSTD_compressionParameters
-ZSTD_dedicatedDictSearch_getCParams(int const compressionLevel,
-                                    size_t const dictSize);
+ZSTD_dedicatedDictSearch_getCParams(int compressionLevel, size_t dictSize);
 static int
 ZSTD_dedicatedDictSearch_isSupported(const ZSTD_compressionParameters *cParams);
 static void
@@ -3402,7 +3402,7 @@ static void ZSTD_validateSeqStore(const SeqStore_t *seqStore,
 
 static size_t ZSTD_transferSequences_wBlockDelim(
     ZSTD_CCtx *cctx, ZSTD_SequencePosition *seqPos,
-    const ZSTD_Sequence *const inSeqs, size_t inSeqsSize, const void *src,
+    const ZSTD_Sequence *inSeqs, size_t inSeqsSize, const void *src,
     size_t blockSize, ZSTD_ParamSwitch_e externalRepSearch);
 
 typedef enum { ZSTDbss_compress, ZSTDbss_noCompress } ZSTD_BuildSeqStore_e;
@@ -7043,7 +7043,7 @@ static U32 ZSTD_finalizeOffBase(U32 rawOffset, const U32 rep[ZSTD_REP_NUM],
  */
 static size_t ZSTD_transferSequences_wBlockDelim(
     ZSTD_CCtx *cctx, ZSTD_SequencePosition *seqPos,
-    const ZSTD_Sequence *const inSeqs, size_t inSeqsSize, const void *src,
+    const ZSTD_Sequence *inSeqs, size_t inSeqsSize, const void *src,
     size_t blockSize, ZSTD_ParamSwitch_e externalRepSearch) {
   U32 idx = seqPos->idx;
   U32 const startIdx = idx;
@@ -7153,7 +7153,7 @@ static size_t ZSTD_transferSequences_wBlockDelim(
  */
 static size_t ZSTD_transferSequences_noDelim(
     ZSTD_CCtx *cctx, ZSTD_SequencePosition *seqPos,
-    const ZSTD_Sequence *const inSeqs, size_t inSeqsSize, const void *src,
+    const ZSTD_Sequence *inSeqs, size_t inSeqsSize, const void *src,
     size_t blockSize, ZSTD_ParamSwitch_e externalRepSearch) {
   U32 idx = seqPos->idx;
   U32 startPosInSequence = seqPos->posInSequence;
@@ -7308,7 +7308,7 @@ static size_t ZSTD_transferSequences_noDelim(
  */
 typedef size_t (*ZSTD_SequenceCopier_f)(ZSTD_CCtx *cctx,
                                         ZSTD_SequencePosition *seqPos,
-                                        const ZSTD_Sequence *const inSeqs,
+                                        const ZSTD_Sequence *inSeqs,
                                         size_t inSeqsSize, const void *src,
                                         size_t blockSize,
                                         ZSTD_ParamSwitch_e externalRepSearch);
@@ -8116,7 +8116,7 @@ size_t convertSequences_noRepcodes(SeqDef *dstSeqs, const ZSTD_Sequence *inSeqs,
  * It may be re-inserted later.
  */
 size_t ZSTD_convertBlockSequences(ZSTD_CCtx *cctx,
-                                  const ZSTD_Sequence *const inSeqs,
+                                  const ZSTD_Sequence *inSeqs,
                                   size_t nbSequences, int repcodeResolution) {
   Repcodes_t updatedRepcodes;
   size_t seqNb = 0;
