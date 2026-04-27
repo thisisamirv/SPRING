@@ -125,22 +125,25 @@ function Resolve-RepoPath {
 
 function Get-CppSources {
     param ([string[]]$targetPaths)
-    $isExplicit = ($targetPaths -ne $null -and $targetPaths.Count -gt 0)
+    $isExplicit = ($null -ne $targetPaths -and $targetPaths.Count -gt 0)
     $searchPaths = if ($isExplicit) {
         $targetPaths | ForEach-Object { Resolve-RepoPath $_ } | Where-Object { Test-Path $_ }
-    } else { $DEFAULT_CPP_ROOTS }
+    }
+    else { $DEFAULT_CPP_ROOTS }
 
     # When the user explicitly provides target paths, also consider header files
     $includeList = if ($isExplicit) {
-        @("*.c","*.cc","*.cpp","*.cxx","*.h","*.hpp","*.hh","*.hxx","*.inl")
-    } else {
-        @("*.c","*.cc","*.cpp","*.cxx")
+        @("*.c", "*.cc", "*.cpp", "*.cxx", "*.h", "*.hpp", "*.hh", "*.hxx", "*.inl")
+    }
+    else {
+        @("*.c", "*.cc", "*.cpp", "*.cxx")
     }
 
     $allowedExts = if ($isExplicit) {
-        @('.c','.cc','.cpp','.cxx','.h','.hpp','.hh','.hxx','.inl')
-    } else {
-        @('.c','.cc','.cpp','.cxx')
+        @('.c', '.cc', '.cpp', '.cxx', '.h', '.hpp', '.hh', '.hxx', '.inl')
+    }
+    else {
+        @('.c', '.cc', '.cpp', '.cxx')
     }
 
     $results = @()
@@ -160,7 +163,8 @@ function Get-PythonSources {
     param ([string[]]$targetPaths)
     $searchPaths = if ($targetPaths) {
         $targetPaths | ForEach-Object { Resolve-RepoPath $_ } | Where-Object { Test-Path $_ }
-    } else { $DEFAULT_PY_ROOTS }
+    }
+    else { $DEFAULT_PY_ROOTS }
     $results = @()
     foreach ($p in $searchPaths) {
         if (Test-Path $p -PathType Container) {

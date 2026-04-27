@@ -4,12 +4,6 @@ project(pthash LANGUAGES CXX)
 add_library(pthash INTERFACE)
 
 target_include_directories(pthash INTERFACE
-    .
-    ..
-    include
-    external/xxHash
-    external/bits/include
-    external/bits/external/essentials/include
-    external/mm_file/include
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/src
 )

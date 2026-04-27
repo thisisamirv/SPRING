@@ -14,12 +14,11 @@
 #include <vector>
 
 #include "core_utils.h"
-#include "fs_utils.h"
 #include "progress.h"
 #include "single_phf.hpp"
-#include "utils/bucketers.hpp"
-#include "utils/encoders.hpp"
-#include "utils/hasher.hpp"
+#include "bucketers.hpp"
+#include "encoders.hpp"
+#include "hasher.hpp"
 
 namespace spring {
 

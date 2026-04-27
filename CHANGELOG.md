@@ -21,7 +21,7 @@
 - Changed reordering algorithm to use deterministic matching.
 - Replaced archived vendors with direct dependencies.
 - Pruned vendored libs even further.
-- Had vendored libs flattened for easier maintenance.
+- Had vendored libs flattened for easier maintenance. This allows easier future pruning and specialized modifications.
 
 ## V1.0.0-beta
 

@@ -272,7 +272,6 @@
 #define ZSTD_ARCH_RISCV_RVV
 #endif
 #endif
-#
 #if defined(ZSTD_ARCH_X86_AVX2)
 #include <immintrin.h>
 #endif

@@ -208,11 +208,7 @@ set(include_dir ${CMAKE_SOURCE_DIR}/src)
 # Emit a matching clangd configuration so editor diagnostics see the same
 # compiler include path and OpenMP flags as the CMake build.
 set(SPRING_CLANGD_FLAGS "\"-fopenmp\", \"-I${include_dir}\", \"-I${vendor_dir}\", \"-I${vendor_dir}/zstd\"")
-string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/pthash/include\"")
-string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/pthash/external/bits/include\"")
-string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/pthash/external/mm_file/include\"")
-string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/pthash/external/xxHash\"")
-string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/pthash/external/bits/external/essentials/include\"")
+string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/pthash\"")
 string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/qvz\"")
 string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/libbsc\"")
 string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/libdeflate\"")

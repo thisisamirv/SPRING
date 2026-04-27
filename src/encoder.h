@@ -9,7 +9,6 @@
 #include <list>
 #include <omp.h>
 #include <string>
-#include <vector>
 
 namespace spring {
 
