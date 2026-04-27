@@ -1,4 +1,5 @@
-#pragma once
+#ifndef PTHASH_SINGLE_PHF_HPP
+#define PTHASH_SINGLE_PHF_HPP
 
 #include "builders/external_memory_builder_single_phf.hpp"
 #include "builders/internal_memory_builder_single_phf.hpp"
@@ -11,7 +12,7 @@ namespace pthash {
 template <typename Hasher, typename Bucketer, typename Encoder, bool Minimal>
 struct single_phf //
 {
-  static_assert(!std::is_base_of<dense_encoder, Encoder>::value,
+  static_assert(!std::is_base_of_v<dense_encoder, Encoder>,
                 "Dense encoders are only valid for dense_partitioned_phf. "
                 "Select another encoder.");
   typedef Encoder encoder_type;
@@ -66,7 +67,7 @@ struct single_phf //
     return position(hash);
   }
 
-  uint64_t position(typename Hasher::hash_type hash) const {
+  uint64_t position(Hasher::hash_type hash) const {
     const uint64_t bucket = m_bucketer.bucket(hash.first());
     const uint64_t pilot = m_pilots.access(bucket);
     const uint64_t hashed_pilot = mix(pilot);
@@ -79,24 +80,24 @@ struct single_phf //
     return p;
   }
 
-  uint64_t num_bits_for_pilots() const {
+  [[nodiscard]] uint64_t num_bits_for_pilots() const {
     return 8 * (sizeof(m_seed) + sizeof(m_num_keys) + sizeof(m_table_size)) +
            m_pilots.num_bits();
   }
 
-  uint64_t num_bits_for_mapper() const {
+  [[nodiscard]] uint64_t num_bits_for_mapper() const {
     return m_bucketer.num_bits() + m_free_slots.num_bytes() * 8;
   }
 
-  uint64_t num_bits() const {
+  [[nodiscard]] uint64_t num_bits() const {
     return num_bits_for_pilots() + num_bits_for_mapper();
   }
 
-  uint64_t num_keys() const { return m_num_keys; }
+  [[nodiscard]] uint64_t num_keys() const { return m_num_keys; }
 
-  uint64_t table_size() const { return m_table_size; }
+  [[nodiscard]] uint64_t table_size() const { return m_table_size; }
 
-  uint64_t seed() const { return m_seed; }
+  [[nodiscard]] uint64_t seed() const { return m_seed; }
 
   template <typename Visitor> void visit(Visitor &visitor) const {
     visit_impl(visitor, *this);
@@ -109,12 +110,12 @@ struct single_phf //
 private:
   template <typename Visitor, typename T>
   static void visit_impl(Visitor &visitor, T &&t) {
-    visitor.visit(t.m_seed);
-    visitor.visit(t.m_num_keys);
-    visitor.visit(t.m_table_size);
-    visitor.visit(t.m_bucketer);
-    visitor.visit(t.m_pilots);
-    visitor.visit(t.m_free_slots);
+    visitor.visit(std::forward<T>(t).m_seed);
+    visitor.visit(std::forward<T>(t).m_num_keys);
+    visitor.visit(std::forward<T>(t).m_table_size);
+    visitor.visit(std::forward<T>(t).m_bucketer);
+    visitor.visit(std::forward<T>(t).m_pilots);
+    visitor.visit(std::forward<T>(t).m_free_slots);
   }
 
   static build_configuration
@@ -139,3 +140,5 @@ private:
 };
 
 } // namespace pthash
+
+#endif // PTHASH_SINGLE_PHF_HPP

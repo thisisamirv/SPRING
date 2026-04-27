@@ -1,4 +1,5 @@
-#pragma once
+#ifndef PTHASH_BUILDERS_EXTERNAL_MEMORY_BUILDER_SINGLE_PHF_HPP
+#define PTHASH_BUILDERS_EXTERNAL_MEMORY_BUILDER_SINGLE_PHF_HPP
 
 #include "builders/search.hpp"
 #include "builders/util.hpp"
@@ -13,15 +14,18 @@ struct external_memory_builder_single_phf {
   typedef Hasher hasher_type;
   typedef Bucketer bucketer_type;
 
-  external_memory_builder_single_phf()
-      : m_seed(0), m_num_keys(0), m_table_size(0), m_num_buckets(0),
-        m_pilots_filename(""), m_free_slots_filename("") {}
+  external_memory_builder_single_phf() = default;
   // non construction-copyable
   external_memory_builder_single_phf(
       external_memory_builder_single_phf const &) = delete;
   // non copyable
   external_memory_builder_single_phf &
   operator=(external_memory_builder_single_phf const &) = delete;
+  // allow moves
+  external_memory_builder_single_phf(
+      external_memory_builder_single_phf &&) noexcept = default;
+  external_memory_builder_single_phf &
+  operator=(external_memory_builder_single_phf &&) noexcept = default;
 
   ~external_memory_builder_single_phf() {
     if (m_pilots_filename != "")
@@ -204,31 +208,31 @@ struct external_memory_builder_single_phf {
     return time;
   }
 
-  uint64_t seed() const { return m_seed; }
+  [[nodiscard]] uint64_t seed() const { return m_seed; }
 
-  uint64_t num_keys() const { return m_num_keys; }
+  [[nodiscard]] uint64_t num_keys() const { return m_num_keys; }
 
-  uint64_t table_size() const { return m_table_size; }
+  [[nodiscard]] uint64_t table_size() const { return m_table_size; }
 
-  uint64_t num_partitions() const { return 0; }
+  [[nodiscard]] uint64_t num_partitions() const { return 0; }
 
-  uint64_t avg_partition_size() const { return 0; }
+  [[nodiscard]] uint64_t avg_partition_size() const { return 0; }
 
-  Bucketer bucketer() const { return m_bucketer; }
+  [[nodiscard]] Bucketer bucketer() const { return m_bucketer; }
 
-  mm::file_source<uint64_t> pilots() const {
+  [[nodiscard]] mm::file_source<uint64_t> pilots() const {
     return mm::file_source<uint64_t>(m_pilots_filename);
   }
 
-  mm::file_source<uint64_t> free_slots() const {
+  [[nodiscard]] mm::file_source<uint64_t> free_slots() const {
     return mm::file_source<uint64_t>(m_free_slots_filename);
   }
 
 private:
-  uint64_t m_seed;
-  uint64_t m_num_keys;
-  uint64_t m_table_size;
-  uint64_t m_num_buckets;
+  uint64_t m_seed = 0;
+  uint64_t m_num_keys = 0;
+  uint64_t m_table_size = 0;
+  uint64_t m_num_buckets = 0;
 
   Bucketer m_bucketer;
 
@@ -291,17 +295,28 @@ private:
     typedef T *iterator;
     typedef const T *const_iterator;
 
-    memory_view() : m_begin(nullptr), m_end(nullptr) {};
+    memory_view() = default;
     memory_view(T *begin, uint64_t size)
         : m_begin(begin), m_end(begin + size) {}
 
-    inline T *begin() const { return m_begin; }
-    inline T *end() const { return m_end; }
-    inline T &operator[](uint64_t pos) const { return *(m_begin + pos); }
-    inline uint64_t size() const { return std::distance(m_begin, m_end); }
+    [[nodiscard]] T *begin() const { return m_begin; }
+    [[nodiscard]] T *end() const { return m_end; }
+    [[nodiscard]] T &operator[](uint64_t pos) const { return *(m_begin + pos); }
+    [[nodiscard]] uint64_t size() const {
+      return std::distance(m_begin, m_end);
+    }
 
   protected:
-    T *m_begin, *m_end;
+    void set_begin_end(T *begin, T *end) {
+      m_begin = begin;
+      m_end = end;
+    }
+    T *begin_ptr() const { return m_begin; }
+    T *end_ptr() const { return m_end; }
+
+  private:
+    T *m_begin = nullptr;
+    T *m_end = nullptr;
   };
 
   template <typename T> struct reader_t : memory_view<const T> {
@@ -311,8 +326,8 @@ private:
       m_is.open(filename, mm::advice::sequential);
       if (!m_is.is_open())
         throw std::runtime_error("cannot open temporary file (read)");
-      memory_view<const T>::m_begin = m_is.data();
-      memory_view<const T>::m_end = m_is.data() + m_is.size();
+      memory_view<const T>::set_begin_end(m_is.data(),
+                                          m_is.data() + m_is.size());
     }
 
     void close() { m_is.close(); }
@@ -347,12 +362,11 @@ private:
         : m_filenames(filenames), m_buffers(filenames.size()),
           m_buffer_capacity(ram / (sizeof(uint64_t) * 2)),
           m_ram(ram / (sizeof(uint64_t) * 2)),
-          m_used_bucket_sizes(used_bucket_sizes), m_outs(filenames.size()),
-          m_num_buckets(0) {
-      assert(m_filenames.size() == m_used_bucket_sizes.size());
+          m_used_bucket_sizes(&used_bucket_sizes), m_outs(filenames.size()) {
+      assert(m_filenames.size() == m_used_bucket_sizes->size());
       m_non_empty_buckets.reserve(filenames.size());
       for (uint64_t i = 0; i != filenames.size(); ++i) {
-        if (m_used_bucket_sizes[i]) {
+        if ((*m_used_bucket_sizes)[i]) {
           throw std::runtime_error("One of the output files is already open");
         }
       }
@@ -373,7 +387,7 @@ private:
       ++m_num_buckets;
     }
 
-    uint64_t num_buckets() const { return m_num_buckets; };
+    [[nodiscard]] uint64_t num_buckets() const { return m_num_buckets; }
 
     void flush() {
       for (uint64_t i = 0; i != m_buffers.size(); ++i)
@@ -384,10 +398,9 @@ private:
   private:
     void ensure_capacity(uint64_t bucket_size) {
       if (bucket_size + 1 > m_buffer_capacity) {
-        std::sort(m_non_empty_buckets.begin(), m_non_empty_buckets.end(),
-                  [&](uint64_t i, uint64_t j) {
-                    return m_buffers[i].size() < m_buffers[j].size();
-                  });
+        boost::range::sort(m_non_empty_buckets, [&](uint64_t i, uint64_t j) {
+          return m_buffers[i].size() < m_buffers[j].size();
+        });
 
         uint64_t target =
             std::max((uint64_t)std::ceil(0.999 * m_ram), bucket_size + 1);
@@ -401,13 +414,13 @@ private:
     void flush_i(uint64_t i) {
       if (m_buffers[i].size() == 0)
         return;
-      if (!m_used_bucket_sizes[i]) {
+      if (!(*m_used_bucket_sizes)[i]) {
         m_outs[i].open(m_filenames[i].c_str(),
                        std::ofstream::out | std::ofstream::binary);
         if (!m_outs[i].is_open()) {
           throw std::runtime_error("cannot open temporary file (write)");
         }
-        m_used_bucket_sizes[i] = true;
+        (*m_used_bucket_sizes)[i] = true;
       }
       m_outs[i].write(reinterpret_cast<char const *>(m_buffers[i].data()),
                       m_buffers[i].size() * sizeof(uint64_t));
@@ -417,20 +430,20 @@ private:
 
     std::vector<std::string> m_filenames;
     std::vector<std::vector<uint64_t>> m_buffers;
-    uint64_t m_buffer_capacity;
+    uint64_t m_buffer_capacity = 0;
     uint64_t m_ram;
     std::vector<uint64_t> m_non_empty_buckets;
-    std::vector<bool> &m_used_bucket_sizes;
+    std::vector<bool> *m_used_bucket_sizes;
     std::vector<std::ofstream> m_outs;
-    uint64_t m_num_buckets;
+    uint64_t m_num_buckets = 0;
   };
 
   struct buckets_iterator_t {
     buckets_iterator_t(
         std::vector<std::pair<bucket_size_type, std::string>> const
             &sizes_filenames)
-        : m_sizes(sizes_filenames.size()), m_sources(sizes_filenames.size()) {
-      m_pos = sizes_filenames.size();
+        : m_sizes(sizes_filenames.size()), m_sources(sizes_filenames.size()),
+          m_pos(sizes_filenames.size()) {
       for (uint64_t i = 0, i_end = m_pos; i < i_end; ++i) {
         m_sizes[i] = sizes_filenames[i].first;
         m_sources[i].open(sizes_filenames[i].second, mm::advice::sequential);
@@ -444,7 +457,7 @@ private:
         is.close();
     }
 
-    inline bucket_t operator*() {
+    bucket_t operator*() {
       bucket_t bucket;
       bucket.init(m_it, m_bucket_size);
       return bucket;
@@ -478,7 +491,7 @@ private:
 
   struct pilots_merger_t {
     pilots_merger_t(std::string const &filename, uint64_t ram)
-        : m_buffer(filename, ram), m_next_bucket_id(0) {}
+        : m_buffer(filename, ram) {}
 
     template <typename HashIterator>
     void add(bucket_id_type bucket_id, bucket_size_type bucket_size,
@@ -495,8 +508,7 @@ private:
     }
 
   private:
-    inline void emplace_back_and_fill(bucket_id_type bucket_id,
-                                      uint64_t pilot) {
+    void emplace_back_and_fill(bucket_id_type bucket_id, uint64_t pilot) {
       assert(m_next_bucket_id <= bucket_id);
       while (m_next_bucket_id++ < bucket_id)
         m_buffer.emplace_back(0);
@@ -504,7 +516,7 @@ private:
     }
 
     buffered_file_t<uint64_t> m_buffer;
-    uint64_t m_next_bucket_id;
+    uint64_t m_next_bucket_id = 0;
   };
 
   struct multifile_pairs_writer : buffer_t<bucket_payload_pair> {
@@ -513,7 +525,7 @@ private:
                            uint64_t ram, uint64_t num_threads_sort = 1,
                            uint64_t ram_parallel_merge = 0)
         : buffer_t<bucket_payload_pair>(get_balanced_ram(num_pairs, ram)),
-          m_filenames(filenames), m_num_pairs_files(num_pairs_files),
+          m_filenames(filenames), m_num_pairs_files(&num_pairs_files),
           m_num_threads_sort(num_threads_sort),
           m_ram_parallel_merge(ram_parallel_merge) {
       assert(num_threads_sort > 1 or ram_parallel_merge == 0);
@@ -528,8 +540,8 @@ private:
         uint64_t num_keys_per_thread =
             (size + m_num_threads_sort - 1) / m_num_threads_sort;
         for (uint64_t i = 0; i != m_num_threads_sort; ++i) {
-          auto begin = buffer.data() + i * num_keys_per_thread;
-          auto end =
+          auto *begin = buffer.data() + i * num_keys_per_thread;
+          auto *end =
               buffer.data() + std::min((i + 1) * num_keys_per_thread, size);
           uint64_t block_size = std::distance(begin, end);
           blocks.emplace_back(begin, block_size);
@@ -537,7 +549,7 @@ private:
 
         auto exe = [&](uint64_t tid) {
           assert(tid < blocks.size());
-          std::sort(blocks[tid].begin(), blocks[tid].end());
+          boost::range::sort(blocks[tid]);
         };
 
         std::vector<std::thread> threads(m_num_threads_sort);
@@ -548,18 +560,18 @@ private:
           if (threads[i].joinable())
             threads[i].join();
         }
-        pairs_merger_t pairs_merger(m_filenames[m_num_pairs_files],
+        pairs_merger_t pairs_merger(m_filenames[*m_num_pairs_files],
                                     m_ram_parallel_merge);
-        ++m_num_pairs_files;
+        ++(*m_num_pairs_files);
         merge(blocks, pairs_merger, false);
         pairs_merger.close();
       } else { // sequential
-        std::ofstream out(m_filenames[m_num_pairs_files],
+        std::ofstream out(m_filenames[*m_num_pairs_files],
                           std::ofstream::out | std::ofstream::binary);
         if (!out.is_open())
           throw std::runtime_error("cannot open temporary file (write)");
-        ++m_num_pairs_files;
-        std::sort(buffer.begin(), buffer.end());
+        ++(*m_num_pairs_files);
+        boost::range::sort(buffer);
         out.write(reinterpret_cast<char const *>(buffer.data()),
                   size * sizeof(bucket_payload_pair));
         out.close();
@@ -568,7 +580,7 @@ private:
 
   private:
     std::vector<std::string> m_filenames;
-    uint64_t &m_num_pairs_files;
+    uint64_t *m_num_pairs_files;
     uint64_t m_num_threads_sort;
     uint64_t m_ram_parallel_merge;
 
@@ -587,11 +599,10 @@ private:
   };
 
   struct temporary_files_manager {
-    temporary_files_manager(std::string const &dir_name,
-                            uint64_t run_identifier)
-        : m_dir_name(dir_name), m_run_identifier(run_identifier),
-          m_num_pairs_files(0), m_used_bucket_sizes(MAX_BUCKET_SIZE) {
-      std::fill(m_used_bucket_sizes.begin(), m_used_bucket_sizes.end(), false);
+    temporary_files_manager(std::string dir_name, uint64_t run_identifier)
+        : m_dir_name(std::move(dir_name)), m_run_identifier(run_identifier),
+          m_used_bucket_sizes(MAX_BUCKET_SIZE) {
+      boost::range::fill(m_used_bucket_sizes, false);
     }
 
     multifile_pairs_writer
@@ -610,7 +621,9 @@ private:
                                     ram, num_threads_sort, ram_parallel_merge);
     }
 
-    uint64_t get_num_pairs_files() const { return m_num_pairs_files; }
+    [[nodiscard]] uint64_t get_num_pairs_files() const {
+      return m_num_pairs_files;
+    }
 
     void remove_all_pairs_files() {
       while (m_num_pairs_files > 0) {
@@ -627,14 +640,14 @@ private:
       }
     }
 
-    std::vector<pairs_t> pairs_blocks() const {
+    [[nodiscard]] std::vector<pairs_t> pairs_blocks() const {
       std::vector<pairs_t> result(m_num_pairs_files);
       for (uint64_t i = 0; i != m_num_pairs_files; ++i)
         result[i].open(get_pairs_filename(i));
       return result;
     };
 
-    buckets_t buckets(build_configuration const &config) {
+    [[nodiscard]] buckets_t buckets(build_configuration const &config) {
       std::vector<std::string> filenames;
       filenames.reserve(MAX_BUCKET_SIZE);
       for (uint64_t bucket_size = 1; bucket_size <= MAX_BUCKET_SIZE;
@@ -644,7 +657,7 @@ private:
       return buckets_t(filenames, config.ram, m_used_bucket_sizes);
     }
 
-    buckets_iterator_t buckets_iterator() {
+    [[nodiscard]] buckets_iterator_t buckets_iterator() {
       std::vector<std::pair<bucket_size_type, std::string>> sizes_filenames;
       for (uint64_t i = 0; i != MAX_BUCKET_SIZE; ++i) {
         if (m_used_bucket_sizes[i]) {
@@ -657,7 +670,7 @@ private:
       return buckets_iterator_t(sizes_filenames);
     }
 
-    bucket_size_type max_bucket_size() {
+    [[nodiscard]] bucket_size_type max_bucket_size() {
       bucket_size_type bucket_size = 0;
       for (uint64_t i = 0, i_end = m_used_bucket_sizes.size(); i < i_end; ++i) {
         if (m_used_bucket_sizes[i])
@@ -666,7 +679,7 @@ private:
       return bucket_size + 1;
     }
 
-    std::string get_pilots_filename() const {
+    [[nodiscard]] std::string get_pilots_filename() const {
       std::stringstream filename;
       filename << m_dir_name << "/pthash.tmp.run" << m_run_identifier
                << ".pilots"
@@ -674,7 +687,7 @@ private:
       return filename.str();
     }
 
-    std::string get_free_slots_filename() const {
+    [[nodiscard]] std::string get_free_slots_filename() const {
       std::stringstream filename;
       filename << m_dir_name << "/pthash.tmp.run" << m_run_identifier
                << ".free_slots"
@@ -683,14 +696,15 @@ private:
     }
 
   private:
-    std::string get_pairs_filename(uint32_t file_id) const {
+    [[nodiscard]] std::string get_pairs_filename(uint32_t file_id) const {
       std::stringstream filename;
       filename << m_dir_name << "/pthash.tmp.run" << m_run_identifier
                << ".pairs" << file_id << ".bin";
       return filename.str();
     }
 
-    std::string get_buckets_filename(bucket_size_type bucket_size) const {
+    [[nodiscard]] std::string
+    get_buckets_filename(bucket_size_type bucket_size) const {
       std::stringstream filename;
       filename << m_dir_name << "/pthash.tmp.run" << m_run_identifier << ".size"
                << static_cast<uint32_t>(bucket_size) << ".bin";
@@ -699,7 +713,7 @@ private:
 
     std::string m_dir_name;
     uint64_t m_run_identifier;
-    uint64_t m_num_pairs_files;
+    uint64_t m_num_pairs_files = 0;
     std::vector<bool> m_used_bucket_sizes;
   };
 
@@ -742,3 +756,5 @@ private:
 };
 
 } // namespace pthash
+
+#endif // PTHASH_BUILDERS_EXTERNAL_MEMORY_BUILDER_SINGLE_PHF_HPP

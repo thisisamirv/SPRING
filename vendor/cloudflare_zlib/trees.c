@@ -152,7 +152,7 @@ static void send_all_trees(deflate_state *s, int lcodes, int dcodes,
 static void compress_block(deflate_state *s, const ct_data *ltree,
                            const ct_data *dtree);
 static int detect_data_type(deflate_state *s);
-static unsigned bi_reverse(unsigned value, int length);
+static unsigned bi_reverse(unsigned code, int length);
 static void bi_windup(deflate_state *s);
 static void bi_flush(deflate_state *s);
 static void copy_block(deflate_state *s, uint8_t *buf, unsigned len,
@@ -202,7 +202,7 @@ static void send_bits(deflate_state *s, uint64_t val, int len) {
 /* ===========================================================================
  * Initialize the various 'constant' tables.
  */
-static void tr_static_init(void) {
+static void tr_static_init() {
 #if defined(GEN_TREES_H) || !defined(STDC)
   static int static_init_done = 0;
   int n;      /* iterates over tree elements */
@@ -274,7 +274,7 @@ static void tr_static_init(void) {
    * tree construction to get a canonical Huffman tree (longest code
    * all ones)
    */
-  gen_codes((ct_data *)static_ltree, L_CODES + 1, bl_count);
+  gen_codes(static_ltree, L_CODES + 1, bl_count);
 
   /* The static distance tree is trivial: */
   for (n = 0; n < D_CODES; n++) {
@@ -305,7 +305,8 @@ void gen_trees_header(void) {
   int i;
 
   Assert(header != NULL, "Can't open trees.h");
-  if (header == NULL) return;
+  if (header == NULL)
+    return;
   fprintf(header, "/* header created automatically with -DGEN_TREES_H */\n\n");
 
   fprintf(header, "static const ct_data static_ltree[L_CODES+2] = {\n");
@@ -671,10 +672,10 @@ static void build_tree(deflate_state *s, tree_desc *desc) {
   /* At this point, the fields freq and dad are set. We can now
    * generate the bit lengths.
    */
-  gen_bitlen(s, (tree_desc *)desc);
+  gen_bitlen(s, desc);
 
   /* The field len is now set, we can generate the bit codes */
-  gen_codes((ct_data *)tree, max_code, s->bl_count);
+  gen_codes(tree, max_code, s->bl_count);
 }
 
 /* ===========================================================================
@@ -786,11 +787,11 @@ static int build_bl_tree(deflate_state *s) {
   int max_blindex; /* index of last bit length code of non zero freq */
 
   /* Determine the bit length frequencies for literal and distance trees */
-  scan_tree(s, (ct_data *)s->dyn_ltree, s->l_desc.max_code);
-  scan_tree(s, (ct_data *)s->dyn_dtree, s->d_desc.max_code);
+  scan_tree(s, s->dyn_ltree, s->l_desc.max_code);
+  scan_tree(s, s->dyn_dtree, s->d_desc.max_code);
 
   /* Build the bit length tree: */
-  build_tree(s, (tree_desc *)(&(s->bl_desc)));
+  build_tree(s, &s->bl_desc);
   /* opt_len now includes the length of the tree representations, except
    * the lengths of the bit lengths codes and the 5+5+4 bits for the counts.
    */
@@ -833,10 +834,10 @@ static void send_all_trees(deflate_state *s, int lcodes, int dcodes,
   }
   Tracev((stderr, "\nbl tree: sent %" PRId64, s->bits_sent));
 
-  send_tree(s, (ct_data *)s->dyn_ltree, lcodes - 1); /* literal tree */
+  send_tree(s, s->dyn_ltree, lcodes - 1); /* literal tree */
   Tracev((stderr, "\nlit tree: sent %" PRId64, s->bits_sent));
 
-  send_tree(s, (ct_data *)s->dyn_dtree, dcodes - 1); /* distance tree */
+  send_tree(s, s->dyn_dtree, dcodes - 1); /* distance tree */
   Tracev((stderr, "\ndist tree: sent %" PRId64, s->bits_sent));
 }
 
@@ -895,11 +896,11 @@ _tr_flush_block(deflate_state *s, uint8_t *buf,
       s->strm->data_type = detect_data_type(s);
 
     /* Construct the literal and distance trees */
-    build_tree(s, (tree_desc *)(&(s->l_desc)));
+    build_tree(s, &s->l_desc);
     Tracev((stderr, "\nlit data: dyn %" PRId64 ", stat %" PRId64, s->opt_len,
             s->static_len));
 
-    build_tree(s, (tree_desc *)(&(s->d_desc)));
+    build_tree(s, &s->d_desc);
     Tracev((stderr, "\ndist data: dyn %" PRId64 ", stat %" PRId64, s->opt_len,
             s->static_len));
     /* At this point, opt_len and static_len are the total bit lengths of
@@ -1208,7 +1209,7 @@ static unsigned bi_reverse(unsigned code, /* the value to invert */
                            int len)       /* its bit length */
 
 {
-  register unsigned res = 0;
+  unsigned res = 0;
   do {
     res |= code & 1;
     code >>= 1, res <<= 1;

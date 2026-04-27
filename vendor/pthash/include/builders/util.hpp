@@ -1,4 +1,5 @@
-#pragma once
+#ifndef PTHASH_BUILDERS_UTIL_HPP
+#define PTHASH_BUILDERS_UTIL_HPP
 
 #include <cmath> // log, sqrt
 #include <iostream>
@@ -27,38 +28,26 @@ static inline std::string get_tmp_builder_filename(std::string const &dir_name,
 }
 
 struct build_timings {
-  build_timings()
-      : partitioning_microseconds(0), mapping_ordering_microseconds(0),
-        searching_microseconds(0), encoding_microseconds(0) {}
-
-  uint64_t partitioning_microseconds;
-  uint64_t mapping_ordering_microseconds;
-  uint64_t searching_microseconds;
-  uint64_t encoding_microseconds;
+  uint64_t partitioning_microseconds = 0;
+  uint64_t mapping_ordering_microseconds = 0;
+  uint64_t searching_microseconds = 0;
+  uint64_t encoding_microseconds = 0;
 };
 
 struct build_configuration {
-  build_configuration()
-      : lambda(4.5), alpha(constants::default_alpha), avg_partition_size(0),
-        num_buckets(constants::invalid_num_buckets),
-        table_size(constants::invalid_table_size),
-        seed(constants::invalid_seed), num_threads(1),
-        ram(static_cast<double>(constants::available_ram) * 0.75),
-        tmp_dir(constants::default_tmp_dirname), dense_partitioning(false),
-        minimal(true), verbose(true) {}
-
-  double lambda; // avg. bucket size
-  double alpha;  // load factor
-  uint64_t avg_partition_size;
-  uint64_t num_buckets;
-  uint64_t table_size;
-  uint64_t seed;
-  uint64_t num_threads;
-  uint64_t ram;
-  std::string tmp_dir;
-  bool dense_partitioning;
-  bool minimal;
-  bool verbose;
+  double lambda = 4.5;                     // avg. bucket size
+  double alpha = constants::default_alpha; // load factor
+  uint64_t avg_partition_size = 0;
+  uint64_t num_buckets = constants::invalid_num_buckets;
+  uint64_t table_size = constants::invalid_table_size;
+  uint64_t seed = constants::invalid_seed;
+  uint64_t num_threads = 1;
+  uint64_t ram = static_cast<uint64_t>(
+      static_cast<double>(constants::available_ram()) * 0.75);
+  std::string tmp_dir = constants::default_tmp_dirname;
+  bool dense_partitioning = false;
+  bool minimal = true;
+  bool verbose = true;
 };
 
 static inline uint64_t
@@ -141,7 +130,7 @@ struct bucket_payload_pair {
   bucket_id_type bucket_id;
   uint64_t payload;
 
-  bucket_payload_pair() {}
+  bucket_payload_pair() = default;
   bucket_payload_pair(bucket_id_type bucket_id, uint64_t payload)
       : bucket_id(bucket_id), payload(payload) {}
 
@@ -153,24 +142,22 @@ struct bucket_payload_pair {
 #pragma pack(pop)
 
 struct bucket_t {
-  bucket_t() : m_begin(nullptr), m_size(0) {}
-
   void init(uint64_t const *begin, bucket_size_type size) {
     m_begin = begin;
     m_size = size;
   }
 
-  inline bucket_id_type id() const { return *m_begin; }
+  [[nodiscard]] bucket_id_type id() const { return *m_begin; }
 
-  inline uint64_t const *begin() const { return m_begin + 1; }
+  [[nodiscard]] uint64_t const *begin() const { return m_begin + 1; }
 
-  inline uint64_t const *end() const { return m_begin + 1 + m_size; }
+  [[nodiscard]] uint64_t const *end() const { return m_begin + 1 + m_size; }
 
-  inline bucket_size_type size() const { return m_size; }
+  [[nodiscard]] bucket_size_type size() const { return m_size; }
 
 private:
-  uint64_t const *m_begin;
-  bucket_size_type m_size;
+  uint64_t const *m_begin = nullptr;
+  bucket_size_type m_size = 0;
 };
 
 template <typename PairsRandomAccessIterator> struct payload_iterator {
@@ -363,11 +350,11 @@ struct hash_generator {
   hash_generator(RandomAccessIterator keys, uint64_t seed)
       : m_iterator(keys), m_seed(seed) {}
 
-  inline auto operator*() { return Hasher::hash(*m_iterator, m_seed); }
+  auto operator*() { return Hasher::hash(*m_iterator, m_seed); }
 
-  inline void operator++() { ++m_iterator; }
+  void operator++() { ++m_iterator; }
 
-  inline hash_generator operator+(uint64_t offset) const {
+  hash_generator operator+(uint64_t offset) const {
     return hash_generator(m_iterator + offset, m_seed);
   }
 
@@ -399,3 +386,5 @@ inline double compute_empirical_entropy(std::vector<uint64_t> const &values) {
 }
 
 } // namespace pthash
+
+#endif // PTHASH_BUILDERS_UTIL_HPP

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef PTHASH_EXTERNAL_BITS_RANKED_SEQUENCE_HPP
+#define PTHASH_EXTERNAL_BITS_RANKED_SEQUENCE_HPP
 
 #include <unordered_map>
 #include <vector>
@@ -26,7 +27,7 @@ compute_ranks_and_dictionary(Iterator begin, const uint64_t n) //
 
   // assign codewords by non-increasing frequency
   std::vector<uint64_t> dict;
-  dict.reserve(distinct.size());
+  dict.reserve(vec.size());
   for (uint64_t i = 0; i != vec.size(); ++i) {
     auto p = vec[i];
     distinct.insert({p.first, i});
@@ -49,13 +50,13 @@ struct ranked_sequence {
     m_dict.build(dict.begin(), dict.size());
   }
 
-  uint64_t size() const { return m_ranks.size(); }
+  [[nodiscard]] uint64_t size() const { return m_ranks.size(); }
 
-  uint64_t num_bytes() const {
+  [[nodiscard]] uint64_t num_bytes() const {
     return m_ranks.num_bytes() + m_dict.num_bytes();
   }
 
-  uint64_t access(uint64_t i) const {
+  [[nodiscard]] uint64_t access(uint64_t i) const {
     uint64_t rank = m_ranks.access(i);
     return m_dict.access(rank);
   }
@@ -71,8 +72,8 @@ struct ranked_sequence {
 private:
   template <typename Visitor, typename T>
   static void visit_impl(Visitor &visitor, T &&t) {
-    visitor.visit(t.m_ranks);
-    visitor.visit(t.m_dict);
+    visitor.visit(std::forward<T>(t).m_ranks);
+    visitor.visit(std::forward<T>(t).m_dict);
   }
 
   compact_vector m_ranks;
@@ -80,3 +81,5 @@ private:
 };
 
 } // namespace bits
+
+#endif // PTHASH_EXTERNAL_BITS_RANKED_SEQUENCE_HPP

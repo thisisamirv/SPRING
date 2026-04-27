@@ -1,4 +1,5 @@
-#pragma once
+#ifndef PTHASH_UTILS_DENSE_ENCODERS_HPP
+#define PTHASH_UTILS_DENSE_ENCODERS_HPP
 
 #include <cassert>
 #include <thread>
@@ -23,12 +24,12 @@ template <typename Encoder> struct dense_mono : dense_encoder {
 
   static std::string name() { return Encoder::name(); }
 
-  size_t size() const { return m_encoder.size(); }
+  [[nodiscard]] size_t size() const { return m_encoder.size(); }
 
-  size_t num_bits() const { return m_encoder.num_bits(); }
+  [[nodiscard]] size_t num_bits() const { return m_encoder.num_bits(); }
 
-  inline uint64_t access(const uint64_t partition,
-                         const uint64_t bucket) const {
+  [[nodiscard]] uint64_t access(const uint64_t partition,
+                                const uint64_t bucket) const {
     assert(m_num_partitions * bucket + partition < size());
     return m_encoder.access(m_num_partitions * bucket + partition);
   }
@@ -44,11 +45,11 @@ template <typename Encoder> struct dense_mono : dense_encoder {
 private:
   template <typename Visitor, typename T>
   static void visit_impl(Visitor &visitor, T &&t) {
-    visitor.visit(t.m_num_partitions);
-    visitor.visit(t.m_encoder);
+    visitor.visit(std::forward<T>(t).m_num_partitions);
+    visitor.visit(std::forward<T>(t).m_encoder);
   }
 
-  uint64_t m_num_partitions;
+  uint64_t m_num_partitions = 0;
   Encoder m_encoder;
 };
 
@@ -96,13 +97,13 @@ template <typename Encoder> struct dense_interleaved : dense_encoder {
 
   static std::string name() { return Encoder::name() + "-int"; }
 
-  inline uint64_t access(const uint64_t partition,
-                         const uint64_t bucket) const {
+  [[nodiscard]] uint64_t access(const uint64_t partition,
+                                const uint64_t bucket) const {
     assert(bucket < m_encoders.size());
     return m_encoders[bucket].access(partition);
   }
 
-  uint64_t num_bits() const {
+  [[nodiscard]] uint64_t num_bits() const {
     uint64_t sum = 8 * sizeof(uint64_t); // for span' size
     for (auto const &e : m_encoders)
       sum += e.num_bits();
@@ -120,7 +121,7 @@ template <typename Encoder> struct dense_interleaved : dense_encoder {
 private:
   template <typename Visitor, typename T>
   static void visit_impl(Visitor &visitor, T &&t) {
-    visitor.visit(t.m_encoders);
+    visitor.visit(std::forward<T>(t).m_encoders);
   }
 
   essentials::owning_span<Encoder> m_encoders;
@@ -136,3 +137,5 @@ typedef dense_interleaved<dictionary> D_int;
 typedef dense_interleaved<rice> R_int;
 
 } // namespace pthash
+
+#endif // PTHASH_UTILS_DENSE_ENCODERS_HPP

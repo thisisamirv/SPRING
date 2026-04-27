@@ -1,4 +1,5 @@
-#pragma once
+#ifndef PTHASH_EXTERNAL_BITS_COMPACT_VECTOR_HPP
+#define PTHASH_EXTERNAL_BITS_COMPACT_VECTOR_HPP
 
 #include <cmath>
 #include <cstring>
@@ -85,9 +86,7 @@ struct compact_vector //
   };
 
   struct builder {
-    builder()
-        : m_size(0), m_width(0), m_mask(0), m_back(0), m_cur_block(0),
-          m_cur_shift(0) {}
+    builder() = default;
 
     builder(uint64_t n, uint64_t w) : builder() { resize(n, w); }
 
@@ -193,8 +192,10 @@ struct compact_vector //
                                        // members
 
     typedef enumerator<builder> iterator;
-    iterator get_iterator_at(uint64_t pos) const { return iterator(this, pos); }
-    iterator begin() const { return get_iterator_at(0); }
+    [[nodiscard]] iterator get_iterator_at(uint64_t pos) const {
+      return iterator(this, pos);
+    }
+    [[nodiscard]] iterator begin() const { return get_iterator_at(0); }
 
     void build(compact_vector &cv) {
       cv.m_size = m_size;
@@ -204,7 +205,7 @@ struct compact_vector //
       builder().swap(*this);
     }
 
-    void swap(builder &other) {
+    void swap(builder &other) noexcept {
       std::swap(m_size, other.m_size);
       std::swap(m_width, other.m_width);
       std::swap(m_mask, other.m_mask);
@@ -214,22 +215,22 @@ struct compact_vector //
       m_data.swap(other.m_data);
     }
 
-    uint64_t back() const { return m_back; }
-    uint64_t size() const { return m_size; }
-    uint64_t width() const { return m_width; }
-    std::vector<uint64_t> const &data() const { return m_data; }
+    [[nodiscard]] uint64_t back() const { return m_back; }
+    [[nodiscard]] uint64_t size() const { return m_size; }
+    [[nodiscard]] uint64_t width() const { return m_width; }
+    [[nodiscard]] std::vector<uint64_t> const &data() const { return m_data; }
 
   private:
-    uint64_t m_size;
-    uint64_t m_width;
-    uint64_t m_mask;
-    uint64_t m_back;
-    uint64_t m_cur_block;
-    int64_t m_cur_shift;
+    uint64_t m_size = 0;
+    uint64_t m_width = 0;
+    uint64_t m_mask = 0;
+    uint64_t m_back = 0;
+    uint64_t m_cur_block = 0;
+    int64_t m_cur_shift = 0;
     std::vector<uint64_t> m_data;
   };
 
-  compact_vector() : m_size(0), m_width(0), m_mask(0) {}
+  compact_vector() = default;
 
   template <typename Iterator> void build(Iterator begin, uint64_t n) {
     assert(n > 0);
@@ -244,7 +245,7 @@ struct compact_vector //
     builder.build(*this);
   }
 
-  uint64_t operator[](uint64_t i) const {
+  [[nodiscard]] uint64_t operator[](uint64_t i) const {
     assert(i < size());
     uint64_t pos = i * m_width;
     uint64_t block = pos >> 6;
@@ -255,7 +256,7 @@ struct compact_vector //
                      (m_data[block + 1] << (64 - shift) & m_mask);
   }
 
-  uint64_t access(uint64_t i) const {
+  [[nodiscard]] uint64_t access(uint64_t i) const {
     assert(i < size());
     uint64_t pos = i * m_width;
     const char *ptr = reinterpret_cast<const char *>(m_data.data());
@@ -264,21 +265,25 @@ struct compact_vector //
     return (word >> (pos & 7)) & m_mask;
   }
 
-  uint64_t back() const { return operator[](size() - 1); }
-  uint64_t size() const { return m_size; }
-  uint64_t width() const { return m_width; }
-  essentials::owning_span<uint64_t> const &data() const { return m_data; }
+  [[nodiscard]] uint64_t back() const { return operator[](size() - 1); }
+  [[nodiscard]] uint64_t size() const { return m_size; }
+  [[nodiscard]] uint64_t width() const { return m_width; }
+  [[nodiscard]] essentials::owning_span<uint64_t> const &data() const {
+    return m_data;
+  }
 
   typedef enumerator<compact_vector> iterator;
-  iterator get_iterator_at(uint64_t pos) const { return iterator(this, pos); }
-  iterator begin() const { return get_iterator_at(0); }
+  [[nodiscard]] iterator get_iterator_at(uint64_t pos) const {
+    return iterator(this, pos);
+  }
+  [[nodiscard]] iterator begin() const { return get_iterator_at(0); }
 
-  uint64_t num_bytes() const {
+  [[nodiscard]] uint64_t num_bytes() const {
     return sizeof(m_size) + sizeof(m_width) + sizeof(m_mask) +
            essentials::vec_bytes(m_data);
   }
 
-  void swap(compact_vector &other) {
+  void swap(compact_vector &other) noexcept {
     std::swap(m_size, other.m_size);
     std::swap(m_width, other.m_width);
     std::swap(m_mask, other.m_mask);
@@ -294,18 +299,20 @@ struct compact_vector //
   }
 
 private:
-  uint64_t m_size;
-  uint64_t m_width;
-  uint64_t m_mask;
+  uint64_t m_size = 0;
+  uint64_t m_width = 0;
+  uint64_t m_mask = 0;
   essentials::owning_span<uint64_t> m_data;
 
   template <typename Visitor, typename T>
   static void visit_impl(Visitor &visitor, T &&t) {
-    visitor.visit(t.m_size);
-    visitor.visit(t.m_width);
-    visitor.visit(t.m_mask);
-    visitor.visit(t.m_data);
+    visitor.visit(std::forward<T>(t).m_size);
+    visitor.visit(std::forward<T>(t).m_width);
+    visitor.visit(std::forward<T>(t).m_mask);
+    visitor.visit(std::forward<T>(t).m_data);
   }
 };
 
 } // namespace bits
+
+#endif // PTHASH_EXTERNAL_BITS_COMPACT_VECTOR_HPP

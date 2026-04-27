@@ -1,4 +1,5 @@
-#pragma once
+#ifndef PTHASH_BUILDERS_INTERNAL_MEMORY_BUILDER_SINGLE_PHF_HPP
+#define PTHASH_BUILDERS_INTERNAL_MEMORY_BUILDER_SINGLE_PHF_HPP
 
 #include "builders/search.hpp"
 #include "builders/util.hpp"
@@ -11,9 +12,7 @@ struct internal_memory_builder_single_phf {
   typedef Hasher hasher_type;
   typedef Bucketer bucketer_type;
 
-  internal_memory_builder_single_phf()
-      : m_seed(constants::invalid_seed), m_num_keys(0), m_num_buckets(0),
-        m_table_size(0), m_bucketer(), m_pilots(), m_free_slots() {}
+  internal_memory_builder_single_phf() = default;
 
   template <typename RandomAccessIterator>
   build_timings build_from_keys(RandomAccessIterator keys,
@@ -113,7 +112,7 @@ struct internal_memory_builder_single_phf {
     start = clock_type::now();
     {
       m_pilots.resize(num_buckets);
-      std::fill(m_pilots.begin(), m_pilots.end(), 0);
+      boost::range::fill(m_pilots, 0);
       bits::bit_vector::builder taken_bvb(m_table_size);
       uint64_t num_non_empty_buckets = buckets.num_buckets();
       pilots_wrapper_t pilots_wrapper(m_pilots);
@@ -138,25 +137,27 @@ struct internal_memory_builder_single_phf {
 
   void set_seed(const uint64_t seed) { m_seed = seed; }
 
-  uint64_t seed() const { return m_seed; }
+  [[nodiscard]] uint64_t seed() const { return m_seed; }
 
-  uint64_t num_keys() const { return m_num_keys; }
+  [[nodiscard]] uint64_t num_keys() const { return m_num_keys; }
 
-  uint64_t table_size() const { return m_table_size; }
+  [[nodiscard]] uint64_t table_size() const { return m_table_size; }
 
-  uint64_t num_partitions() const { return 0; }
+  [[nodiscard]] uint64_t num_partitions() const { return 0; }
 
-  uint64_t avg_partition_size() const { return 0; }
+  [[nodiscard]] uint64_t avg_partition_size() const { return 0; }
 
-  Bucketer bucketer() const { return m_bucketer; }
+  [[nodiscard]] Bucketer bucketer() const { return m_bucketer; }
 
-  std::vector<uint64_t> const &pilots() const { return m_pilots; }
+  [[nodiscard]] std::vector<uint64_t> const &pilots() const { return m_pilots; }
 
-  bits::bit_vector const &taken() const { return m_taken; }
+  [[nodiscard]] bits::bit_vector const &taken() const { return m_taken; }
 
-  std::vector<uint64_t> const &free_slots() const { return m_free_slots; }
+  [[nodiscard]] std::vector<uint64_t> const &free_slots() const {
+    return m_free_slots;
+  }
 
-  void swap(internal_memory_builder_single_phf &other) {
+  void swap(internal_memory_builder_single_phf &other) noexcept {
     std::swap(m_seed, other.m_seed);
     std::swap(m_num_keys, other.m_num_keys);
     std::swap(m_num_buckets, other.m_num_buckets);
@@ -201,19 +202,19 @@ struct internal_memory_builder_single_phf {
 private:
   template <typename Visitor, typename T>
   static void visit_impl(Visitor &visitor, T &&t) {
-    visitor.visit(t.m_seed);
-    visitor.visit(t.m_num_keys);
-    visitor.visit(t.m_num_buckets);
-    visitor.visit(t.m_table_size);
-    visitor.visit(t.m_bucketer);
-    visitor.visit(t.m_pilots);
-    visitor.visit(t.m_free_slots);
+    visitor.visit(std::forward<T>(t).m_seed);
+    visitor.visit(std::forward<T>(t).m_num_keys);
+    visitor.visit(std::forward<T>(t).m_num_buckets);
+    visitor.visit(std::forward<T>(t).m_table_size);
+    visitor.visit(std::forward<T>(t).m_bucketer);
+    visitor.visit(std::forward<T>(t).m_pilots);
+    visitor.visit(std::forward<T>(t).m_free_slots);
   }
 
-  uint64_t m_seed;
-  uint64_t m_num_keys;
-  uint64_t m_num_buckets;
-  uint64_t m_table_size;
+  uint64_t m_seed = constants::invalid_seed;
+  uint64_t m_num_keys = 0;
+  uint64_t m_num_buckets = 0;
+  uint64_t m_table_size = 0;
 
   Bucketer m_bucketer;
 
@@ -225,11 +226,11 @@ private:
     hash_generator(RandomAccessIterator keys, uint64_t seed)
         : m_iterator(keys), m_seed(seed) {}
 
-    inline auto operator*() { return hasher_type::hash(*m_iterator, m_seed); }
+    auto operator*() { return hasher_type::hash(*m_iterator, m_seed); }
 
-    inline void operator++() { ++m_iterator; }
+    void operator++() { ++m_iterator; }
 
-    inline hash_generator operator+(uint64_t offset) const {
+    hash_generator operator+(uint64_t offset) const {
       return hash_generator(m_iterator + offset, m_seed);
     }
 
@@ -247,7 +248,7 @@ private:
       skip_empty_buckets();
     }
 
-    inline void operator++() {
+    void operator++() {
       uint64_t const *begin = m_bucket.begin() + m_bucket_size;
       uint64_t const *end = m_buffers_it->data() + m_buffers_it->size();
       m_bucket.init(begin, m_bucket_size);
@@ -258,7 +259,7 @@ private:
       }
     }
 
-    inline bucket_t operator*() const { return m_bucket; }
+    bucket_t operator*() const { return m_bucket; }
 
   private:
     std::vector<std::vector<uint64_t>>::const_iterator m_buffers_it;
@@ -276,7 +277,7 @@ private:
   };
 
   struct buckets_t {
-    buckets_t() : m_buffers(MAX_BUCKET_SIZE), m_num_buckets(0) {}
+    buckets_t() : m_buffers(MAX_BUCKET_SIZE) {}
 
     template <typename HashIterator>
     void add(bucket_id_type bucket_id, uint64_t bucket_size,
@@ -290,7 +291,7 @@ private:
       ++m_num_buckets;
     }
 
-    uint64_t num_buckets() const { return m_num_buckets; };
+    [[nodiscard]] uint64_t num_buckets() const { return m_num_buckets; }
 
     buckets_iterator_t begin() const { return buckets_iterator_t(m_buffers); }
 
@@ -307,18 +308,18 @@ private:
 
   private:
     std::vector<std::vector<uint64_t>> m_buffers;
-    uint64_t m_num_buckets;
+    uint64_t m_num_buckets = 0;
   };
 
   struct pilots_wrapper_t {
-    pilots_wrapper_t(std::vector<uint64_t> &pilots) : m_pilots(pilots) {}
+    pilots_wrapper_t(std::vector<uint64_t> &pilots) : m_pilots(&pilots) {}
 
-    inline void emplace_back(bucket_id_type bucket_id, uint64_t pilot) {
-      m_pilots[bucket_id] = pilot;
+    void emplace_back(bucket_id_type bucket_id, uint64_t pilot) {
+      (*m_pilots)[bucket_id] = pilot;
     }
 
   private:
-    std::vector<uint64_t> &m_pilots;
+    std::vector<uint64_t> *m_pilots;
   };
 
   template <typename RandomAccessIterator>
@@ -331,7 +332,7 @@ private:
       auto bucket_id = m_bucketer.bucket(hash.first());
       pairs[i] = {static_cast<bucket_id_type>(bucket_id), hash.second()};
     }
-    std::sort(pairs.begin(), pairs.end());
+    boost::range::sort(pairs);
     pairs_blocks.resize(1);
     pairs_blocks.front().swap(pairs);
   }
@@ -357,7 +358,7 @@ private:
         local_pairs[local_i] = {static_cast<bucket_id_type>(bucket_id),
                                 hash.second()};
       }
-      std::sort(local_pairs.begin(), local_pairs.end());
+      boost::range::sort(local_pairs);
     };
 
     std::vector<std::thread> threads(config.num_threads);
@@ -382,3 +383,5 @@ private:
 };
 
 } // namespace pthash
+
+#endif // PTHASH_BUILDERS_INTERNAL_MEMORY_BUILDER_SINGLE_PHF_HPP

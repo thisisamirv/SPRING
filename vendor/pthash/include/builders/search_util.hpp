@@ -1,4 +1,6 @@
-#pragma once
+// Utility functions and logging for build search
+#ifndef PTHASH_BUILDERS_SEARCH_UTIL_HPP
+#define PTHASH_BUILDERS_SEARCH_UTIL_HPP
 
 #include "essentials.hpp"
 #include "utils/hasher.hpp"
@@ -23,10 +25,8 @@ constexpr auto hashed_pilots_cache =
 
 struct search_logger {
   search_logger(uint64_t num_keys, uint64_t num_buckets)
-      : num_pilots(0), num_large_pilots(0), m_num_keys(num_keys),
-        m_num_buckets(num_buckets),
-        m_step(m_num_buckets > 20 ? m_num_buckets / 20 : 1), m_bucket(0),
-        m_placed_keys(0) {}
+      : m_num_keys(num_keys), m_num_buckets(num_buckets),
+        m_step(m_num_buckets > 20 ? m_num_buckets / 20 : 1) {}
 
   void init() {
     essentials::logger("search starts");
@@ -48,15 +48,20 @@ struct search_logger {
               << std::endl;
   }
 
-  uint64_t num_pilots;
-  uint64_t num_large_pilots;
+  [[nodiscard]] uint64_t num_pilots() const { return m_num_pilots; }
+  void set_num_pilots(uint64_t v) { m_num_pilots = v; }
+
+  [[nodiscard]] uint64_t num_large_pilots() const { return m_num_large_pilots; }
+  void set_num_large_pilots(uint64_t v) { m_num_large_pilots = v; }
 
 private:
   uint64_t m_num_keys;
   uint64_t m_num_buckets;
   uint64_t m_step;
-  uint64_t m_bucket;
-  uint64_t m_placed_keys;
+  uint64_t m_bucket = 0;
+  uint64_t m_placed_keys = 0;
+  uint64_t m_num_pilots = 0;
+  uint64_t m_num_large_pilots = 0;
 
   essentials::timer<std::chrono::high_resolution_clock,
                     std::chrono::milliseconds>
@@ -78,3 +83,5 @@ private:
 };
 
 } // namespace pthash
+
+#endif // PTHASH_BUILDERS_SEARCH_UTIL_HPP

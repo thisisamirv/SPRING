@@ -1,4 +1,5 @@
-#pragma once
+#ifndef PTHASH_BUILDERS_SEARCH_HPP
+#define PTHASH_BUILDERS_SEARCH_HPP
 
 #include <atomic> // for std::atomic
 #include <mutex>
@@ -57,8 +58,8 @@ void search_sequential(const uint64_t num_keys,              //
           bucket_end) { // all keys do not have collisions with taken
 
         // check for in-bucket collisions
-        std::sort(positions.begin(), positions.end());
-        auto it = std::adjacent_find(positions.begin(), positions.end());
+        boost::range::sort(positions);
+        auto it = boost::range::adjacent_find(positions);
         if (it != positions.end())
           continue; // in-bucket collision detected, try next pilot
 
@@ -100,7 +101,7 @@ void search_parallel(const uint64_t num_keys,              //
   std::mutex taken_mutex;
 
   auto taken_get = [&](uint64_t p) {
-    std::lock_guard<std::mutex> lock(taken_mutex);
+    std::scoped_lock lock(taken_mutex);
     return taken.get(p);
   };
 
@@ -136,8 +137,8 @@ void search_parallel(const uint64_t num_keys,              //
             }
 
             if (bucket_begin == bucket_end) {
-              std::sort(positions.begin(), positions.end());
-              auto it = std::adjacent_find(positions.begin(), positions.end());
+              boost::range::sort(positions);
+              auto it = boost::range::adjacent_find(positions);
               if (it != positions.end())
                 continue;
 
@@ -175,7 +176,7 @@ void search_parallel(const uint64_t num_keys,              //
 
       pilots.emplace_back(bucket.id(), pilot);
       for (auto p : positions) {
-        std::lock_guard<std::mutex> lock(taken_mutex);
+        std::scoped_lock lock(taken_mutex);
         assert(taken.get(p) == false);
         taken.set(p, true);
       }
@@ -245,3 +246,5 @@ void search(const uint64_t num_keys,              //
 }
 
 } // namespace pthash
+
+#endif // PTHASH_BUILDERS_SEARCH_HPP

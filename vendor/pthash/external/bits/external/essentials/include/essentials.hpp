@@ -1,4 +1,5 @@
-#pragma once
+#ifndef PTHASH_EXTERNAL_BITS_ESSENTIALS_HPP
+#define PTHASH_EXTERNAL_BITS_ESSENTIALS_HPP
 
 #include <algorithm>
 #include <chrono>
@@ -7,12 +8,34 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
-#include <numeric>
 #include <random>
 #include <string>
 #include <type_traits>
 #include <typeinfo>
+#include <utility>
 #include <vector>
+namespace boost {
+namespace range {
+template <typename Range> auto min_element(Range &r) {
+  return std::min_element(std::begin(r), std::end(r));
+}
+template <typename Range> auto max_element(Range &r) {
+  return std::max_element(std::begin(r), std::end(r));
+}
+template <typename Range, typename T> void fill(Range &r, T const &v) {
+  std::fill(std::begin(r), std::end(r), v);
+}
+template <typename Range> void sort(Range &r) {
+  std::sort(std::begin(r), std::end(r));
+}
+template <typename Range> auto adjacent_find(Range &r) {
+  return std::adjacent_find(std::begin(r), std::end(r));
+}
+template <typename Range, typename OutIt> void copy(Range const &r, OutIt out) {
+  std::copy(std::begin(r), std::end(r), out);
+}
+} // namespace range
+} // namespace boost
 
 #ifndef _WIN32
 #include <cxxabi.h>
@@ -99,7 +122,7 @@ static uint64_t words_for(uint64_t bits) {
   return (bits + word_bits - 1) / word_bits;
 }
 
-template <typename T> static inline void do_not_optimize_away(T &&value) {
+template <typename T> static inline void do_not_optimize_away(T value) {
   asm volatile("" : "+r"(value));
 }
 
@@ -178,15 +201,15 @@ struct owning_span //
       : m_data(std::move(owner), data), m_size(n) {}
 
   T const *data() const { return m_data.get(); }
-  size_t size() const { return m_size; }
-  bool empty() const { return m_size == 0; }
+  [[nodiscard]] size_t size() const { return m_size; }
+  [[nodiscard]] bool empty() const { return m_size == 0; }
   T const &operator[](size_t i) const { return m_data[i]; }
   T const &front() const { return m_data[0]; }
   T const &back() const { return m_data[m_size - 1]; }
   const_iterator begin() const { return data(); }
   const_iterator end() const { return data() + m_size; }
 
-  void swap(owning_span &other) {
+  void swap(owning_span &other) noexcept {
     m_data.swap(other.m_data);
     std::swap(m_size, other.m_size);
   }
@@ -215,15 +238,15 @@ struct json_lines {
     std::string value;
   };
 
-  void new_line() { m_properties.push_back(std::vector<property>()); }
+  void new_line() { m_properties.emplace_back(); }
 
   template <typename T> void add(std::string name, T value) {
     if (!m_properties.size()) {
       new_line();
     }
-    if constexpr (std::is_same<T, char const *>::value) {
+    if constexpr (std::is_same_v<T, char const *>) {
       m_properties.back().emplace_back(name, value);
-    } else if constexpr (std::is_same<T, bool>::value) {
+    } else if constexpr (std::is_same_v<T, bool>) {
       m_properties.back().emplace_back(name, value ? "true" : "false");
     } else {
       m_properties.back().emplace_back(name, std::to_string(value));
@@ -272,7 +295,7 @@ template <typename ClockType, typename DurationType> struct timer {
     m_timings.push_back(elapsed.count());
   }
 
-  size_t runs() const { return m_timings.size(); }
+  [[nodiscard]] size_t runs() const { return m_timings.size(); }
 
   void reset() { m_timings.clear(); }
 
@@ -292,18 +315,21 @@ template <typename ClockType, typename DurationType> struct timer {
 
   void discard_min() {
     if (runs() > 1) {
-      m_timings.erase(std::min_element(m_timings.begin(), m_timings.end()));
+      m_timings.erase(boost::range::min_element(m_timings));
     }
   }
 
   void discard_max() {
     if (runs() > 1) {
-      m_timings.erase(std::max_element(m_timings.begin(), m_timings.end()));
+      m_timings.erase(boost::range::max_element(m_timings));
     }
   }
 
   double elapsed() {
-    return std::accumulate(m_timings.begin(), m_timings.end(), 0.0);
+    double sum = 0.0;
+    for (double v : m_timings)
+      sum += v;
+    return sum;
   }
 
   double average() { return elapsed() / runs(); }
@@ -334,9 +360,7 @@ private:
 };
 
 struct generic_loader {
-  generic_loader(std::istream &is)
-      : m_num_bytes_pods(0), m_num_bytes_vecs_of_pods(0), m_is(is),
-        m_mmap_base(nullptr), m_mmap_size(0), m_mmap_owner() {}
+  generic_loader(std::istream &is) : m_is(&is) {}
 
   void set_mmap(uint8_t const *mmap_base, size_t mmap_size,
                 std::shared_ptr<const void> owner = {}) //
@@ -348,7 +372,7 @@ struct generic_loader {
 
   template <typename T> void visit(T &val) {
     if constexpr (is_pod<T>::value) {
-      load_pod(m_is, val);
+      load_pod(*m_is, val);
       m_num_bytes_pods += pod_bytes(val);
     } else {
       val.visit(*this);
@@ -362,8 +386,8 @@ struct generic_loader {
     visit(n);
     vec.resize(n);
     if constexpr (is_pod<T>::value) {
-      m_is.read(reinterpret_cast<char *>(vec.data()),
-                static_cast<std::streamsize>(sizeof(T) * n));
+      m_is->read(reinterpret_cast<char *>(vec.data()),
+                 static_cast<std::streamsize>(sizeof(T) * n));
       m_num_bytes_vecs_of_pods += n * sizeof(T);
     } else {
       for (auto &v : vec)
@@ -377,14 +401,14 @@ struct generic_loader {
     if constexpr (is_pod<T>::value) {
       m_num_bytes_vecs_of_pods += n * sizeof(T);
       if (is_mmap()) {
-        size_t offset = static_cast<size_t>(m_is.tellg());
+        size_t offset = static_cast<size_t>(m_is->tellg());
         vec = owning_span<T>(reinterpret_cast<T const *>(m_mmap_base + offset),
                              n, m_mmap_owner);
-        m_is.seekg(static_cast<std::streamoff>(offset + n * sizeof(T)));
+        m_is->seekg(static_cast<std::streamoff>(offset + n * sizeof(T)));
       } else {
         std::vector<T> tmp(n);
-        m_is.read(reinterpret_cast<char *>(tmp.data()),
-                  static_cast<std::streamsize>(n * sizeof(T)));
+        m_is->read(reinterpret_cast<char *>(tmp.data()),
+                   static_cast<std::streamsize>(n * sizeof(T)));
         vec = std::move(tmp);
       }
     } else {
@@ -395,17 +419,17 @@ struct generic_loader {
     }
   }
 
-  size_t bytes() { return m_is.tellg(); }
-  size_t bytes_pods() { return m_num_bytes_pods; }
-  size_t bytes_vecs_of_pods() { return m_num_bytes_vecs_of_pods; }
-  bool is_mmap() const { return m_mmap_base != nullptr; }
+  [[nodiscard]] size_t bytes() { return static_cast<size_t>(m_is->tellg()); }
+  [[nodiscard]] size_t bytes_pods() { return m_num_bytes_pods; }
+  [[nodiscard]] size_t bytes_vecs_of_pods() { return m_num_bytes_vecs_of_pods; }
+  [[nodiscard]] bool is_mmap() const { return m_mmap_base != nullptr; }
 
 private:
-  size_t m_num_bytes_pods;
-  size_t m_num_bytes_vecs_of_pods;
-  std::istream &m_is;
-  uint8_t const *m_mmap_base;
-  size_t m_mmap_size;
+  size_t m_num_bytes_pods = 0;
+  size_t m_num_bytes_vecs_of_pods = 0;
+  std::istream *m_is;
+  uint8_t const *m_mmap_base = nullptr;
+  size_t m_mmap_size = 0;
   std::shared_ptr<const void> m_mmap_owner;
 };
 
@@ -423,11 +447,11 @@ private:
 };
 
 struct generic_saver {
-  generic_saver(std::ostream &os) : m_os(os) {}
+  generic_saver(std::ostream &os) : m_os(&os) {}
 
   template <typename T> void visit(T const &val) {
     if constexpr (is_pod<T>::value) {
-      save_pod(m_os, val);
+      save_pod(*m_os, val);
     } else {
       val.visit(*this);
     }
@@ -442,18 +466,18 @@ struct generic_saver {
     visit_seq(vec);
   }
 
-  size_t bytes() { return m_os.tellp(); }
+  size_t bytes() { return static_cast<size_t>(m_os->tellp()); }
 
 private:
-  std::ostream &m_os;
+  std::ostream *m_os;
 
   template <typename Vec> void visit_seq(Vec const &vec) {
     using T = typename Vec::value_type;
     size_t n = vec.size();
     visit(n);
     if constexpr (is_pod<T>::value) {
-      m_os.write(reinterpret_cast<char const *>(vec.data()),
-                 static_cast<std::streamsize>(sizeof(T) * n));
+      m_os->write(reinterpret_cast<char const *>(vec.data()),
+                  static_cast<std::streamsize>(sizeof(T) * n));
     } else {
       for (auto const &v : vec)
         visit(v);
@@ -493,8 +517,8 @@ struct sizer {
       : m_root(0, 0, root_name), m_current(&m_root) {}
 
   struct node {
-    node(size_t b, size_t d, std::string const &n = "")
-        : bytes(b), depth(d), name(n) {}
+    node(size_t b, size_t d, std::string n = "")
+        : bytes(b), depth(d), name(std::move(n)) {}
 
     size_t bytes;
     size_t depth;
@@ -534,7 +558,7 @@ struct sizer {
     print(m_root, bytes(), device);
   }
 
-  size_t bytes() const { return m_root.bytes; }
+  [[nodiscard]] size_t bytes() const { return m_root.bytes; }
 
 private:
   node m_root;
@@ -586,9 +610,20 @@ private:
 };
 
 struct contiguous_memory_allocator {
-  contiguous_memory_allocator() : m_begin(nullptr), m_end(nullptr), m_size(0) {}
+  contiguous_memory_allocator() = default;
+  contiguous_memory_allocator(contiguous_memory_allocator const &) = delete;
+  contiguous_memory_allocator &
+  operator=(contiguous_memory_allocator const &) = delete;
+  contiguous_memory_allocator(contiguous_memory_allocator &&) noexcept =
+      default;
+  contiguous_memory_allocator &
+  operator=(contiguous_memory_allocator &&) noexcept = default;
 
   struct visitor {
+    visitor(visitor const &) = delete;
+    visitor &operator=(visitor const &) = delete;
+    visitor(visitor &&) = delete;
+    visitor &operator=(visitor &&) = delete;
     visitor(uint8_t *begin, size_t size, char const *filename)
         : m_begin(begin), m_end(begin), m_size(size),
           m_is(filename, std::ios::binary) {
@@ -637,9 +672,9 @@ struct contiguous_memory_allocator {
       vec = owning_span<T>(std::move(tmp));
     }
 
-    uint8_t *end() { return m_end; }
+    [[nodiscard]] uint8_t *end() { return m_end; }
 
-    size_t size() const { return m_size; }
+    [[nodiscard]] size_t size() const { return m_size; }
 
     size_t allocated() const {
       assert(m_end >= m_begin);
@@ -686,18 +721,18 @@ struct contiguous_memory_allocator {
 
   uint8_t *end() { return m_end; }
 
-  size_t size() const { return m_size; }
+  [[nodiscard]] size_t size() const { return m_size; }
 
 private:
-  uint8_t *m_begin;
-  uint8_t *m_end;
-  size_t m_size;
+  uint8_t *m_begin = nullptr;
+  uint8_t *m_end = nullptr;
+  size_t m_size = 0;
 };
 
 template <typename Visitor, typename T>
 static size_t visit(T &&data_structure, char const *filename) {
   Visitor visitor(filename);
-  visitor.visit(data_structure);
+  visitor.visit(std::forward<T>(data_structure));
   return visitor.bytes();
 }
 
@@ -775,7 +810,7 @@ static size_t print_size(T &data_structure, Device &device) {
 struct version_number {
   version_number(uint8_t x, uint8_t y, uint8_t z) : x(x), y(y), z(z) {}
 
-  std::string to_string() const {
+  [[nodiscard]] std::string to_string() const {
     return std::to_string(x) + '.' + std::to_string(y) + '.' +
            std::to_string(z);
   }
@@ -873,3 +908,5 @@ private:
 }
 
 } // namespace essentials
+
+#endif // PTHASH_EXTERNAL_BITS_ESSENTIALS_HPP

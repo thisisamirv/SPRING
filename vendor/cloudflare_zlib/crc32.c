@@ -391,8 +391,8 @@ uLong crc32(uLong crc, const Bytef *buf, uInt len) {
 /* ========================================================================= */
 static unsigned long crc32_little(unsigned long crc,
                                   const unsigned char FAR *buf, unsigned len) {
-  register z_crc_t c;
-  register const z_crc_t FAR *buf4;
+  z_crc_t c;
+  const z_crc_t FAR *buf4;
 
   c = (z_crc_t)crc;
   c = ~c;
@@ -438,8 +438,8 @@ static unsigned long crc32_little(unsigned long crc,
 /* ========================================================================= */
 static unsigned long crc32_big(unsigned long crc, const unsigned char FAR *buf,
                                unsigned len) {
-  register z_crc_t c;
-  register const z_crc_t FAR *buf4;
+  z_crc_t c;
+  const z_crc_t FAR *buf4;
 
   c = ZSWAP32((z_crc_t)crc);
   c = ~c;

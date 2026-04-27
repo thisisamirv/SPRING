@@ -1,4 +1,5 @@
-#pragma once
+#ifndef PTHASH_EXTERNAL_BITS_ELIAS_FANO_HPP
+#define PTHASH_EXTERNAL_BITS_ELIAS_FANO_HPP
 
 #include "bit_vector.hpp"
 #include "compact_vector.hpp"
@@ -19,7 +20,7 @@ template < //
     typename DArray0 = darray0  //
     >
 struct elias_fano {
-  elias_fano() : m_back(0) {}
+  elias_fano() = default;
 
   template <typename Iterator>
   void encode(Iterator begin, uint64_t n, uint64_t universe = uint64_t(-1)) {
@@ -131,10 +132,10 @@ struct elias_fano {
       read_next_value();
     }
 
-    bool has_next() const { return m_pos < m_ef->size(); }
-    bool has_prev() const { return m_pos > 0; }
-    uint64_t value() const { return m_val; }
-    uint64_t position() const { return m_pos; }
+    [[nodiscard]] bool has_next() const { return m_pos < m_ef->size(); }
+    [[nodiscard]] bool has_prev() const { return m_pos > 0; }
+    [[nodiscard]] uint64_t value() const { return m_val; }
+    [[nodiscard]] uint64_t position() const { return m_pos; }
 
     void next() {
       ++m_pos;
@@ -181,7 +182,7 @@ struct elias_fano {
   iterator get_iterator_at(uint64_t pos) const { return iterator(this, pos); }
   iterator begin() const { return get_iterator_at(0); }
 
-  uint64_t access(uint64_t i) const {
+  [[nodiscard]] uint64_t access(uint64_t i) const {
     assert(i < size());
     return ((m_high_bits_d1.select(m_high_bits, i) - i) << m_low_bits.width()) |
            m_low_bits.access(i);
@@ -199,7 +200,7 @@ struct elias_fano {
           diff(3) = V[3] = V'[4] - V'[3] = 11-10 = 1
           diff(4) = V[4] = V'[5] - V'[4] = 27-11 = 16
   */
-  uint64_t diff(uint64_t i) const {
+  [[nodiscard]] uint64_t diff(uint64_t i) const {
     assert(i < size() && encode_prefix_sum);
     uint64_t low1 = m_low_bits.access(i);
     uint64_t low2 = m_low_bits.access(i + 1);
@@ -343,16 +344,16 @@ struct elias_fano {
     return {lo, hi};
   }
 
-  uint64_t back() const { return m_back; }
-  uint64_t size() const { return m_low_bits.size(); }
+  [[nodiscard]] uint64_t back() const { return m_back; }
+  [[nodiscard]] uint64_t size() const { return m_low_bits.size(); }
 
-  uint64_t num_bytes() const {
+  [[nodiscard]] uint64_t num_bytes() const {
     return sizeof(m_back) + m_high_bits.num_bytes() +
            m_high_bits_d1.num_bytes() + m_high_bits_d0.num_bytes() +
            m_low_bits.num_bytes();
   }
 
-  void swap(elias_fano &other) {
+  void swap(elias_fano &other) noexcept {
     std::swap(m_back, other.m_back);
     m_high_bits.swap(other.m_high_bits);
     m_high_bits_d1.swap(other.m_high_bits_d1);
@@ -369,7 +370,7 @@ struct elias_fano {
   }
 
 private:
-  uint64_t m_back;
+  uint64_t m_back = 0;
   bit_vector m_high_bits;
   DArray1 m_high_bits_d1;
   DArray0 m_high_bits_d0;
@@ -377,11 +378,11 @@ private:
 
   template <typename Visitor, typename T>
   static void visit_impl(Visitor &visitor, T &&t) {
-    visitor.visit(t.m_back);
-    visitor.visit(t.m_high_bits);
-    visitor.visit(t.m_high_bits_d1);
-    visitor.visit(t.m_high_bits_d0);
-    visitor.visit(t.m_low_bits);
+    visitor.visit(std::forward<T>(t).m_back);
+    visitor.visit(std::forward<T>(t).m_high_bits);
+    visitor.visit(std::forward<T>(t).m_high_bits_d1);
+    visitor.visit(std::forward<T>(t).m_high_bits_d0);
+    visitor.visit(std::forward<T>(t).m_low_bits);
   }
 
   /*
@@ -462,3 +463,5 @@ private:
 };
 
 } // namespace bits
+
+#endif // PTHASH_EXTERNAL_BITS_ELIAS_FANO_HPP

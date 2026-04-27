@@ -1,4 +1,5 @@
-#pragma once
+#ifndef PTHASH_EXTERNAL_BITS_DARRAY_HPP
+#define PTHASH_EXTERNAL_BITS_DARRAY_HPP
 
 #include "bit_vector.hpp"
 #include "util.hpp"
@@ -77,7 +78,7 @@ template <                      //
     uint64_t subblock_size = 32 //
     >
 struct darray {
-  darray() : m_positions(0) {}
+  darray() = default;
 
   void build(bit_vector const &B) {
     auto const &data = B.data();
@@ -167,7 +168,7 @@ struct darray {
       Return the position of the i-th bit set in B,
       for any 0 <= i < num_positions();
   */
-  inline uint64_t select(bit_vector const &B, uint64_t i) const {
+  [[nodiscard]] uint64_t select(bit_vector const &B, uint64_t i) const {
     assert(i < num_positions());
     uint64_t block = i / block_size;
     int64_t block_pos = m_block_inventory[block];
@@ -196,15 +197,15 @@ struct darray {
     return (word_idx << 6) + util::select_in_word(word, reminder);
   }
 
-  inline uint64_t num_positions() const { return m_positions; }
+  [[nodiscard]] uint64_t num_positions() const { return m_positions; }
 
-  uint64_t num_bytes() const {
+  [[nodiscard]] uint64_t num_bytes() const {
     return sizeof(m_positions) + essentials::vec_bytes(m_block_inventory) +
            essentials::vec_bytes(m_subblock_inventory) +
            essentials::vec_bytes(m_overflow_positions);
   }
 
-  void swap(darray &other) {
+  void swap(darray &other) noexcept {
     std::swap(m_positions, other.m_positions);
     m_block_inventory.swap(other.m_block_inventory);
     m_subblock_inventory.swap(other.m_subblock_inventory);
@@ -219,18 +220,18 @@ struct darray {
     visit_impl(visitor, *this);
   }
 
-protected:
-  uint64_t m_positions;
+private:
+  uint64_t m_positions = 0;
   essentials::owning_span<int64_t> m_block_inventory;
   essentials::owning_span<uint16_t> m_subblock_inventory;
   essentials::owning_span<uint64_t> m_overflow_positions;
 
   template <typename Visitor, typename T>
   static void visit_impl(Visitor &visitor, T &&t) {
-    visitor.visit(t.m_positions);
-    visitor.visit(t.m_block_inventory);
-    visitor.visit(t.m_subblock_inventory);
-    visitor.visit(t.m_overflow_positions);
+    visitor.visit(std::forward<T>(t).m_positions);
+    visitor.visit(std::forward<T>(t).m_block_inventory);
+    visitor.visit(std::forward<T>(t).m_subblock_inventory);
+    visitor.visit(std::forward<T>(t).m_overflow_positions);
   }
 
   static void flush_cur_block(std::vector<uint64_t> &cur_block_positions,
@@ -289,3 +290,5 @@ typedef darray<util::identity_getter> darray1; // take positions of 1s
 typedef darray<util::negating_getter> darray0; // take positions of 0s
 
 } // namespace bits
+
+#endif // PTHASH_EXTERNAL_BITS_DARRAY_HPP

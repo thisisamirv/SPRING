@@ -1,4 +1,5 @@
-#pragma once
+#ifndef PTHASH_UTILS_ENCODERS_HPP
+#define PTHASH_UTILS_ENCODERS_HPP
 
 #include "compact_vector.hpp"
 #include "elias_fano.hpp"
@@ -20,11 +21,11 @@ struct compact {
 
   static std::string name() { return "C"; }
 
-  uint64_t size() const { return m_values.size(); }
+  [[nodiscard]] uint64_t size() const { return m_values.size(); }
 
-  uint64_t num_bits() const { return m_values.num_bytes() * 8; }
+  [[nodiscard]] uint64_t num_bits() const { return m_values.num_bytes() * 8; }
 
-  uint64_t access(uint64_t i) const { return m_values.access(i); }
+  [[nodiscard]] uint64_t access(uint64_t i) const { return m_values.access(i); }
 
   template <typename Visitor> void visit(Visitor &visitor) const {
     visitor.visit(m_values);
@@ -81,15 +82,15 @@ struct partitioned_compact {
 
   static std::string name() { return "PC"; }
 
-  uint64_t size() const { return m_size; }
+  [[nodiscard]] uint64_t size() const { return m_size; }
 
-  uint64_t num_bits() const {
+  [[nodiscard]] uint64_t num_bits() const {
     return (sizeof(m_size) + essentials::vec_bytes(m_bits_per_value) +
             m_values.num_bytes()) *
            8;
   }
 
-  uint64_t access(uint64_t i) const {
+  [[nodiscard]] uint64_t access(uint64_t i) const {
     uint64_t partition = i / partition_size;
     uint64_t offset = i % partition_size;
     uint64_t num_bits =
@@ -110,12 +111,12 @@ struct partitioned_compact {
 private:
   template <typename Visitor, typename T>
   static void visit_impl(Visitor &visitor, T &&t) {
-    visitor.visit(t.m_size);
-    visitor.visit(t.m_bits_per_value);
-    visitor.visit(t.m_values);
+    visitor.visit(std::forward<T>(t).m_size);
+    visitor.visit(std::forward<T>(t).m_bits_per_value);
+    visitor.visit(std::forward<T>(t).m_values);
   }
 
-  uint64_t m_size;
+  uint64_t m_size = 0;
   essentials::owning_span<uint32_t> m_bits_per_value;
   bits::bit_vector m_values;
 };
@@ -129,11 +130,11 @@ struct dictionary {
 
   static std::string name() { return "D"; }
 
-  uint64_t size() const { return m_values.size(); }
+  [[nodiscard]] uint64_t size() const { return m_values.size(); }
 
-  uint64_t num_bits() const { return m_values.num_bytes() * 8; }
+  [[nodiscard]] uint64_t num_bits() const { return m_values.num_bytes() * 8; }
 
-  uint64_t access(uint64_t i) const { return m_values.access(i); }
+  [[nodiscard]] uint64_t access(uint64_t i) const { return m_values.access(i); }
 
   template <typename Visitor> void visit(Visitor &visitor) const {
     visitor.visit(m_values);
@@ -156,11 +157,11 @@ struct elias_fano {
 
   static std::string name() { return "EF"; }
 
-  uint64_t size() const { return m_values.size(); }
+  [[nodiscard]] uint64_t size() const { return m_values.size(); }
 
-  uint64_t num_bits() const { return m_values.num_bytes() * 8; }
+  [[nodiscard]] uint64_t num_bits() const { return m_values.num_bytes() * 8; }
 
-  uint64_t access(uint64_t i) const {
+  [[nodiscard]] uint64_t access(uint64_t i) const {
     assert(i + 1 < m_values.size());
     return m_values.diff(i);
   }
@@ -186,11 +187,11 @@ struct rice {
 
   static std::string name() { return "R"; }
 
-  uint64_t size() const { return m_values.size(); }
+  [[nodiscard]] uint64_t size() const { return m_values.size(); }
 
-  uint64_t num_bits() const { return 8 * m_values.num_bytes(); }
+  [[nodiscard]] uint64_t num_bits() const { return 8 * m_values.num_bytes(); }
 
-  uint64_t access(uint64_t i) const { return m_values.access(i); }
+  [[nodiscard]] uint64_t access(uint64_t i) const { return m_values.access(i); }
 
   template <typename Visitor> void visit(Visitor &visitor) const {
     visitor.visit(m_values);
@@ -215,9 +216,11 @@ template <typename Front, typename Back> struct dual {
 
   static std::string name() { return Front::name() + "-" + Back::name(); }
 
-  uint64_t num_bits() const { return m_front.num_bits() + m_back.num_bits(); }
+  [[nodiscard]] uint64_t num_bits() const {
+    return m_front.num_bits() + m_back.num_bits();
+  }
 
-  uint64_t access(uint64_t i) const {
+  [[nodiscard]] uint64_t access(uint64_t i) const {
     if (i < m_front.size())
       return m_front.access(i);
     return m_back.access(i - m_front.size());
@@ -234,8 +237,8 @@ template <typename Front, typename Back> struct dual {
 private:
   template <typename Visitor, typename T>
   static void visit_impl(Visitor &visitor, T &&t) {
-    visitor.visit(t.m_front);
-    visitor.visit(t.m_back);
+    visitor.visit(std::forward<T>(t).m_front);
+    visitor.visit(std::forward<T>(t).m_back);
   }
 
   Front m_front;
@@ -248,3 +251,5 @@ typedef dual<compact, compact> compact_compact;
 typedef dual<dictionary, dictionary> dictionary_dictionary;
 
 } // namespace pthash
+
+#endif // PTHASH_UTILS_ENCODERS_HPP

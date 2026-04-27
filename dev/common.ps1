@@ -125,16 +125,32 @@ function Resolve-RepoPath {
 
 function Get-CppSources {
     param ([string[]]$targetPaths)
-    $searchPaths = if ($targetPaths) {
+    $isExplicit = ($targetPaths -ne $null -and $targetPaths.Count -gt 0)
+    $searchPaths = if ($isExplicit) {
         $targetPaths | ForEach-Object { Resolve-RepoPath $_ } | Where-Object { Test-Path $_ }
     } else { $DEFAULT_CPP_ROOTS }
+
+    # When the user explicitly provides target paths, also consider header files
+    $includeList = if ($isExplicit) {
+        @("*.c","*.cc","*.cpp","*.cxx","*.h","*.hpp","*.hh","*.hxx","*.inl")
+    } else {
+        @("*.c","*.cc","*.cpp","*.cxx")
+    }
+
+    $allowedExts = if ($isExplicit) {
+        @('.c','.cc','.cpp','.cxx','.h','.hpp','.hh','.hxx','.inl')
+    } else {
+        @('.c','.cc','.cpp','.cxx')
+    }
+
     $results = @()
     foreach ($p in $searchPaths) {
         if (Test-Path $p -PathType Container) {
-            $results += Get-ChildItem -Path $p -Recurse -File -Include *.c, *.cc, *.cpp, *.cxx | Select-Object -ExpandProperty FullName | Sort-Object
+            $results += Get-ChildItem -Path $p -Recurse -File -Include $includeList | Select-Object -ExpandProperty FullName | Sort-Object
         }
         elseif (Test-Path $p -PathType Leaf) {
-            if (Test-CppSource $p) { $results += $p }
+            $ext = [System.IO.Path]::GetExtension($p).ToLowerInvariant()
+            if ($allowedExts -contains $ext) { $results += (Get-Item $p).FullName }
         }
     }
     return $results

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef PTHASH_EXTERNAL_MM_FILE_MM_FILE_HPP
+#define PTHASH_EXTERNAL_MM_FILE_MM_FILE_HPP
 
 #ifndef _WIN32
 #include <dirent.h>
@@ -12,6 +13,7 @@
 #include "pthash_windefs.h"
 #endif
 
+#include <cstdint>
 #include <stdexcept>
 #include <string>
 
@@ -36,7 +38,26 @@ template <typename T> struct file {
   file(file const &) = delete;            // non construction-copyable
   file &operator=(file const &) = delete; // non copyable
 
-  bool is_open() const { return m_fd != -1; }
+  file(file &&other) noexcept
+      : m_fd(other.m_fd), m_size(other.m_size), m_data(other.m_data) {
+    other.init();
+  }
+
+  file &operator=(file &&other) noexcept {
+    if (this != &other) {
+      try {
+        close();
+      } catch (...) {
+      }
+      m_fd = other.m_fd;
+      m_size = other.m_size;
+      m_data = other.m_data;
+      other.init();
+    }
+    return *this;
+  }
+
+  [[nodiscard]] bool is_open() const { return m_fd != -1; }
 
   void close() {
     if (is_open()) {
@@ -48,11 +69,11 @@ template <typename T> struct file {
     }
   }
 
-  size_t bytes() const { return m_size; }
+  [[nodiscard]] size_t bytes() const { return m_size; }
 
-  size_t size() const { return m_size / sizeof(T); }
+  [[nodiscard]] size_t size() const { return m_size / sizeof(T); }
 
-  T *data() const { return m_data; }
+  [[nodiscard]] T *data() const { return m_data; }
 
   struct iterator {
     using iterator_category = std::random_access_iterator_tag;
@@ -85,10 +106,16 @@ template <typename T> struct file {
 
   iterator end() const { return iterator(m_data, size()); }
 
-protected:
+private:
   int m_fd;
   size_t m_size;
   T *m_data;
+
+protected:
+  void set_fd(int fd) { m_fd = fd; }
+  [[nodiscard]] int fd() const { return m_fd; }
+  void set_size(size_t s) { m_size = s; }
+  void set_data(T *d) { m_data = d; }
 
   void init() {
     m_fd = -1;
@@ -114,21 +141,27 @@ template <typename Pointer> Pointer mmap(int fd, size_t size, int prot) {
 template <typename T> struct file_source : public file<T const> {
   typedef file<T const> base;
 
-  file_source() {}
+  file_source() = default;
 
   file_source(std::string const &path, int adv = advice::normal) {
     open(path, adv);
   }
 
   void open(std::string const &path, int adv = advice::normal) {
-    base::m_fd = ::open(path.c_str(), O_RDONLY);
+    int fd;
+#ifdef O_CLOEXEC
+    fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
+#else
+    fd = ::open(path.c_str(), O_RDONLY);
+#endif
+    base::set_fd(fd);
     base::check_fd();
     struct stat fs;
-    if (fstat(base::m_fd, &fs) == -1) {
+    if (fstat(base::fd(), &fs) == -1) {
       throw std::runtime_error("cannot stat file");
     }
-    base::m_size = fs.st_size;
-    base::m_data = mmap<T const *>(base::m_fd, base::m_size, PROT_READ);
+    base::set_size(fs.st_size);
+    base::set_data(mmap<T const *>(base::fd(), base::bytes(), PROT_READ));
     if (posix_madvise((void *)base::m_data, base::m_size, adv)) {
       throw std::runtime_error("madvise failed");
     }
@@ -138,7 +171,7 @@ template <typename T> struct file_source : public file<T const> {
 template <typename T> struct file_sink : public file<T> {
   typedef file<T> base;
 
-  file_sink() {}
+  file_sink() = default;
 
   file_sink(std::string const &path) { open(path); }
 
@@ -146,25 +179,40 @@ template <typename T> struct file_sink : public file<T> {
 
   void open(std::string const &path) {
     static const mode_t mode = 0600; // read/write
-    base::m_fd = ::open(path.c_str(), O_RDWR, mode);
+    int fd;
+#ifdef O_CLOEXEC
+    fd = ::open(path.c_str(), O_RDWR | O_CLOEXEC, mode);
+#else
+    fd = ::open(path.c_str(), O_RDWR, mode);
+#endif
+    base::set_fd(fd);
     base::check_fd();
     struct stat fs;
-    if (fstat(base::m_fd, &fs) == -1) {
+    if (fstat(base::fd(), &fs) == -1) {
       throw std::runtime_error("cannot stat file");
     }
-    base::m_size = fs.st_size;
-    base::m_data = mmap<T *>(base::m_fd, base::m_size, PROT_READ | PROT_WRITE);
+    base::set_size(fs.st_size);
+    base::set_data(
+        mmap<T *>(base::fd(), base::bytes(), PROT_READ | PROT_WRITE));
   }
 
   void open(std::string const &path, size_t n) {
     static const mode_t mode = 0600; // read/write
-    base::m_fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC, mode);
+    int fd;
+#ifdef O_CLOEXEC
+    fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC | O_CLOEXEC, mode);
+#else
+    fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC, mode);
+#endif
+    base::set_fd(fd);
     base::check_fd();
-    base::m_size = n * sizeof(T);
-    ftruncate(base::m_fd,
-              base::m_size); // truncate the file at the new size
-    base::m_data = mmap<T *>(base::m_fd, base::m_size, PROT_READ | PROT_WRITE);
+    base::set_size(n * sizeof(T));
+    ftruncate(base::fd(), base::bytes()); // truncate the file at the new size
+    base::set_data(
+        mmap<T *>(base::fd(), base::bytes(), PROT_READ | PROT_WRITE));
   }
 };
 
 } // namespace mm
+
+#endif // PTHASH_EXTERNAL_MM_FILE_MM_FILE_HPP

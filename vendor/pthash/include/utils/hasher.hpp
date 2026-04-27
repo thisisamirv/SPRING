@@ -1,9 +1,9 @@
-#pragma once
+#ifndef PTHASH_UTILS_HASHER_HPP
+#define PTHASH_UTILS_HASHER_HPP
 
 #include <stdexcept>
 #include <string>
 #include <xxh3.h>
-
 
 namespace pthash {
 
@@ -41,35 +41,33 @@ static inline void check_hash_collision_probability(uint64_t size) {
 
 } // namespace util
 
-constexpr inline uint64_t mix(const uint64_t val) {
-  return val * 0x517cc1b727220a95;
-}
+constexpr uint64_t mix(const uint64_t val) { return val * 0x517cc1b727220a95; }
 
 struct hash64 {
-  hash64() {}
+  hash64() = default;
   hash64(uint64_t hash) : m_hash(hash) {}
 
-  inline uint64_t first() const { return m_hash; }
+  [[nodiscard]] uint64_t first() const { return m_hash; }
 
-  inline uint64_t second() const { return m_hash; }
+  [[nodiscard]] uint64_t second() const { return m_hash; }
 
-  inline uint64_t mix() const { return ::pthash::mix(m_hash); }
+  [[nodiscard]] uint64_t mix() const { return ::pthash::mix(m_hash); }
 
 private:
   uint64_t m_hash;
 };
 
 struct hash128 {
-  hash128() {}
+  hash128() = default;
   hash128(XXH128_hash_t xxhash)
       : m_first(xxhash.high64), m_second(xxhash.low64) {}
   hash128(uint64_t first, uint64_t second) : m_first(first), m_second(second) {}
 
-  inline uint64_t first() const { return m_first; }
+  [[nodiscard]] uint64_t first() const { return m_first; }
 
-  inline uint64_t second() const { return m_second; }
+  [[nodiscard]] uint64_t second() const { return m_second; }
 
-  inline uint64_t mix() const { return m_first ^ m_second; }
+  [[nodiscard]] uint64_t mix() const { return m_first ^ m_second; }
 
 private:
   uint64_t m_first, m_second;
@@ -79,18 +77,17 @@ struct xxhash_64 {
   typedef hash64 hash_type;
 
   // generic range of bytes
-  static inline hash64 hash(uint8_t const *begin, uint8_t const *end,
-                            uint64_t seed) {
+  static hash64 hash(uint8_t const *begin, uint8_t const *end, uint64_t seed) {
     return XXH64(begin, end - begin, seed);
   }
 
   // specialization for std::string
-  static inline hash64 hash(std::string const &val, uint64_t seed) {
+  static hash64 hash(std::string const &val, uint64_t seed) {
     return XXH64(val.data(), val.size(), seed);
   }
 
   // specialization for uint64_t
-  static inline hash64 hash(uint64_t const &val, uint64_t seed) {
+  static hash64 hash(uint64_t const &val, uint64_t seed) {
     return XXH64(&val, sizeof(val), seed);
   }
 };
@@ -99,20 +96,21 @@ struct xxhash_128 {
   typedef hash128 hash_type;
 
   // generic range of bytes
-  static inline hash128 hash(uint8_t const *begin, uint8_t const *end,
-                             uint64_t seed) {
+  static hash128 hash(uint8_t const *begin, uint8_t const *end, uint64_t seed) {
     return XXH128(begin, end - begin, seed);
   }
 
   // specialization for std::string
-  static inline hash128 hash(std::string const &val, uint64_t seed) {
+  static hash128 hash(std::string const &val, uint64_t seed) {
     return XXH128(val.data(), val.size(), seed);
   }
 
   // specialization for uint64_t
-  static inline hash128 hash(uint64_t const &val, uint64_t seed) {
+  static hash128 hash(uint64_t const &val, uint64_t seed) {
     return XXH128(&val, sizeof(val), seed);
   }
 };
 
 } // namespace pthash
+
+#endif // PTHASH_UTILS_HASHER_HPP

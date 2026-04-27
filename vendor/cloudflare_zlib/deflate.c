@@ -1138,10 +1138,10 @@ static void lm_init(deflate_state *s) {
 
 static uint32_t longest_match(deflate_state *s,
                               IPos cur_match /* current match */) {
-  uint32_t chain_length = s->max_chain_length;      /* max hash chain length */
-  register uint8_t *scan = s->window + s->strstart; /* current string */
-  register uint8_t *match;                          /* matched string */
-  register int len; /* length of current match */
+  uint32_t chain_length = s->max_chain_length; /* max hash chain length */
+  uint8_t *scan = s->window + s->strstart;     /* current string */
+  uint8_t *match;                              /* matched string */
+  int len;                                     /* length of current match */
   int best_len = (s->prev_length == 0)
                      ? ACTUAL_MIN_MATCH - 1
                      : s->prev_length; /* best match length so far */
@@ -1154,10 +1154,10 @@ static uint32_t longest_match(deflate_state *s,
   Pos *prev = s->prev;
   uint32_t wmask = s->w_mask;
 
-  register uint8_t *strend = s->window + s->strstart + MAX_MATCH;
+  uint8_t *strend = s->window + s->strstart + MAX_MATCH;
   /* We optimize for a minimal match of four bytes */
-  register uint32_t scan_start = *(uint32_t *)scan;
-  register uint32_t scan_end = *(uint32_t *)(scan + best_len - 3);
+  uint32_t scan_start = *(uint32_t *)scan;
+  uint32_t scan_end = *(uint32_t *)(scan + best_len - 3);
 
   /* The code is optimized for HASH_BITS >= 8 and MAX_MATCH-2 multiple of 16.
    * It is easy to get rid of this optimization if necessary.
@@ -1210,9 +1210,9 @@ static uint32_t longest_match(deflate_state *s,
     do {
       uint64_t sv = *(uint64_t *)(void *)scan;
       uint64_t mv = *(uint64_t *)(void *)match;
-      uint64_t xor = sv ^ mv;
-      if (xor) {
-        int match_byte = __builtin_ctzl(xor) / 8;
+      uint64_t xval = sv ^ mv;
+      if (xval) {
+        int match_byte = __builtin_ctzl(xval) / 8;
         scan += match_byte;
         match += match_byte;
         break;
@@ -1284,8 +1284,8 @@ static void check_match(deflate_state *s, IPos start, IPos match, int length) {
  *    option -- not supported here).
  */
 static void fill_window(deflate_state *s) {
-  register uint32_t n, m;
-  register Pos *p;
+  uint32_t n, m;
+  Pos *p;
   uint32_t more; /* Amount of free space at the end of the window. */
   uint32_t wsize = s->w_size;
 

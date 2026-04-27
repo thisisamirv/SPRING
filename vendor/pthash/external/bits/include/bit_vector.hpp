@@ -1,4 +1,5 @@
-#pragma once
+#ifndef PTHASH_EXTERNAL_BITS_BIT_VECTOR_HPP
+#define PTHASH_EXTERNAL_BITS_BIT_VECTOR_HPP
 
 #include <cstddef>
 #include <vector>
@@ -22,9 +23,7 @@ struct bit_vector //
       m_cur_word = nullptr;
     }
 
-    void fill(bool init = 0) {
-      std::fill(m_data.begin(), m_data.end(), uint64_t(-init));
-    }
+    void fill(bool init = 0) { boost::range::fill(m_data, uint64_t(-init)); }
 
     void resize(uint64_t num_bits, bool init = 0) {
       m_num_bits = num_bits;
@@ -47,7 +46,7 @@ struct bit_vector //
       builder().swap(*this);
     }
 
-    void swap(builder &other) {
+    void swap(builder &other) noexcept {
       std::swap(m_num_bits, other.m_num_bits);
       std::swap(m_cur_word, other.m_cur_word);
       m_data.swap(other.m_data);
@@ -71,7 +70,7 @@ struct bit_vector //
       m_data[word] |= uint64_t(b) << pos_in_word;
     }
 
-    uint64_t get(uint64_t pos) const {
+    [[nodiscard]] uint64_t get(uint64_t pos) const {
       assert(pos < num_bits());
       uint64_t word = pos >> 6;
       uint64_t pos_in_word = pos & 63;
@@ -116,7 +115,7 @@ struct bit_vector //
       m_cur_word = &m_data.back();
     }
 
-    uint64_t get_word64(uint64_t pos) const {
+    [[nodiscard]] uint64_t get_word64(uint64_t pos) const {
       assert(pos < num_bits());
       uint64_t block = pos >> 6;
       uint64_t shift = pos & 63;
@@ -136,8 +135,7 @@ struct bit_vector //
       m_data.resize(essentials::words_for<uint64_t>(m_num_bits));
 
       if (shift == 0) { // word-aligned, easy case
-        std::copy(rhs.m_data.begin(), rhs.m_data.end(),
-                  m_data.begin() + ptrdiff_t(pos));
+        boost::range::copy(rhs.m_data, m_data.begin() + ptrdiff_t(pos));
       } else {
         uint64_t *cur_word = &m_data.front() + pos - 1;
         for (uint64_t i = 0; i < rhs.m_data.size() - 1; ++i) {
@@ -152,10 +150,10 @@ struct bit_vector //
       m_cur_word = &m_data.back();
     }
 
-    uint64_t num_bits() const { return m_num_bits; }
+    [[nodiscard]] uint64_t num_bits() const { return m_num_bits; }
 
-    std::vector<uint64_t> &data() { return m_data; }
-    std::vector<uint64_t> const &data() const { return m_data; }
+    [[nodiscard]] std::vector<uint64_t> &data() { return m_data; }
+    [[nodiscard]] std::vector<uint64_t> const &data() const { return m_data; }
 
   private:
     uint64_t m_num_bits;
@@ -163,16 +161,16 @@ struct bit_vector //
     std::vector<uint64_t> m_data;
   };
 
-  bit_vector() : m_num_bits(0) {}
+  bit_vector() = default;
 
-  uint64_t get(uint64_t pos) const {
+  [[nodiscard]] uint64_t get(uint64_t pos) const {
     assert(pos < num_bits());
     uint64_t block = pos >> 6;
     uint64_t shift = pos & 63;
     return m_data[block] >> shift & uint64_t(1);
   }
 
-  uint64_t get_bits(uint64_t pos, uint64_t len) const {
+  [[nodiscard]] uint64_t get_bits(uint64_t pos, uint64_t len) const {
     assert(pos + len <= num_bits());
     if (!len)
       return 0;
@@ -188,14 +186,14 @@ struct bit_vector //
   }
 
   // fast and unsafe version: it retrieves at least 56 bits
-  uint64_t get_word56(uint64_t pos) const {
+  [[nodiscard]] uint64_t get_word56(uint64_t pos) const {
     const char *base_ptr = reinterpret_cast<const char *>(m_data.data());
     return *(reinterpret_cast<uint64_t const *>(base_ptr + (pos >> 3))) >>
            (pos & 7);
   }
 
   // pad with zeros if extension further size is needed
-  uint64_t get_word64(uint64_t pos) const {
+  [[nodiscard]] uint64_t get_word64(uint64_t pos) const {
     assert(pos < num_bits());
     uint64_t block = pos >> 6;
     uint64_t shift = pos & 63;
@@ -314,7 +312,7 @@ struct bit_vector //
       return zeros + l;
     }
 
-    uint64_t position() const { return m_pos; }
+    [[nodiscard]] uint64_t position() const { return m_pos; }
 
   private:
     uint64_t const *m_data;
@@ -339,17 +337,21 @@ struct bit_vector //
     }
   };
 
-  iterator get_iterator_at(uint64_t pos) const { return iterator(this, pos); }
-  iterator begin() const { return get_iterator_at(0); }
+  [[nodiscard]] iterator get_iterator_at(uint64_t pos) const {
+    return iterator(this, pos);
+  }
+  [[nodiscard]] iterator begin() const { return get_iterator_at(0); }
 
-  uint64_t num_bits() const { return m_num_bits; }
-  essentials::owning_span<uint64_t> const &data() const { return m_data; }
+  [[nodiscard]] uint64_t num_bits() const { return m_num_bits; }
+  [[nodiscard]] essentials::owning_span<uint64_t> const &data() const {
+    return m_data;
+  }
 
-  uint64_t num_bytes() const {
+  [[nodiscard]] uint64_t num_bytes() const {
     return sizeof(m_num_bits) + essentials::vec_bytes(m_data);
   }
 
-  void swap(bit_vector &other) {
+  void swap(bit_vector &other) noexcept {
     std::swap(m_num_bits, other.m_num_bits);
     m_data.swap(other.m_data);
   }
@@ -362,15 +364,17 @@ struct bit_vector //
     visit_impl(visitor, *this);
   }
 
-protected:
-  uint64_t m_num_bits;
+private:
+  uint64_t m_num_bits = 0;
   essentials::owning_span<uint64_t> m_data;
 
   template <typename Visitor, typename T>
   static void visit_impl(Visitor &visitor, T &&t) {
-    visitor.visit(t.m_num_bits);
-    visitor.visit(t.m_data);
+    visitor.visit(std::forward<T>(t).m_num_bits);
+    visitor.visit(std::forward<T>(t).m_data);
   }
 };
 
 } // namespace bits
+
+#endif // PTHASH_EXTERNAL_BITS_BIT_VECTOR_HPP

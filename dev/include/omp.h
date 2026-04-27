@@ -18,6 +18,7 @@ int omp_get_num_threads(void);
 int omp_get_max_threads(void);
 void omp_set_num_threads(int num_threads);
 void omp_set_dynamic(int dynamic_threads);
+int omp_get_dynamic(void);
 void omp_init_lock(omp_lock_t *lock);
 void omp_set_lock(omp_lock_t *lock);
 void omp_unset_lock(omp_lock_t *lock);

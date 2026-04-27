@@ -1,8 +1,10 @@
-#pragma once
+#ifndef PTHASH_EXTERNAL_BITS_RICE_SEQUENCE_HPP
+#define PTHASH_EXTERNAL_BITS_RICE_SEQUENCE_HPP
 
 #include "bit_vector.hpp"
 #include "compact_vector.hpp"
 #include "darray.hpp"
+#include <numeric>
 
 namespace bits {
 
@@ -31,7 +33,7 @@ template <typename DArray1 = darray1> struct rice_sequence {
     m_high_bits_d1.build(m_high_bits);
   }
 
-  inline uint64_t access(uint64_t i) const {
+  [[nodiscard]] uint64_t access(uint64_t i) const {
     assert(i < size());
     int64_t start = -1;
     if (i)
@@ -40,10 +42,9 @@ template <typename DArray1 = darray1> struct rice_sequence {
     int64_t high = end - start - 1;
     return (high << m_low_bits.width()) | m_low_bits.access(i);
   }
+  [[nodiscard]] uint64_t size() const { return m_low_bits.size(); }
 
-  inline uint64_t size() const { return m_low_bits.size(); }
-
-  uint64_t num_bytes() const {
+  [[nodiscard]] uint64_t num_bytes() const {
     return m_high_bits.num_bytes() + m_high_bits_d1.num_bytes() +
            m_low_bits.num_bytes();
   }
@@ -59,9 +60,9 @@ template <typename DArray1 = darray1> struct rice_sequence {
 private:
   template <typename Visitor, typename T>
   static void visit_impl(Visitor &visitor, T &&t) {
-    visitor.visit(t.m_high_bits);
-    visitor.visit(t.m_high_bits_d1);
-    visitor.visit(t.m_low_bits);
+    visitor.visit(std::forward<T>(t).m_high_bits);
+    visitor.visit(std::forward<T>(t).m_high_bits_d1);
+    visitor.visit(std::forward<T>(t).m_low_bits);
   }
 
   bit_vector m_high_bits;
@@ -82,3 +83,5 @@ private:
 };
 
 } // namespace bits
+
+#endif // PTHASH_EXTERNAL_BITS_RICE_SEQUENCE_HPP

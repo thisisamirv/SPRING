@@ -1,9 +1,9 @@
-#pragma once
+#ifndef PTHASH_EXTERNAL_BITS_UTIL_HPP
+#define PTHASH_EXTERNAL_BITS_UTIL_HPP
 
 #include <bit>
 #include <cassert>
 #include <cstdint>
-
 
 #if defined(__x86_64__)
 #include <immintrin.h>
@@ -112,3 +112,5 @@ static inline uint64_t select_in_word(uint64_t word, uint64_t i) {
 }
 
 } // namespace bits::util
+
+#endif // PTHASH_EXTERNAL_BITS_UTIL_HPP

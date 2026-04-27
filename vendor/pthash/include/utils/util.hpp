@@ -1,9 +1,9 @@
-#pragma once
+#ifndef PTHASH_UTILS_UTIL_HPP
+#define PTHASH_UTILS_UTIL_HPP
 
 #include <cassert>
 #include <chrono>
 #include <random>
-#include <string>
 
 #if defined(_WIN32)
 #include "pthash_windefs.h"
@@ -19,10 +19,17 @@ typedef std::chrono::high_resolution_clock clock_type;
 
 namespace constants {
 
-static const std::string default_tmp_dirname(".");
+static const char *default_tmp_dirname = ".";
 
-static const uint64_t available_ram =
-    sysconf(_SC_PAGESIZE) * sysconf(_SC_PHYS_PAGES);
+static inline uint64_t available_ram() {
+#if defined(_WIN32)
+  return static_cast<uint64_t>(sysconf(_SC_PAGESIZE)) *
+         static_cast<uint64_t>(sysconf(_SC_PHYS_PAGES));
+#else
+  return static_cast<uint64_t>(sysconf(_SC_PAGESIZE)) *
+         static_cast<uint64_t>(sysconf(_SC_PHYS_PAGES));
+#endif
+}
 static const uint64_t invalid_seed = uint64_t(-1);
 static const uint64_t invalid_num_buckets = uint64_t(-1);
 static const uint64_t invalid_table_size = uint64_t(-1);
@@ -65,3 +72,5 @@ template <typename DurationType> double to_microseconds(DurationType const &d) {
 }
 
 } // namespace pthash
+
+#endif // PTHASH_UTILS_UTIL_HPP
