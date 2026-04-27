@@ -800,7 +800,7 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   std::vector<OmpLock> read_locks(num_locks);
   std::vector<OmpLock> dictionary_locks(num_locks);
   auto remaining_reads_storage = std::make_unique<bool[]>(
-      static_cast<size_t>(eg.numreads_s + eg.numreads_N));
+      static_cast<size_t>(eg.numreads_s) + eg.numreads_N);
   bool *remaining_reads = remaining_reads_storage.get();
   std::fill(remaining_reads, remaining_reads + eg.numreads_s + eg.numreads_N,
             true);

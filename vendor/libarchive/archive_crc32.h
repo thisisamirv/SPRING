@@ -44,7 +44,7 @@
  */
 static unsigned long crc32(unsigned long crc, const void *_p, size_t len) {
   unsigned long crc2, b, i;
-  const unsigned char *p = _p;
+  const unsigned char *p = (const unsigned char *)_p;
   static volatile int crc_tbl_inited = 0;
   static unsigned long crc_tbl[256];
 

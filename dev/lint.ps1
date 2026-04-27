@@ -159,6 +159,7 @@ if ($cppFiles) {
 
         $sanitizerPath = Join-Path $env:TEMP "sanitize_compile_commands_for_tidy.py"
         $pythonScript = @'
+import ctypes
 import json
 import pathlib
 import shlex
@@ -212,6 +213,25 @@ def _sanitize_args(args):
     return sanitized
 
 
+def _split_command(command: str) -> list:
+    # shlex.split uses POSIX rules and eats backslashes in Windows paths.
+    # On Windows, use CommandLineToArgvW which matches how the compiler is
+    # actually invoked (via CreateProcess, not a POSIX shell).
+    if sys.platform == "win32":
+        _fn = ctypes.windll.shell32.CommandLineToArgvW
+        _fn.restype = ctypes.POINTER(ctypes.c_wchar_p)
+        _fn.argtypes = [ctypes.c_wchar_p, ctypes.POINTER(ctypes.c_int)]
+        argc = ctypes.c_int(0)
+        argv_ptr = _fn(command, ctypes.byref(argc))
+        if not argv_ptr:
+            return shlex.split(command)
+        try:
+            return [argv_ptr[i] for i in range(argc.value)]
+        finally:
+            ctypes.windll.kernel32.LocalFree(argv_ptr)
+    return shlex.split(command)
+
+
 src_path = pathlib.Path(sys.argv[1])
 dst_path = pathlib.Path(sys.argv[2])
 entries = json.loads(src_path.read_text(encoding="utf-8"))
@@ -224,10 +244,13 @@ for entry in entries:
     command = entry.get("command")
     if isinstance(command, str) and command.strip():
         try:
-            split = shlex.split(command)
-            entry["command"] = shlex.join(_sanitize_args(split))
-        except ValueError:
-            # Keep original command when shell parsing fails.
+            split = _split_command(command)
+            sanitized = _sanitize_args(split)
+            # Write as arguments array so clang-tidy receives tokens directly
+            # without any further shell re-parsing or re-quoting.
+            entry.pop("command", None)
+            entry["arguments"] = sanitized
+        except (ValueError, OSError):
             pass
 
 dst_path.parent.mkdir(parents=True, exist_ok=True)

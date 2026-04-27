@@ -38,6 +38,8 @@ See also the bsc and libbsc web site:
 #define LIBBSC_VERSION_PATCH 12
 #define LIBBSC_VERSION_STRING "3.3.12"
 
+#include <stddef.h>
+
 #define LIBBSC_NO_ERROR 0
 #define LIBBSC_BAD_PARAMETER -1
 #define LIBBSC_NOT_ENOUGH_MEMORY -2

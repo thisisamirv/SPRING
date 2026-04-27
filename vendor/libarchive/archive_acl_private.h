@@ -27,31 +27,29 @@
 #define ARCHIVE_ACL_PRIVATE_H_INCLUDED
 
 #ifndef __LIBARCHIVE_BUILD
-/* When the project is not being built as part of libarchive, some analysis
- * environments (language servers) may still parse the header. Provide a
- * minimal, non-invasive fallback for a few fundamental types so parsing
- * succeeds. Real builds should define __LIBARCHIVE_BUILD and skip this. */
+/* For editor/LSP parsing, prefer system types when available. Only provide
+ * a guarded fallback typedef if a system header did not supply them. */
 #if defined(__has_include) && __has_include(<sys/types.h>)
 #include <sys/types.h>
-#else
-/* Fallback for environments without <sys/types.h> or without
- * __has_include support (editors/LSP). Provide parsing-only typedefs. */
-#ifndef mode_t
+#endif
+
+/* Fallback: only define these typedefs if no common guard macro is present.
+ * We avoid testing 'mode_t' or 'ssize_t' directly (they are typedefs, not
+ * macros), and instead set and test our own guard macros when providing
+ * replacements. This prevents accidental redefinition when system headers
+ * already define these types. */
+#if !defined(_ARCHIVE_MODE_T_DEFINED) && !defined(_MODE_T) && \
+  !defined(_MODE_T_DEFINED) && !defined(__mode_t_defined)
 typedef int mode_t;
 #define _ARCHIVE_MODE_T_DEFINED
 #endif
-#ifndef ssize_t
+
+#if !defined(_ARCHIVE_SSIZE_T_DEFINED) && !defined(_SSIZE_T_) && \
+  !defined(_SSIZE_T_DEFINED) && !defined(__ssize_t_defined)
 typedef long ssize_t;
 #define _ARCHIVE_SSIZE_T_DEFINED
 #endif
-#endif
-#if !defined(mode_t)
-/* Ensure mode_t exists for parsers even if <sys/types.h> didn't provide it. */
-typedef int mode_t;
-#endif
-#if !defined(ssize_t)
-typedef long ssize_t;
-#endif
+
 #endif
 
 #include "archive_string.h"

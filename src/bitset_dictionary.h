@@ -13,12 +13,12 @@
 #include <string>
 #include <vector>
 
-#include "core_utils.h"
-#include "progress.h"
-#include "single_phf.hpp"
 #include "bucketers.hpp"
+#include "core_utils.h"
 #include "encoders.hpp"
 #include "hasher.hpp"
+#include "progress.h"
+#include "single_phf.hpp"
 
 namespace spring {
 
@@ -192,7 +192,7 @@ inline uint32_t sort_and_deduplicate_keys(uint64_t *dictionary_keys,
     for (int chunk_index = 0; chunk_index < chunk_count; ++chunk_index) {
       const uint64_t begin = chunk_boundaries[static_cast<size_t>(chunk_index)];
       const uint64_t end =
-          chunk_boundaries[static_cast<size_t>(chunk_index + 1)];
+          chunk_boundaries[static_cast<size_t>(chunk_index) + 1];
       if (begin < end) {
         std::sort(dictionary_keys + begin, dictionary_keys + end);
       }

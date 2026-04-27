@@ -43,15 +43,21 @@
 #define LIBARCHIVE_ARCHIVE_WINDOWS_H_INCLUDED
 
 #ifndef __LIBARCHIVE_BUILD
-/* This header is intended for internal libarchive builds. For editor/LSP
- * parsing when __LIBARCHIVE_BUILD is not defined, provide minimal,
- * non-invasive fallbacks so the file can be parsed without aborting.
- * Real builds should define __LIBARCHIVE_BUILD and use system headers. */
-#if !defined(ssize_t)
-typedef long ssize_t;
+#if defined(__has_include) && __has_include(<sys/types.h>)
+#include <sys/types.h>
 #endif
-#if !defined(pid_t)
+
+/* Provide guarded fallbacks only if common guard macros are not present. */
+#if !defined(_ARCHIVE_SSIZE_T_DEFINED) && !defined(_SSIZE_T_) &&               \
+    !defined(_SSIZE_T_DEFINED) && !defined(__ssize_t_defined)
+typedef long ssize_t;
+#define _ARCHIVE_SSIZE_T_DEFINED
+#endif
+
+#if !defined(_ARCHIVE_PID_T_DEFINED) && !defined(_PID_T) &&                    \
+    !defined(_PID_T_DEFINED) && !defined(__pid_t_defined)
 typedef int pid_t;
+#define _ARCHIVE_PID_T_DEFINED
 #endif
 #endif
 
@@ -78,8 +84,43 @@ typedef int pid_t;
 #include <unistd.h>
 #endif
 #define NOCRYPT
+#if defined(__LIBARCHIVE_BUILD)
+/* Ensure Windows core types are available before pulling in wincrypt. */
 #include <windows.h>
+#if defined(__has_include)
+#if __has_include(<wincrypt.h>)
 #include <wincrypt.h>
+#endif
+#else
+#include <wincrypt.h>
+#endif
+#else
+/* Minimal, parsing-only fallbacks for a few Windows types and macros
+ * so editors and static analyzers can parse this header when the full
+ * Windows SDK isn't available. Real builds that define __LIBARCHIVE_BUILD
+ * will include the system headers above and skip these. */
+#ifndef HANDLE
+typedef void *HANDLE;
+#endif
+#ifndef BOOL
+typedef int BOOL;
+#endif
+#ifndef DWORD
+typedef unsigned long DWORD;
+#endif
+#ifndef LPCWSTR
+typedef const wchar_t *LPCWSTR;
+#endif
+#ifndef LPWSTR
+typedef wchar_t *LPWSTR;
+#endif
+#ifndef WINBASEAPI
+#define WINBASEAPI
+#endif
+#ifndef WINAPI
+#define WINAPI
+#endif
+#endif
 // #define	EFTYPE 7
 
 #include "archive_platform_stat.h"
@@ -312,10 +353,15 @@ typedef int mbstate_t;
 size_t wcrtomb(char *, wchar_t, mbstate_t *);
 #endif
 
+#if defined(WINAPI_FAMILY_PARTITION) && defined(NTDDI_VERSION)
+/* When both macros are available, evaluate the detailed platform check
+ * in a nested #if to avoid creating complex tokens in a single
+ * preprocessor expression that some toolchains or editors may reject. */
 #if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP) &&                      \
-    NTDDI_VERSION < NTDDI_WIN10_VB
-// not supported in UWP SDK before 20H1
+    (NTDDI_VERSION < NTDDI_WIN10_VB)
+/* not supported in UWP SDK before 20H1 */
 #define GetVolumePathNameW(f, v, c) (0)
+#endif
 #elif defined(_MSC_VER) && _MSC_VER < 1300
 WINBASEAPI BOOL WINAPI GetVolumePathNameW(LPCWSTR lpszFileName,
                                           LPWSTR lpszVolumePathName,

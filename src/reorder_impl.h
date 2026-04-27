@@ -33,9 +33,8 @@ bool deterministic_reorder_enabled() {
   if (value == nullptr)
     return true;
   const std::string normalized(value);
-  return !(normalized.empty() || normalized == "0" ||
-           normalized == "false" || normalized == "FALSE" ||
-           normalized == "off" || normalized == "OFF");
+  return !(normalized.empty() || normalized == "0" || normalized == "false" ||
+           normalized == "FALSE" || normalized == "off" || normalized == "OFF");
 }
 
 } // namespace
@@ -860,7 +859,7 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
   // remaining_reads_storage RAII will free the remaining_reads buffer
   SPRING_LOG_INFO("Reordering done, " +
                   std::to_string(std::accumulate(unmatched_counts.begin(),
-                                                 unmatched_counts.end(), 0)) +
+                                                 unmatched_counts.end(), 0U)) +
                   " were unmatched");
   // length_masks and index_masks are now RAII-managed containers
   return;
@@ -898,11 +897,10 @@ void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
       while (inRC.get(c)) {
         finorder.read(byte_ptr(&current), sizeof(uint32_t));
         if (current >= rg.numreads) {
-          SPRING_LOG_DEBUG("writetofile ERROR: thread " +
-                           std::to_string(tid) +
-                           " read_id out of bounds: " +
-                           std::to_string(current) + " >= " +
-                           std::to_string(rg.numreads));
+          SPRING_LOG_DEBUG(
+              "writetofile ERROR: thread " + std::to_string(tid) +
+              " read_id out of bounds: " + std::to_string(current) +
+              " >= " + std::to_string(rg.numreads));
           break;
         }
         bitsettostring<bitset_size>(read[current], s, read_lengths[current],

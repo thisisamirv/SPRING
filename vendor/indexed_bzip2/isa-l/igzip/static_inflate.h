@@ -12,7 +12,7 @@
 #warning "Incompatible compile time defines for optimized static inflate table."
 #endif
 
-struct inflate_huff_code_large static_lit_huff_code = {
+static const struct inflate_huff_code_large static_lit_huff_code = {
     .short_code_lookup =
         {0x74000100, 0x84000050, 0x84000010, 0xc4000171, 0x9400011d, 0x84000070,
          0x84000030, 0x940000c0, 0x74000108, 0x84000060, 0x84000020, 0x940000a0,
@@ -841,7 +841,7 @@ struct inflate_huff_code_large static_lit_huff_code = {
         0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
         0x0000, 0x0000, 0x0000, 0x0000}};
 
-struct inflate_huff_code_small static_dist_huff_code = {
+static const struct inflate_huff_code_small static_dist_huff_code = {
     .short_code_lookup =
         {0x2800, 0x28f0, 0x2868, 0x2978, 0x2824, 0x2934, 0x28ac, 0x29bc, 0x2802,
          0x2912, 0x288a, 0x299a, 0x2846, 0x2956, 0x28ce, 0x0005, 0x2801, 0x28f1,
@@ -970,7 +970,7 @@ struct inflate_huff_code_small static_dist_huff_code = {
         0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000}};
 
 #endif
-struct inflate_huff_code_large pregen_lit_huff_code = {
+static const struct inflate_huff_code_large pregen_lit_huff_code = {
     .short_code_lookup =
         {0x24000102, 0x88010265, 0x44000103, 0xa8010277, 0x24000102, 0x98010268,
          0x78010220, 0xb80102e0, 0x24000102, 0x88010273, 0x44000104, 0xb8010235,
@@ -1799,7 +1799,7 @@ struct inflate_huff_code_large pregen_lit_huff_code = {
         0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
         0x0000, 0x0000, 0x0000, 0x0000}};
 
-struct inflate_huff_code_small pregen_dist_huff_code = {
+static const struct inflate_huff_code_small pregen_dist_huff_code = {
     .short_code_lookup =
         {0x1956, 0x219a, 0x20f0, 0x2935, 0x20ce, 0x28ac, 0x2134, 0x29bc, 0x1956,
          0x288a, 0x2112, 0x2979, 0x20cf, 0x28f1, 0x2178, 0x3069, 0x1956, 0x219a,
