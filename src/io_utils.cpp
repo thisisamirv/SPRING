@@ -6,7 +6,7 @@
 #include "omp.h"
 #include "parse_utils.h"
 #include "progress.h"
-#include "qvz/include/qvz.h"
+#include "qvz/qvz.h"
 #include <algorithm>
 #include <cctype>
 #include <cstring>

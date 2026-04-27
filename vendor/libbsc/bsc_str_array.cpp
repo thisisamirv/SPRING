@@ -58,7 +58,7 @@ preprocessor macro LIBBSC_SORT_TRANSFORM_SUPPORT at compile time.
 #include "libbsc/bsc.h"
 #include "libbsc/filters.h"
 #include "libbsc/libbsc.h"
-#include "libbsc/platform/platform.h"
+#include "libbsc/platform.h"
 
 namespace spring {
 namespace bsc {

@@ -2,23 +2,23 @@ cmake_minimum_required(VERSION 3.15)
 project(libbsc C CXX)
 
 add_library(libbsc STATIC
+    adler32.cpp
     bsc.cpp
     bsc_str_array.cpp
-    adler32/adler32.cpp
-    bwt/libsais/libsais.c
-    bwt/bwt.cpp
-    coder/coder.cpp
-    coder/qlfc/qlfc.cpp
-    coder/qlfc/qlfc_model.cpp
-    filters/detectors.cpp
-    filters/preprocessing.cpp
-    libbsc/libbsc.cpp
-    lzp/lzp.cpp
-    platform/platform.cpp
-    st/st.cpp
+    bwt.cpp
+    coder.cpp
+    detectors.cpp
+    libbsc.cpp
+    libsais.c
+    lzp.cpp
+    platform.cpp
+    preprocessing.cpp
+    qlfc.cpp
+    qlfc_model.cpp
+    st.cpp
 )
 
-target_include_directories(libbsc PUBLIC . .. adler32 bwt coder filters libbsc lzp platform st bwt/libsais coder/qlfc ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(libbsc PUBLIC . .. ${CMAKE_SOURCE_DIR}/src)
 set_target_properties(libbsc PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 if(TARGET OpenMP::OpenMP_CXX)
