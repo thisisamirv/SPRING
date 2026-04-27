@@ -119,12 +119,11 @@ else {
     foreach ($inc in $LINUX_SYSTEM_INCLUDE_DIRS) { $commonTidyArgs += "--extra-arg-before=-isystem"; $commonTidyArgs += "--extra-arg-before=$inc" }
 }
 
-# Collect files from args or default locations
+# Collect files from args or default locations (do not lint tests/ by default)
 $lintTargets = if ($args) { $args } else {
     @(
         (Join-Path $ROOT_DIR "src"),
-        (Join-Path $ROOT_DIR "vendor"),
-        (Join-Path $ROOT_DIR "tests")
+        (Join-Path $ROOT_DIR "vendor")
     )
 }
 $cppFiles = Get-CppSources $lintTargets

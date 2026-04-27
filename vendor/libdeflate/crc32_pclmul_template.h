@@ -394,7 +394,7 @@ less_than_vl_remaining:
   __m256i y0 = fold_vec256(_mm512_extracti64x4_epi64(v0, 0),
                            _mm512_extracti64x4_epi64(v0, 1), mults_256b);
   if (len & 32) {
-    y0 = fold_vec256(y0, _mm256_loadu_si256((const void *)p), mults_256b);
+    y0 = fold_vec256(y0, _mm256_loadu_si256((const __m256i_u *)p), mults_256b);
     p += 32;
   }
 #endif

@@ -38,14 +38,19 @@
  * macros), and instead set and test our own guard macros when providing
  * replacements. This prevents accidental redefinition when system headers
  * already define these types. */
-#if !defined(_ARCHIVE_MODE_T_DEFINED) && !defined(_MODE_T) && \
-  !defined(_MODE_T_DEFINED) && !defined(__mode_t_defined)
+#if !defined(_ARCHIVE_MODE_T_DEFINED) && !defined(_MODE_T) &&                  \
+    !defined(_MODE_T_DEFINED) && !defined(__mode_t_defined) &&                 \
+    !defined(__MINGW32__) && !defined(__MINGW64__)
+/* On MinGW/MSYS the C runtime already defines `mode_t` (typedef _mode_t),
+ * but it typically doesn't set one of the common guard macros we check.
+ * Avoid providing our fallback typedef when compiling under MinGW to
+ * prevent a conflicting redefinition. */
 typedef int mode_t;
 #define _ARCHIVE_MODE_T_DEFINED
 #endif
 
-#if !defined(_ARCHIVE_SSIZE_T_DEFINED) && !defined(_SSIZE_T_) && \
-  !defined(_SSIZE_T_DEFINED) && !defined(__ssize_t_defined)
+#if !defined(_ARCHIVE_SSIZE_T_DEFINED) && !defined(_SSIZE_T_) &&               \
+    !defined(_SSIZE_T_DEFINED) && !defined(__ssize_t_defined)
 typedef long ssize_t;
 #define _ARCHIVE_SSIZE_T_DEFINED
 #endif

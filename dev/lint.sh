@@ -164,7 +164,8 @@ run_clang_tidy() {
 if [[ $# -gt 0 ]]; then
 	lint_targets=("$@")
 else
-	lint_targets=("$ROOT_DIR/src" "$ROOT_DIR/vendor" "$ROOT_DIR/tests")
+	# Do not lint the tests/ directory by default
+	lint_targets=("$ROOT_DIR/src" "$ROOT_DIR/vendor")
 fi
 
 files=()

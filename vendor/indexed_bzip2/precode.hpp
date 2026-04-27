@@ -95,16 +95,16 @@ inline const auto VALID_HISTOGRAMS = []() {
                                 [&validHistograms](const Histogram &histogram) {
                                   validHistograms.push_back(histogram);
                                 });
+  // In debug builds, sanity-check the generated histogram table at runtime.
+#ifndef NDEBUG
+  assert(validHistograms.size() == 1526);
+  Histogram expected{};
+  expected[0] = 2; // code length 1 -> count = 2
+  assert(validHistograms.back() == expected);
+#endif
 
   return validHistograms;
 }();
 
 inline const auto VALID_HISTOGRAMS_COUNT = VALID_HISTOGRAMS.size();
-
-#ifndef NDEBUG
-assert(VALID_HISTOGRAMS_COUNT == 1526);
-assert(VALID_HISTOGRAMS.back() == (Histogram{{
-                                      /* code length 1 */ 2,
-                                  }}));
-#endif
 } // namespace rapidgzip::deflate::precode

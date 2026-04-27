@@ -7,6 +7,11 @@
 #include <fstream>
 #include <string>
 
+// Suppress a known false-positive from the clang static analyzer where
+// doctest's temporary/result macros can confuse the analyzer about
+// heap allocations inside `doctest::String`.
+// NOLINTBEGIN(clang-analyzer-cplusplus.NewDeleteLeaks)
+
 using namespace spring;
 
 namespace {
@@ -195,3 +200,6 @@ TEST_CASE("Testing AssayDetector with Real Data") {
   }
 }
 } // namespace
+
+// End suppression region
+// NOLINTEND(clang-analyzer-cplusplus.NewDeleteLeaks)

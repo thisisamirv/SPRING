@@ -55,7 +55,11 @@ typedef long ssize_t;
 #endif
 
 #if !defined(_ARCHIVE_PID_T_DEFINED) && !defined(_PID_T) &&                    \
-    !defined(_PID_T_DEFINED) && !defined(__pid_t_defined)
+    !defined(_PID_T_DEFINED) && !defined(__pid_t_defined) &&                   \
+    !defined(__MINGW32__) && !defined(__MINGW64__)
+/* MinGW defines pid_t in <sys/types.h> as _pid_t; it doesn't always
+ * provide a guard macro we can check. Avoid redefining `pid_t` when
+ * compiling under MinGW/MSYS to prevent conflicting typedef errors. */
 typedef int pid_t;
 #define _ARCHIVE_PID_T_DEFINED
 #endif

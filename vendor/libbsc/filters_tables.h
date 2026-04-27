@@ -966,10 +966,10 @@ static INLINE long long bsc_delta(int n) {
     return (long long)bsc_delta_table[n];
   if ((n & 0xff) != 0xff) {
     if (n < 0x100000)
-      return (long long)(bsc_code_table[n >> 8] + 8 * 65536);
+      return (long long)bsc_code_table[n >> 8] + 8LL * 65536LL;
     if (n < 0x10000000)
-      return (long long)(bsc_code_table[n >> 16] + 16 * 65536);
-    return (long long)(bsc_code_table[n >> 20] + 20 * 65536);
+      return (long long)bsc_code_table[n >> 16] + 16LL * 65536LL;
+    return (long long)bsc_code_table[n >> 20] + 20LL * 65536LL;
   }
   return bsc_entropy(n + 1) - bsc_entropy(n);
 }

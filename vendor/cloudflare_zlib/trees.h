@@ -4,6 +4,11 @@
 #include "deflate.h"
 #include "zutil.h"
 
+// The tables below are generated and intentionally define variables in this
+// header for inclusion by the zlib implementation. Suppress clang-tidy's
+// warning about definitions in headers for this generated data.
+// NOLINTBEGIN(misc-definitions-in-headers)
+
 #define DIST_CODE_LEN 512
 
 local const ct_data static_ltree[L_CODES + 2] = {
@@ -74,7 +79,7 @@ local const ct_data static_dtree[D_CODES] = {
     {{5}, {5}},  {{21}, {5}}, {{13}, {5}}, {{29}, {5}}, {{3}, {5}},
     {{19}, {5}}, {{11}, {5}}, {{27}, {5}}, {{7}, {5}},  {{23}, {5}}};
 
-local const uch ZLIB_INTERNAL _dist_code[DIST_CODE_LEN] = {
+const uint8_t ZLIB_INTERNAL _dist_code[DIST_CODE_LEN] = {
     0,  1,  2,  3,  4,  4,  5,  5,  6,  6,  6,  6,  7,  7,  7,  7,  8,  8,  8,
     8,  8,  8,  8,  8,  9,  9,  9,  9,  9,  9,  9,  9,  10, 10, 10, 10, 10, 10,
     10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 11, 11, 11, 11, 11, 11, 11, 11, 11,
@@ -103,7 +108,7 @@ local const uch ZLIB_INTERNAL _dist_code[DIST_CODE_LEN] = {
     29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29,
     29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29};
 
-local const uch ZLIB_INTERNAL _length_code[MAX_MATCH - MIN_MATCH + 1] = {
+const uint8_t ZLIB_INTERNAL _length_code[MAX_MATCH - MIN_MATCH + 1] = {
     0,  1,  2,  3,  4,  5,  6,  7,  8,  8,  9,  9,  10, 10, 11, 11, 12, 12, 12,
     12, 13, 13, 13, 13, 14, 14, 14, 14, 15, 15, 15, 15, 16, 16, 16, 16, 16, 16,
     16, 16, 17, 17, 17, 17, 17, 17, 17, 17, 18, 18, 18, 18, 18, 18, 18, 18, 19,
@@ -129,3 +134,6 @@ local const int base_dist[D_CODES] = {
     1024, 1536, 2048, 3072, 4096, 6144, 8192, 12288, 16384, 24576};
 
 #endif /* TREES_H */
+
+// End suppression region
+// NOLINTEND(misc-definitions-in-headers)
