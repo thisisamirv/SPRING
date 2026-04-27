@@ -29,14 +29,16 @@
 #define LIB_ARM_CRC32_IMPL_H
 
 #if defined(__arm__) || defined(__aarch64__)
-#include "lib_common.h"
 #include "cpu_features_arm.h"
+#include "crc32_multipliers.h"
+#include "lib_common.h"
 
 /*
  * crc32_func_t is defined in crc32.c, but we need it here for standalone
  * parsing by the IDE.
  */
-#ifndef crc32_func_t
+#ifndef CRC32_FUNC_T_DEFINED
+#define CRC32_FUNC_T_DEFINED
 typedef u32 (*crc32_func_t)(u32 crc, const u8 *p, size_t len);
 #endif
 
@@ -428,6 +430,11 @@ static ATTRIBUTES u32 crc32_arm_crc_pmullcombine(u32 crc, const u8 *p,
  */
 #if defined(HAVE_PMULL_INTRIN) && HAVE_PMULL_INTRIN
 
+#ifndef CONCAT_IMPL
+#define CONCAT_IMPL(a, b) a##b
+#define CONCAT(a, b) CONCAT_IMPL(a, b)
+#define ADD_SUFFIX(name) CONCAT(name, SUFFIX)
+#endif
 #define crc32_arm_pmullx4 crc32_arm_pmullx4
 #define SUFFIX _pmullx4
 #ifdef __clang__

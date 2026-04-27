@@ -152,6 +152,7 @@ typedef ssize_t la_ssize_t;
 #define __LA_DECL
 #endif
 
+#undef __LA_PRINTF
 #if defined(__GNUC__) && __GNUC__ >= 3 && !defined(__MINGW32__)
 #define __LA_PRINTF(fmtarg, firstvararg)                                       \
   __attribute__((__format__(__printf__, fmtarg, firstvararg)))

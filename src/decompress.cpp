@@ -10,6 +10,9 @@
 #include "params.h"
 #include "parse_utils.h"
 #include "progress.h"
+#ifndef _WIN32
+#include "raii.h"
+#endif
 #include <cerrno>
 #include <cstdint>
 #include <cstdio>

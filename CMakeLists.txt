@@ -635,6 +635,12 @@ add_dev_script_target(dev-valgrind-smoke valgrind-smoke.sh)
 add_dependencies(dev-lint spring2)
 add_dependencies(dev-valgrind-smoke spring2)
 
+# Symlink the reference directory into the build tree so binaries running from
+# build/ (e.g. the spring2 subprocess spawned by integration-tests) find it.
+if(NOT WIN32 AND NOT EXISTS ${CMAKE_BINARY_DIR}/reference)
+    file(CREATE_LINK ${CMAKE_SOURCE_DIR}/reference ${CMAKE_BINARY_DIR}/reference SYMBOLIC)
+endif()
+
 # Unit testing integration using doctest.
 enable_testing()
 add_executable(spring2-tests tests/unit_tests.cpp ${core_source_files})
@@ -650,6 +656,7 @@ if(SPRING_OPENMP_INCLUDE_DIRS)
     target_include_directories(spring2-tests SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
 endif()
 target_compile_definitions(spring2-tests PRIVATE SPRING_RAPIDGZIP_EXECUTABLE=\"$<TARGET_FILE:rapidgzip>\")
+target_compile_definitions(spring2-tests PRIVATE SPRING_REFERENCE_PATH=\"${CMAKE_SOURCE_DIR}/reference\")
 add_test(NAME unit_tests COMMAND spring2-tests)
 
 add_executable(integration-tests tests/integration_tests.cpp ${core_source_files})
@@ -666,6 +673,7 @@ if(SPRING_OPENMP_INCLUDE_DIRS)
 endif()
 target_compile_definitions(integration-tests PRIVATE SPRING_RAPIDGZIP_EXECUTABLE=\"$<TARGET_FILE:rapidgzip>\")
 target_compile_definitions(integration-tests PRIVATE SPRING2_EXECUTABLE=\"$<TARGET_FILE:spring2>\")
+target_compile_definitions(integration-tests PRIVATE SPRING_REFERENCE_PATH=\"${CMAKE_SOURCE_DIR}/reference\")
 add_test(NAME integration_tests COMMAND integration-tests)
 
 if(WIN32)

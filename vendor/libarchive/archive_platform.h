@@ -93,9 +93,9 @@ static inline void __la_mark_string_used(void) { (void)sizeof(strlen("")); }
 #endif
 #include <sys/stat.h>
 #include <sys/types.h>
-#if !defined(uid_t) && !defined(_UID_T_DECLARED)
-/* Ensure basic POSIX types exist for parsing in environments lacking
- * full system headers. Real builds provide these via <sys/types.h>. */
+#if defined(_WIN32) && !defined(uid_t) && !defined(_UID_T_DECLARED)
+/* Ensure basic POSIX types exist on Windows (MinGW), which lacks them in
+ * system headers. On POSIX platforms <sys/types.h> always provides them. */
 #include <stddef.h>
 #ifdef __cplusplus
 extern "C" {

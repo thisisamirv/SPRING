@@ -56,10 +56,12 @@ uint64_t canonical_kmer(uint64_t code, int k) {
   return code < rc ? code : rc;
 }
 
-std::string get_executable_dir() {
-  // A robust way to locate reference would be parameterized, but we assume it's
-  // next to the executable or in CWD
+std::string get_reference_path() {
+#ifdef SPRING_REFERENCE_PATH
+  return SPRING_REFERENCE_PATH "/ref_hg38_gencode49.fa";
+#else
   return "reference/ref_hg38_gencode49.fa";
+#endif
 }
 
 } // namespace
@@ -371,7 +373,7 @@ AssayDetector::detect(const std::string &r1_path, const std::string &r2_path,
   bool explicit_sc = (!r3_path.empty() || !i1_path.empty() || !i2_path.empty());
 
   // Attempt to load reference from working directory
-  load_reference(get_executable_dir());
+  load_reference(get_reference_path());
 
   ReadStats stats;
   process_reads(r1_path, r2_path, stats);
