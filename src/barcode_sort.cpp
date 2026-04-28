@@ -360,15 +360,25 @@ bool barcode_sort(const std::string &temp_dir, compression_params &cp,
   const uint32_t reads_per_stream =
       paired_end ? cp.read_info.num_reads / 2 : cp.read_info.num_reads;
 
-  // sc-ATAC reads come from different genomic loci within each cell — there
-  // are no within-cell sequence overlaps for the encoder to exploit.
-  // Global overlap-based reordering (call_reorder) always outperforms CB
-  // grouping for ATAC, so skip barcode_sort entirely and let the caller fall
-  // through to call_reorder without any CB-order hint (the hint also hurts
-  // ATAC by biasing seed selection away from genomic-overlap clusters).
-  if (cp.read_info.assay == "sc-atac") {
-    SPRING_LOG_INFO(
-        "barcode_sort disabled for sc-ATAC: using overlap-based reordering.");
+  // For both sc-ATAC and sc-RNA, call_reorder's global overlap search
+  // outperforms CB-grouped encoding:
+  //
+  //   sc-ATAC: reads within a cell come from different genomic loci, so there
+  //     are no within-cell sequence overlaps. Grouping by CB only prevents the
+  //     encoder from chaining reads from the same genomic peak across cells.
+  //
+  //   sc-RNA: cross-cell chains (same transcript expressed in many cells) are
+  //     the dominant compression source. Isolating cells into separate encoder
+  //     slots severs those chains. A single large CB group also produces an
+  //     unbalanced, oversized encoder dictionary that hurts chain quality.
+  //
+  // The CB-sort hint (cb_scan_order.bin) is also skipped: for ATAC it biases
+  // seed selection away from genomic-overlap clusters; for RNA the gain is
+  // negligible (~0%) compared with the overhead of loading all reads just to
+  // write the hint file.
+  if (cp.read_info.assay == "sc-atac" || cp.read_info.assay == "sc-rna") {
+    SPRING_LOG_INFO("barcode_sort disabled for " + cp.read_info.assay +
+                    ": using overlap-based reordering.");
     return false;
   }
 
