@@ -141,35 +141,35 @@ ZSTD_CCtx *ZSTD_initStaticCCtx(void *workspace, size_t workspaceSize) {
   ZSTD_CCtx *cctx;
   if (workspaceSize <= sizeof(ZSTD_CCtx))
     return NULL; /* minimum size */
-if ((size_t)workspace & 7)
-  return NULL; /* must be 8-aligned */
-ZSTD_cwksp_init(&ws, workspace, workspaceSize, ZSTD_cwksp_static_alloc);
+  if ((size_t)workspace & 7)
+    return NULL; /* must be 8-aligned */
+  ZSTD_cwksp_init(&ws, workspace, workspaceSize, ZSTD_cwksp_static_alloc);
 
-cctx = (ZSTD_CCtx *)ZSTD_cwksp_reserve_object(&ws, sizeof(ZSTD_CCtx));
-if (cctx == NULL)
-  return NULL;
+  cctx = (ZSTD_CCtx *)ZSTD_cwksp_reserve_object(&ws, sizeof(ZSTD_CCtx));
+  if (cctx == NULL)
+    return NULL;
 
-ZSTD_memset(cctx, 0, sizeof(ZSTD_CCtx));
-ZSTD_cwksp_move(&cctx->workspace, &ws);
-cctx->staticSize = workspaceSize;
+  ZSTD_memset(cctx, 0, sizeof(ZSTD_CCtx));
+  ZSTD_cwksp_move(&cctx->workspace, &ws);
+  cctx->staticSize = workspaceSize;
 
-/* statically sized space. tmpWorkspace never moves (but prev/next block swap
- * places) */
-if (!ZSTD_cwksp_check_available(&cctx->workspace,
-                                TMP_WORKSPACE_SIZE +
-                                    2 * sizeof(ZSTD_compressedBlockState_t)))
-  return NULL;
-cctx->blockState.prevCBlock =
-    (ZSTD_compressedBlockState_t *)ZSTD_cwksp_reserve_object(
-        &cctx->workspace, sizeof(ZSTD_compressedBlockState_t));
-cctx->blockState.nextCBlock =
-    (ZSTD_compressedBlockState_t *)ZSTD_cwksp_reserve_object(
-        &cctx->workspace, sizeof(ZSTD_compressedBlockState_t));
-cctx->tmpWorkspace =
-    ZSTD_cwksp_reserve_object(&cctx->workspace, TMP_WORKSPACE_SIZE);
-cctx->tmpWkspSize = TMP_WORKSPACE_SIZE;
-cctx->bmi2 = ZSTD_cpuid_bmi2(ZSTD_cpuid());
-return cctx;
+  /* statically sized space. tmpWorkspace never moves (but prev/next block swap
+   * places) */
+  if (!ZSTD_cwksp_check_available(&cctx->workspace,
+                                  TMP_WORKSPACE_SIZE +
+                                      2 * sizeof(ZSTD_compressedBlockState_t)))
+    return NULL;
+  cctx->blockState.prevCBlock =
+      (ZSTD_compressedBlockState_t *)ZSTD_cwksp_reserve_object(
+          &cctx->workspace, sizeof(ZSTD_compressedBlockState_t));
+  cctx->blockState.nextCBlock =
+      (ZSTD_compressedBlockState_t *)ZSTD_cwksp_reserve_object(
+          &cctx->workspace, sizeof(ZSTD_compressedBlockState_t));
+  cctx->tmpWorkspace =
+      ZSTD_cwksp_reserve_object(&cctx->workspace, TMP_WORKSPACE_SIZE);
+  cctx->tmpWkspSize = TMP_WORKSPACE_SIZE;
+  cctx->bmi2 = ZSTD_cpuid_bmi2(ZSTD_cpuid());
+  return cctx;
 }
 
 /**
@@ -8453,7 +8453,7 @@ static size_t ZSTD_compressSequencesAndLiterals_internal(
   }
 
   while (nbSequences) {
-    size_t compressedSeqsSize, cBlockSize, conversionStatus;
+    size_t compressedSeqsSize, cBlockSize = 0, conversionStatus;
     BlockSummary const block = ZSTD_get1BlockSummary(inSeqs, nbSequences);
     U32 const lastBlock = (block.nbSequences == nbSequences);
     FORWARD_IF_ERROR(

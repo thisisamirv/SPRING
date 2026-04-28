@@ -10,6 +10,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace spring {
@@ -198,6 +199,64 @@ bool is_undetermined_barcode(const std::string &cb) {
   return false;
 }
 
+// Reorder a CB group into greedy overlap-chain order using k-mer prefix
+// matching. 'seq_reads' is the read vector used for overlap detection —
+// for sc-rna paired-end this is reads_2 (cDNA), otherwise reads_1.
+// min_overlap matches THRESH_ENCODER so we pre-sort exactly the overlaps the
+// encoder will subsequently exploit, improving chain starts and length.
+std::vector<uint32_t>
+overlap_chain_sort(const std::vector<uint32_t> &group,
+                   const std::vector<PackedRead> &seq_reads,
+                   uint32_t min_overlap) {
+  const uint32_t n = static_cast<uint32_t>(group.size());
+  if (n <= 1)
+    return group;
+
+  // Map: first min_overlap chars of each read -> local indices within group.
+  std::unordered_map<std::string, std::vector<uint32_t>> prefix_map;
+  prefix_map.reserve(n);
+  for (uint32_t i = 0; i < n; i++) {
+    const PackedRead &r = seq_reads[group[i]];
+    if (r.readlen >= static_cast<uint16_t>(min_overlap) && !r.is_n)
+      prefix_map[r.raw_read.substr(0, min_overlap)].push_back(i);
+  }
+
+  std::vector<bool> used(n, false);
+  std::vector<uint32_t> result;
+  result.reserve(n);
+
+  for (uint32_t i = 0; i < n; i++) {
+    if (used[i])
+      continue;
+    used[i] = true;
+    result.push_back(group[i]);
+    uint32_t cur = i;
+    while (true) {
+      const PackedRead &r = seq_reads[group[cur]];
+      if (r.readlen < static_cast<uint16_t>(min_overlap))
+        break;
+      // Suffix of current read — look for a read whose prefix matches it.
+      const std::string suffix = r.raw_read.substr(r.readlen - min_overlap);
+      auto it = prefix_map.find(suffix);
+      if (it == prefix_map.end())
+        break;
+      uint32_t nxt = UINT32_MAX;
+      for (uint32_t j : it->second) {
+        if (!used[j]) {
+          nxt = j;
+          break;
+        }
+      }
+      if (nxt == UINT32_MAX)
+        break;
+      used[nxt] = true;
+      result.push_back(group[nxt]);
+      cur = nxt;
+    }
+  }
+  return result;
+}
+
 // Write cb_scan_order.bin so that call_reorder picks seeds in CB-sorted order.
 // This is written when barcode_sort falls back to call_reorder due to low CB
 // diversity: it gives call_reorder a head start by grouping same-cell reads
@@ -300,6 +359,18 @@ bool barcode_sort(const std::string &temp_dir, compression_params &cp,
   // Total reads per stream is half total_reads in PE, or total_reads in SE.
   const uint32_t reads_per_stream =
       paired_end ? cp.read_info.num_reads / 2 : cp.read_info.num_reads;
+
+  // sc-ATAC reads come from different genomic loci within each cell — there
+  // are no within-cell sequence overlaps for the encoder to exploit.
+  // Global overlap-based reordering (call_reorder) always outperforms CB
+  // grouping for ATAC, so skip barcode_sort entirely and let the caller fall
+  // through to call_reorder without any CB-order hint (the hint also hurts
+  // ATAC by biasing seed selection away from genomic-overlap clusters).
+  if (cp.read_info.assay == "sc-atac") {
+    SPRING_LOG_INFO(
+        "barcode_sort disabled for sc-ATAC: using overlap-based reordering.");
+    return false;
+  }
 
   SPRING_LOG_INFO("Barcode sort: " +
                   std::string(cb_source_path.empty()
@@ -409,16 +480,17 @@ bool barcode_sort(const std::string &temp_dir, compression_params &cp,
     return false;
   }
 
-  // ── Two-stage slot fill: within each CB group sort by sequence, then
-  //    assign whole groups to slots via greedy load balancing ───────────────
+  // ── Two-stage slot fill ─────────────────────────────────────────────────
   //
-  // Stage 1 (within-CB reorder): identical reads become adjacent so the
-  //   encoder stores them as zero-diff chains; reads that merely overlap
-  //   cluster near each other by shared prefix, giving tighter contigs.
+  // Stage 1 (within-CB call_reorder): for each CB group, greedily chain reads
+  //   by k-mer overlap so the encoder's seed selection hits chain starts first,
+  //   producing longer and tighter overlap chains.  For paired-end data we
+  //   sort by R2 (cDNA / genomic), which carries the actual transcript overlap
+  //   structure; R1 (CB+UMI) has no useful within-group overlap pattern.
   //
-  // Stage 2 (slot assignment): keeping each CB group contiguous inside its
-  //   slot lets the encoder find within-cell chains without interference from
-  //   reads of other cells.  Greedy min-load assignment keeps slots balanced.
+  // Stage 2 (slot assignment): whole CB groups are assigned to the
+  //   least-loaded thread slot (greedy min-load) so within-cell chains remain
+  //   contiguous inside one slot and the encoder can extend them freely.
   std::vector<std::vector<PackedRead *>> slots_1(num_thr);
   std::vector<std::vector<PackedRead *>> slots_2(num_thr);
   {
@@ -433,14 +505,16 @@ bool barcode_sort(const std::string &temp_dir, compression_params &cp,
              reads_1[r1_order[end]].cb == reads_1[r1_order[pos]].cb)
         ++end;
 
-      // Stage 1: sort reads within this CB group by R1 sequence.
-      // stable_sort preserves original order among reads with identical
-      // sequences, which is important for reproducibility.
+      // Stage 1: order this CB group by greedy overlap chains.
+      // Use R2 for paired-end (cDNA carries the transcript overlap signal);
+      // fall back to R1 for single-end.
       std::vector<uint32_t> group(r1_order.begin() + pos,
                                   r1_order.begin() + end);
-      std::stable_sort(group.begin(), group.end(), [&](uint32_t a, uint32_t b) {
-        return reads_1[a].raw_read < reads_1[b].raw_read;
-      });
+      {
+        const std::vector<PackedRead> &seq =
+            (paired_end && !reads_2.empty()) ? reads_2 : reads_1;
+        group = overlap_chain_sort(group, seq, THRESH_ENCODER);
+      }
 
       // Stage 2: assign the whole CB group to the least-loaded slot.
       auto min_it = std::min_element(slot_load.begin(), slot_load.end());
