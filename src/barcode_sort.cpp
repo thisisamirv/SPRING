@@ -6,6 +6,7 @@
 #include "progress.h"
 
 #include <algorithm>
+#include <array>
 #include <fstream>
 #include <memory>
 #include <stdexcept>
