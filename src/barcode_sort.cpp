@@ -375,16 +375,52 @@ bool barcode_sort(const std::string &temp_dir, compression_params &cp,
     return false;
   }
 
-  // ── Distribute reads across thread slots (round-robin) ──────────────────
+  // ── Two-stage slot fill: within each CB group sort by sequence, then
+  //    assign whole groups to slots via greedy load balancing ───────────────
+  //
+  // Stage 1 (within-CB reorder): identical reads become adjacent so the
+  //   encoder stores them as zero-diff chains; reads that merely overlap
+  //   cluster near each other by shared prefix, giving tighter contigs.
+  //
+  // Stage 2 (slot assignment): keeping each CB group contiguous inside its
+  //   slot lets the encoder find within-cell chains without interference from
+  //   reads of other cells.  Greedy min-load assignment keeps slots balanced.
   std::vector<std::vector<PackedRead *>> slots_1(num_thr);
   std::vector<std::vector<PackedRead *>> slots_2(num_thr);
+  {
+    std::vector<uint32_t> slot_load(static_cast<size_t>(num_thr), 0);
+    uint32_t pos = 0;
+    const uint32_t total = static_cast<uint32_t>(r1_order.size());
 
-  for (uint32_t slot = 0; slot < static_cast<uint32_t>(r1_order.size());
-       ++slot) {
-    const int tid = static_cast<int>(slot % static_cast<uint32_t>(num_thr));
-    slots_1[static_cast<size_t>(tid)].push_back(&reads_1[r1_order[slot]]);
-    if (paired_end)
-      slots_2[static_cast<size_t>(tid)].push_back(&reads_2[r1_order[slot]]);
+    while (pos < total) {
+      // Identify the end of the current CB group.
+      uint32_t end = pos + 1;
+      while (end < total &&
+             reads_1[r1_order[end]].cb == reads_1[r1_order[pos]].cb)
+        ++end;
+
+      // Stage 1: sort reads within this CB group by R1 sequence.
+      // stable_sort preserves original order among reads with identical
+      // sequences, which is important for reproducibility.
+      std::vector<uint32_t> group(r1_order.begin() + pos,
+                                  r1_order.begin() + end);
+      std::stable_sort(group.begin(), group.end(), [&](uint32_t a, uint32_t b) {
+        return reads_1[a].raw_read < reads_1[b].raw_read;
+      });
+
+      // Stage 2: assign the whole CB group to the least-loaded slot.
+      auto min_it = std::min_element(slot_load.begin(), slot_load.end());
+      const int tid = static_cast<int>(min_it - slot_load.begin());
+
+      for (uint32_t idx : group) {
+        slots_1[static_cast<size_t>(tid)].push_back(&reads_1[idx]);
+        if (paired_end)
+          slots_2[static_cast<size_t>(tid)].push_back(&reads_2[idx]);
+      }
+      *min_it += end - pos;
+
+      pos = end;
+    }
   }
 
   // ── Write per-thread cascade files ──────────────────────────────────────
