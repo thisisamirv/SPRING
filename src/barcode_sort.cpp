@@ -39,6 +39,7 @@ struct PackedRead {
   uint32_t original_id; // position in input_clean_1.dna (0-based)
   uint16_t readlen;
   std::string raw_read; // raw DNA bases (ASCII)
+  bool is_n = false;    // true when loaded from input_N.dna (4-bit packed)
 };
 
 // Load sharded DNA reads from Clean and N streams, reconstructing their
@@ -92,6 +93,7 @@ std::vector<PackedRead> load_all_reads(const std::string &temp_dir,
 
         entries[i].readlen = readlen;
         entries[i].original_id = i;
+        entries[i].is_n = true;
         entries[i].raw_read.resize(readlen);
         for (uint32_t j = 0; j < readlen; j++) {
           uint8_t byte = static_cast<uint8_t>(packed[j / 2]);
@@ -162,6 +164,58 @@ std::vector<PackedRead> load_all_reads(const std::string &temp_dir,
   }
 
   return entries;
+}
+
+// Write cb_scan_order.bin so that call_reorder picks seeds in CB-sorted order.
+// This is written when barcode_sort falls back to call_reorder due to low CB
+// diversity: it gives call_reorder a head start by grouping same-cell reads
+// together as consecutive seed candidates, improving overlap chain length.
+void write_cb_scan_order(const std::string &temp_dir,
+                         const std::vector<PackedRead> &reads_1,
+                         const std::vector<PackedRead> &reads_2,
+                         const std::vector<uint32_t> &r1_order,
+                         uint32_t num_clean_1, bool paired_end) {
+  // Build global-position → clean-stream-position map for R1.
+  std::vector<uint32_t> r1_clean_pos(reads_1.size(), UINT32_MAX);
+  uint32_t c1 = 0;
+  for (uint32_t i = 0; i < static_cast<uint32_t>(reads_1.size()); i++) {
+    if (!reads_1[i].is_n)
+      r1_clean_pos[i] = c1++;
+  }
+
+  std::vector<uint32_t> order;
+  order.reserve(c1 + (paired_end ? c1 : 0));
+
+  for (uint32_t idx : r1_order) {
+    if (!reads_1[idx].is_n)
+      order.push_back(r1_clean_pos[idx]);
+  }
+
+  if (paired_end) {
+    std::vector<uint32_t> r2_clean_pos(reads_2.size(), UINT32_MAX);
+    uint32_t c2 = 0;
+    for (uint32_t i = 0; i < static_cast<uint32_t>(reads_2.size()); i++) {
+      if (!reads_2[i].is_n)
+        r2_clean_pos[i] = c2++;
+    }
+    for (uint32_t idx : r1_order) {
+      if (!reads_2[idx].is_n)
+        order.push_back(num_clean_1 + r2_clean_pos[idx]);
+    }
+  }
+
+  if (order.empty())
+    return;
+
+  std::ofstream f(temp_dir + "/cb_scan_order.bin", std::ios::binary);
+  if (!f.is_open())
+    throw std::runtime_error("barcode_sort: cannot write cb_scan_order.bin");
+  f.write(reinterpret_cast<const char *>(order.data()),
+          static_cast<std::streamsize>(order.size() * sizeof(uint32_t)));
+
+  SPRING_LOG_INFO("barcode_sort: wrote CB scan order for " +
+                  std::to_string(order.size()) +
+                  " clean reads -> call_reorder");
 }
 
 // Create an empty file (for stub singletons).
@@ -298,15 +352,26 @@ bool barcode_sort(const std::string &temp_dir, compression_params &cp,
   }
   longest_run = std::max(longest_run, current_run);
   const uint64_t read_count = static_cast<uint64_t>(r1_order.size());
+  // For sc-rna / sc-methyl, reads within a cell overlap (same transcripts /
+  // CpG sites), so barcode_sort is beneficial even with few unique CBs.  Only
+  // the extreme-skew guard (one CB owns >20 % of reads) still applies because
+  // that creates catastrophically uneven thread slots.
+  // For sc-atac, reads within a cell do NOT overlap (different loci), so we
+  // additionally require sufficient CB diversity before sorting by barcode.
+  const bool overlap_based_assay =
+      (cp.read_info.assay == "sc-rna" || cp.read_info.assay == "sc-methyl");
   const bool low_barcode_diversity =
-      (read_count >= 10000) &&
-      (cb_unique < 128 || longest_run * 100ULL > read_count * 20ULL);
+      (read_count >= 10000) && ((!overlap_based_assay && cb_unique < 128) ||
+                                longest_run * 100ULL > read_count * 20ULL);
   if (low_barcode_diversity) {
     Logger::log_warning(
         "barcode_sort disabled due to low CB diversity (reads=" +
-        std::to_string(read_count) + ", unique_cb=" + std::to_string(cb_unique) +
+        std::to_string(read_count) +
+        ", unique_cb=" + std::to_string(cb_unique) +
         ", longest_run=" + std::to_string(longest_run) +
-        "). Falling back to overlap reordering.");
+        "). Falling back to overlap reordering with CB presort hint.");
+    write_cb_scan_order(temp_dir, reads_1, reads_2, r1_order,
+                        cp.read_info.num_reads_clean[0], paired_end);
     return false;
   }
 

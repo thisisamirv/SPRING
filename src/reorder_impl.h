@@ -61,6 +61,10 @@ template <size_t bitset_size> struct reorder_global {
   char depleted_base;
   std::vector<std::array<std::bitset<bitset_size>, 128>> basemask;
   std::vector<std::bitset<bitset_size> *> basemask_ptrs;
+  // Optional CB presort scan order from barcode_sort fallback.
+  // When non-empty, contains clean-stream read IDs in CB-sorted order so that
+  // the greedy overlap algorithm explores same-cell reads consecutively.
+  std::vector<uint32_t> cb_scan_order;
   reorder_global(int max_readlen_param)
       : numreads(0), numreads_array{0, 0}, maxshift(0), num_thr(0),
         max_readlen(max_readlen_param), numdict(NUM_DICT_REORDER),
@@ -548,6 +552,7 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
     bool left_search = false;
     int64_t current_read_id;
     int64_t previous_read_id;
+    int64_t scan_slot;
     uint64_t lookup_key;
     int reference_length;
     int64_t reference_position;
@@ -555,17 +560,23 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
 
     // Claim an initial seed read from a shared cursor. Keep trying until we
     // either reserve an unclaimed read or exhaust the input.
+    // When cb_scan_order is non-empty (barcode_sort fallback), seeds are
+    // visited in CB-sorted order so same-cell reads form longer overlap chains.
     while (!done) {
 #pragma omp atomic capture
       {
-        current_read_id = first_read;
+        scan_slot = first_read;
         first_read += 1;
       }
-      if (rg.numreads == 0 ||
-          current_read_id >= static_cast<int64_t>(rg.numreads)) {
+      if (rg.numreads == 0 || scan_slot >= static_cast<int64_t>(rg.numreads)) {
         done = true;
         break;
       }
+      current_read_id =
+          rg.cb_scan_order.empty()
+              ? scan_slot
+              : static_cast<int64_t>(
+                    rg.cb_scan_order[static_cast<size_t>(scan_slot)]);
 
       omp_set_lock(
           remaining_read_lock[detail::lock_shard(current_read_id)].get());
@@ -1009,6 +1020,27 @@ void reorder_main(const std::string &temp_dir, const compression_params &cp) {
   read_lengths.resize(static_cast<size_t>(rg.numreads));
   SPRING_LOG_INFO("Reading file");
   readDnaFile<bitset_size>(read.data(), read_lengths.data(), rg);
+
+  // Load optional CB presort scan order written by barcode_sort fallback.
+  {
+    const std::string order_path = rg.basedir + "/cb_scan_order.bin";
+    std::ifstream f(order_path, std::ios::binary);
+    if (f.is_open()) {
+      f.seekg(0, std::ios::end);
+      const size_t file_bytes = static_cast<size_t>(f.tellg());
+      f.seekg(0, std::ios::beg);
+      const size_t n = file_bytes / sizeof(uint32_t);
+      if (n == static_cast<size_t>(rg.numreads)) {
+        rg.cb_scan_order.resize(n);
+        f.read(reinterpret_cast<char *>(rg.cb_scan_order.data()),
+               static_cast<std::streamsize>(file_bytes));
+        SPRING_LOG_INFO("Reorder: using CB presort scan order (" +
+                        std::to_string(n) + " reads)");
+      }
+      f.close();
+      safe_remove_file(order_path);
+    }
+  }
 
   if (rg.numreads > 0) {
     SPRING_LOG_INFO("Constructing dictionaries");
