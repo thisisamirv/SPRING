@@ -166,6 +166,38 @@ std::vector<PackedRead> load_all_reads(const std::string &temp_dir,
   return entries;
 }
 
+// Returns true when a barcode string looks like an undetermined-well sequence:
+// more than 80% of its bases are the same character (including N).
+bool is_undetermined_barcode(const std::string &cb) {
+  if (cb.size() < 4)
+    return false;
+  std::array<uint32_t, 5> cnt = {}; // A G C T other
+  for (char c : cb) {
+    switch (c) {
+    case 'A':
+      cnt[0]++;
+      break;
+    case 'G':
+      cnt[1]++;
+      break;
+    case 'C':
+      cnt[2]++;
+      break;
+    case 'T':
+      cnt[3]++;
+      break;
+    default:
+      cnt[4]++;
+      break;
+    }
+  }
+  const uint32_t thresh = static_cast<uint32_t>(cb.size()) * 4 / 5;
+  for (uint32_t c : cnt)
+    if (c > thresh)
+      return true;
+  return false;
+}
+
 // Write cb_scan_order.bin so that call_reorder picks seeds in CB-sorted order.
 // This is written when barcode_sort falls back to call_reorder due to low CB
 // diversity: it gives call_reorder a head start by grouping same-cell reads
@@ -336,39 +368,41 @@ bool barcode_sort(const std::string &temp_dir, compression_params &cp,
   });
 
   uint64_t cb_unique = 0;
-  uint64_t longest_run = 0;
   uint64_t current_run = 0;
+  uint64_t dominant_run = 0;
   std::string previous_cb;
+  std::string dominant_cb;
   for (uint32_t order_index : r1_order) {
     const std::string &cb = reads_1[order_index].cb;
     if (current_run == 0 || cb != previous_cb) {
+      if (current_run > dominant_run) {
+        dominant_run = current_run;
+        dominant_cb = previous_cb;
+      }
       cb_unique++;
-      longest_run = std::max(longest_run, current_run);
       current_run = 1;
       previous_cb = cb;
     } else {
       current_run++;
     }
   }
-  longest_run = std::max(longest_run, current_run);
+  if (current_run > dominant_run) {
+    dominant_run = current_run;
+    dominant_cb = previous_cb;
+  }
   const uint64_t read_count = static_cast<uint64_t>(r1_order.size());
-  // For sc-rna / sc-methyl, reads within a cell overlap (same transcripts /
-  // CpG sites), so barcode_sort is beneficial even with few unique CBs.  Only
-  // the extreme-skew guard (one CB owns >20 % of reads) still applies because
-  // that creates catastrophically uneven thread slots.
-  // For sc-atac, reads within a cell do NOT overlap (different loci), so we
-  // additionally require sufficient CB diversity before sorting by barcode.
-  const bool overlap_based_assay =
-      (cp.read_info.assay == "sc-rna" || cp.read_info.assay == "sc-methyl");
+  // Truly degenerate: fewer than 10 unique barcodes, or the dominant barcode
+  // is an undetermined-well sequence (>80% of one character, including N).
+  // A biologically skewed but valid distribution (e.g. one large clone) is no
+  // longer penalised — barcode grouping still helps within that clone.
   const bool low_barcode_diversity =
-      (read_count >= 10000) && ((!overlap_based_assay && cb_unique < 128) ||
-                                longest_run * 100ULL > read_count * 20ULL);
+      (read_count >= 10000) &&
+      (cb_unique < 10 || is_undetermined_barcode(dominant_cb));
   if (low_barcode_diversity) {
     Logger::log_warning(
-        "barcode_sort disabled due to low CB diversity (reads=" +
-        std::to_string(read_count) +
-        ", unique_cb=" + std::to_string(cb_unique) +
-        ", longest_run=" + std::to_string(longest_run) +
+        "barcode_sort disabled: degenerate CB distribution (reads=" +
+        std::to_string(read_count) + ", unique_cb=" +
+        std::to_string(cb_unique) + ", dominant_cb=" + dominant_cb +
         "). Falling back to overlap reordering with CB presort hint.");
     write_cb_scan_order(temp_dir, reads_1, reads_2, r1_order,
                         cp.read_info.num_reads_clean[0], paired_end);
