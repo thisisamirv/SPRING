@@ -339,7 +339,8 @@ void write_fastq_block(std::ostream &output_stream, std::string *id_buffer,
                        const std::string *quality_array,
                        uint32_t output_read_count, int num_thr,
                        bool gzip_output, bool bgzf_output,
-                       int compression_level, bool use_crlf, bool fasta_mode);
+                       int compression_level, bool use_crlf, bool fasta_mode,
+                       bool quality_header_has_id);
 
 FileDecompressionSink::FileDecompressionSink(const std::string &outfile_1,
                                              const std::string &outfile_2,
@@ -347,6 +348,7 @@ FileDecompressionSink::FileDecompressionSink(const std::string &outfile_1,
                                              bool crlf, const bool (&gzip)[2],
                                              const bool (&bgzf)[2])
     : use_crlf(crlf), fasta_mode(cp.encoding.fasta_mode),
+      quality_header_has_id(cp.read_info.quality_header_has_id),
       compression_level(cp.encoding.compression_level),
       num_thr(cp.encoding.num_thr), paired_end(cp.encoding.paired_end) {
   should_gzip[0] = gzip[0];
@@ -380,7 +382,7 @@ void FileDecompressionSink::consume_step(std::string *id_buffer,
   write_fastq_block(output_streams[stream_index], id_buffer, read_buffer,
                     quality_buffer, count, num_thr, should_gzip[stream_index],
                     should_bgzf[stream_index], compression_level, use_crlf,
-                    fasta_mode);
+                    fasta_mode, quality_header_has_id);
 }
 
 void write_step_output(std::ofstream &output_stream, std::string *id_buffer,
@@ -389,10 +391,12 @@ void write_step_output(std::ofstream &output_stream, std::string *id_buffer,
                        const uint32_t output_read_count, const int num_thr,
                        const bool gzip_output, const bool bgzf_output,
                        const int compression_level, const bool use_crlf,
-                       const bool fasta_mode) {
+                       const bool fasta_mode,
+                       const bool quality_header_has_id) {
   write_fastq_block(output_stream, id_buffer, read_buffer, quality_array,
                     output_read_count, num_thr, gzip_output, bgzf_output,
-                    compression_level, use_crlf, fasta_mode);
+                    compression_level, use_crlf, fasta_mode,
+                    quality_header_has_id);
 }
 
 void decode_packed_sequence_chunk(const std::string &packed_seq_base_path,

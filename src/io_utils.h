@@ -85,14 +85,16 @@ void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
                        const uint32_t &num_reads, const int &num_thr,
                        const bool &gzip_flag, const bool &bgzf_flag,
                        const int &compression_level, const bool use_crlf,
-                       const bool fasta_mode);
+                       const bool fasta_mode,
+                       const bool quality_header_has_id = false);
 
 void write_bgzf_fastq_block(std::ofstream &output_stream, std::string *id_array,
                             std::string *read_array,
                             const std::string *quality_array,
                             const uint32_t &num_reads, const int &num_thr,
                             const int &compression_level, const bool use_crlf,
-                            const bool fasta_mode);
+                            const bool fasta_mode,
+                            const bool quality_header_has_id = false);
 
 // ID stream helpers (using libbsc).
 void compress_id_block(const char *output_path, std::string *id_array,

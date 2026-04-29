@@ -89,14 +89,24 @@ void write_gzip_data(gzFile file_handle, const char *data,
 void append_fastq_record(std::string &out, const std::string &id,
                          const std::string &read,
                          const std::string *quality_or_null,
-                         const bool use_crlf, const bool fasta_mode) {
+                         const bool use_crlf, const bool fasta_mode,
+                         const bool quality_header_has_id) {
   const char *eol = use_crlf ? "\r\n" : "\n";
   out += id;
   out += eol;
   out += read;
   out += eol;
   if (!fasta_mode) {
-    out += "+";
+    if (quality_header_has_id) {
+      // Restore the ID on the quality header line
+      out += "+";
+      // Extract the ID part without the leading '@'
+      if (!id.empty() && id[0] == '@') {
+        out.append(id, 1, std::string::npos);
+      }
+    } else {
+      out += "+";
+    }
     out += eol;
     if (quality_or_null != nullptr) {
       out += *quality_or_null;
@@ -113,13 +123,14 @@ void append_fastq_records_range(std::string &output_buffer,
                                 const std::string *quality_or_null,
                                 const uint64_t start_read_index,
                                 const uint64_t end_read_index,
-                                const bool use_crlf, const bool fasta_mode) {
+                                const bool use_crlf, const bool fasta_mode,
+                                const bool quality_header_has_id = false) {
   for (uint64_t read_index = start_read_index; read_index < end_read_index;
        read_index++) {
     append_fastq_record(
         output_buffer, id_array[read_index], read_array[read_index],
         quality_or_null == nullptr ? nullptr : &quality_or_null[read_index],
-        use_crlf, fasta_mode);
+        use_crlf, fasta_mode, quality_header_has_id);
   }
 }
 
@@ -357,7 +368,8 @@ void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
                        const uint32_t &num_reads, const int &num_thr,
                        const bool &gzip_flag, const bool &bgzf_flag,
                        const int &compression_level, const bool use_crlf,
-                       const bool fasta_mode) {
+                       const bool fasta_mode,
+                       const bool quality_header_has_id) {
   if (num_reads == 0)
     return;
 
@@ -372,7 +384,7 @@ void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
   if (bgzf_flag) {
     write_bgzf_fastq_block(output_stream, id_array, read_array, quality_array,
                            num_reads, num_thr, compression_level, use_crlf,
-                           fasta_mode);
+                           fasta_mode, quality_header_has_id);
   } else if (gzip_flag) {
     std::vector<std::string> compressed(static_cast<size_t>(num_thr));
     const std::vector<read_range> thread_ranges =
@@ -384,7 +396,7 @@ void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
       const read_range &range = thread_ranges[static_cast<size_t>(tid)];
       append_fastq_records_range(tl_plain_buffer, id_array, read_array,
                                  quality_array, range.start, range.end,
-                                 use_crlf, fasta_mode);
+                                 use_crlf, fasta_mode, quality_header_has_id);
       compressed[tid] =
           gzip_compress_string(tl_plain_buffer, compression_level);
     }
@@ -403,7 +415,7 @@ void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
       std::string rec;
       append_fastq_record(rec, id_array[i], read_array[i],
                           quality_array ? &quality_array[i] : nullptr, use_crlf,
-                          fasta_mode);
+                          fasta_mode, quality_header_has_id);
       total_plain_bytes += rec.size();
       output_stream.write(rec.data(), rec.size());
     }
@@ -418,7 +430,8 @@ void write_bgzf_fastq_block(std::ofstream &output_stream, std::string *id_array,
                             const std::string *quality_array,
                             const uint32_t &num_reads, const int &num_thr,
                             const int &compression_level, const bool use_crlf,
-                            const bool fasta_mode) {
+                            const bool fasta_mode,
+                            const bool quality_header_has_id) {
   if (num_reads == 0)
     return;
 
@@ -433,7 +446,7 @@ void write_bgzf_fastq_block(std::ofstream &output_stream, std::string *id_array,
     const read_range &range = thread_ranges[static_cast<size_t>(tid)];
     append_fastq_records_range(tl_plain_buffer, id_array, read_array,
                                quality_array, range.start, range.end, use_crlf,
-                               fasta_mode);
+                               fasta_mode, quality_header_has_id);
     bgzf_blocks[tid] = bgzf_compress_buffer(tl_plain_buffer, compression_level);
   }
 

@@ -33,6 +33,7 @@
 #include "reordered_streams.h"
 #include "spring.h"
 #include "template_dispatch.h"
+#include "version.h"
 
 namespace spring {
 
@@ -986,6 +987,7 @@ void compress_standard(const std::string &temp_dir,
 
   cp.read_info.assay = final_assay;
   cp.read_info.assay_confidence = final_confidence;
+  cp.read_info.compressor_version = spring::VERSION;
   cp.encoding.cb_len = cb_len;
   cp.encoding.cb_prefix_source_external = !cb_source_path.empty();
 

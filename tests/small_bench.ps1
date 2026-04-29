@@ -293,9 +293,10 @@ function Invoke-AssaySuite() {
         if (Test-Path $work) { Remove-Item $work -Recurse -Force }
         New-Item -ItemType Directory -Path $work -Force | Out-Null
 
-        # 1. Auto-detected assay
-        Write-Host "  Step 1: Compression with --assay auto (expected: $($s.assay))" -ForegroundColor Cyan
-        $args_auto = "-c $base_args -o `"$out_auto`" -w `"$work`" -t $THREADS -q lossless --assay auto"
+        # 1. Auto-detected assay (or explicit for test_6)
+        $assay_mode = if ($s.assay -eq "sc-bisulfite") { "sc-bisulfite" } else { "auto" }
+        Write-Host "  Step 1: Compression with --assay $assay_mode (expected: $($s.assay))" -ForegroundColor Cyan
+        $args_auto = "-c $base_args -o `"$out_auto`" -w `"$work`" -t $THREADS -q lossless --assay $assay_mode"
         [void](Invoke-ResourceLoggedProcess $SPRING_BIN $args_auto)
         $size_auto = (Get-Item $out_auto).Length
         $actual_auto_assay = Get-ArchiveAssayLabel $out_auto

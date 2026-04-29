@@ -85,6 +85,10 @@ void preview_single(const std::string &archive_path, bool audit_only) {
 
   std::cout << "SPRING2 Archive Metadata Preview:\n";
   std::cout << "--------------------------------\n";
+  if (!cp.read_info.compressor_version.empty()) {
+    std::cout << "Compressor Version: " << cp.read_info.compressor_version
+              << "\n";
+  }
   std::cout << "Original Input 1:  " << cp.read_info.input_filename_1 << "\n";
   if (cp.encoding.paired_end) {
     std::cout << "Original Input 2:  " << cp.read_info.input_filename_2 << "\n";

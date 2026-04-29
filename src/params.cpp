@@ -102,6 +102,7 @@ void write_compression_params(std::ostream &out, const compression_params &cp) {
   }
   write_string(out, cp.read_info.assay);
   write_string(out, cp.read_info.assay_confidence);
+  write_string(out, cp.read_info.compressor_version);
   write_bool(out, cp.encoding.barcode_sort);
   out.write(byte_ptr(&cp.encoding.cb_len), sizeof(uint32_t));
   write_bool(out, cp.encoding.bisulfite_ternary);
@@ -109,6 +110,7 @@ void write_compression_params(std::ostream &out, const compression_params &cp) {
   write_bool(out, cp.encoding.poly_at_stripped);
   write_bool(out, cp.encoding.cb_prefix_stripped);
   out.write(byte_ptr(&cp.encoding.cb_prefix_len), sizeof(uint32_t));
+  write_bool(out, cp.read_info.quality_header_has_id);
 }
 
 void read_compression_params(std::istream &in, compression_params &cp) {
@@ -190,6 +192,11 @@ void read_compression_params(std::istream &in, compression_params &cp) {
         cp.read_info.assay_confidence = "N/A";
       }
       if (in.peek() != std::char_traits<char>::eof()) {
+        cp.read_info.compressor_version = read_string(in);
+      } else {
+        cp.read_info.compressor_version = "<unknown>";
+      }
+      if (in.peek() != std::char_traits<char>::eof()) {
         cp.encoding.barcode_sort = read_bool(in);
         in.read(byte_ptr(&cp.encoding.cb_len), sizeof(uint32_t));
         if (in.peek() != std::char_traits<char>::eof()) {
@@ -201,20 +208,28 @@ void read_compression_params(std::istream &in, compression_params &cp) {
               if (in.peek() != std::char_traits<char>::eof()) {
                 cp.encoding.cb_prefix_stripped = read_bool(in);
                 in.read(byte_ptr(&cp.encoding.cb_prefix_len), sizeof(uint32_t));
+                if (in.peek() != std::char_traits<char>::eof()) {
+                  cp.read_info.quality_header_has_id = read_bool(in);
+                } else {
+                  cp.read_info.quality_header_has_id = false;
+                }
               } else {
                 cp.encoding.cb_prefix_stripped = false;
                 cp.encoding.cb_prefix_len = 0;
+                cp.read_info.quality_header_has_id = false;
               }
             } else {
               cp.encoding.poly_at_stripped = false;
               cp.encoding.cb_prefix_stripped = false;
               cp.encoding.cb_prefix_len = 0;
+              cp.read_info.quality_header_has_id = false;
             }
           } else {
             cp.encoding.depleted_base = 'N';
             cp.encoding.poly_at_stripped = false;
             cp.encoding.cb_prefix_stripped = false;
             cp.encoding.cb_prefix_len = 0;
+            cp.read_info.quality_header_has_id = false;
           }
         } else {
           cp.encoding.bisulfite_ternary = false;
@@ -222,6 +237,7 @@ void read_compression_params(std::istream &in, compression_params &cp) {
           cp.encoding.poly_at_stripped = false;
           cp.encoding.cb_prefix_stripped = false;
           cp.encoding.cb_prefix_len = 0;
+          cp.read_info.quality_header_has_id = false;
         }
       } else {
         cp.encoding.barcode_sort = false;
@@ -231,10 +247,13 @@ void read_compression_params(std::istream &in, compression_params &cp) {
         cp.encoding.poly_at_stripped = false;
         cp.encoding.cb_prefix_stripped = false;
         cp.encoding.cb_prefix_len = 0;
+        cp.read_info.quality_header_has_id = false;
+        cp.read_info.compressor_version = "<unknown>";
       }
     } else {
       cp.read_info.assay = "auto";
       cp.read_info.assay_confidence = "N/A";
+      cp.read_info.compressor_version = "<unknown>";
       cp.encoding.barcode_sort = false;
       cp.encoding.cb_len = 16;
       cp.encoding.bisulfite_ternary = false;
@@ -242,9 +261,12 @@ void read_compression_params(std::istream &in, compression_params &cp) {
       cp.encoding.poly_at_stripped = false;
       cp.encoding.cb_prefix_stripped = false;
       cp.encoding.cb_prefix_len = 0;
+      cp.read_info.quality_header_has_id = false;
     }
   } else {
     cp.read_info.assay = "auto";
+    cp.read_info.assay_confidence = "N/A";
+    cp.read_info.compressor_version = "<unknown>";
     cp.read_info.assay_confidence = "N/A";
     cp.encoding.barcode_sort = false;
     cp.encoding.cb_len = 16;

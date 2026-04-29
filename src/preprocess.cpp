@@ -332,6 +332,53 @@ void close_preprocess_streams(
   }
 }
 
+// Detect whether the FASTQ uses "+ID" format or just "+" for quality headers.
+// Checks the first FASTQ record and returns true if the plus line contains
+// anything beyond the initial '+' character.
+void detect_quality_header_format(
+    std::array<std::ifstream, 2> &input_files,
+    std::array<std::istream *, 2> &input_streams,
+    std::array<std::unique_ptr<gzip_istream>, 2> &gzip_streams,
+    const preprocess_paths &paths, const compression_params &compression_params,
+    const bool gzip_enabled, bool &quality_header_has_id) {
+  if (compression_params.encoding.fasta_mode) {
+    quality_header_has_id = false;
+    return;
+  }
+
+  // Read first record from first stream to detect format
+  std::string line;
+  // Line 1: Header
+  if (!std::getline(*input_streams[0], line))
+    return;
+  // Line 2: Sequence
+  if (!std::getline(*input_streams[0], line))
+    return;
+  // Line 3: Plus line
+  if (!std::getline(*input_streams[0], line))
+    return;
+
+  // Check if plus line has content beyond the '+' character
+  // Remove any trailing CR if present (std::getline removes \n already)
+  if (!line.empty() && line.back() == '\r') {
+    line.pop_back();
+  }
+
+  quality_header_has_id = line.length() > 1;
+
+  SPRING_LOG_DEBUG("Quality header detection: plus_line_length=" +
+                   std::to_string(line.length()) + ", has_id=" +
+                   std::string(quality_header_has_id ? "true" : "false"));
+
+  // Reset stream to beginning for actual processing
+  reset_input_stream(input_files[0], input_streams[0], gzip_streams[0],
+                     paths.input_paths[0], gzip_enabled);
+  if (compression_params.encoding.paired_end) {
+    reset_input_stream(input_files[1], input_streams[1], gzip_streams[1],
+                       paths.input_paths[1], gzip_enabled);
+  }
+}
+
 void detect_paired_id_pattern(
     std::array<std::ifstream, 2> &input_files,
     std::array<std::istream *, 2> &input_streams,
@@ -544,13 +591,21 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
 
   // Determine whether single-cell barcode prefix stripping should be applied.
   // Only active for short-read, preserve_order archives when the assay keeps
-  // the CB in R1 instead of a separate index lane. This strips the first
-  // cb_len bases from R1 (stream 0) into a side stream so the remaining read
-  // content compresses against the bisulfite/RNA model more effectively.
+  // the CB in R1 instead of a separate index lane.
+  //
+  // For sc-RNA, CB stripping is always enabled when no external index is
+  // present, as RNA protocols consistently place barcodes in R1.
+  //
+  // For sc-bisulfite, we disable CB stripping entirely as bisulfite protocols
+  // vary widely in their read structure - some use R1 for barcodes (like 10x),
+  // others use R1 for genomic sequence (like scSPLAT). Without a reliable
+  // heuristic to detect which structure is present, we conservatively skip CB
+  // extraction to avoid data corruption. Future work could add
+  // protocol-specific detection.
   const bool apply_cb_strip =
       !cp.encoding.long_flag && cp.encoding.preserve_order &&
       !cp.encoding.cb_prefix_source_external && cp.encoding.cb_len > 0 &&
-      (cp.read_info.assay == "sc-rna" || cp.read_info.assay == "sc-bisulfite");
+      cp.read_info.assay == "sc-rna";
 
   std::ofstream cb_seq_output, cb_qual_output;
   if (apply_cb_strip) {
@@ -610,6 +665,13 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
         std::to_string(static_cast<int>(paired_id_code)) +
         ", match=" + std::string(paired_id_match ? "true" : "false"));
   }
+
+  // Detect quality header format ("+ID" vs just "+")
+  bool quality_header_has_id = false;
+  detect_quality_header_format(input_files, input_streams, gzip_streams, paths,
+                               cp, false, quality_header_has_id);
+  SPRING_LOG_DEBUG("Quality header format: " +
+                   std::string(quality_header_has_id ? "+ID" : "+"));
 
   // Initialize integrity digests
   for (int i = 0; i < 2; ++i) {
@@ -1044,6 +1106,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                             num_reads_per_block);
   cp.read_info.paired_id_code = paired_id_code;
   cp.read_info.paired_id_match = paired_id_match;
+  cp.read_info.quality_header_has_id = quality_header_has_id;
   cp.read_info.num_reads = num_reads[0] + num_reads[1];
   cp.read_info.num_reads_clean[0] = num_reads_clean[0];
   cp.read_info.num_reads_clean[1] = num_reads_clean[1];

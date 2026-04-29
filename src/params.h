@@ -113,6 +113,8 @@ struct compression_params {
     uint32_t max_readlen;
     uint8_t paired_id_code;
     bool paired_id_match;
+    bool quality_header_has_id =
+        false; // True if FASTQ uses "+ID" format instead of "+"
     static constexpr size_t kFileLenThrSize = 1024;
     uint64_t file_len_seq_thr[kFileLenThrSize];
     uint64_t file_len_id_thr[kFileLenThrSize];
@@ -121,6 +123,7 @@ struct compression_params {
     std::string note;
     std::string assay;
     std::string assay_confidence;
+    std::string compressor_version; // SPRING2 version that created this archive
     uint32_t sequence_crc[2];
     uint32_t quality_crc[2];
     uint32_t id_crc[2];

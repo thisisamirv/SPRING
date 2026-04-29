@@ -242,9 +242,11 @@ run_assay_suite() {
 			base_args+=("--$key" "$abs")
 		done
 
-		# 1. Auto-detected assay
-		echo "  Step 1: Compression with --assay auto (expected: $assay)"
-		"$SPRING_BIN" -c "${base_args[@]}" -o "$out_auto" -w "$work" -t "$THREADS" -q lossless --assay auto
+		# 1. Auto-detected assay (or explicit for sc-bisulfite)
+		assay_mode="auto"
+		[[ "$assay" == "sc-bisulfite" ]] && assay_mode="sc-bisulfite"
+		echo "  Step 1: Compression with --assay $assay_mode (expected: $assay)"
+		"$SPRING_BIN" -c "${base_args[@]}" -o "$out_auto" -w "$work" -t "$THREADS" -q lossless --assay "$assay_mode"
 		size_auto=$(stat -c%s "$out_auto")
 		actual_auto_assay=$(get_archive_assay_label "$out_auto")
 		echo "    Archive metadata assay: $actual_auto_assay"

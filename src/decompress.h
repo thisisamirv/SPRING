@@ -77,6 +77,7 @@ private:
   bool should_bgzf[2];
   bool use_crlf;
   bool fasta_mode;
+  bool quality_header_has_id;
   int compression_level;
   int num_thr;
   bool paired_end;
