@@ -40,6 +40,11 @@ private:
     uint64_t intron_hits = 0;
     uint64_t genome_hits = 0;
     uint64_t total_sampled_kmers = 0;
+
+    // Single-cell indicators
+    uint64_t headers_with_cb_tag = 0;    // CB:Z: tags in headers
+    uint64_t headers_with_umi_tag = 0;   // UMI tags in headers
+    uint64_t r1_barcode_like_prefix = 0; // R1 starts with barcode-like seq
   };
 
   enum class BlockID {

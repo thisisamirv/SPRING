@@ -148,6 +148,7 @@ void AssayDetector::process_reads(const std::string &r1_path,
     char buf[8192];
     int line_idx = 0;
     std::string seq;
+    std::string header;
 
     while (gzgets(f, buf, sizeof(buf)) && stats.total_reads < kMaxReadsToScan) {
       std::string line(buf);
@@ -155,12 +156,60 @@ void AssayDetector::process_reads(const std::string &r1_path,
         line.pop_back();
       }
 
-      if (line_idx % 4 == 1) { // Sequence line
+      if (line_idx % 4 == 0) { // Header line
+        header = line;
+        // Check for single-cell indicators in header
+        if (header.find("CB:Z:") != std::string::npos) {
+          stats.headers_with_cb_tag++;
+        }
+        if (header.find("UB:Z:") != std::string::npos ||
+            header.find("UR:Z:") != std::string::npos ||
+            header.find("UMI:") != std::string::npos) {
+          stats.headers_with_umi_tag++;
+        }
+      } else if (line_idx % 4 == 1) { // Sequence line
         seq = line;
-        if (is_r1)
+        if (is_r1) {
           stats.r1_lengths.push_back(seq.length());
-        else
+
+          // Check for barcode-like prefix in R1 (12-16bp mostly ACGT, low
+          // complexity)
+          if (seq.length() >= 16) {
+            bool is_barcode_like = true;
+            int acgt_count = 0;
+            int base_counts[4] = {0, 0, 0, 0}; // A, C, G, T
+            for (int i = 0; i < 16; ++i) {
+              char c = seq[i];
+              if (c == 'A') {
+                acgt_count++;
+                base_counts[0]++;
+              } else if (c == 'C') {
+                acgt_count++;
+                base_counts[1]++;
+              } else if (c == 'G') {
+                acgt_count++;
+                base_counts[2]++;
+              } else if (c == 'T') {
+                acgt_count++;
+                base_counts[3]++;
+              } else if (c != 'N') {
+                is_barcode_like = false;
+                break;
+              }
+            }
+            // Require high ACGT content (at least 14/16) AND diversity
+            // (no single base >10/16 to avoid homopolymers and bisulfite reads)
+            if (is_barcode_like && acgt_count >= 14) {
+              int max_base = std::max({base_counts[0], base_counts[1],
+                                       base_counts[2], base_counts[3]});
+              if (max_base <= 10) {
+                stats.r1_barcode_like_prefix++;
+              }
+            }
+          }
+        } else {
           stats.r2_lengths.push_back(seq.length());
+        }
 
         for (char c : seq) {
           if (is_r1) {
@@ -243,6 +292,9 @@ AssayDetector::evaluate_stages(const ReadStats &stats,
     return res;
   }
 
+  // === PHASE 1: Compute evidence scores for each assay type ===
+
+  // Base composition ratios
   double r1_c_ratio =
       static_cast<double>(stats.r1_C) / (stats.r1_C + stats.r1_T + 1);
   double r2_c_ratio =
@@ -252,11 +304,150 @@ AssayDetector::evaluate_stages(const ReadStats &stats,
   double r2_g_ratio =
       static_cast<double>(stats.r2_G) / (stats.r2_G + stats.r2_A + 1);
 
-  // Single-cell layout inference is used by all assay classes, including
-  // bisulfite, so it must be computed before any early-return stage.
+  // Initialize scores (0-100 scale, higher = more confident)
+  double bisulfite_score = 0.0;
+  double atac_score = 0.0;
+  double rna_score = 0.0;
+  double dna_score = 10.0; // baseline for generic DNA
+
+  std::vector<std::string> evidence; // Track what contributed to decision
+
+  // --- Bisulfite Evidence ---
+  if (stats.total_reads >= 500) {
+    bool r1_c_strong = (stats.r1_C + stats.r1_T > 100) && (r1_c_ratio <= 0.10);
+    bool r1_g_strong = (stats.r1_G + stats.r1_A > 100) && (r1_g_ratio <= 0.10);
+    bool r2_c_strong = (stats.r2_C + stats.r2_T > 100) && (r2_c_ratio <= 0.10);
+    bool r2_g_strong = (stats.r2_G + stats.r2_A > 100) && (r2_g_ratio <= 0.10);
+
+    bool r1_c_moderate =
+        (stats.r1_C + stats.r1_T > 100) && (r1_c_ratio <= 0.15);
+    bool r1_g_moderate =
+        (stats.r1_G + stats.r1_A > 100) && (r1_g_ratio <= 0.15);
+    bool r2_c_moderate =
+        (stats.r2_C + stats.r2_T > 100) && (r2_c_ratio <= 0.15);
+    bool r2_g_moderate =
+        (stats.r2_G + stats.r2_A > 100) && (r2_g_ratio <= 0.15);
+
+    // Strong depletion = very high confidence
+    if (r1_c_strong || r1_g_strong) {
+      bisulfite_score += 80.0;
+      evidence.push_back("R1 " + std::string(r1_c_strong ? "C" : "G") +
+                         "-depletion");
+      res.depleted_base = r1_c_strong ? 'C' : 'G';
+    }
+    if (r2_c_strong || r2_g_strong) {
+      bisulfite_score += 80.0;
+      evidence.push_back("R2 " + std::string(r2_c_strong ? "C" : "G") +
+                         "-depletion");
+      if (res.depleted_base == 'N')
+        res.depleted_base = r2_c_strong ? 'C' : 'G';
+    }
+
+    // Moderate depletion = medium confidence
+    if (!r1_c_strong && !r1_g_strong && (r1_c_moderate || r1_g_moderate)) {
+      bisulfite_score += 40.0;
+      evidence.push_back("R1 moderate " +
+                         std::string(r1_c_moderate ? "C" : "G") + "-depletion");
+    }
+    if (!r2_c_strong && !r2_g_strong && (r2_c_moderate || r2_g_moderate)) {
+      bisulfite_score += 40.0;
+      evidence.push_back("R2 moderate " +
+                         std::string(r2_c_moderate ? "C" : "G") + "-depletion");
+    }
+
+    res.c_ratio = std::min(r1_c_ratio, r2_c_ratio);
+    res.g_ratio = std::min(r1_g_ratio, r2_g_ratio);
+  }
+
+  // --- ATAC Evidence ---
+  double atac_adapter_frac =
+      static_cast<double>(stats.atac_adapters_found) / stats.total_reads;
+  if (atac_adapter_frac > 0.10) {
+    atac_score += 90.0;
+    evidence.push_back("Tn5 adapters (>10%)");
+  } else if (atac_adapter_frac > 0.03) {
+    atac_score += 70.0;
+    evidence.push_back("Tn5 adapters");
+  }
+
+  // Reference alignment to ATAC promoters
+  if (reference_loaded_ && stats.total_sampled_kmers > 0) {
+    double atac_ref_score =
+        static_cast<double>(stats.atac_hits) / (stats.intron_hits + 1);
+    if (atac_ref_score > 5.0) {
+      atac_score += 50.0;
+      evidence.push_back("promoter alignment");
+    } else if (atac_ref_score > 2.0) {
+      atac_score += 25.0;
+    }
+  }
+
+  // --- RNA Evidence ---
+  double poly_a_frac =
+      static_cast<double>(stats.poly_a_tails_found) / stats.total_reads;
+
+  // Suppress poly-A/T if bisulfite signal present (prevents false positives)
+  bool has_bisulfite_signal = (bisulfite_score > 30.0);
+
+  if (poly_a_frac > 0.10 && !has_bisulfite_signal) {
+    rna_score += 80.0;
+    evidence.push_back("poly-A/T tails (>10%)");
+  } else if (poly_a_frac > 0.03 && !has_bisulfite_signal) {
+    rna_score += 60.0;
+    evidence.push_back("poly-A/T tails");
+  }
+
+  // Reference alignment to RNA exons
+  if (reference_loaded_ && stats.total_sampled_kmers > 0) {
+    double rna_ref_score =
+        static_cast<double>(stats.rna_hits) / (stats.intron_hits + 1);
+    if (rna_ref_score > 10.0) {
+      rna_score += 60.0;
+      evidence.push_back("exon alignment");
+    } else if (rna_ref_score > 5.0) {
+      rna_score += 30.0;
+    }
+  }
+
+  // === PHASE 2: Determine single-cell layout ===
+
   bool is_single_cell = explicit_sc_layout;
-  if (!is_single_cell && !stats.r1_lengths.empty() &&
-      !stats.r2_lengths.empty()) {
+  int sc_indicator_count = 0;
+  std::vector<std::string> sc_evidence;
+
+  if (explicit_sc_layout) {
+    sc_evidence.push_back("explicit lanes");
+    sc_indicator_count++;
+  }
+
+  // CB/UMI tags in headers
+  double cb_tag_frac =
+      static_cast<double>(stats.headers_with_cb_tag) / stats.total_reads;
+  if (cb_tag_frac > 0.5) {
+    is_single_cell = true;
+    sc_indicator_count++;
+    sc_evidence.push_back("CB tags");
+  }
+
+  double umi_tag_frac =
+      static_cast<double>(stats.headers_with_umi_tag) / stats.total_reads;
+  if (umi_tag_frac > 0.5) {
+    sc_indicator_count++;
+    sc_evidence.push_back("UMI tags");
+  }
+
+  // Barcode-like prefix in R1
+  // DISABLED: Too prone to false positives with bisulfite-converted reads
+  // double barcode_prefix_frac =
+  //     static_cast<double>(stats.r1_barcode_like_prefix) / stats.total_reads;
+  // if (barcode_prefix_frac > 0.8) {
+  //   is_single_cell = true;
+  //   sc_indicator_count++;
+  //   sc_evidence.push_back("R1 barcode prefix");
+  // }
+
+  // Read length asymmetry (classic 10x pattern: short R1, long R2)
+  if (!stats.r1_lengths.empty() && !stats.r2_lengths.empty()) {
     std::vector<int> r1_copy = stats.r1_lengths;
     std::vector<int> r2_copy = stats.r2_lengths;
     std::nth_element(r1_copy.begin(), r1_copy.begin() + r1_copy.size() / 2,
@@ -268,134 +459,62 @@ AssayDetector::evaluate_stages(const ReadStats &stats,
 
     if (med_r1 <= 45 && (med_r2 - med_r1) >= 30) {
       is_single_cell = true;
+      sc_indicator_count++;
+      sc_evidence.push_back("read length asymmetry");
     }
   }
 
-  // Stage 1: Methylation (check strands separately for bisulfite signature)
-  // Track bisulfite signals at multiple threshold levels to avoid false
-  // positives from poly-A/T in downstream stages
-  bool has_bisulfite_signal = false;
-  bool has_strong_bisulfite_signal = false;
+  // === PHASE 3: Make final decision ===
 
-  if (stats.total_reads >= 500) {
-    // Bisulfite conversion depletes C (converts to T) on one strand and G
-    // (converts to A) on the complementary strand. Standard directional
-    // libraries show C-depletion on R1 and G-depletion on R2.
-    //
-    // Thresholds are relaxed to catch real-world data with moderate
-    // conversion efficiency (~90-95%) rather than requiring near-perfect
-    // conversion. Real bisulfite samples typically show C/(C+T) or G/(G+A)
-    // ratios between 0.04-0.15 depending on conversion efficiency, base
-    // composition, and strand.
+  std::string base_assay;
+  std::string confidence_level;
 
-    // Strong depletion: high confidence classification (≤10% unconverted)
-    bool r1_c_strong = (stats.r1_C + stats.r1_T > 100) && (r1_c_ratio <= 0.10);
-    bool r1_g_strong = (stats.r1_G + stats.r1_A > 100) && (r1_g_ratio <= 0.10);
-    bool r2_c_strong = (stats.r2_C + stats.r2_T > 100) && (r2_c_ratio <= 0.10);
-    bool r2_g_strong = (stats.r2_G + stats.r2_A > 100) && (r2_g_ratio <= 0.10);
+  // Select assay with highest score
+  double max_score =
+      std::max({bisulfite_score, atac_score, rna_score, dna_score});
 
-    has_strong_bisulfite_signal =
-        r1_c_strong || r1_g_strong || r2_c_strong || r2_g_strong;
+  if (max_score < 20.0) {
+    base_assay = "dna";
+    confidence_level = "low";
+    evidence.clear();
+    evidence.push_back("default");
+  } else if (bisulfite_score == max_score && bisulfite_score >= 20.0) {
+    base_assay = "bisulfite";
+    confidence_level = (bisulfite_score >= 70.0) ? "high" : "medium";
+  } else if (atac_score == max_score && atac_score >= 20.0) {
+    base_assay = "atac";
+    confidence_level = (atac_score >= 70.0) ? "high" : "medium";
+  } else if (rna_score == max_score && rna_score >= 20.0) {
+    base_assay = "rna";
+    confidence_level = (rna_score >= 60.0) ? "high" : "medium";
+  } else {
+    base_assay = "dna";
+    confidence_level = "low";
+    evidence.push_back("ambiguous signals");
+  }
 
-    // Moderate depletion: indicates bisulfite but may not be primary signal
-    // Used to suppress false positives (e.g., poly-A/T tails) in later stages
-    bool r1_c_moderate =
-        (stats.r1_C + stats.r1_T > 100) && (r1_c_ratio <= 0.15);
-    bool r1_g_moderate =
-        (stats.r1_G + stats.r1_A > 100) && (r1_g_ratio <= 0.15);
-    bool r2_c_moderate =
-        (stats.r2_C + stats.r2_T > 100) && (r2_c_ratio <= 0.15);
-    bool r2_g_moderate =
-        (stats.r2_G + stats.r2_A > 100) && (r2_g_ratio <= 0.15);
+  // Apply single-cell modifier
+  res.assay = is_single_cell ? ("sc-" + base_assay) : base_assay;
 
-    has_bisulfite_signal =
-        r1_c_moderate || r1_g_moderate || r2_c_moderate || r2_g_moderate;
+  // Build confidence string
+  std::string confidence_detail;
+  for (size_t i = 0; i < evidence.size(); ++i) {
+    if (i > 0)
+      confidence_detail += ", ";
+    confidence_detail += evidence[i];
+  }
 
-    if (has_strong_bisulfite_signal) {
-      std::string detail;
-      if (r1_c_strong) {
-        detail = "R1 C-depletion";
-        res.depleted_base = 'C';
-      } else if (r1_g_strong) {
-        detail = "R1 G-depletion";
-        res.depleted_base = 'G';
-      }
-
-      if (r2_c_strong) {
-        if (!detail.empty())
-          detail += ", ";
-        detail += "R2 C-depletion";
-        if (res.depleted_base == 'N')
-          res.depleted_base = 'C';
-      } else if (r2_g_strong) {
-        if (!detail.empty())
-          detail += ", ";
-        detail += "R2 G-depletion";
-        if (res.depleted_base == 'N')
-          res.depleted_base = 'G';
-      }
-
-      res.confidence = "high (bisulfite conversion signature: " + detail + ")";
-      res.assay = is_single_cell ? "sc-bisulfite" : "bisulfite";
-      res.c_ratio = std::min(r1_c_ratio, r2_c_ratio);
-      res.g_ratio = std::min(r1_g_ratio, r2_g_ratio);
-      return res;
+  if (is_single_cell && sc_indicator_count > 0) {
+    confidence_detail += "; sc: ";
+    for (size_t i = 0; i < sc_evidence.size(); ++i) {
+      if (i > 0)
+        confidence_detail += ", ";
+      confidence_detail += sc_evidence[i];
     }
   }
 
-  // Stage 3: FASTQ Signatures
-  double atac_frac =
-      static_cast<double>(stats.atac_adapters_found) / stats.total_reads;
-  if (atac_frac > 0.03) {
-    res.confidence = "high (Tn5 adapter signature)";
-    res.assay = is_single_cell ? "sc-atac" : "atac";
-    return res;
-  }
+  res.confidence = confidence_level + " (" + confidence_detail + ")";
 
-  // Poly-A/T tail check with bisulfite false-positive suppression
-  // Bisulfite-converted reads are A/T-rich (C→T conversion) and can have
-  // stretches of 15+ A/T at read ends that resemble poly-A tails.
-  // Suppress RNA classification if ANY bisulfite signal was detected above.
-  double poly_a_frac =
-      static_cast<double>(stats.poly_a_tails_found) / stats.total_reads;
-  if (poly_a_frac > 0.03 && !has_bisulfite_signal) {
-    res.confidence = "high (poly-A/T tail signature)";
-    res.assay = is_single_cell ? "sc-rna" : "rna";
-    return res;
-  }
-
-  // Stage 4: Alignment Sketch
-  if (reference_loaded_ && stats.total_sampled_kmers > 0) {
-    double total_aligned = stats.rna_hits + stats.atac_hits +
-                           stats.intron_hits + stats.genome_hits;
-    if (total_aligned < 10) {
-      res.confidence = "low (sample may be non-human or contamination)";
-      res.assay = "dna";
-      return res;
-    }
-
-    double rna_score =
-        static_cast<double>(stats.rna_hits) / (stats.intron_hits + 1);
-    double atac_score =
-        static_cast<double>(stats.atac_hits) / (stats.intron_hits + 1);
-
-    if (rna_score > 10.0) {
-      res.confidence = "medium (alignment to RNA exons)";
-      res.assay = is_single_cell ? "sc-rna" : "rna";
-      return res;
-    } else if (atac_score > 5.0) {
-      res.confidence = "medium (alignment to ATAC promoters)";
-      res.assay = is_single_cell ? "sc-atac" : "atac";
-      return res;
-    } else if (rna_score < 2.0 && atac_score < 2.0) {
-      res.confidence = "medium (uniform background alignment)";
-      res.assay = "dna";
-      return res;
-    }
-  }
-
-  res.confidence = "low (default)";
-  res.assay = "dna";
   return res;
 }
 
