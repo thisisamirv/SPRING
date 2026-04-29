@@ -375,6 +375,11 @@ bool search_match(const std::bitset<bitset_size> &ref,
       omp_unset_lock(dict_locks[detail::lock_shard(bucket_start_index)].get());
       continue;
     }
+    if (!detail::valid_bucket_range(dict[dictionary_index], bucket_range)) {
+      dict[dictionary_index].empty_bin[bucket_start_index] = true;
+      omp_unset_lock(dict_locks[detail::lock_shard(bucket_start_index)].get());
+      continue;
+    }
     uint64_t candidate_key =
         ((reads[dict[dictionary_index].read_id[bucket_range[0]]] &
           index_masks[dictionary_index]) >>
@@ -624,6 +629,15 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
             continue;
           }
           dict[dictionary_index].findpos(bucket_range, pending_bucket_start);
+          if (!detail::valid_bucket_range(dict[dictionary_index],
+                                          bucket_range)) {
+            dict[dictionary_index].empty_bin[pending_bucket_start] = true;
+            pending_delete_it = pending_bin_deletions[dictionary_index].erase(
+                pending_delete_it);
+            omp_unset_lock(
+                dict_locks[detail::lock_shard(pending_bucket_start)].get());
+            continue;
+          }
           dict[dictionary_index].remove(bucket_range, pending_bucket_start,
                                         read_id);
           pending_delete_it =
@@ -658,6 +672,13 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
             continue;
           }
           dict[dictionary_index].findpos(bucket_range, bucket_start_index);
+          if (!detail::valid_bucket_range(dict[dictionary_index],
+                                          bucket_range)) {
+            dict[dictionary_index].empty_bin[bucket_start_index] = true;
+            omp_unset_lock(
+                dict_locks[detail::lock_shard(bucket_start_index)].get());
+            continue;
+          }
           dict[dictionary_index].remove(bucket_range, bucket_start_index,
                                         current_read_id);
           omp_unset_lock(

@@ -446,6 +446,15 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                             .get());
                     continue;
                   }
+                  if (!detail::valid_bucket_range(
+                          dictionaries[dictionary_index], bucket_range)) {
+                    dictionaries[dictionary_index]
+                        .empty_bin[bucket_start_index] = true;
+                    omp_unset_lock(
+                        dictionary_locks[detail::lock_shard(bucket_start_index)]
+                            .get());
+                    continue;
+                  }
                   uint64_t candidate_key =
                       ((reads[dictionaries[dictionary_index]
                                   .read_id[bucket_range[0]]] &

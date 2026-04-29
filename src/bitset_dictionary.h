@@ -89,6 +89,16 @@ inline thread_range split_thread_range(const uint64_t item_count,
   return range;
 }
 
+inline bool valid_bucket_range(const bbhashdict &dictionary,
+                               const int64_t *dictidx) {
+  if (dictidx[0] < 0 || dictidx[1] < dictidx[0])
+    return false;
+
+  const uint64_t begin = static_cast<uint64_t>(dictidx[0]);
+  const uint64_t end = static_cast<uint64_t>(dictidx[1]);
+  return begin < dictionary.dict_numreads && end <= dictionary.dict_numreads;
+}
+
 template <size_t bitset_size>
 void compute_dictionary_keys(std::bitset<bitset_size> *read_bits,
                              const std::bitset<bitset_size> &index_mask,
