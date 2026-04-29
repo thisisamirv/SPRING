@@ -134,6 +134,39 @@ TEST_CASE("Testing AssayDetector") {
 
     std::filesystem::remove(test_fq);
   }
+
+  SUBCASE("Infer sc-Bisulfite from paired layout heuristic") {
+    std::string test_r1 = "test_sc_bisulfite_R1.fq";
+    std::string test_r2 = "test_sc_bisulfite_R2.fq";
+    std::ofstream out_r1(test_r1);
+    std::ofstream out_r2(test_r2);
+
+    for (int i = 0; i < 1001; ++i) {
+      out_r1 << "@read" << i << "\n";
+      out_r1 << "GTTTGTTTGTTTGTTTGTTTGTTTGTTTGT\n";
+      out_r1 << "+\n";
+      out_r1 << "IIIIIIIIIIIIIIIIIIIIIIIIIIIIII\n";
+
+      out_r2 << "@read" << i << "\n";
+      out_r2 << "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n";
+      out_r2 << "+\n";
+      out_r2 << "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII"
+                "IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII\n";
+    }
+
+    out_r1.close();
+    out_r2.close();
+
+    AssayDetector::DetectionResult res =
+        detector.detect(test_r1, test_r2, "", "", "");
+    CHECK(res.assay == "sc-bisulfite");
+    CHECK(res.confidence.find("high (bisulfite conversion signature") !=
+          std::string::npos);
+
+    std::filesystem::remove(test_r1);
+    std::filesystem::remove(test_r2);
+  }
 }
 
 TEST_CASE("Testing AssayDetector with Real Data") {

@@ -252,6 +252,25 @@ AssayDetector::evaluate_stages(const ReadStats &stats,
   double r2_g_ratio =
       static_cast<double>(stats.r2_G) / (stats.r2_G + stats.r2_A + 1);
 
+  // Single-cell layout inference is used by all assay classes, including
+  // bisulfite, so it must be computed before any early-return stage.
+  bool is_single_cell = explicit_sc_layout;
+  if (!is_single_cell && !stats.r1_lengths.empty() &&
+      !stats.r2_lengths.empty()) {
+    std::vector<int> r1_copy = stats.r1_lengths;
+    std::vector<int> r2_copy = stats.r2_lengths;
+    std::nth_element(r1_copy.begin(), r1_copy.begin() + r1_copy.size() / 2,
+                     r1_copy.end());
+    std::nth_element(r2_copy.begin(), r2_copy.begin() + r2_copy.size() / 2,
+                     r2_copy.end());
+    int med_r1 = r1_copy[r1_copy.size() / 2];
+    int med_r2 = r2_copy[r2_copy.size() / 2];
+
+    if (med_r1 <= 45 && (med_r2 - med_r1) >= 30) {
+      is_single_cell = true;
+    }
+  }
+
   // Stage 1: Methylation (check strands separately for bisulfite signature)
   if (stats.total_reads >= 500) {
     // Prefer C-depletion on R1, G-depletion on R2 (standard directional
@@ -286,28 +305,10 @@ AssayDetector::evaluate_stages(const ReadStats &stats,
       }
 
       res.confidence = "high (bisulfite conversion signature: " + detail + ")";
-      res.assay = explicit_sc_layout ? "sc-bisulfite" : "bisulfite";
+      res.assay = is_single_cell ? "sc-bisulfite" : "bisulfite";
       res.c_ratio = std::min(r1_c_ratio, r2_c_ratio);
       res.g_ratio = std::min(r1_g_ratio, r2_g_ratio);
       return res;
-    }
-  }
-
-  // Stage 2: Single-cell Layout
-  bool is_single_cell = explicit_sc_layout;
-  if (!is_single_cell && !stats.r1_lengths.empty() &&
-      !stats.r2_lengths.empty()) {
-    std::vector<int> r1_copy = stats.r1_lengths;
-    std::vector<int> r2_copy = stats.r2_lengths;
-    std::nth_element(r1_copy.begin(), r1_copy.begin() + r1_copy.size() / 2,
-                     r1_copy.end());
-    std::nth_element(r2_copy.begin(), r2_copy.begin() + r2_copy.size() / 2,
-                     r2_copy.end());
-    int med_r1 = r1_copy[r1_copy.size() / 2];
-    int med_r2 = r2_copy[r2_copy.size() / 2];
-
-    if (med_r1 <= 45 && (med_r2 - med_r1) >= 30) {
-      is_single_cell = true;
     }
   }
 
