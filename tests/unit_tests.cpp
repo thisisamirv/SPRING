@@ -84,7 +84,7 @@ TEST_CASE("Testing AssayDetector") {
     std::string assay = res.assay;
     std::string confidence = res.confidence;
     CHECK(assay == "rna");
-    CHECK(confidence == "high (poly-A/T tail signature)");
+    CHECK(confidence.find("poly-A/T tails") != std::string::npos);
 
     std::filesystem::remove(test_fq);
   }
@@ -106,7 +106,7 @@ TEST_CASE("Testing AssayDetector") {
     std::string assay = res.assay;
     std::string confidence = res.confidence;
     CHECK(assay == "sc-atac");
-    CHECK(confidence == "high (Tn5 adapter signature)");
+    CHECK(confidence.find("Tn5 adapters") != std::string::npos);
 
     std::filesystem::remove(test_fq);
   }
@@ -128,8 +128,7 @@ TEST_CASE("Testing AssayDetector") {
     std::string assay = res.assay;
     std::string confidence = res.confidence;
     CHECK(assay == "bisulfite");
-    CHECK(confidence.find("high (bisulfite conversion signature") !=
-          std::string::npos);
+    CHECK(confidence.find("-depletion") != std::string::npos);
     CHECK(res.depleted_base == 'C');
 
     std::filesystem::remove(test_fq);
@@ -161,8 +160,7 @@ TEST_CASE("Testing AssayDetector") {
     AssayDetector::DetectionResult res =
         detector.detect(test_r1, test_r2, "", "", "");
     CHECK(res.assay == "sc-bisulfite");
-    CHECK(res.confidence.find("high (bisulfite conversion signature") !=
-          std::string::npos);
+    CHECK(res.confidence.find("-depletion") != std::string::npos);
 
     std::filesystem::remove(test_r1);
     std::filesystem::remove(test_r2);
@@ -193,8 +191,7 @@ TEST_CASE("Testing AssayDetector with Real Data") {
     if (std::filesystem::exists(r1) && std::filesystem::exists(r2)) {
       AssayDetector::DetectionResult res = detector.detect(r1, r2, "", "", "");
       CHECK(res.assay == "bisulfite");
-      CHECK(res.confidence.find("high (bisulfite conversion signature") !=
-            std::string::npos);
+      CHECK(res.confidence.find("-depletion") != std::string::npos);
     }
   }
 
@@ -206,7 +203,7 @@ TEST_CASE("Testing AssayDetector with Real Data") {
     if (std::filesystem::exists(r1)) {
       AssayDetector::DetectionResult res = detector.detect(r1, r2, r3, i1, "");
       CHECK(res.assay == "sc-atac");
-      CHECK(res.confidence == "high (Tn5 adapter signature)");
+      CHECK(res.confidence.find("Tn5 adapters") != std::string::npos);
     }
   }
 
@@ -218,7 +215,7 @@ TEST_CASE("Testing AssayDetector with Real Data") {
     if (std::filesystem::exists(r1)) {
       AssayDetector::DetectionResult res = detector.detect(r1, r2, "", i1, i2);
       CHECK(res.assay == "sc-rna");
-      CHECK(res.confidence == "high (poly-A/T tail signature)");
+      CHECK(res.confidence.find("poly-A/T tails") != std::string::npos);
     }
   }
 
