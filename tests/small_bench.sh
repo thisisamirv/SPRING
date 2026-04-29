@@ -126,6 +126,24 @@ populate_resource_vars() {
 	done <"$log_file"
 }
 
+get_archive_assay_label() {
+	local archive_path="$1"
+
+	if [[ ! -x "$SPRING_PREVIEW_BIN" ]]; then
+		echo "unavailable (preview binary missing)"
+		return
+	fi
+
+	local assay_line
+	assay_line=$("$SPRING_PREVIEW_BIN" "$archive_path" 2>/dev/null | sed -n 's/^Assay Type:[[:space:]]*//p' | head -n 1 || true)
+	if [[ -n "$assay_line" ]]; then
+		echo "$assay_line"
+		return
+	fi
+
+	echo "unavailable (assay not found)"
+}
+
 # --- Main Logic ---
 
 run_single_file_benchmark() {
@@ -158,6 +176,7 @@ run_single_file_benchmark() {
 		--assay auto
 	)
 	run_with_resource_log "$COMPRESS_RESOURCE_LOG" "$SPRING_BIN" "${spring_args[@]}"
+	actual_assay=$(get_archive_assay_label "$OUTPUT_FILE")
 
 	echo "Running Spring decompression"
 	decompress_args=(
@@ -183,6 +202,7 @@ run_single_file_benchmark() {
 	fi
 
 	echo "  Results for $INPUT_BASENAME"
+	echo "    Stored assay:     $actual_assay"
 	echo "    Compressed size: $OUTPUT_SIZE bytes"
 	echo "    Bit-perfect:     $roundtrip_status"
 }
@@ -194,6 +214,7 @@ run_assay_suite() {
 		"Bisulfite (test_3);test_3_R1.fastq.gz;test_3_R2.fastq.gz;;;bisulfite"
 		"sc-ATAC (test_4);test_4_R1.fastq.gz;test_4_R2.fastq.gz;test_4_R3.fastq.gz;test_4_I1.fastq.gz;sc-atac"
 		"sc-RNA (test_5);test_5_R1.fastq.gz;test_5_R2.fastq.gz;test_5_I1.fastq.gz;test_5_I2.fastq.gz;sc-rna"
+		"sc-Bisulfite (test_6);test_6_R1.fastq.gz;test_6_R2.fastq.gz;;;sc-bisulfite"
 	)
 
 	for s in "${samples[@]}"; do
@@ -225,6 +246,8 @@ run_assay_suite() {
 		echo "  Step 1: Compression with --assay auto (expected: $assay)"
 		"$SPRING_BIN" -c "${base_args[@]}" -o "$out_auto" -w "$work" -t "$THREADS" -q lossless --assay auto
 		size_auto=$(stat -c%s "$out_auto")
+		actual_auto_assay=$(get_archive_assay_label "$out_auto")
+		echo "    Archive metadata assay: $actual_auto_assay"
 
 		# 2. Restoration check (Full Round-Trip)
 		echo "  Step 2: Verifying bit-perfect restoration..."
@@ -260,7 +283,9 @@ run_assay_suite() {
 		# 4. Results
 		gain=$(((size_dna - size_auto) * 100 / size_dna))
 		echo -e "\n  Assay-specific Optimization Results:"
-		echo "    Auto-detected size ($assay): $size_auto bytes"
+		echo "    Expected assay:              $assay"
+		echo "    Archive metadata assay:      $actual_auto_assay"
+		echo "    Auto archive size:           $size_auto bytes"
 		echo "    Generic DNA-mode size:       $size_dna bytes"
 		echo "    Optimization Gain:           $gain%"
 	done

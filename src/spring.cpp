@@ -987,6 +987,7 @@ void compress_standard(const std::string &temp_dir,
   cp.read_info.assay = final_assay;
   cp.read_info.assay_confidence = final_confidence;
   cp.encoding.cb_len = cb_len;
+  cp.encoding.cb_prefix_source_external = !cb_source_path.empty();
 
   cp.encoding.fasta_mode = fasta_input;
   cp.read_info.input_filename_1 =

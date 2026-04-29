@@ -72,6 +72,8 @@ struct compression_params {
     bool barcode_sort = false; // Legacy field; always false in new archives.
     bool bisulfite_ternary = false;
     char depleted_base = 'N';
+    bool cb_prefix_source_external =
+        false; // Compression-time only: CB comes from I1/external lane.
     bool poly_at_stripped = false;   // True when poly-A/T tail stripping was
                                      // applied during RNA-mode compression.
     bool cb_prefix_stripped = false; // True when CB prefix was extracted from

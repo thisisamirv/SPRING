@@ -542,13 +542,15 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                      std::to_string(POLY_AT_TAIL_MIN_LEN) + " bp)");
   }
 
-  // Determine whether CB prefix stripping should be applied.
-  // Only active for: short-read, preserve_order, sc-rna, and cb_len > 0.
-  // This strips the first cb_len bases from R1 (stream 0) to store them
-  // separately, improving compression of the remaining UMI portion.
+  // Determine whether single-cell barcode prefix stripping should be applied.
+  // Only active for short-read, preserve_order archives when the assay keeps
+  // the CB in R1 instead of a separate index lane. This strips the first
+  // cb_len bases from R1 (stream 0) into a side stream so the remaining read
+  // content compresses against the bisulfite/RNA model more effectively.
   const bool apply_cb_strip =
       !cp.encoding.long_flag && cp.encoding.preserve_order &&
-      cp.read_info.assay == "sc-rna" && cp.encoding.cb_len > 0;
+      !cp.encoding.cb_prefix_source_external && cp.encoding.cb_len > 0 &&
+      (cp.read_info.assay == "sc-rna" || cp.read_info.assay == "sc-bisulfite");
 
   std::ofstream cb_seq_output, cb_qual_output;
   if (apply_cb_strip) {
@@ -560,8 +562,9 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       if (!cb_qual_output)
         throw std::runtime_error("Failed to open cb_prefix.qual for writing");
     }
-    SPRING_LOG_DEBUG("CB prefix stripping enabled (cb_len = " +
-                     std::to_string(cp.encoding.cb_len) + " bp from R1)");
+    SPRING_LOG_DEBUG(
+        "Single-cell R1 prefix stripping enabled (assay=" + cp.read_info.assay +
+        ", cb_len=" + std::to_string(cp.encoding.cb_len) + " bp)");
   }
 
   uint64_t total_input_bytes = 0;
@@ -699,9 +702,9 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       // Quality CRC was already accumulated by read_fastq_block above
       // (before any stripping), which ensures it matches decompression.
 
-      // CB prefix stripping for sc-RNA: must happen AFTER CRC computation
-      // but BEFORE quality/read compression so that compressed data uses
-      // the stripped lengths.
+      // Single-cell R1 prefix stripping must happen AFTER CRC computation but
+      // BEFORE quality/read compression so that compressed data uses the
+      // stripped lengths while integrity remains defined on full reads.
       if (apply_cb_strip && stream_index == 0 && reads_in_step > 0) {
         std::string cb_seq_buffer, cb_qual_buffer;
         cb_seq_buffer.reserve(reads_in_step * cp.encoding.cb_len);
@@ -710,8 +713,12 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
         }
         for (uint32_t ri = 0; ri < reads_in_step; ++ri) {
           const std::string &read_seq = read_array[ri];
-          const uint32_t strip_len = std::min(
-              cp.encoding.cb_len, static_cast<uint32_t>(read_seq.size()));
+          if (read_seq.size() < cp.encoding.cb_len) {
+            throw std::runtime_error(
+                "CB prefix stripping requires all R1 reads to be at least " +
+                std::to_string(cp.encoding.cb_len) + " bases long.");
+          }
+          const uint32_t strip_len = cp.encoding.cb_len;
           // Store CB sequence.
           cb_seq_buffer.append(read_seq.substr(0, strip_len));
           if (cp.encoding.preserve_quality) {

@@ -121,6 +121,26 @@ function Invoke-ResourceLoggedProcess($binary, $arguments) {
     return $result
 }
 
+function Get-ArchiveAssayLabel($archivePath) {
+    if (-not (Test-Path $SPRING_PREVIEW_BIN)) {
+        return "unavailable (preview binary missing)"
+    }
+
+    try {
+        $previewOutput = & $SPRING_PREVIEW_BIN $archivePath 2>$null
+        foreach ($line in $previewOutput) {
+            if ($line -match '^Assay Type:\s*(.+)$') {
+                return $matches[1].Trim()
+            }
+        }
+    }
+    catch {
+        return "unavailable (preview failed)"
+    }
+
+    return "unavailable (assay not found)"
+}
+
 # Ensure environment
 function Initialize-Environment {
     New-Item -ItemType Directory -Path $INPUT_DIR, $LOG_DIR, $OUTPUT_DIR, $WORK_ROOT_DIR -Force | Out-Null
@@ -200,6 +220,7 @@ function Invoke-SingleFileBenchmark($inputPath) {
     Write-Host "Running Spring lossless compression (auto-assay)" -ForegroundColor Cyan
     $compArgs = "-c --R1 `"$INPUT_ABS`" -o `"$OUTPUT_FILE`" -w `"$WORK_DIR`" -t $THREADS -q lossless --assay auto"
     [void](Invoke-ResourceLoggedProcess $SPRING_BIN $compArgs)
+    $actualAssay = Get-ArchiveAssayLabel $OUTPUT_FILE
 
     Write-Host "Running Spring decompression" -ForegroundColor Cyan
     $decompArgs = "-d -i `"$OUTPUT_FILE`" -o `"$DECOMP_FILE`" -w `"$WORK_DIR`""
@@ -226,6 +247,7 @@ function Invoke-SingleFileBenchmark($inputPath) {
     }
 
     Write-Output "  Results for $INPUT_BASENAME"
+    Write-Output "    Stored assay:     $actualAssay"
     Write-Output ("    Compressed size: {0:N0} bytes" -f $outputSize)
     Write-Output ("    Reduction:       {0:N2}%" -f $reduction)
     Write-Output ("    Bit-perfect:     $(if ($isIdentical) { 'YES' } else { 'NO' })")
@@ -239,7 +261,8 @@ function Invoke-AssaySuite() {
     $samples = @(
         @{ name = "Bisulfite (test_3)"; r1 = "test_3_R1.fastq.gz"; r2 = "test_3_R2.fastq.gz"; assay = "bisulfite" },
         @{ name = "sc-ATAC (test_4)"; r1 = "test_4_R1.fastq.gz"; r2 = "test_4_R2.fastq.gz"; r3 = "test_4_R3.fastq.gz"; i1 = "test_4_I1.fastq.gz"; assay = "sc-atac" },
-        @{ name = "sc-RNA (test_5)"; r1 = "test_5_R1.fastq.gz"; r2 = "test_5_R2.fastq.gz"; i1 = "test_5_I1.fastq.gz"; i2 = "test_5_I2.fastq.gz"; assay = "sc-rna" }
+        @{ name = "sc-RNA (test_5)"; r1 = "test_5_R1.fastq.gz"; r2 = "test_5_R2.fastq.gz"; i1 = "test_5_I1.fastq.gz"; i2 = "test_5_I2.fastq.gz"; assay = "sc-rna" },
+        @{ name = "sc-Bisulfite (test_6)"; r1 = "test_6_R1.fastq.gz"; r2 = "test_6_R2.fastq.gz"; assay = "sc-bisulfite" }
     )
 
     foreach ($s in $samples) {
@@ -275,6 +298,8 @@ function Invoke-AssaySuite() {
         $args_auto = "-c $base_args -o `"$out_auto`" -w `"$work`" -t $THREADS -q lossless --assay auto"
         [void](Invoke-ResourceLoggedProcess $SPRING_BIN $args_auto)
         $size_auto = (Get-Item $out_auto).Length
+        $actual_auto_assay = Get-ArchiveAssayLabel $out_auto
+        Write-Host "    Archive metadata assay: $actual_auto_assay" -ForegroundColor Gray
 
         # 2. Restoration check (Full Round-Trip)
         Write-Host "  Step 2: Verifying bit-perfect restoration..." -ForegroundColor Cyan
@@ -319,7 +344,9 @@ function Invoke-AssaySuite() {
         # 4. Results
         $gain = if ($size_dna -gt 0) { ($size_dna - $size_auto) * 100 / $size_dna } else { 0 }
         Write-Output "`n  Assay-specific Optimization Results:"
-        Write-Output ("    Auto-detected size ($($s.assay)): {0:N0} bytes" -f $size_auto)
+        Write-Output ("    Expected assay:              {0}" -f $s.assay)
+        Write-Output ("    Archive metadata assay:      {0}" -f $actual_auto_assay)
+        Write-Output ("    Auto archive size:           {0:N0} bytes" -f $size_auto)
         Write-Output ("    Generic DNA-mode size:       {0:N0} bytes" -f $size_dna)
         Write-Output ("    Optimization Gain:           {0:N2}%" -f $gain)
         

@@ -272,31 +272,62 @@ AssayDetector::evaluate_stages(const ReadStats &stats,
   }
 
   // Stage 1: Methylation (check strands separately for bisulfite signature)
-  if (stats.total_reads >= 500) {
-    // Prefer C-depletion on R1, G-depletion on R2 (standard directional
-    // library)
-    bool r1_c_depleted = (stats.r1_C + stats.r1_T > 100) && (r1_c_ratio < 0.05);
-    bool r1_g_depleted = (stats.r1_G + stats.r1_A > 100) && (r1_g_ratio < 0.02);
-    bool r2_c_depleted = (stats.r2_C + stats.r2_T > 100) && (r2_c_ratio < 0.02);
-    bool r2_g_depleted = (stats.r2_G + stats.r2_A > 100) && (r2_g_ratio < 0.05);
+  // Track bisulfite signals at multiple threshold levels to avoid false
+  // positives from poly-A/T in downstream stages
+  bool has_bisulfite_signal = false;
+  bool has_strong_bisulfite_signal = false;
 
-    if (r1_c_depleted || r1_g_depleted || r2_c_depleted || r2_g_depleted) {
+  if (stats.total_reads >= 500) {
+    // Bisulfite conversion depletes C (converts to T) on one strand and G
+    // (converts to A) on the complementary strand. Standard directional
+    // libraries show C-depletion on R1 and G-depletion on R2.
+    //
+    // Thresholds are relaxed to catch real-world data with moderate
+    // conversion efficiency (~90-95%) rather than requiring near-perfect
+    // conversion. Real bisulfite samples typically show C/(C+T) or G/(G+A)
+    // ratios between 0.04-0.15 depending on conversion efficiency, base
+    // composition, and strand.
+
+    // Strong depletion: high confidence classification (≤10% unconverted)
+    bool r1_c_strong = (stats.r1_C + stats.r1_T > 100) && (r1_c_ratio <= 0.10);
+    bool r1_g_strong = (stats.r1_G + stats.r1_A > 100) && (r1_g_ratio <= 0.10);
+    bool r2_c_strong = (stats.r2_C + stats.r2_T > 100) && (r2_c_ratio <= 0.10);
+    bool r2_g_strong = (stats.r2_G + stats.r2_A > 100) && (r2_g_ratio <= 0.10);
+
+    has_strong_bisulfite_signal =
+        r1_c_strong || r1_g_strong || r2_c_strong || r2_g_strong;
+
+    // Moderate depletion: indicates bisulfite but may not be primary signal
+    // Used to suppress false positives (e.g., poly-A/T tails) in later stages
+    bool r1_c_moderate =
+        (stats.r1_C + stats.r1_T > 100) && (r1_c_ratio <= 0.15);
+    bool r1_g_moderate =
+        (stats.r1_G + stats.r1_A > 100) && (r1_g_ratio <= 0.15);
+    bool r2_c_moderate =
+        (stats.r2_C + stats.r2_T > 100) && (r2_c_ratio <= 0.15);
+    bool r2_g_moderate =
+        (stats.r2_G + stats.r2_A > 100) && (r2_g_ratio <= 0.15);
+
+    has_bisulfite_signal =
+        r1_c_moderate || r1_g_moderate || r2_c_moderate || r2_g_moderate;
+
+    if (has_strong_bisulfite_signal) {
       std::string detail;
-      if (r1_c_depleted) {
+      if (r1_c_strong) {
         detail = "R1 C-depletion";
         res.depleted_base = 'C';
-      } else if (r1_g_depleted) {
+      } else if (r1_g_strong) {
         detail = "R1 G-depletion";
         res.depleted_base = 'G';
       }
 
-      if (r2_c_depleted) {
+      if (r2_c_strong) {
         if (!detail.empty())
           detail += ", ";
         detail += "R2 C-depletion";
         if (res.depleted_base == 'N')
           res.depleted_base = 'C';
-      } else if (r2_g_depleted) {
+      } else if (r2_g_strong) {
         if (!detail.empty())
           detail += ", ";
         detail += "R2 G-depletion";
@@ -321,9 +352,13 @@ AssayDetector::evaluate_stages(const ReadStats &stats,
     return res;
   }
 
+  // Poly-A/T tail check with bisulfite false-positive suppression
+  // Bisulfite-converted reads are A/T-rich (C→T conversion) and can have
+  // stretches of 15+ A/T at read ends that resemble poly-A tails.
+  // Suppress RNA classification if ANY bisulfite signal was detected above.
   double poly_a_frac =
       static_cast<double>(stats.poly_a_tails_found) / stats.total_reads;
-  if (poly_a_frac > 0.03) {
+  if (poly_a_frac > 0.03 && !has_bisulfite_signal) {
     res.confidence = "high (poly-A/T tail signature)";
     res.assay = is_single_cell ? "sc-rna" : "rna";
     return res;
