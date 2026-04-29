@@ -6,7 +6,7 @@ This document provides instructions for building SPRING2 from source on various 
 
 ## Platform Support
 
-The current CI workflow validates SPRING on:
+The current CI workflow validates SPRING2 on:
 
 - Linux
 - macOS
@@ -25,8 +25,8 @@ The build system currently requires:
 Clone the repository:
 
 ```bash
-git clone https://github.com/thisisamirv/SPRING.git
-cd SPRING
+git clone https://github.com/thisisamirv/SPRING2.git
+cd SPRING2
 ```
 
 By default, the build system uses `-Dspring_optimize_for_native=OFF -Dspring_optimize_for_portability=ON` to produce binaries that are compatible across a wide range of architectures (requiring only SSE4.1 on x86_64). For a build specifically tuned to your local machine, you can pass `-Dspring_optimize_for_native=ON -Dspring_optimize_for_portability=OFF`.

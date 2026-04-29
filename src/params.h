@@ -70,7 +70,7 @@ struct compression_params {
     bool use_crlf;
     uint32_t cb_len = 16;      // CB length for extraction/display.
     bool barcode_sort = false; // Legacy field; always false in new archives.
-    bool methyl_ternary = false;
+    bool bisulfite_ternary = false;
     char depleted_base = 'N';
     bool poly_at_stripped = false;   // True when poly-A/T tail stripping was
                                      // applied during RNA-mode compression.

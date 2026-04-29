@@ -286,7 +286,7 @@ AssayDetector::evaluate_stages(const ReadStats &stats,
       }
 
       res.confidence = "high (bisulfite conversion signature: " + detail + ")";
-      res.assay = explicit_sc_layout ? "sc-methyl" : "methyl";
+      res.assay = explicit_sc_layout ? "sc-bisulfite" : "bisulfite";
       res.c_ratio = std::min(r1_c_ratio, r2_c_ratio);
       res.g_ratio = std::min(r1_g_ratio, r2_g_ratio);
       return res;

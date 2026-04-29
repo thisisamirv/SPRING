@@ -186,7 +186,7 @@ void decode_unaligned_reads(const std::string &path,
                             const uint32_t expected_read_count,
                             std::vector<char> &decoded_chars,
                             std::vector<uint16_t> &decoded_lengths,
-                            bool methyl_ternary) {
+                            bool bisulfite_ternary) {
   const std::vector<char> encoded = read_binary_file_all(path);
   decoded_lengths.assign(expected_read_count, 0);
   std::vector<uint64_t> encoded_offsets(expected_read_count, 0);
@@ -195,7 +195,7 @@ void decode_unaligned_reads(const std::string &path,
   uint64_t encoded_cursor = 0;
   uint64_t decoded_total = 0;
   std::ifstream fin;
-  if (methyl_ternary) {
+  if (bisulfite_ternary) {
     fin.open(path, std::ios::binary);
   }
 
@@ -537,7 +537,7 @@ void reorder_compress_streams(const std::string &temp_dir,
   std::vector<uint16_t> unaligned_lengths;
   decode_unaligned_reads(paths.unaligned_path, unaligned_read_count,
                          unaligned_chars, unaligned_lengths,
-                         cp.encoding.methyl_ternary);
+                         cp.encoding.bisulfite_ternary);
   if (unaligned_chars.size() != unaligned_char_count) {
     throw std::runtime_error(
         "Corruption in unaligned stream: decoded size does not match recorded "

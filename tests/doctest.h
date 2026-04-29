@@ -2394,7 +2394,7 @@ public:
       res = m_translateFunction(ex);
       return true;
     } catch (...) {
-    }                       // NOLINT(bugprone-empty-catch)
+    } // NOLINT(bugprone-empty-catch)
 #endif                      // DOCTEST_CONFIG_NO_EXCEPTIONS
     static_cast<void>(res); // to silence -Wunused-parameter
     return false;

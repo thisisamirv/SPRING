@@ -52,8 +52,8 @@ and optional `<prefix>.I2`.
   - *Example*: `--strip io` to drop both identifiers and original order.
 - `-l, --level arg`: Compression level (1-9). This controls the compression level for `.gz` file formatting and is scaled to Zstd (1-22) internally for other streams. Default is `6`.
 - `-n, --note arg`: Attach a custom text note to the archive. This note is stored in the metadata and can be viewed during decompression or using the preview tool.
-- `-y, --assay arg`: Specify the sequencing assay type (`auto`, `rna`, `atac`, `methyl`, `dna`, `sc-rna`, `sc-atac`, `sc-methyl`). Default is `auto`. The assay type is stored in the metadata and viewable using the preview tool. Note: `dna` is used interchangeably for standard Whole Genome Sequencing (WGS) and ChIP-seq (`chip`), as their read structure and formatting are effectively identical.
-- `-b, --cb-len arg`: Cellular barcode length in bases (integer, 1–64). Used when `--assay` is `sc-rna`, `sc-atac`, or `sc-methyl` and no I1 index lane is provided. When an I1 lane is present with `--I1`, the CB length is auto-detected from the I1 read length and this flag is ignored. Default: `16`.
+- `-y, --assay arg`: Specify the sequencing assay type (`auto`, `dna`, `rna`, `atac`, `bisulfite`, `sc-rna`, `sc-atac`, `sc-bisulfite`). Default is `auto`. The assay type is stored in the metadata and viewable using the preview tool. Note: `dna` is used interchangeably for standard Whole Genome Sequencing (WGS) and ChIP-seq (`chip`), as their read structure and formatting are effectively identical.
+- `-b, --cb-len arg`: Cellular barcode length in bases (integer, 1–64). Used when `--assay` is `sc-rna`, `sc-atac`, or `sc-bisulfite` and no I1 index lane is provided. When an I1 lane is present with `--I1`, the CB length is auto-detected from the I1 read length and this flag is ignored. Default: `16`.
 - `-v, --verbose [info|debug]`: Control logging verbosity.
   - Default (no `--verbose`): shows the concise stage-based progress bar, plus warnings/errors.
   - `--verbose` or `--verbose info`: disables the progress bar and prints informational step-by-step logs.

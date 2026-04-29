@@ -191,7 +191,7 @@ run_assay_suite() {
 	echo -e "\n--- Running Assay Benchmark Suite ---"
 
 	samples=(
-		"Methylation (test_3);test_3_R1.fastq.gz;test_3_R2.fastq.gz;;;methyl"
+		"Bisulfite (test_3);test_3_R1.fastq.gz;test_3_R2.fastq.gz;;;bisulfite"
 		"sc-ATAC (test_4);test_4_R1.fastq.gz;test_4_R2.fastq.gz;test_4_R3.fastq.gz;test_4_I1.fastq.gz;sc-atac"
 		"sc-RNA (test_5);test_5_R1.fastq.gz;test_5_R2.fastq.gz;test_5_I1.fastq.gz;test_5_I2.fastq.gz;sc-rna"
 	)

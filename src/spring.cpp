@@ -974,9 +974,9 @@ void compress_standard(const std::string &temp_dir,
     final_confidence = res.confidence;
 
     // Apply ternary guard: < 5% C or < 5% G (bisulfite conversion)
-    if (final_assay == "methyl" || final_assay == "sc-methyl") {
+    if (final_assay == "bisulfite" || final_assay == "sc-bisulfite") {
       if (res.c_ratio < 0.05 || res.g_ratio < 0.05) {
-        cp.encoding.methyl_ternary = true;
+        cp.encoding.bisulfite_ternary = true;
         cp.encoding.depleted_base = res.depleted_base;
       }
     }

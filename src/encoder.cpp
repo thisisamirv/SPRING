@@ -46,7 +46,7 @@ sequence_pack_paths make_sequence_pack_paths(const std::string &base_path,
 uint64_t write_packed_sequence(const std::string &sequence_path,
                                const std::string &packed_path,
                                const std::string &tail_path,
-                               bool methyl_ternary) {
+                               bool bisulfite_ternary) {
   static const std::array<uint8_t, 128> base_to_int = []() {
     std::array<uint8_t, 128> table{};
     table[static_cast<uint8_t>('A')] = 0;
@@ -80,7 +80,7 @@ uint64_t write_packed_sequence(const std::string &sequence_path,
   std::array<char, 5> trailing_bases{};
   uint64_t sequence_length = 0;
   size_t trailing_count = 0;
-  const size_t bases_per_byte = methyl_ternary ? 5 : 4;
+  const size_t bases_per_byte = bisulfite_ternary ? 5 : 4;
 
   auto flush_packed_buffer = [&]() {
     if (!packed_buffer.empty()) {
@@ -106,7 +106,7 @@ uint64_t write_packed_sequence(const std::string &sequence_path,
         continue;
       }
 
-      if (!methyl_ternary) {
+      if (!bisulfite_ternary) {
         packed_buffer.push_back(
             static_cast<char>(64 * base_to_int[(uint8_t)trailing_bases[3]] +
                               16 * base_to_int[(uint8_t)trailing_bases[2]] +
@@ -154,7 +154,7 @@ uint64_t write_packed_sequence(const std::string &sequence_path,
   }
 
   if (trailing_count > 0) {
-    if (!methyl_ternary) {
+    if (!bisulfite_ternary) {
       uint8_t packed_byte = 0;
       for (size_t i = 0; i < trailing_count; ++i) {
         packed_byte |= (base_to_int[(uint8_t)trailing_bases[i]] << (2 * i));
@@ -191,7 +191,7 @@ void pack_sequence_chunk(const encoder_global &encoder_state,
 
   const uint64_t sequence_length =
       write_packed_sequence(paths.input_path, paths.packed_path,
-                            paths.tail_path, encoder_state.methyl_ternary);
+                            paths.tail_path, encoder_state.bisulfite_ternary);
   thread_sequence_lengths[thread_id] = sequence_length;
   SPRING_LOG_DEBUG("block_id=enc-pack-chunk-" + std::to_string(thread_id) +
                    ", pack_sequence_chunk done: seq_bases=" +
@@ -471,7 +471,7 @@ void getDataParams(encoder_global &eg, const compression_params &cp) {
   safe_remove_file(singleton_count_path);
   eg.numreads = clean_read_count - eg.numreads_s;
   eg.numreads_N = total_read_count - clean_read_count;
-  eg.methyl_ternary = cp.encoding.methyl_ternary;
+  eg.bisulfite_ternary = cp.encoding.bisulfite_ternary;
 }
 
 void correct_order(uint32_t *order_s, const encoder_global &eg) {

@@ -398,11 +398,11 @@ void write_step_output(std::ofstream &output_stream, std::string *id_buffer,
 void decode_packed_sequence_chunk(const std::string &packed_seq_base_path,
                                   const int encoding_thread_id,
                                   const uint64_t num_bases,
-                                  bool methyl_ternary) {
+                                  bool bisulfite_ternary) {
   SPRING_LOG_DEBUG("decode_packed_sequence_chunk start: chunk=" +
                    std::to_string(encoding_thread_id) +
                    ", num_bases=" + std::to_string(num_bases) +
-                   ", ternary=" + (methyl_ternary ? "yes" : "no"));
+                   ", ternary=" + (bisulfite_ternary ? "yes" : "no"));
   const std::string chunk_base_path =
       packed_seq_base_path + '.' + std::to_string(encoding_thread_id);
   const std::string temporary_output_path = chunk_base_path + ".tmp";
@@ -420,7 +420,7 @@ void decode_packed_sequence_chunk(const std::string &packed_seq_base_path,
   unpacked_buffer.reserve(1U << 18);
   uint64_t bases_decoded = 0;
 
-  if (!methyl_ternary) {
+  if (!bisulfite_ternary) {
     std::vector<uint8_t> packed_buffer(1U << 16);
     while (packed_input && bases_decoded < num_bases) {
       packed_input.read(reinterpret_cast<char *>(packed_buffer.data()),
@@ -1345,7 +1345,7 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
         decode_packed_sequence_chunk(
             packed_seq_base_path, encoding_thread_id,
             cp.read_info.file_len_seq_thr[encoding_thread_id],
-            cp.encoding.methyl_ternary);
+            cp.encoding.bisulfite_ternary);
       } catch (...) {
 #pragma omp critical
         {

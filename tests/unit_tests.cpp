@@ -111,8 +111,8 @@ TEST_CASE("Testing AssayDetector") {
     std::filesystem::remove(test_fq);
   }
 
-  SUBCASE("Test Methylation signature directly") {
-    std::string test_fq = "test_methyl.fq";
+  SUBCASE("Test Bisulfite signature directly") {
+    std::string test_fq = "test_bisulfite.fq";
     std::ofstream out(test_fq);
     // Write 1001 reads with mostly T and no C (bisulfite conversion)
     for (int i = 0; i < 1001; ++i) {
@@ -127,7 +127,7 @@ TEST_CASE("Testing AssayDetector") {
         detector.detect(test_fq, "", "", "", "");
     std::string assay = res.assay;
     std::string confidence = res.confidence;
-    CHECK(assay == "methyl");
+    CHECK(assay == "bisulfite");
     CHECK(confidence.find("high (bisulfite conversion signature") !=
           std::string::npos);
     CHECK(res.depleted_base == 'C');
@@ -154,12 +154,12 @@ TEST_CASE("Testing AssayDetector with Real Data") {
     return;
   }
 
-  SUBCASE("Detect Methylation (test_3)") {
+  SUBCASE("Detect Bisulfite (test_3)") {
     std::string r1 = data_dir + "test_3_R1.fastq.gz";
     std::string r2 = data_dir + "test_3_R2.fastq.gz";
     if (std::filesystem::exists(r1) && std::filesystem::exists(r2)) {
       AssayDetector::DetectionResult res = detector.detect(r1, r2, "", "", "");
-      CHECK(res.assay == "methyl");
+      CHECK(res.assay == "bisulfite");
       CHECK(res.confidence.find("high (bisulfite conversion signature") !=
             std::string::npos);
     }

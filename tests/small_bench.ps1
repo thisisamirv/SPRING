@@ -237,7 +237,7 @@ function Invoke-AssaySuite() {
     Write-Host "`n--- Running Assay Benchmark Suite ---" -ForegroundColor Magenta
     
     $samples = @(
-        @{ name = "Methylation (test_3)"; r1 = "test_3_R1.fastq.gz"; r2 = "test_3_R2.fastq.gz"; assay = "methyl" },
+        @{ name = "Bisulfite (test_3)"; r1 = "test_3_R1.fastq.gz"; r2 = "test_3_R2.fastq.gz"; assay = "bisulfite" },
         @{ name = "sc-ATAC (test_4)"; r1 = "test_4_R1.fastq.gz"; r2 = "test_4_R2.fastq.gz"; r3 = "test_4_R3.fastq.gz"; i1 = "test_4_I1.fastq.gz"; assay = "sc-atac" },
         @{ name = "sc-RNA (test_5)"; r1 = "test_5_R1.fastq.gz"; r2 = "test_5_R2.fastq.gz"; i1 = "test_5_I1.fastq.gz"; i2 = "test_5_I2.fastq.gz"; assay = "sc-rna" }
     )

@@ -252,11 +252,12 @@ std::string build_options_description() {
       << "  -n [ --note ] arg               add a custom note to the archive\n"
       << "  -y [ --assay ] arg (=auto)      specify assay type. Valid "
          "choices:\n"
-      << "                                  auto, rna, atac, methyl, dna,\n"
-      << "                                  sc-rna, sc-atac, sc-methyl\n"
+      << "                                  auto, dna, rna, atac, bisulfite,\n"
+      << "                                  sc-rna, sc-atac, sc-bisulfite\n"
       << "  -b [ --cb-len ] arg (=16)       cellular barcode length in bases.\n"
       << "                                  Used when --assay is sc-rna,\n"
-      << "                                  sc-atac, or sc-methyl and no I1\n"
+      << "                                  sc-atac, or sc-bisulfite and no "
+         "I1\n"
       << "                                  lane is provided. Ignored when I1\n"
       << "                                  is present (auto-detected).\n"
       << "  -a [ --audit ]                  enable post-operation integrity "
@@ -417,13 +418,13 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
       require_value(args, index, "--assay");
       options.assay = strip_quotes(args[index++]);
       const std::vector<std::string> valid_assays = {
-          "auto", "rna",    "atac",    "methyl",
-          "dna",  "sc-rna", "sc-atac", "sc-methyl"};
+          "auto",      "dna",    "rna",     "atac",
+          "bisulfite", "sc-rna", "sc-atac", "sc-bisulfite"};
       if (std::ranges::find(valid_assays, options.assay) ==
           valid_assays.end()) {
         throw std::runtime_error("Invalid --assay value: " + options.assay +
-                                 ". Valid choices: auto, rna, atac, methyl, "
-                                 "dna, sc-rna, sc-atac, sc-methyl.");
+                                 ". Valid choices: auto, dna, rna, atac, "
+                                 "bisulfite, sc-rna, sc-atac, sc-bisulfite.");
       }
     } else if (arg == "-b" || arg == "--cb-len") {
       require_value(args, index, "--cb-len");
