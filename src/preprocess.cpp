@@ -72,8 +72,7 @@ void append_uint16(std::string &buffer, const uint16_t value) {
 // Returns a uint16_t encoding: bit 0 = base (0=A,1=T), bits 15:1 = run length.
 // Returns 0 if nothing was stripped. Modifies read_str and read_length in
 // place.
-uint16_t detect_and_strip_tail(std::string &read_str,
-                                      uint32_t &read_length) {
+uint16_t detect_and_strip_tail(std::string &read_str, uint32_t &read_length) {
   if (read_length <= POLY_AT_TAIL_MIN_LEN)
     return 0;
   const char last = read_str[read_length - 1];
@@ -543,6 +542,28 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                      std::to_string(POLY_AT_TAIL_MIN_LEN) + " bp)");
   }
 
+  // Determine whether CB prefix stripping should be applied.
+  // Only active for: short-read, preserve_order, sc-rna, and cb_len > 0.
+  // This strips the first cb_len bases from R1 (stream 0) to store them
+  // separately, improving compression of the remaining UMI portion.
+  const bool apply_cb_strip =
+      !cp.encoding.long_flag && cp.encoding.preserve_order &&
+      cp.read_info.assay == "sc-rna" && cp.encoding.cb_len > 0;
+
+  std::ofstream cb_seq_output, cb_qual_output;
+  if (apply_cb_strip) {
+    cb_seq_output.open(temp_dir + "/cb_prefix.dna", std::ios::binary);
+    if (!cb_seq_output)
+      throw std::runtime_error("Failed to open cb_prefix.dna for writing");
+    if (cp.encoding.preserve_quality) {
+      cb_qual_output.open(temp_dir + "/cb_prefix.qual", std::ios::binary);
+      if (!cb_qual_output)
+        throw std::runtime_error("Failed to open cb_prefix.qual for writing");
+    }
+    SPRING_LOG_DEBUG("CB prefix stripping enabled (cb_len = " +
+                     std::to_string(cp.encoding.cb_len) + " bp from R1)");
+  }
+
   uint64_t total_input_bytes = 0;
   total_input_bytes += std::filesystem::exists(infile_1)
                            ? std::filesystem::file_size(infile_1)
@@ -668,13 +689,57 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
           cp.encoding.poly_at_stripped = true;
       }
 
-      // Compute sequence CRC on (possibly stripped) data.
+      // Compute sequence CRC on original data BEFORE any CB stripping.
+      // During decompression, CRCs are computed on fully restored data
+      // (with CB prepended back), so we must compute them on original data
+      // here.
       for (uint32_t ri = 0; ri < reads_in_step; ++ri)
         update_record_crc(cp.read_info.sequence_crc[stream_index],
                           read_array[ri]);
       // Quality CRC was already accumulated by read_fastq_block above
-      // (pre-strip), which is fine: quality strings are not modified by tail
-      // stripping.
+      // (before any stripping), which ensures it matches decompression.
+
+      // CB prefix stripping for sc-RNA: must happen AFTER CRC computation
+      // but BEFORE quality/read compression so that compressed data uses
+      // the stripped lengths.
+      if (apply_cb_strip && stream_index == 0 && reads_in_step > 0) {
+        std::string cb_seq_buffer, cb_qual_buffer;
+        cb_seq_buffer.reserve(reads_in_step * cp.encoding.cb_len);
+        if (cp.encoding.preserve_quality) {
+          cb_qual_buffer.reserve(reads_in_step * cp.encoding.cb_len);
+        }
+        for (uint32_t ri = 0; ri < reads_in_step; ++ri) {
+          const std::string &read_seq = read_array[ri];
+          const uint32_t strip_len = std::min(
+              cp.encoding.cb_len, static_cast<uint32_t>(read_seq.size()));
+          // Store CB sequence.
+          cb_seq_buffer.append(read_seq.substr(0, strip_len));
+          if (cp.encoding.preserve_quality) {
+            const std::string &qual = quality_array[ri];
+            cb_qual_buffer.append(qual.substr(0, strip_len));
+            // Strip CB from quality.
+            quality_array[ri] = qual.substr(strip_len);
+          }
+          // Strip CB from read sequence.
+          read_array[ri] = read_seq.substr(strip_len);
+          // Update read length to reflect stripped read.
+          read_lengths_array[ri] = static_cast<uint16_t>(read_array[ri].size());
+        }
+        // Write CB data to output files.
+        if (!cb_seq_buffer.empty()) {
+          cb_seq_output.write(
+              cb_seq_buffer.data(),
+              static_cast<std::streamsize>(cb_seq_buffer.size()));
+        }
+        if (cp.encoding.preserve_quality && !cb_qual_buffer.empty()) {
+          cb_qual_output.write(
+              cb_qual_buffer.data(),
+              static_cast<std::streamsize>(cb_qual_buffer.size()));
+        }
+        cp.encoding.cb_prefix_stripped = true;
+        cp.encoding.cb_prefix_len = cp.encoding.cb_len;
+      }
+
       SPRING_LOG_DEBUG(
           "Preprocess step: stream=" + std::to_string(stream_index + 1) +
           ", reads_in_step=" + std::to_string(reads_in_step) +
@@ -933,6 +998,29 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   }
 
   (void)0;
+  // Close CB prefix streams before other cleanup.
+  if (apply_cb_strip) {
+    if (cb_seq_output.is_open())
+      cb_seq_output.close();
+    if (cb_qual_output.is_open())
+      cb_qual_output.close();
+
+    // Compress CB files with BSC to reduce archive size.
+    const std::string cb_seq_path = temp_dir + "/cb_prefix.dna";
+    const std::string cb_seq_compressed = cb_seq_path + ".bsc";
+    if (std::filesystem::exists(cb_seq_path)) {
+      bsc::BSC_compress(cb_seq_path.c_str(), cb_seq_compressed.c_str());
+      remove(cb_seq_path.c_str());
+    }
+    if (cp.encoding.preserve_quality) {
+      const std::string cb_qual_path = temp_dir + "/cb_prefix.qual";
+      const std::string cb_qual_compressed = cb_qual_path + ".bsc";
+      if (std::filesystem::exists(cb_qual_path)) {
+        bsc::BSC_compress(cb_qual_path.c_str(), cb_qual_compressed.c_str());
+        remove(cb_qual_path.c_str());
+      }
+    }
+  }
   close_preprocess_streams(input_files, clean_outputs, n_read_outputs,
                            n_read_order_outputs, id_outputs, quality_outputs,
                            input_streams, gzip_streams, cp, false);

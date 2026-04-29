@@ -107,6 +107,8 @@ void write_compression_params(std::ostream &out, const compression_params &cp) {
   write_bool(out, cp.encoding.methyl_ternary);
   out.write(byte_ptr(&cp.encoding.depleted_base), sizeof(char));
   write_bool(out, cp.encoding.poly_at_stripped);
+  write_bool(out, cp.encoding.cb_prefix_stripped);
+  out.write(byte_ptr(&cp.encoding.cb_prefix_len), sizeof(uint32_t));
 }
 
 void read_compression_params(std::istream &in, compression_params &cp) {
@@ -196,22 +198,39 @@ void read_compression_params(std::istream &in, compression_params &cp) {
             in.read(byte_ptr(&cp.encoding.depleted_base), sizeof(char));
             if (in.peek() != std::char_traits<char>::eof()) {
               cp.encoding.poly_at_stripped = read_bool(in);
+              if (in.peek() != std::char_traits<char>::eof()) {
+                cp.encoding.cb_prefix_stripped = read_bool(in);
+                in.read(byte_ptr(&cp.encoding.cb_prefix_len), sizeof(uint32_t));
+              } else {
+                cp.encoding.cb_prefix_stripped = false;
+                cp.encoding.cb_prefix_len = 0;
+              }
             } else {
               cp.encoding.poly_at_stripped = false;
+              cp.encoding.cb_prefix_stripped = false;
+              cp.encoding.cb_prefix_len = 0;
             }
           } else {
             cp.encoding.depleted_base = 'N';
             cp.encoding.poly_at_stripped = false;
+            cp.encoding.cb_prefix_stripped = false;
+            cp.encoding.cb_prefix_len = 0;
           }
         } else {
           cp.encoding.methyl_ternary = false;
           cp.encoding.depleted_base = 'N';
+          cp.encoding.poly_at_stripped = false;
+          cp.encoding.cb_prefix_stripped = false;
+          cp.encoding.cb_prefix_len = 0;
         }
       } else {
         cp.encoding.barcode_sort = false;
         cp.encoding.cb_len = 16;
         cp.encoding.methyl_ternary = false;
         cp.encoding.depleted_base = 'N';
+        cp.encoding.poly_at_stripped = false;
+        cp.encoding.cb_prefix_stripped = false;
+        cp.encoding.cb_prefix_len = 0;
       }
     } else {
       cp.read_info.assay = "auto";
@@ -219,12 +238,21 @@ void read_compression_params(std::istream &in, compression_params &cp) {
       cp.encoding.barcode_sort = false;
       cp.encoding.cb_len = 16;
       cp.encoding.methyl_ternary = false;
+      cp.encoding.depleted_base = 'N';
+      cp.encoding.poly_at_stripped = false;
+      cp.encoding.cb_prefix_stripped = false;
+      cp.encoding.cb_prefix_len = 0;
     }
   } else {
     cp.read_info.assay = "auto";
     cp.read_info.assay_confidence = "N/A";
     cp.encoding.barcode_sort = false;
     cp.encoding.cb_len = 16;
+    cp.encoding.methyl_ternary = false;
+    cp.encoding.depleted_base = 'N';
+    cp.encoding.poly_at_stripped = false;
+    cp.encoding.cb_prefix_stripped = false;
+    cp.encoding.cb_prefix_len = 0;
   }
 }
 

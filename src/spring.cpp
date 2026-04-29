@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "assay_detector.h"
-#include "barcode_sort.h"
 #include "decompress.h"
 #include "fs_utils.h"
 #include "io_utils.h"
@@ -1062,36 +1061,11 @@ void compress_standard(const std::string &temp_dir,
   print_temp_dir_size(temp_dir);
 
   if (!long_flag) {
-    const bool is_sc_assay =
-        (cp.read_info.assay == "sc-rna" || cp.read_info.assay == "sc-atac" ||
-         cp.read_info.assay == "sc-methyl");
-    const bool use_barcode_sort = is_sc_assay && !long_flag;
-
-    if (use_barcode_sort) {
-      cp.encoding.barcode_sort = false;
-      bool did_barcode_sort = false;
-      run_timed_step("Barcode-sorting reads ...", "Barcode sort", [&] {
-        progress.set_stage("Barcode sort", 0.25F, 0.50F);
-        did_barcode_sort = barcode_sort(temp_dir, cp, cb_source_path);
-      });
-      cp.encoding.barcode_sort = did_barcode_sort;
-      if (!did_barcode_sort) {
-        run_timed_step("Reordering ...", "Reordering", [&] {
-          progress.set_stage("Reordering", 0.25F, 0.50F);
-          call_reorder(temp_dir, cp);
-        });
-      }
-    } else {
-      if (is_sc_assay && long_flag) {
-        SPRING_LOG_INFO(
-            "Barcode sort disabled: long-read mode is active for SC assay. "
-            "Falling back to overlap-based reordering.");
-      }
-      run_timed_step("Reordering ...", "Reordering", [&] {
-        progress.set_stage("Reordering", 0.25F, 0.50F);
-        call_reorder(temp_dir, cp);
-      });
-    }
+    // Run overlap-based reordering for all assays.
+    run_timed_step("Reordering ...", "Reordering", [&] {
+      progress.set_stage("Reordering", 0.25F, 0.50F);
+      call_reorder(temp_dir, cp);
+    });
 
     print_temp_dir_size(temp_dir, "temp_dir size");
 
@@ -1241,7 +1215,7 @@ void compress(const std::string &temp_dir,
                     "(read pair + optional read3 + optional index pair).");
 
     // Compress R1/R2 as a regular SPRING archive.
-    // Pass i1_path as cb_source_path so barcode_sort can extract CBs from I1.
+    // I1 path is passed so CB extraction can use it during preprocessing.
     compress_standard(read_work_dir, read_inputs,
                       {bundle_dir + "/" + read_archive_name}, num_thr,
                       pairing_only_flag, no_quality_flag, no_ids_flag,

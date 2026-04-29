@@ -100,9 +100,13 @@ void preview_single(const std::string &archive_path, bool audit_only) {
     std::cout << " (" << cp.read_info.assay_confidence << ")";
   }
   std::cout << "\n";
+  if (cp.encoding.cb_prefix_stripped) {
+    std::cout << "CB Prefix:         Extracted (" << cp.encoding.cb_prefix_len
+              << " bp from R1)\n";
+  }
   if (cp.encoding.barcode_sort) {
     std::cout << "Barcode Sort:      Yes (CB: R1 prefix or I1 lane, "
-              << cp.encoding.cb_len << " bp)\n";
+              << cp.encoding.cb_len << " bp) [Legacy]\n";
   }
   std::cout << "Mode:              "
             << (cp.encoding.paired_end ? "Paired-end" : "Single-end") << "\n";

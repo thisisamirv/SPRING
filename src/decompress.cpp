@@ -7,6 +7,7 @@
 #include "fs_utils.h"
 #include "integrity_utils.h"
 #include "io_utils.h"
+#include "libbsc/bsc.h"
 #include "params.h"
 #include "parse_utils.h"
 #include "progress.h"
@@ -664,6 +665,8 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
   bool preserve_quality = cp.encoding.preserve_quality;
   bool preserve_order = cp.encoding.preserve_order;
   const bool poly_at_stripped = cp.encoding.poly_at_stripped;
+  const bool cb_prefix_stripped = cp.encoding.cb_prefix_stripped;
+  const uint32_t cb_prefix_len = cp.encoding.cb_prefix_len;
   const int archive_encoding_thread_count =
       resolve_archive_encoding_thread_count(cp);
 
@@ -678,6 +681,35 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
       if (!f_tail_2)
         throw std::runtime_error(
             "poly_at_stripped set but tail_2.bin not found");
+    }
+  }
+
+  // Open CB prefix files if CB prefix stripping was used during compression.
+  std::ifstream f_cb_seq, f_cb_qual;
+  if (cb_prefix_stripped) {
+    // Decompress BSC files first.
+    const std::string cb_seq_compressed = temp_dir + "/cb_prefix.dna.bsc";
+    const std::string cb_seq_path = temp_dir + "/cb_prefix.dna";
+    if (std::filesystem::exists(cb_seq_compressed)) {
+      bsc::BSC_decompress(cb_seq_compressed.c_str(), cb_seq_path.c_str());
+    }
+    if (preserve_quality) {
+      const std::string cb_qual_compressed = temp_dir + "/cb_prefix.qual.bsc";
+      const std::string cb_qual_path = temp_dir + "/cb_prefix.qual";
+      if (std::filesystem::exists(cb_qual_compressed)) {
+        bsc::BSC_decompress(cb_qual_compressed.c_str(), cb_qual_path.c_str());
+      }
+    }
+
+    f_cb_seq.open(cb_seq_path, std::ios::binary);
+    if (!f_cb_seq)
+      throw std::runtime_error(
+          "cb_prefix_stripped set but cb_prefix.dna not found");
+    if (preserve_quality) {
+      f_cb_qual.open(temp_dir + "/cb_prefix.qual", std::ios::binary);
+      if (!f_cb_qual)
+        throw std::runtime_error(
+            "cb_prefix_stripped set but cb_prefix.qual not found");
     }
   }
 
@@ -1013,6 +1045,26 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
           (stream_index == 0) ? read_buffer_1.data() : read_buffer_2.data();
       const std::string *quality_ptr =
           preserve_quality ? quality_buffer.data() : nullptr;
+
+      // Restore CB prefix to R1 reads before tail restoration.
+      if (cb_prefix_stripped && stream_index == 0) {
+        std::string *quality_buf_ptr =
+            preserve_quality ? quality_buffer.data() : nullptr;
+        for (uint32_t i = 0; i < num_reads_cur_step; ++i) {
+          // Read CB sequence (raw ASCII, cb_prefix_len bytes).
+          std::string cb_seq(cb_prefix_len, '\0');
+          f_cb_seq.read(&cb_seq[0], cb_prefix_len);
+          // Prepend CB sequence to the read.
+          read_buffer_ptr[i] = cb_seq + read_buffer_ptr[i];
+          read_lengths_buffer_1[i] += cb_prefix_len;
+          // Prepend CB quality if present.
+          if (quality_buf_ptr) {
+            std::string cb_qual(cb_prefix_len, '\0');
+            f_cb_qual.read(&cb_qual[0], cb_prefix_len);
+            quality_buf_ptr[i] = cb_qual + quality_buf_ptr[i];
+          }
+        }
+      }
 
       // Restore poly-A/T tails before computing integrity CRCs in the sink.
       if (poly_at_stripped) {

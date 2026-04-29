@@ -367,7 +367,6 @@ set(core_source_files
     ${source_dir}/progress.cpp
     ${source_dir}/bgzf.cpp
     ${source_dir}/assay_detector.cpp
-    ${source_dir}/barcode_sort.cpp
     ${REFERENCE_GENERATED}
 )
 

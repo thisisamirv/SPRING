@@ -68,15 +68,15 @@ struct compression_params {
     int num_reads_per_block_long;
     bool fasta_mode;
     bool use_crlf;
-    uint32_t cb_len = 16;      // Cellular barcode length (bases). Used when
-                               // assay is sc-rna/sc-atac/sc-methyl and no I1
-                               // lane is present. Auto-detected from I1 length
-                               // when an I1 lane is provided.
-    bool barcode_sort = false; // True when barcode-first ordering was applied.
+    uint32_t cb_len = 16;      // CB length for extraction/display.
+    bool barcode_sort = false; // Legacy field; always false in new archives.
     bool methyl_ternary = false;
     char depleted_base = 'N';
-    bool poly_at_stripped = false; // True when poly-A/T tail stripping was
-                                   // applied during RNA-mode compression.
+    bool poly_at_stripped = false;   // True when poly-A/T tail stripping was
+                                     // applied during RNA-mode compression.
+    bool cb_prefix_stripped = false; // True when CB prefix was extracted from
+                                     // R1 and stored in cb_prefix.dna.bsc.
+    uint32_t cb_prefix_len = 0;      // Number of bases stripped from R1 start.
   } encoding;
 
   struct QualityConfig {
