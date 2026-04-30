@@ -63,6 +63,7 @@ public:
   FileDecompressionSink(const std::string &outfile_1,
                         const std::string &outfile_2,
                         const compression_params &cp,
+                        const int (&compression_levels)[2],
                         const bool (&should_gzip)[2],
                         const bool (&should_bgzf)[2]);
   ~FileDecompressionSink() override;
@@ -78,7 +79,7 @@ private:
   bool use_crlf_[2];
   bool fasta_mode;
   bool quality_header_has_id_[2];
-  int compression_level;
+  int compression_level_[2];
   int num_thr;
   bool paired_end;
 };

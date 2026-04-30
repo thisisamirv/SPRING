@@ -10,14 +10,36 @@
 #include <chrono>
 #include <condition_variable>
 #include <filesystem>
+#include <fstream>
 #include <mutex>
 #include <queue>
 #include <stdexcept>
 #include <thread>
+#include <unordered_map>
 
 namespace spring {
 
 namespace {
+
+constexpr const char *kBundleManifestName = "bundle.meta";
+
+std::unordered_map<std::string, std::string>
+read_key_value_file(const std::string &path) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input.is_open()) {
+    throw std::runtime_error("Failed to open grouped bundle manifest: " + path);
+  }
+
+  std::unordered_map<std::string, std::string> kv;
+  std::string line;
+  while (std::getline(input, line)) {
+    const size_t sep = line.find('=');
+    if (sep == std::string::npos)
+      continue;
+    kv[line.substr(0, sep)] = line.substr(sep + 1);
+  }
+  return kv;
+}
 
 /**
  * @brief Sink implementation that buffers records into a thread-safe queue.
@@ -146,7 +168,7 @@ public:
   Impl(Impl &&) = delete;
   Impl &operator=(Impl &&) = delete;
 
-    Impl(std::string archive_path, int num_thr, std::string work_dir)
+  Impl(std::string archive_path, int num_thr, std::string work_dir)
       : archive_path_(std::move(archive_path)), user_num_thr_(num_thr) {
 
     // Setup temporary directory
@@ -163,12 +185,32 @@ public:
     }
     std::filesystem::create_directories(temp_dir_);
 
-    // Extract metadata first
-    extract_tar_archive(
-        archive_path_,
-        temp_dir_); // Currently extracts whole thing; could be optimized
+    extract_tar_archive(archive_path_, temp_dir_);
 
-    std::string cp_path = temp_dir_ + "/cp.bin";
+    archive_root_ = temp_dir_;
+    const std::string manifest_path = temp_dir_ + "/" + kBundleManifestName;
+    if (std::filesystem::exists(manifest_path)) {
+      const auto manifest = read_key_value_file(manifest_path);
+      const auto read_archive_it = manifest.find("read_archive");
+      if (read_archive_it == manifest.end() ||
+          read_archive_it->second.empty()) {
+        throw std::runtime_error(
+            "Failed to read grouped archive metadata: missing read archive.");
+      }
+
+      const std::string read_archive_path =
+          temp_dir_ + "/" + read_archive_it->second;
+      if (!std::filesystem::exists(read_archive_path)) {
+        throw std::runtime_error(
+            "Failed to read grouped archive metadata: read archive not found.");
+      }
+
+      archive_root_ = temp_dir_ + "/reads_member";
+      std::filesystem::create_directories(archive_root_);
+      extract_tar_archive(read_archive_path, archive_root_);
+    }
+
+    std::string cp_path = archive_root_ + "/cp.bin";
     std::ifstream cp_in(cp_path, std::ios::binary);
     if (!cp_in) {
       std::error_code file_ec;
@@ -205,9 +247,9 @@ public:
         BufferDecompressionSink sink(queue_, mutex_, cv_,
                                      params_.encoding.paired_end, 2);
         if (params_.encoding.long_flag) {
-          decompress_long(temp_dir_, sink, params_, decode_num_thr_);
+          decompress_long(archive_root_, sink, params_, decode_num_thr_);
         } else {
-          decompress_short(temp_dir_, sink, params_, decode_num_thr_);
+          decompress_short(archive_root_, sink, params_, decode_num_thr_);
         }
         sink.log_summary();
         const auto elapsed_ms =
@@ -322,6 +364,7 @@ public:
 private:
   std::string archive_path_;
   std::string temp_dir_;
+  std::string archive_root_;
   compression_params params_;
   int user_num_thr_;
   int decode_num_thr_ = 1;

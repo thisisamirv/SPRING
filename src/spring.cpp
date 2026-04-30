@@ -134,6 +134,16 @@ std::string assay_from_archive_metadata(const std::string &archive_path) {
   return cp.read_info.assay.empty() ? std::string("auto") : cp.read_info.assay;
 }
 
+int gzip_output_compression_level(
+    const compression_params::GzipMetadata::Stream &stream,
+    const int default_level) {
+  if (stream.xfl == 2)
+    return 9;
+  if (stream.xfl == 4)
+    return 1;
+  return default_level;
+}
+
 void write_bundle_manifest(const std::string &manifest_path,
                            const bundle_manifest &manifest) {
   std::ofstream output(manifest_path, std::ios::binary);
@@ -1396,6 +1406,8 @@ void decompress_standard(const std::string &temp_dir,
 
   bool should_gzip[2] = {false, false};
   bool should_bgzf[2] = {false, false};
+  int compression_levels[2] = {cp.encoding.compression_level,
+                               cp.encoding.compression_level};
   for (int i = 0; i < (paired_end ? 2 : 1); i++) {
     const std::string &path =
         (i == 0) ? io_config.output_path_1 : io_config.output_path_2;
@@ -1403,19 +1415,16 @@ void decompress_standard(const std::string &temp_dir,
       should_gzip[i] = true;
       should_bgzf[i] =
           (i == 0) ? cp.gzip.streams[0].is_bgzf : cp.gzip.streams[1].is_bgzf;
-      // Adjust compression level based on XFL if needed
-      uint8_t xfl = (i == 0) ? cp.gzip.streams[0].xfl : cp.gzip.streams[1].xfl;
-      if (xfl == 2)
-        cp.encoding.compression_level = 9;
-      else if (xfl == 4)
-        cp.encoding.compression_level = 1;
+      compression_levels[i] = gzip_output_compression_level(
+          (i == 0) ? cp.gzip.streams[0] : cp.gzip.streams[1],
+          cp.encoding.compression_level);
     }
   }
 
   std::unique_ptr<DecompressionSink> sink =
-      std::make_unique<FileDecompressionSink>(io_config.output_path_1,
-                                              io_config.output_path_2, cp,
-                                              should_gzip, should_bgzf);
+      std::make_unique<FileDecompressionSink>(
+          io_config.output_path_1, io_config.output_path_2, cp,
+          compression_levels, should_gzip, should_bgzf);
 
   if (cp.encoding.long_flag) {
     decompress_long(temp_dir, *sink, cp, decoding_num_thr);
@@ -1474,6 +1483,29 @@ void decompress_standard(const std::string &temp_dir,
   } else {
     progress.finalize();
   }
+}
+
+void materialize_aliased_group_output(
+    const std::string &temp_dir, const std::string &read_archive_path,
+    const std::string &alias_source, const std::string &alias_output_path,
+    const int num_thr, const int compression_level,
+    const log_level verbosity_level, const bool unzip_flag) {
+  const std::string alias_temp_dir = temp_dir + "/decompress_read3_alias";
+  const std::string unused_output =
+      alias_temp_dir +
+      (alias_source == "R2" ? "/unused_R1.fastq" : "/unused_R2.fastq");
+
+  if (alias_source == "R2") {
+    decompress_standard(alias_temp_dir, {read_archive_path},
+                        {unused_output, alias_output_path}, num_thr,
+                        compression_level, verbosity_level, unzip_flag);
+  } else {
+    decompress_standard(alias_temp_dir, {read_archive_path},
+                        {alias_output_path, unused_output}, num_thr,
+                        compression_level, verbosity_level, unzip_flag);
+  }
+
+  safe_remove_file(unused_output);
 }
 
 void decompress(const std::string &temp_dir,
@@ -1569,17 +1601,10 @@ void decompress(const std::string &temp_dir,
     size_t next_output_index = 2;
     if (manifest.has_r3) {
       if (!manifest.read3_alias_source.empty()) {
-        const std::string &alias_source = (manifest.read3_alias_source == "R2")
-                                              ? resolved_outputs[1]
-                                              : resolved_outputs[0];
-        std::error_code copy_ec;
-        std::filesystem::copy_file(
-            alias_source, resolved_outputs[next_output_index],
-            std::filesystem::copy_options::overwrite_existing, copy_ec);
-        if (copy_ec) {
-          throw std::runtime_error("Failed to materialize aliased R3 output: " +
-                                   copy_ec.message());
-        }
+        materialize_aliased_group_output(
+            temp_dir, read_archive_path, manifest.read3_alias_source,
+            resolved_outputs[next_output_index], num_thr, compression_level,
+            verbosity_level, unzip_flag);
       } else {
         decompress_standard(temp_dir + "/decompress_read3",
                             {read3_archive_path},

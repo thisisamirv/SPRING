@@ -17,7 +17,7 @@
 - Implemented **index-aware grouped sc-RNA ID compression**: For grouped single-cell RNA archives with external `I1`/`I2` lanes, SPRING2 now detects the common Illumina-style layout where the trailing FASTQ identifier token already contains the index reads (`...:I1+I2`). In that case, the grouped index subarchive stores only the identifier prefix and reconstructs the trailing `I1`/`I2` token from the decoded index reads during decompression. This avoids compressing the same barcode token twice, remains fully lossless, and improves grouped sc-RNA compression when cell barcode / sample index bases are provided as explicit index lanes.
 - Added SPRING2 version to the metadata of compressed files.
 - Implemented **lossless poly-A/T tail stripping and restoration for RNA-seq assays**: Strips long terminal poly-A/T runs (>20bp) during preprocessing to improve compression ratios for transcriptomics data. The optimization is strictly lossless, storing stripped sequence bases and quality scores in a synchronized metadata stream that is reordered in tandem with reads. Restoration during decompression ensures identical reconstruction and passes all integrity audits. Activated automatically for high-confidence RNA assays or via `--assay rna`.
-- Added integration regressions covering grouped preview/audit corruption detection, grouped decompression with five explicit output files, mixed paired FASTQ plus-line and LF/CRLF round-trips, and graceful failure for corrupted long-read archives.
+- Added integration regressions covering grouped preview/audit corruption detection, grouped decompression with five explicit output files, grouped `SpringReader` streaming, aliased grouped `R3` output formatting, mixed paired FASTQ plus-line and LF/CRLF round-trips, per-stream gzip reconstruction behavior, and graceful failure for corrupted long-read archives.
 
 ### Changed
 
@@ -36,6 +36,9 @@
 - Fixed long-read decompression error handling in `src/decompress.cpp` by capturing exceptions inside the OpenMP worker region and rethrowing them on the main thread, preventing corrupted long-read blocks from terminating the whole process instead of returning a normal runtime error.
 - Fixed archive assembly in `src/fs_utils.cpp` to fail loudly on `stat`, header, open, read, write, and finalize errors instead of silently producing truncated or incomplete tar archives.
 - Fixed lossless paired FASTQ round-tripping for mixed formatting by storing quality-header style (`+` versus `+READ_ID`) and newline convention (LF versus CRLF) per stream in archive metadata, rather than collapsing both mates to one archive-wide setting; backward compatibility with older archives is preserved.
+- Fixed grouped decompression when `R3` is stored as an alias of `R1` or `R2`: aliased outputs are now materialized through the normal decompression path so the requested target format is preserved instead of inheriting the source mate's on-disk representation.
+- Fixed `SpringReader` so it can stream grouped bundle archives by resolving `bundle.meta`, extracting the primary read member archive, and reading `cp.bin` plus decode streams from that nested archive instead of assuming a flat top-level layout.
+- Fixed paired gzip output reconstruction so each mate preserves its own compression behavior during decompression; SPRING2 no longer collapses both output streams to one archive-wide gzip level.
 
 ## V1.0.0-beta
 

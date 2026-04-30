@@ -1,5 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest.h"
+#include "io_utils.h"
+#include "params.h"
 #include "spring_reader.h"
 #include <filesystem>
 #include <fstream>
@@ -82,6 +84,20 @@ void create_custom_paired_fastqs(const std::string &r1_path,
                        std::string(read_len, 'J'), r2_quality_header_has_id,
                        r2_use_crlf);
   }
+}
+
+void create_gzip_copy(const std::string &input_path,
+                      const std::string &output_path, int level) {
+  std::ifstream input(input_path, std::ios::binary);
+  REQUIRE(input.is_open());
+
+  gzip_ostream output(output_path, level);
+  REQUIRE(output.is_open());
+
+  std::string contents((std::istreambuf_iterator<char>(input)),
+                       std::istreambuf_iterator<char>());
+  output.write(contents.data(), static_cast<std::streamsize>(contents.size()));
+  output.close();
 }
 
 void create_dummy_fastq(const std::string &path, int num_records) {
@@ -309,6 +325,41 @@ TEST_CASE("SpringReader Integration Test") {
     }
     CHECK(count == num_records);
   }
+
+  fs::remove_all(test_dir);
+}
+
+TEST_CASE("SpringReader streams grouped archives via primary read member") {
+  const std::string test_dir = "reader_grouped_test_tmp";
+  fs::create_directories(test_dir);
+
+  const std::string r1_fastq = test_dir + "/input_R1.fastq";
+  const std::string r2_fastq = test_dir + "/input_R2.fastq";
+  const std::string r3_fastq = test_dir + "/input_R3.fastq";
+  const std::string i1_fastq = test_dir + "/input_I1.fastq";
+  const std::string archive_path = test_dir + "/grouped_reader.sp";
+
+  create_dummy_fastq(r1_fastq, 120);
+  create_dummy_fastq(r2_fastq, 120);
+  create_dummy_fastq(r3_fastq, 120);
+  create_dummy_fastq(i1_fastq, 120);
+
+  const std::string compress_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -c --R1 " + r1_fastq + " --R2 " +
+      r2_fastq + " --R3 " + r3_fastq + " --I1 " + i1_fastq + " -o " +
+      archive_path + " -w " + test_dir + "/work_compress -t 1";
+  REQUIRE(std::system(compress_cmd.c_str()) == 0);
+
+  SpringReader reader(archive_path, 1, test_dir + "/work_reader");
+  ReadRecord mate1;
+  ReadRecord mate2;
+  int count = 0;
+  while (reader.next(mate1, mate2)) {
+    CHECK(mate1.id == "@read_" + std::to_string(count));
+    CHECK(mate2.id == "@read_" + std::to_string(count));
+    count++;
+  }
+  CHECK(count == 120);
 
   fs::remove_all(test_dir);
 }
@@ -725,6 +776,132 @@ TEST_CASE("Grouped decompression accepts five explicit output files") {
                                std::istreambuf_iterator<char>());
     CHECK(restored == original);
   }
+
+  fs::remove_all(test_dir);
+}
+
+TEST_CASE("Grouped aliased R3 output honors requested target format") {
+  const std::string test_dir = "grouped_alias_format_test_tmp";
+  fs::create_directories(test_dir);
+
+  const std::string r1_fastq = test_dir + "/input_R1.fastq";
+  const std::string r2_fastq = test_dir + "/input_R2.fastq";
+  const std::string archive_path = test_dir + "/grouped_alias.sp";
+  const std::string out_r1 = test_dir + "/out_R1.fastq";
+  const std::string out_r2 = test_dir + "/out_R2.fastq";
+  const std::string out_r3 = test_dir + "/out_R3.fastq.gz";
+
+  create_dummy_fastq(r1_fastq, 250);
+  create_dummy_fastq(r2_fastq, 250);
+
+  const std::string compress_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -c --R1 " + r1_fastq + " --R2 " +
+      r2_fastq + " --R3 " + r1_fastq + " -o " + archive_path + " -w " +
+      test_dir + "/work_compress -t 1";
+  const std::string decompress_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_path + " -o " +
+      out_r1 + " " + out_r2 + " " + out_r3 + " -w " + test_dir +
+      "/work_decompress -t 1";
+
+  REQUIRE(std::system(compress_cmd.c_str()) == 0);
+  REQUIRE(std::system(decompress_cmd.c_str()) == 0);
+
+  uint8_t flg = 0;
+  uint32_t mtime = 0;
+  uint8_t xfl = 0;
+  uint8_t os = 0;
+  std::string name;
+  bool is_gzipped = false;
+  bool is_bgzf = false;
+  uint16_t bgzf_block_size = 0;
+  uint64_t uncompressed_size = 0;
+  uint64_t compressed_size = 0;
+  uint32_t member_count = 0;
+  extract_gzip_detailed_info(out_r3, is_gzipped, flg, mtime, xfl, os, name,
+                             is_bgzf, bgzf_block_size, uncompressed_size,
+                             compressed_size, member_count);
+  CHECK(is_gzipped);
+
+  gzip_istream gz_input(out_r3);
+  REQUIRE(gz_input.is_open());
+  const std::string restored((std::istreambuf_iterator<char>(gz_input)),
+                             std::istreambuf_iterator<char>());
+  CHECK(restored == read_file_binary(r1_fastq));
+  gz_input.close();
+
+  fs::remove_all(test_dir);
+}
+
+TEST_CASE("Paired gzip outputs preserve per-stream compression profile") {
+  const std::string test_dir = "paired_gzip_profile_test_tmp";
+  fs::create_directories(test_dir);
+
+  const std::string r1_fastq = test_dir + "/input_R1.fastq";
+  const std::string r2_fastq = test_dir + "/input_R2.fastq";
+  const std::string archive_path = test_dir + "/paired_gzip_profile.sp";
+  const std::string extract_dir = test_dir + "/archive_extract";
+  const std::string baseline_r1 = test_dir + "/baseline_R1.fastq.gz";
+  const std::string baseline_r2 = test_dir + "/baseline_R2.fastq.gz";
+  const std::string out_r1 = test_dir + "/roundtrip_R1.fastq.gz";
+  const std::string out_r2 = test_dir + "/roundtrip_R2.fastq.gz";
+
+  create_dummy_fastq(r1_fastq, 600);
+  create_dummy_fastq(r2_fastq, 600);
+  create_gzip_copy(r1_fastq, baseline_r1, 1);
+  create_gzip_copy(r2_fastq, baseline_r2, 9);
+
+  const std::string compress_cmd = std::string(SPRING2_EXECUTABLE) +
+                                   " -c --R1 " + r1_fastq + " --R2 " +
+                                   r2_fastq + " -o " + archive_path + " -w " +
+                                   test_dir + "/work_compress -t 1";
+  const std::string decompress_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_path + " -o " +
+      out_r1 + " " + out_r2 + " -w " + test_dir + "/work_decompress -t 1";
+
+  REQUIRE(std::system(compress_cmd.c_str()) == 0);
+
+  fs::create_directories(extract_dir);
+  REQUIRE(std::system(
+              ("tar -xf " + archive_path + " -C " + extract_dir).c_str()) == 0);
+
+  compression_params cp{};
+  {
+    std::ifstream cp_input(extract_dir + "/cp.bin", std::ios::binary);
+    REQUIRE(cp_input.is_open());
+    read_compression_params(cp_input, cp);
+  }
+  cp.gzip.streams[0].xfl = 4;
+  cp.gzip.streams[1].xfl = 2;
+  {
+    std::ofstream cp_output(extract_dir + "/cp.bin",
+                            std::ios::binary | std::ios::trunc);
+    REQUIRE(cp_output.is_open());
+    write_compression_params(cp_output, cp);
+  }
+
+  const std::string archive_tar_path =
+      fs::absolute(archive_path).generic_string();
+  REQUIRE(std::system(("cd " + extract_dir + " && tar -cf \"" +
+                       archive_tar_path + "\" *")
+                          .c_str()) == 0);
+
+  REQUIRE(std::system(decompress_cmd.c_str()) == 0);
+
+  CHECK(fs::file_size(baseline_r2) < fs::file_size(baseline_r1));
+  CHECK(fs::file_size(out_r2) < fs::file_size(out_r1));
+
+  gzip_istream out_r1_stream(out_r1);
+  gzip_istream out_r2_stream(out_r2);
+  REQUIRE(out_r1_stream.is_open());
+  REQUIRE(out_r2_stream.is_open());
+  const std::string restored_r1((std::istreambuf_iterator<char>(out_r1_stream)),
+                                std::istreambuf_iterator<char>());
+  const std::string restored_r2((std::istreambuf_iterator<char>(out_r2_stream)),
+                                std::istreambuf_iterator<char>());
+  CHECK(restored_r1 == read_file_binary(r1_fastq));
+  CHECK(restored_r2 == read_file_binary(r2_fastq));
+  out_r1_stream.close();
+  out_r2_stream.close();
 
   fs::remove_all(test_dir);
 }

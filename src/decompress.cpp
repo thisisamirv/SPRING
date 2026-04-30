@@ -387,15 +387,17 @@ void write_fastq_block(std::ostream &output_stream, std::string *id_buffer,
 FileDecompressionSink::FileDecompressionSink(const std::string &outfile_1,
                                              const std::string &outfile_2,
                                              const compression_params &cp,
+                                             const int (&compression_levels)[2],
                                              const bool (&gzip)[2],
                                              const bool (&bgzf)[2])
-    : fasta_mode(cp.encoding.fasta_mode),
-      compression_level(cp.encoding.compression_level),
-      num_thr(cp.encoding.num_thr), paired_end(cp.encoding.paired_end) {
+    : fasta_mode(cp.encoding.fasta_mode), num_thr(cp.encoding.num_thr),
+      paired_end(cp.encoding.paired_end) {
   should_gzip[0] = gzip[0];
   should_gzip[1] = gzip[1];
   should_bgzf[0] = bgzf[0];
   should_bgzf[1] = bgzf[1];
+  compression_level_[0] = compression_levels[0];
+  compression_level_[1] = compression_levels[1];
   use_crlf_[0] = cp.encoding.use_crlf_by_stream[0];
   use_crlf_[1] = cp.encoding.use_crlf_by_stream[1];
   quality_header_has_id_[0] = cp.read_info.quality_header_has_id_by_stream[0];
@@ -426,7 +428,7 @@ void FileDecompressionSink::consume_step(std::string *id_buffer,
   }
   write_fastq_block(output_streams[stream_index], id_buffer, read_buffer,
                     quality_buffer, count, num_thr, should_gzip[stream_index],
-                    should_bgzf[stream_index], compression_level,
+                    should_bgzf[stream_index], compression_level_[stream_index],
                     use_crlf_[stream_index], fasta_mode,
                     quality_header_has_id_[stream_index]);
 }
