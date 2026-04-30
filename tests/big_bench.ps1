@@ -199,7 +199,7 @@ Write-Host "  R1:      $PATH_R1"
 Write-Host "  R2:      $PATH_R2"
 Write-Host "  threads: $THREADS"
 
-$compArgs = @($SPRING_VERBOSE_ARGS + @('-c', '-i', $PATH_R1, $PATH_R2, '-o', $global:OUTPUT_FILE, '-w', $global:WORK_DIR, '-t', $THREADS, '-q', 'lossless', '-n', 'Big Benchmark SRR2990433'))
+$compArgs = @($SPRING_VERBOSE_ARGS + @('-c', '--R1', $PATH_R1, '--R2', $PATH_R2, '-o', $global:OUTPUT_FILE, '-w', $global:WORK_DIR, '-t', $THREADS, '-q', 'lossless', '-n', 'Big Benchmark SRR2990433'))
 $compResults = Invoke-ResourceLoggedProcess $SPRING_BIN $compArgs
 
 # --- Decompression ---

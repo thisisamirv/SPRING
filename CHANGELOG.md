@@ -25,6 +25,10 @@
 - Pruned vendored libs even further.
 - Had vendored libs flattened for easier maintenance. This allows easier future pruning and specialized modifications.
 
+### Fixed
+
+- Fixed decompression thread count mismatch bug in `src/decompress.cpp` where archives compressed with N threads could only be decompressed successfully with exactly N threads. The decompressor was incorrectly using the user-specified `-t` flag instead of the archive's encoded thread count metadata, causing incomplete block processing when fewer threads were used. Decompression now always uses the archive's encoding thread count internally (via `archive_encoding_thread_count`) regardless of the user's `-t` flag, ensuring archives can be decompressed on any hardware configuration.
+
 ## V1.0.0-beta
 
 ### Added

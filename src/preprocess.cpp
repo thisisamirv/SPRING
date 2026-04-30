@@ -18,7 +18,6 @@
 
 #include "core_utils.h"
 
-#include "integrity_utils.h"
 #include "io_utils.h"
 #include "libbsc/bsc.h"
 #include "params.h"
@@ -726,12 +725,13 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       uint32_t *id_crc_output = cp.encoding.preserve_id
                                     ? &cp.read_info.id_crc[stream_index]
                                     : nullptr;
+      uint32_t *sequence_crc_output = &cp.read_info.sequence_crc[stream_index];
       uint32_t reads_in_step = read_fastq_block(
           input_streams[stream_index], id_array, read_array.data(),
           quality_array.empty() ? nullptr : quality_array.data(),
           num_reads_per_step, fasta_input, read_lengths_array.data(),
           contains_n_output,
-          nullptr, // sequence_crc: computed post-strip below
+          sequence_crc_output, // Compute CRC on original data before stripping
           quality_crc_output, id_crc_output, cp.encoding.preserve_quality);
 
       // Strip poly-A/T tails and accumulate per-read tail info.
@@ -754,15 +754,8 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
           cp.encoding.poly_at_stripped = true;
       }
 
-      // Compute sequence CRC on original data BEFORE any CB stripping.
-      // During decompression, CRCs are computed on fully restored data
-      // (with CB prepended back), so we must compute them on original data
-      // here.
-      for (uint32_t ri = 0; ri < reads_in_step; ++ri)
-        update_record_crc(cp.read_info.sequence_crc[stream_index],
-                          read_array[ri]);
-      // Quality CRC was already accumulated by read_fastq_block above
-      // (before any stripping), which ensures it matches decompression.
+      // Sequence CRC was already computed by read_fastq_block above on original
+      // data, matching what decompression will compute after full restoration.
 
       // Single-cell R1 prefix stripping must happen AFTER CRC computation but
       // BEFORE quality/read compression so that compressed data uses the

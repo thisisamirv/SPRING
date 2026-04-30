@@ -738,11 +738,14 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
   std::array<std::array<char, 128>, 128> decoded_noise_table;
   set_dec_noise_array(decoded_noise_table);
 
-  omp_set_num_threads(decoding_num_thr);
+  // Must use archive thread count to ensure all blocks are processed.
+  // Each OpenMP thread processes one block per step, and the archive
+  // contains archive_encoding_thread_count blocks per step.
+  omp_set_num_threads(archive_encoding_thread_count);
 
   // Rebuild the packed reference sequence once before block processing.
   reference_sequence_store seq(file_seq, archive_encoding_thread_count,
-                               decoding_num_thr, cp);
+                               archive_encoding_thread_count, cp);
 
   bool done = false;
   uint32_t num_blocks_done = 0;
@@ -1151,7 +1154,8 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
   std::vector<uint32_t> read_lengths_buffer(
       static_cast<size_t>(num_reads_per_step));
 
-  omp_set_num_threads(decoding_num_thr);
+  // Must use archive thread count to ensure all blocks are processed.
+  omp_set_num_threads(archive_encoding_thread_count);
 
   bool done = false;
 

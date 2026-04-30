@@ -792,6 +792,7 @@ void perform_audit_standard(const std::string &archive_path,
     if (is_lossless) {
       uint32_t seq_crc[2], qual_crc[2], id_crc[2];
       sink.get_digests(seq_crc, qual_crc, id_crc);
+
       bool mismatch = false;
       for (int i = 0; i < (cp.encoding.paired_end ? 2 : 1); ++i) {
         if (cp.read_info.sequence_crc[i] != 0 &&

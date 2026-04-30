@@ -129,4 +129,47 @@ TEST_CASE("SpringReader Integration Test") {
   fs::remove_all(test_dir);
 }
 
+TEST_CASE("Multi-thread compression compatibility") {
+  std::string test_dir = "thread_test_tmp";
+  fs::create_directories(test_dir);
+
+  std::string input_fastq = test_dir + "/input.fastq";
+
+  // Create a slightly larger dataset to test threading behavior
+  int num_records = 1000;
+  create_dummy_fastq(input_fastq, num_records);
+
+  // Test compression with different thread counts and verify each archive
+  // can be decompressed with a different thread count (regression test for
+  // decompression thread count mismatch bug)
+  for (int compress_threads : {1, 4, 8}) {
+    std::string archive_sp =
+        test_dir + "/test_t" + std::to_string(compress_threads) + ".sp";
+    std::string work_compress =
+        test_dir + "/work_compress_t" + std::to_string(compress_threads);
+
+    // Compress with N threads
+    std::string compress_cmd = std::string(SPRING2_EXECUTABLE) + " -c --R1 " +
+                               input_fastq + " -o " + archive_sp + " -w " +
+                               work_compress + " -t " +
+                               std::to_string(compress_threads);
+    REQUIRE(std::system(compress_cmd.c_str()) == 0);
+
+    // Decompress with 1 thread (different from compression thread count)
+    // This validates that archive thread count is properly used internally
+    std::string output_fastq =
+        test_dir + "/output_t" + std::to_string(compress_threads) + ".fastq";
+    std::string work_decompress =
+        test_dir + "/work_decompress_t" + std::to_string(compress_threads);
+    std::string decompress_cmd = std::string(SPRING2_EXECUTABLE) + " -d -i " +
+                                 archive_sp + " -o " + output_fastq + " -w " +
+                                 work_decompress + " -t 1";
+
+    // Exit code 0 means integrity check passed
+    CHECK(std::system(decompress_cmd.c_str()) == 0);
+  }
+
+  fs::remove_all(test_dir);
+}
+
 } // namespace
