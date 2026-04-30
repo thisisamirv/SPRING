@@ -65,8 +65,8 @@ public:
   /**
    * @brief Retrieves the computed integrity digests for the archive.
    */
-  static void get_digests(uint32_t seq_crc[2], uint32_t qual_crc[2],
-                          uint32_t id_crc[2]);
+  void get_digests(uint32_t seq_crc[2], uint32_t qual_crc[2],
+                   uint32_t id_crc[2]);
 
 private:
   class Impl;

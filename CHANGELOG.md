@@ -17,7 +17,7 @@
 - Implemented **index-aware grouped sc-RNA ID compression**: For grouped single-cell RNA archives with external `I1`/`I2` lanes, SPRING2 now detects the common Illumina-style layout where the trailing FASTQ identifier token already contains the index reads (`...:I1+I2`). In that case, the grouped index subarchive stores only the identifier prefix and reconstructs the trailing `I1`/`I2` token from the decoded index reads during decompression. This avoids compressing the same barcode token twice, remains fully lossless, and improves grouped sc-RNA compression when cell barcode / sample index bases are provided as explicit index lanes.
 - Added SPRING2 version to the metadata of compressed files.
 - Implemented **lossless poly-A/T tail stripping and restoration for RNA-seq assays**: Strips long terminal poly-A/T runs (>20bp) during preprocessing to improve compression ratios for transcriptomics data. The optimization is strictly lossless, storing stripped sequence bases and quality scores in a synchronized metadata stream that is reordered in tandem with reads. Restoration during decompression ensures identical reconstruction and passes all integrity audits. Activated automatically for high-confidence RNA assays or via `--assay rna`.
-- Added integration regressions covering grouped preview/audit corruption detection, grouped decompression with five explicit output files, grouped `SpringReader` streaming, aliased grouped `R3` output formatting, mixed paired FASTQ plus-line and LF/CRLF round-trips, per-stream gzip reconstruction behavior, and graceful failure for corrupted long-read archives.
+- Added integration regressions covering grouped preview/audit corruption detection, grouped decompression with five explicit output files, grouped `SpringReader` streaming, aliased grouped `R3` output formatting, mixed paired FASTQ plus-line and LF/CRLF round-trips, per-stream gzip reconstruction behavior, archive extraction path containment, preview and `SpringReader` rejection of truncated metadata, decompression output-path collision rejection, grouped default-output name deduplication, grouped alias metadata validation, working `SpringReader` digests, and graceful failure for corrupted long-read archives.
 
 ### Changed
 
@@ -39,6 +39,13 @@
 - Fixed grouped decompression when `R3` is stored as an alias of `R1` or `R2`: aliased outputs are now materialized through the normal decompression path so the requested target format is preserved instead of inheriting the source mate's on-disk representation.
 - Fixed `SpringReader` so it can stream grouped bundle archives by resolving `bundle.meta`, extracting the primary read member archive, and reading `cp.bin` plus decode streams from that nested archive instead of assuming a flat top-level layout.
 - Fixed paired gzip output reconstruction so each mate preserves its own compression behavior during decompression; SPRING2 no longer collapses both output streams to one archive-wide gzip level.
+- Fixed archive extraction in `src/fs_utils.cpp` to reject absolute or escaping tar entry paths, preventing crafted archives from writing outside the requested extraction directory during preview, audit, decompression, or `SpringReader` setup.
+- Fixed decompression output validation so SPRING2 now rejects colliding output paths and refuses to overwrite the input archive when reconstructing reads.
+- Fixed grouped bundle decompression defaults so duplicate original lane basenames are deterministically disambiguated with role-based suffixes (`.R1`, `.R2`, `.R3`, `.I1`, `.I2`) instead of still colliding after a single `.index` suffix pass.
+- Fixed grouped bundle manifest parsing to reject invalid `read3_alias_source` values and conflicting read-3 archive/alias declarations, preventing silent reconstruction of the wrong `R3` lane from malformed metadata.
+- Fixed preview mode and `SpringReader` metadata handling so truncated `cp.bin` streams are rejected consistently instead of being treated as valid partially parsed metadata.
+- Fixed `SpringReader` lifecycle handling by allowing the background producer to shut down cleanly when the reader is destroyed before the archive is fully consumed, avoiding a queue-backpressure deadlock on early exit.
+- Fixed `SpringReader::get_digests()` so library callers can retrieve the actual computed sequence, quality, and ID CRCs after fully consuming an archive, instead of always receiving zeroed outputs.
 
 ## V1.0.0-beta
 

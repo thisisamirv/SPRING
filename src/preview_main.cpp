@@ -146,6 +146,9 @@ void preview_single(const std::string &archive_path, bool audit_only,
   compression_params cp{};
   std::istringstream in(contents["cp.bin"], std::ios::binary);
   read_compression_params(in, cp);
+  if (!in.good()) {
+    throw std::runtime_error("Could not parse cp.bin from the archive.");
+  }
 
   std::cout << "SPRING2 Archive Metadata Preview:\n";
   std::cout << "--------------------------------\n";

@@ -30,6 +30,49 @@
 
 namespace spring {
 
+namespace {
+
+bool path_is_within_directory(const std::filesystem::path &root,
+                              const std::filesystem::path &candidate) {
+  auto root_it = root.begin();
+  auto candidate_it = candidate.begin();
+  while (root_it != root.end() && candidate_it != candidate.end()) {
+    if (*root_it != *candidate_it) {
+      return false;
+    }
+    ++root_it;
+    ++candidate_it;
+  }
+  return root_it == root.end();
+}
+
+std::filesystem::path
+validated_archive_entry_destination(const std::filesystem::path &target_root,
+                                    const char *entry_name) {
+  if (entry_name == nullptr || entry_name[0] == '\0') {
+    throw std::runtime_error("Archive contains an entry with an empty path.");
+  }
+
+  const std::filesystem::path entry_path(entry_name);
+  if (entry_path.is_absolute() || entry_path.has_root_name() ||
+      entry_path.has_root_directory()) {
+    throw std::runtime_error("Archive contains an absolute extraction path: " +
+                             entry_path.generic_string());
+  }
+
+  const std::filesystem::path destination =
+      (target_root / entry_path).lexically_normal();
+  if (!path_is_within_directory(target_root, destination)) {
+    throw std::runtime_error(
+        "Archive entry escapes the extraction directory: " +
+        entry_path.generic_string());
+  }
+
+  return destination;
+}
+
+} // namespace
+
 void copy_stream_buffered(std::istream &input_stream,
                           std::ostream &output_stream, size_t buffer_size) {
   std::vector<char> buffer(buffer_size);
@@ -299,57 +342,75 @@ void extract_tar_archive(const std::string &archive_path,
   ext = archive_write_disk_new();
   archive_write_disk_set_options(ext, flags);
 
-  r = archive_read_open_filename(a, archive_path.c_str(), 10240);
-  if (r != ARCHIVE_OK) {
-    throw std::runtime_error("Failed to open archive for reading: " +
-                             std::string(archive_error_string(a)));
-  }
+  auto close_archives = [&]() noexcept {
+    if (a != nullptr) {
+      archive_read_close(a);
+      archive_read_free(a);
+      a = nullptr;
+    }
+    if (ext != nullptr) {
+      archive_write_close(ext);
+      archive_write_free(ext);
+      ext = nullptr;
+    }
+  };
 
-  std::filesystem::create_directories(target_dir);
-
-  for (;;) {
-    r = archive_read_next_header(a, &entry);
-    if (r == ARCHIVE_EOF)
-      break;
-    if (r < ARCHIVE_WARN) {
-      throw std::runtime_error("Error reading archive header: " +
+  try {
+    r = archive_read_open_filename(a, archive_path.c_str(), 10240);
+    if (r != ARCHIVE_OK) {
+      throw std::runtime_error("Failed to open archive for reading: " +
                                std::string(archive_error_string(a)));
     }
 
-    std::filesystem::path dest_path =
-        std::filesystem::path(target_dir) / archive_entry_pathname(entry);
-    archive_entry_set_pathname(entry, dest_path.string().c_str());
+    std::filesystem::create_directories(target_dir);
+    const std::filesystem::path target_root =
+        std::filesystem::weakly_canonical(std::filesystem::path(target_dir));
 
-    r = archive_write_header(ext, entry);
-    extracted_entry_count++;
-    if (r >= ARCHIVE_OK && archive_entry_size(entry) > 0) {
-      const void *buff;
-      size_t size;
-      la_int64_t offset;
-      while (true) {
-        r = archive_read_data_block(a, &buff, &size, &offset);
-        if (r == ARCHIVE_EOF)
-          break;
-        if (r < ARCHIVE_OK)
-          throw std::runtime_error("Error reading archive data: " +
-                                   std::string(archive_error_string(a)));
-        r = archive_write_data_block(ext, buff, size, offset);
-        extracted_data_bytes += static_cast<uint64_t>(size);
-        if (r < ARCHIVE_OK)
-          throw std::runtime_error("Error writing disk data: " +
-                                   std::string(archive_error_string(ext)));
+    for (;;) {
+      r = archive_read_next_header(a, &entry);
+      if (r == ARCHIVE_EOF)
+        break;
+      if (r < ARCHIVE_WARN) {
+        throw std::runtime_error("Error reading archive header: " +
+                                 std::string(archive_error_string(a)));
       }
-    }
-    r = archive_write_finish_entry(ext);
-    if (r < ARCHIVE_OK)
-      throw std::runtime_error("Error finishing disk entry: " +
-                               std::string(archive_error_string(ext)));
-  }
 
-  archive_read_close(a);
-  archive_read_free(a);
-  archive_write_close(ext);
-  archive_write_free(ext);
+      const std::filesystem::path dest_path =
+          validated_archive_entry_destination(target_root,
+                                              archive_entry_pathname(entry));
+      archive_entry_set_pathname(entry, dest_path.string().c_str());
+
+      r = archive_write_header(ext, entry);
+      extracted_entry_count++;
+      if (r >= ARCHIVE_OK && archive_entry_size(entry) > 0) {
+        const void *buff;
+        size_t size;
+        la_int64_t offset;
+        while (true) {
+          r = archive_read_data_block(a, &buff, &size, &offset);
+          if (r == ARCHIVE_EOF)
+            break;
+          if (r < ARCHIVE_OK)
+            throw std::runtime_error("Error reading archive data: " +
+                                     std::string(archive_error_string(a)));
+          r = archive_write_data_block(ext, buff, size, offset);
+          extracted_data_bytes += static_cast<uint64_t>(size);
+          if (r < ARCHIVE_OK)
+            throw std::runtime_error("Error writing disk data: " +
+                                     std::string(archive_error_string(ext)));
+        }
+      }
+      r = archive_write_finish_entry(ext);
+      if (r < ARCHIVE_OK)
+        throw std::runtime_error("Error finishing disk entry: " +
+                                 std::string(archive_error_string(ext)));
+    }
+
+    close_archives();
+  } catch (...) {
+    close_archives();
+    throw;
+  }
   SPRING_LOG_DEBUG("extract_tar_archive complete: entries=" +
                    std::to_string(extracted_entry_count) +
                    ", extracted_bytes=" + std::to_string(extracted_data_bytes));

@@ -17,6 +17,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -121,6 +122,39 @@ bool paths_refer_to_same_file(const std::string &left,
   return std::filesystem::equivalent(left_path, right_path, ec) && !ec;
 }
 
+std::string normalized_path_key(const std::string &path) {
+  std::error_code ec;
+  std::filesystem::path normalized =
+      std::filesystem::absolute(std::filesystem::path(path), ec);
+  if (ec) {
+    normalized = std::filesystem::path(path);
+  }
+  std::string key = normalized.lexically_normal().generic_string();
+#ifdef _WIN32
+  for (char &character : key) {
+    character =
+        static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+  }
+#endif
+  return key;
+}
+
+void validate_output_targets(const std::string &archive_path,
+                             const std::vector<std::string> &output_paths) {
+  std::unordered_set<std::string> seen_outputs;
+  const std::string archive_key = normalized_path_key(archive_path);
+  for (const std::string &output_path : output_paths) {
+    const std::string output_key = normalized_path_key(output_path);
+    if (!seen_outputs.insert(output_key).second) {
+      throw std::runtime_error("Output paths must be distinct.");
+    }
+    if (output_key == archive_key) {
+      throw std::runtime_error(
+          "Output path must not overwrite the input archive.");
+    }
+  }
+}
+
 std::string assay_from_archive_metadata(const std::string &archive_path) {
   auto contents = read_files_from_tar_memory(archive_path, {"cp.bin"});
   if (!contents.contains("cp.bin")) {
@@ -131,6 +165,10 @@ std::string assay_from_archive_metadata(const std::string &archive_path) {
   compression_params cp{};
   std::istringstream input(contents["cp.bin"], std::ios::binary);
   read_compression_params(input, cp);
+  if (!input.good()) {
+    throw std::runtime_error("Could not parse cp.bin in archive: " +
+                             archive_path);
+  }
   return cp.read_info.assay.empty() ? std::string("auto") : cp.read_info.assay;
 }
 
@@ -142,6 +180,77 @@ int gzip_output_compression_level(
   if (stream.xfl == 4)
     return 1;
   return default_level;
+}
+
+std::string append_group_role_suffix(const std::string &path,
+                                     const std::string &suffix) {
+  std::filesystem::path file_path(path);
+  const std::filesystem::path parent = file_path.parent_path();
+  std::string filename = file_path.filename().string();
+  std::string trailing_gzip_suffix;
+  if (filename.size() > 3 && filename.substr(filename.size() - 3) == ".gz") {
+    trailing_gzip_suffix = ".gz";
+    filename.erase(filename.size() - 3);
+  }
+
+  const std::string::size_type extension_pos = filename.find('.');
+  std::string suffixed_name;
+  if (extension_pos == std::string::npos) {
+    suffixed_name = filename + "." + suffix + trailing_gzip_suffix;
+  } else {
+    suffixed_name = filename.substr(0, extension_pos) + "." + suffix +
+                    filename.substr(extension_pos) + trailing_gzip_suffix;
+  }
+  return parent.empty() ? suffixed_name : (parent / suffixed_name).string();
+}
+
+std::vector<std::string>
+build_default_grouped_output_paths(const bundle_manifest &manifest) {
+  struct output_role {
+    std::string name;
+    std::string role;
+  };
+
+  std::vector<output_role> requested_outputs = {
+      {manifest.r1_name, "R1"},
+      {manifest.r2_name, "R2"},
+  };
+  if (manifest.has_r3) {
+    requested_outputs.push_back({manifest.r3_name, "R3"});
+  }
+  if (manifest.has_index) {
+    requested_outputs.push_back({manifest.i1_name, "I1"});
+    if (manifest.has_i2) {
+      requested_outputs.push_back({manifest.i2_name, "I2"});
+    }
+  }
+
+  std::unordered_map<std::string, size_t> name_counts;
+  for (const output_role &output : requested_outputs) {
+    name_counts[normalized_path_key(output.name)]++;
+  }
+
+  std::unordered_set<std::string> used_paths;
+  std::vector<std::string> resolved_outputs;
+  resolved_outputs.reserve(requested_outputs.size());
+  for (const output_role &output : requested_outputs) {
+    std::string candidate = output.name;
+    if (name_counts[normalized_path_key(output.name)] > 1) {
+      candidate = append_group_role_suffix(output.name, output.role);
+    }
+
+    std::string candidate_key = normalized_path_key(candidate);
+    size_t disambiguator = 2;
+    while (!used_paths.insert(candidate_key).second) {
+      candidate = append_group_role_suffix(
+          output.name, output.role + std::to_string(disambiguator));
+      candidate_key = normalized_path_key(candidate);
+      disambiguator++;
+    }
+    resolved_outputs.push_back(candidate);
+  }
+
+  return resolved_outputs;
 }
 
 void write_bundle_manifest(const std::string &manifest_path,
@@ -212,6 +321,17 @@ bundle_manifest read_bundle_manifest(const std::string &manifest_path) {
       manifest.read3_alias_source.empty()) {
     throw std::runtime_error("Invalid bundle manifest: has_r3=1 but no read3 "
                              "archive or alias source.");
+  }
+  if (!manifest.read3_alias_source.empty() &&
+      manifest.read3_alias_source != "R1" &&
+      manifest.read3_alias_source != "R2") {
+    throw std::runtime_error("Invalid bundle manifest: read3 alias source must "
+                             "be R1 or R2.");
+  }
+  if (manifest.has_r3 && !manifest.read3_archive_name.empty() &&
+      !manifest.read3_alias_source.empty()) {
+    throw std::runtime_error("Invalid bundle manifest: read3 cannot specify "
+                             "both an archive and an alias source.");
   }
   if (manifest.has_index && manifest.index_archive_name.empty()) {
     throw std::runtime_error(
@@ -1399,6 +1519,11 @@ void decompress_standard(const std::string &temp_dir,
 
   const decompression_io_config io_config =
       resolve_decompression_io(input_paths, output_paths, paired_end);
+  validate_output_targets(
+      io_config.archive_path,
+      paired_end ? std::vector<std::string>{io_config.output_path_1,
+                                            io_config.output_path_2}
+                 : std::vector<std::string>{io_config.output_path_1});
 
   auto has_compressed_suffix = [](const std::string &path) {
     return path.ends_with(".gz");
@@ -1539,25 +1664,7 @@ void decompress(const std::string &temp_dir,
 
     std::vector<std::string> resolved_outputs;
     if (output_paths.empty()) {
-      resolved_outputs.push_back(manifest.r1_name);
-      resolved_outputs.push_back(manifest.r2_name);
-      if (manifest.has_r3) {
-        resolved_outputs.push_back(manifest.r3_name);
-      }
-      if (manifest.has_index) {
-        resolved_outputs.push_back(manifest.i1_name);
-        if (manifest.has_i2)
-          resolved_outputs.push_back(manifest.i2_name);
-      }
-
-      for (size_t i = 0; i < resolved_outputs.size(); ++i) {
-        for (size_t j = 0; j < i; ++j) {
-          if (resolved_outputs[i] == resolved_outputs[j]) {
-            resolved_outputs[i] += ".index";
-            break;
-          }
-        }
-      }
+      resolved_outputs = build_default_grouped_output_paths(manifest);
     } else if (output_paths.size() == 1) {
       resolved_outputs.push_back(output_paths[0] + ".R1");
       resolved_outputs.push_back(output_paths[0] + ".R2");
@@ -1583,6 +1690,7 @@ void decompress(const std::string &temp_dir,
       }
       resolved_outputs = output_paths;
     }
+    validate_output_targets(input_paths[0], resolved_outputs);
 
     const std::string read_archive_path =
         temp_dir + "/" + manifest.read_archive_name;

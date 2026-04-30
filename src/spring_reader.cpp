@@ -23,6 +23,13 @@ namespace {
 
 constexpr const char *kBundleManifestName = "bundle.meta";
 
+class SpringReaderShutdown final : public std::exception {
+public:
+  const char *what() const noexcept override {
+    return "SpringReader shutdown requested";
+  }
+};
+
 std::unordered_map<std::string, std::string>
 read_key_value_file(const std::string &path) {
   std::ifstream input(path, std::ios::binary);
@@ -49,9 +56,10 @@ public:
   using StepPair = std::pair<std::vector<ReadRecord>, std::vector<ReadRecord>>;
 
   BufferDecompressionSink(std::queue<StepPair> &queue, std::mutex &mutex,
-                          std::condition_variable &cv, bool paired_end,
-                          size_t max_queue_size)
-      : queue_(queue), mutex_(mutex), cv_(cv), paired_end_(paired_end),
+                          std::condition_variable &cv, bool &shutdown_requested,
+                          bool paired_end, size_t max_queue_size)
+      : queue_(queue), mutex_(mutex), cv_(cv),
+        shutdown_requested_(shutdown_requested), paired_end_(paired_end),
         max_queue_size_(max_queue_size) {}
 
   void consume_step(std::string *id_buffer, std::string *read_buffer,
@@ -62,8 +70,12 @@ public:
     const auto wait_start = std::chrono::steady_clock::now();
     const bool was_full = queue_.get().size() >= max_queue_size_;
     // Throttle decompression if the queue is full
-    cv_.get().wait(lock,
-                   [this] { return queue_.get().size() < max_queue_size_; });
+    cv_.get().wait(lock, [this] {
+      return queue_.get().size() < max_queue_size_ || shutdown_requested_.get();
+    });
+    if (shutdown_requested_.get()) {
+      throw SpringReaderShutdown();
+    }
     if (was_full) {
       wait_events_++;
       wait_ns_total_ += static_cast<uint64_t>(
@@ -144,10 +156,20 @@ public:
                      ", max_queue_depth=" + std::to_string(max_queue_depth_));
   }
 
+  void get_digests(uint32_t seq_crc[2], uint32_t qual_crc[2],
+                   uint32_t id_crc[2]) const {
+    for (int i = 0; i < 2; ++i) {
+      seq_crc[i] = sequence_crc_[i];
+      qual_crc[i] = quality_crc_[i];
+      id_crc[i] = id_crc_[i];
+    }
+  }
+
 private:
   std::reference_wrapper<std::queue<StepPair>> queue_;
   std::reference_wrapper<std::mutex> mutex_;
   std::reference_wrapper<std::condition_variable> cv_;
+  std::reference_wrapper<bool> shutdown_requested_;
   bool paired_end_;
   size_t max_queue_size_;
   StepPair current_step_;
@@ -226,6 +248,9 @@ public:
       throw std::runtime_error("Failed to read archive metadata.");
     }
     read_compression_params(cp_in, params_);
+    if (!cp_in.good()) {
+      throw std::runtime_error("Failed to parse archive metadata.");
+    }
     cp_in.close();
 
     decode_num_thr_ =
@@ -244,7 +269,7 @@ public:
     worker_thread_ = std::thread([this]() {
       try {
         const auto worker_start = std::chrono::steady_clock::now();
-        BufferDecompressionSink sink(queue_, mutex_, cv_,
+        BufferDecompressionSink sink(queue_, mutex_, cv_, shutdown_requested_,
                                      params_.encoding.paired_end, 2);
         if (params_.encoding.long_flag) {
           decompress_long(archive_root_, sink, params_, decode_num_thr_);
@@ -252,6 +277,7 @@ public:
           decompress_short(archive_root_, sink, params_, decode_num_thr_);
         }
         sink.log_summary();
+        sink.get_digests(sequence_crc_, quality_crc_, id_crc_);
         const auto elapsed_ms =
             std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - worker_start)
@@ -262,8 +288,13 @@ public:
 
         {
           std::scoped_lock<std::mutex> lock(mutex_);
+          digests_ready_ = true;
           worker_done_ = true;
         }
+        cv_.notify_all();
+      } catch (const SpringReaderShutdown &) {
+        std::scoped_lock<std::mutex> lock(mutex_);
+        worker_done_ = true;
         cv_.notify_all();
       } catch (...) {
         std::scoped_lock<std::mutex> lock(mutex_);
@@ -282,10 +313,10 @@ public:
 
   ~Impl() {
     {
-      // We don't have a clean way to "abort" decompress_short yet without
-      // changing it. For now, we wait for it to finish or just let it leak if
-      // it takes too long? Better: just join it.
+      std::scoped_lock<std::mutex> lock(mutex_);
+      shutdown_requested_ = true;
     }
+    cv_.notify_all();
     if (worker_thread_.joinable())
       worker_thread_.join();
 
@@ -361,6 +392,26 @@ public:
 
   [[nodiscard]] const compression_params &params() const { return params_; }
 
+  void get_digests(uint32_t seq_crc[2], uint32_t qual_crc[2],
+                   uint32_t id_crc[2]) {
+    std::scoped_lock<std::mutex> lock(mutex_);
+    const bool cache_drained = current_step_cache_.first.empty() ||
+                               cache_pos_ >= current_step_cache_.first.size();
+    if (worker_exception_) {
+      std::rethrow_exception(worker_exception_);
+    }
+    if (!worker_done_ || !queue_.empty() || !cache_drained || !digests_ready_) {
+      throw std::runtime_error(
+          "SpringReader digests are only available after the archive has "
+          "been fully consumed.");
+    }
+    for (int i = 0; i < 2; ++i) {
+      seq_crc[i] = sequence_crc_[i];
+      qual_crc[i] = quality_crc_[i];
+      id_crc[i] = id_crc_[i];
+    }
+  }
+
 private:
   std::string archive_path_;
   std::string temp_dir_;
@@ -373,8 +424,13 @@ private:
   std::queue<BufferDecompressionSink::StepPair> queue_;
   std::mutex mutex_;
   std::condition_variable cv_;
+  bool shutdown_requested_ = false;
   bool worker_done_ = false;
+  bool digests_ready_ = false;
   std::exception_ptr worker_exception_ = nullptr;
+  uint32_t sequence_crc_[2] = {0, 0};
+  uint32_t quality_crc_[2] = {0, 0};
+  uint32_t id_crc_[2] = {0, 0};
   uint64_t consumer_wait_events_ = 0;
   uint64_t consumer_wait_ns_total_ = 0;
   uint64_t queue_batches_popped_ = 0;
@@ -415,18 +471,7 @@ bool SpringReader::next(ReadRecord &mate1, ReadRecord &mate2) {
 
 void SpringReader::get_digests(uint32_t seq_crc[2], uint32_t qual_crc[2],
                                uint32_t id_crc[2]) {
-  for (int i = 0; i < 2; ++i) {
-    seq_crc[i] = 0;
-    qual_crc[i] = 0;
-    id_crc[i] = 0;
-  }
-  // This is tricky because the worker might still be running.
-  // We need to wait or only report after we are done.
-  // Actually, for simplicity, we provide this if anyone needs to check
-  // after reading all records.
-  // But since the Sink is internal to Impl, we might need a better way.
-  // For now, let's keep it unimplemented or revisit if we need it for Reader
-  // tests.
+  impl_->get_digests(seq_crc, qual_crc, id_crc);
 }
 
 } // namespace spring
