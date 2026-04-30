@@ -1,6 +1,6 @@
-// Implements the standalone spring2-preview utility for extracting and
-// displaying archive metadata, original filenames, and format notes without
-// decompression.
+// Implements archive preview helpers used by the spring2 --preview mode.
+
+#include "preview.h"
 
 #include <filesystem>
 #include <iomanip>
@@ -13,7 +13,6 @@
 #include "fs_utils.h"
 #include "params.h"
 #include "spring.h"
-#include "version.h"
 
 namespace spring {
 
@@ -21,6 +20,20 @@ namespace {
 
 constexpr const char *kBundleManifestName = "bundle.meta";
 constexpr const char *kBundleVersion = "SPRING2_BUNDLE_V1";
+
+std::filesystem::path create_preview_temp_dir(
+    const std::filesystem::path &working_dir) {
+  std::filesystem::create_directories(working_dir);
+
+  while (true) {
+    const std::filesystem::path temp_dir =
+        working_dir / ("tmp_preview_" + random_string(10));
+    if (!std::filesystem::exists(temp_dir) &&
+        std::filesystem::create_directory(temp_dir)) {
+      return temp_dir;
+    }
+  }
+}
 
 std::unordered_map<std::string, std::string>
 read_key_value_string(const std::string &content) {
@@ -104,13 +117,13 @@ void print_gzip_compression_info(int idx, const std::string &filename,
   std::cout << "  Likely Origin:   " << origin << "\n";
 }
 
-void preview_single(const std::string &archive_path, bool audit_only) {
+void preview_single(const std::string &archive_path, bool audit_only,
+                    const std::filesystem::path &working_dir) {
   if (audit_only) {
-    const std::string temp_dir = "tmp_preview_" + random_string(10);
-    std::filesystem::create_directories(temp_dir);
+    const std::filesystem::path temp_dir = create_preview_temp_dir(working_dir);
     try {
       compression_params cp;
-      perform_verification(archive_path, temp_dir, cp);
+      perform_verification(archive_path, temp_dir.generic_string(), cp);
     } catch (const std::exception &e) {
       std::error_code ec;
       std::filesystem::remove_all(temp_dir, ec);
@@ -248,7 +261,8 @@ void preview_single(const std::string &archive_path, bool audit_only) {
   }
 }
 
-void preview(const std::string &archive_path, bool audit_only) {
+void preview(const std::string &archive_path, bool audit_only,
+             const std::filesystem::path &working_dir) {
   auto contents =
       read_files_from_tar_memory(archive_path, {kBundleManifestName});
 
@@ -276,14 +290,13 @@ void preview(const std::string &archive_path, bool audit_only) {
     const bool has_i2 =
         (manifest.contains("has_i2") && manifest.at("has_i2") == "1");
 
-    const std::string temp_dir = "tmp_preview_" + random_string(10);
-    std::filesystem::create_directories(temp_dir);
+    const std::filesystem::path temp_dir = create_preview_temp_dir(working_dir);
     try {
-      extract_tar_archive(archive_path, temp_dir);
+      extract_tar_archive(archive_path, temp_dir.generic_string());
 
       // Read metadata from the main reads archive
       auto read_contents = read_files_from_tar_memory(
-          temp_dir + "/" + read_archive_name, {"cp.bin"});
+          (temp_dir / read_archive_name).generic_string(), {"cp.bin"});
       if (!read_contents.contains("cp.bin")) {
         throw std::runtime_error("Could not find cp.bin in reads archive.");
       }
@@ -295,7 +308,7 @@ void preview(const std::string &archive_path, bool audit_only) {
       compression_params cp_r3{};
       if (has_r3 && read3_alias_source.empty()) {
         auto r3_contents = read_files_from_tar_memory(
-            temp_dir + "/" + read3_archive_name, {"cp.bin"});
+          (temp_dir / read3_archive_name).generic_string(), {"cp.bin"});
         if (r3_contents.contains("cp.bin")) {
           std::istringstream in_r3(r3_contents["cp.bin"], std::ios::binary);
           read_compression_params(in_r3, cp_r3);
@@ -306,7 +319,7 @@ void preview(const std::string &archive_path, bool audit_only) {
       compression_params cp_index{};
       if (has_index) {
         auto index_contents = read_files_from_tar_memory(
-            temp_dir + "/" + index_archive_name, {"cp.bin"});
+          (temp_dir / index_archive_name).generic_string(), {"cp.bin"});
         if (index_contents.contains("cp.bin")) {
           std::istringstream in_index(index_contents["cp.bin"],
                                       std::ios::binary);
@@ -497,50 +510,7 @@ void preview(const std::string &archive_path, bool audit_only) {
     return;
   }
 
-  preview_single(archive_path, audit_only);
+  preview_single(archive_path, audit_only, working_dir);
 }
 
 } // namespace spring
-
-int main(int argc, char *argv[]) {
-  if (argc == 2) {
-    const std::string arg = argv[1];
-    if (arg == "-V" || arg == "--version") {
-      std::cout << "spring2-preview version " << spring::VERSION << "\n";
-      return 0;
-    }
-    if (arg == "-h" || arg == "--help") {
-      std::cout << "Usage: spring2-preview [options] <archive.sp>\n";
-      std::cout << "Options:\n";
-      std::cout << "  -h, --help     Show this help\n";
-      std::cout << "  -V, --version  Show version\n";
-      std::cout << "  -a, --audit    Perform full archive integrity check\n";
-      return 0;
-    }
-  }
-
-  bool audit_only = false;
-  std::string archive_path;
-  for (int i = 1; i < argc; ++i) {
-    std::string arg = argv[i];
-    if (arg == "-a" || arg == "--audit") {
-      audit_only = true;
-    } else if (arg[0] != '-') {
-      archive_path = arg;
-    }
-  }
-
-  if (archive_path.empty()) {
-    std::cerr << "Usage: spring2-preview [options] <archive.sp>\n";
-    return 1;
-  }
-
-  try {
-    spring::preview(archive_path, audit_only);
-  } catch (const std::exception &e) {
-    std::cerr << "Error: " << e.what() << "\n";
-    return 1;
-  }
-
-  return 0;
-}

@@ -37,7 +37,7 @@ $SPRING_BIN = $env:SPRING_BIN
 if (-not $SPRING_BIN) { $SPRING_BIN = Join-Path $BUILD_DIR "spring2.exe" }
 
 $SPRING_PREVIEW_BIN = $env:SPRING_PREVIEW_BIN
-if (-not $SPRING_PREVIEW_BIN) { $SPRING_PREVIEW_BIN = Join-Path $BUILD_DIR "spring2-preview.exe" }
+if (-not $SPRING_PREVIEW_BIN) { $SPRING_PREVIEW_BIN = $SPRING_BIN }
 
 $SPRING_COMMAND_TIMEOUT_SECONDS = $env:SPRING_COMMAND_TIMEOUT_SECONDS
 if (-not $SPRING_COMMAND_TIMEOUT_SECONDS) { $SPRING_COMMAND_TIMEOUT_SECONDS = 0 }
@@ -86,8 +86,8 @@ function Build-SmokeBinaries {
         exit 1
     }
 
-    Write-Host "Building smoke binaries (spring2, spring2-preview)..." -ForegroundColor Cyan
-    & cmake --build $BUILD_DIR --target spring2 spring2-preview --parallel
+    Write-Host "Building smoke binaries (spring2)..." -ForegroundColor Cyan
+    & cmake --build $BUILD_DIR --target spring2 --parallel
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to build smoke-test binaries"
     }
@@ -194,10 +194,10 @@ function Write-SmokeDiagnostics {
     if (Test-Path $SPRING_PREVIEW_BIN) {
         try {
             $previewVersion = (& $SPRING_PREVIEW_BIN --version 2>&1 | Select-Object -First 1)
-            Write-Host ("  spring2-preview: {0}" -f $previewVersion) -ForegroundColor Yellow
+            Write-Host ("  spring2 preview mode: {0}" -f $previewVersion) -ForegroundColor Yellow
         }
         catch {
-            Write-Host "  spring2-preview: version query failed" -ForegroundColor Yellow
+            Write-Host "  spring2 preview mode: version query failed" -ForegroundColor Yellow
         }
     }
 }
@@ -525,7 +525,7 @@ try {
     Write-SmokeCase "archive notes & previewer validation"
     Invoke-Spring -c --R1 "$ASSET_DIR\test_1.fastq" -n "SMOKE_TEST_NOTE" -o abcd
     $previewOut = "preview.out"
-    Invoke-Spring $SPRING_PREVIEW_BIN abcd | Out-File $previewOut
+    & $SPRING_PREVIEW_BIN -p abcd | Out-File $previewOut
     $previewContent = Get-Content $previewOut -Raw
     if ($previewContent -notmatch "SMOKE_TEST_NOTE") {
         Write-Error "Failed to find custom note in preview tool output"

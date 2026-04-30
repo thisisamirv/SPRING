@@ -10,7 +10,7 @@ LOG_DIR="$OUTPUT_BASE/logs"
 OUTPUT_DIR="$OUTPUT_BASE/runs"
 WORK_ROOT_DIR="$OUTPUT_BASE/work"
 SPRING_BIN=${SPRING_BIN:-"$ROOT_DIR/build/spring2"}
-SPRING_PREVIEW_BIN=${SPRING_PREVIEW_BIN:-"$ROOT_DIR/build/spring2-preview"}
+SPRING_PREVIEW_BIN=${SPRING_PREVIEW_BIN:-"$SPRING_BIN"}
 INPUT_FASTQ=${1:-"$INPUT_DIR/sample.fastq"}
 THREADS=${THREADS:-8}
 BUILD_DIR="$ROOT_DIR/build"
@@ -135,7 +135,7 @@ get_archive_assay_label() {
 	fi
 
 	local assay_line
-	assay_line=$("$SPRING_PREVIEW_BIN" "$archive_path" 2>/dev/null | sed -n 's/^Assay Type:[[:space:]]*//p' | head -n 1 || true)
+	assay_line=$("$SPRING_PREVIEW_BIN" -p "$archive_path" 2>/dev/null | sed -n 's/^Assay Type:[[:space:]]*//p' | head -n 1 || true)
 	if [[ -n "$assay_line" ]]; then
 		echo "$assay_line"
 		return

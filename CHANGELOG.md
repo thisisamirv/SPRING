@@ -26,6 +26,7 @@
 - Replaced archived vendors with direct dependencies.
 - Pruned vendored libs even further.
 - Had vendored libs flattened for easier maintenance. This allows easier future pruning and specialized modifications.
+- Merged preview into the main binary. spring2 now accepts `-p` or `--preview` and runs the old `spring2-preview` behavior, including `-a/--audit` in preview mode.
 
 ### Fixed
 

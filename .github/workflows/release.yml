@@ -174,7 +174,6 @@ jobs:
                   cmake --build build --parallel
                   cmake --install build --prefix spring2
                   strip spring2/bin/spring2
-                  strip spring2/bin/spring2-preview
 
             - name: Prepare Artifacts (Linux/macOS)
               if: matrix.name != 'windows'
@@ -225,7 +224,6 @@ jobs:
                   name: ${{ matrix.artifact_name }}
                   path: |
                       spring2/bin/spring2
-                      spring2/bin/spring2-preview
                   retention-days: 1
 
             - name: Upload Artifact to Release
@@ -264,9 +262,7 @@ jobs:
                   mkdir -p universal-bin
                   lipo -create bin-arm64/spring2 bin-x86_64/spring2 \
                     -output universal-bin/spring2
-                  lipo -create bin-arm64/spring2-preview bin-x86_64/spring2-preview \
-                    -output universal-bin/spring2-preview
-                  chmod +x universal-bin/spring2 universal-bin/spring2-preview
+                  chmod +x universal-bin/spring2
 
             - name: Generate macOS Icon
               run: |
@@ -291,7 +287,6 @@ jobs:
                   brew install create-dmg
                   mkdir -p dmg-root
                   cp universal-bin/spring2 dmg-root/
-                  cp universal-bin/spring2-preview dmg-root/
                   ln -s /usr/local/bin dmg-root/bin
 
                   create-dmg \
@@ -300,11 +295,9 @@ jobs:
                     --window-pos 200 120 \
                     --window-size 600 300 \
                     --icon-size 100 \
-                    --icon "spring2" 150 150 \
-                    --icon "spring2-preview" 300 150 \
-                    --icon "bin" 450 150 \
+                    --icon "spring2" 200 150 \
+                    --icon "bin" 400 150 \
                     --hide-extension "spring2" \
-                    --hide-extension "spring2-preview" \
                     "spring2-macos-universal.dmg" \
                     "dmg-root/"
 

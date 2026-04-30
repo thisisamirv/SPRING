@@ -3,6 +3,7 @@
 
 #include "params.h"
 #include "parse_utils.h"
+#include "preview.h"
 #include "progress.h"
 #include "spring.h"
 #include "version.h"
@@ -37,6 +38,7 @@ int default_num_threads() {
 struct command_line_options {
   bool help_flag = false;
   bool version_flag = false;
+  bool preview_flag = false;
   bool compress_flag = false;
   bool decompress_flag = false;
   bool pairing_only_flag = false;
@@ -176,7 +178,8 @@ private:
 SpringContext *g_context = nullptr;
 
 int print_invalid_mode_and_exit(const std::string &options_description) {
-  std::cout << "Exactly one of compress or decompress needs to be specified \n";
+  std::cout << "Exactly one of compress, decompress, or preview needs to be "
+               "specified \n";
   std::cout << options_description << "\n";
   return 1;
 }
@@ -188,6 +191,8 @@ std::string build_options_description() {
       << "* General Options:\n"
       << "  -h [ --help ]                   produce help message\n"
       << "  -V [ --version ]                produce version information\n"
+      << "  -p [ --preview ]                inspect archive metadata without\n"
+      << "                                  decompression\n"
       << "  -o [ --output ] arg             output file name\n"
       << "                                    - if not specified, it uses "
          "original input\n"
@@ -260,8 +265,9 @@ std::string build_options_description() {
          "I1\n"
       << "                                  lane is provided. Ignored when I1\n"
       << "                                  is present (auto-detected).\n"
-      << "  -a [ --audit ]                  enable post-operation integrity "
-         "verification\n"
+      << "  -a [ --audit ]                  enable integrity verification; "
+        "with --preview,\n"
+      << "                                  perform full archive audit\n"
       << "---------------------------------------------------------------------"
          "-----------\n"
       << "* Decompression Options:\n"
@@ -269,8 +275,17 @@ std::string build_options_description() {
       << "  -i [ --input ] arg              input archive file (.sp)\n"
       << "  -u [ --unzip ]                  during decompression, force\n"
       << "                                  output to be uncompressed (even "
-         "if\n"
-      << "                                  original was .gz)";
+        "if\n"
+      << "                                  original was .gz)\n"
+      << "---------------------------------------------------------------------"
+        "-----------\n"
+      << "* Preview Options:\n"
+      << "  -p [ --preview ]                inspect archive metadata without\n"
+      << "                                  decompression\n"
+      << "  -i [ --input ] arg              input archive file (.sp)\n"
+      << "                                  or pass <archive.sp> positionally\n"
+      << "  -a [ --audit ]                  perform full archive integrity\n"
+      << "                                  check without decompression";
   return options.str();
 }
 
@@ -324,6 +339,8 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
       options.help_flag = true;
     } else if (arg == "-V" || arg == "--version") {
       options.version_flag = true;
+    } else if (arg == "-p" || arg == "--preview") {
+      options.preview_flag = true;
     } else if (arg == "-c" || arg == "--compress") {
       options.compress_flag = true;
     } else if (arg == "-d" || arg == "--decompress") {
@@ -441,6 +458,8 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
       options.audit_flag = true;
     } else if (arg == "-u" || arg == "--unzip") {
       options.unzip_flag = true;
+    } else if (!arg.empty() && arg[0] != '-') {
+      options.input_paths.push_back(arg);
     } else {
       throw std::runtime_error(std::string("Unknown option: ") + arg);
     }
@@ -453,7 +472,10 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
 }
 
 bool has_exactly_one_mode(const command_line_options &options) {
-  return options.compress_flag != options.decompress_flag;
+  const int mode_count = static_cast<int>(options.compress_flag) +
+                         static_cast<int>(options.decompress_flag) +
+                         static_cast<int>(options.preview_flag);
+  return mode_count == 1;
 }
 
 bool has_valid_thread_count(const command_line_options &options) {
@@ -465,6 +487,21 @@ bool has_valid_memory_cap(const command_line_options &options) {
 }
 
 void normalize_mode_specific_inputs(command_line_options &options) {
+  if (options.preview_flag) {
+    if (!options.r1_path.empty() || !options.r2_path.empty() ||
+        !options.r3_path.empty() || !options.i1_path.empty() ||
+        !options.i2_path.empty()) {
+      throw std::runtime_error(
+          "Preview mode does not use --R1/--R2/--R3/--I1/--I2. Use --input "
+          "<archive.sp> or pass the archive path positionally.");
+    }
+    if (!options.output_paths.empty()) {
+      throw std::runtime_error(
+          "Preview mode does not produce output files. Omit --output.");
+    }
+    return;
+  }
+
   if (options.compress_flag) {
     if (!options.input_paths.empty()) {
       throw std::runtime_error(
@@ -515,6 +552,12 @@ void validate_io_parameters(const command_line_options &options) {
   // Validate input files: must exist and be readable
   if (options.input_paths.empty()) {
     throw std::runtime_error("No input files specified.");
+  }
+
+  if (options.preview_flag && options.input_paths.size() != 1) {
+    throw std::runtime_error(
+        "Preview requires exactly 1 input archive, but " +
+        std::to_string(options.input_paths.size()) + " provided.");
   }
 
   for (const auto &path : options.input_paths) {
@@ -606,6 +649,12 @@ int print_unexpected_error_and_exit(const std::string &options_description,
 
 void run_requested_mode(const command_line_options &options,
                         const std::string &temp_dir) {
+  if (options.preview_flag) {
+    spring::preview(options.input_paths.front(), options.audit_flag,
+                    options.working_dir);
+    return;
+  }
+
   if (options.compress_flag) {
     spring::compress(
         temp_dir, options.input_paths, options.output_paths,
@@ -628,9 +677,11 @@ void log_options_for_debugging(const command_line_options &options) {
   if (!spring::Logger::is_debug_enabled())
     return;
 
-  SPRING_LOG_DEBUG("CLI mode: " + std::string(options.compress_flag
-                                                  ? "compress"
-                                                  : "decompress"));
+  SPRING_LOG_DEBUG(
+      "CLI mode: " +
+      std::string(options.compress_flag    ? "compress"
+                  : options.decompress_flag ? "decompress"
+                                            : "preview"));
   SPRING_LOG_DEBUG(
       "CLI settings: threads=" + std::to_string(options.num_threads) +
       ", memory_cap_gb=" + std::to_string(options.memory_cap_gb) +
@@ -716,6 +767,27 @@ int main(int argc, char **argv) {
     std::cout << e.what() << "\n";
     std::cout << options_description << "\n";
     return 1;
+  }
+
+  if (options.preview_flag) {
+    try {
+      run_requested_mode(options, "");
+    } catch (const std::runtime_error &e) {
+      return print_unexpected_error_and_exit(
+          options_description,
+          std::string("Program terminated unexpectedly with error: ") +
+              e.what());
+    } catch (const std::exception &e) {
+      return print_unexpected_error_and_exit(
+          options_description,
+          std::string(
+              "Program terminated unexpectedly with std::exception: ") +
+              e.what());
+    } catch (...) {
+      return print_unexpected_error_and_exit(options_description,
+                                             "Program terminated unexpectedly");
+    }
+    return 0;
   }
 
   // Isolate intermediate artifacts so cleanup is one directory removal.

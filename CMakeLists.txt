@@ -332,7 +332,7 @@ set(ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 add_subdirectory("${LIBARCHIVE_DIR}" "${CMAKE_BINARY_DIR}/libarchive-build" EXCLUDE_FROM_ALL)
 
-# Core source files shared between spring2 and spring2-preview.
+# Core source files shared by the spring2 executable and tests.
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/generated)
 set(REFERENCE_GENERATED ${CMAKE_BINARY_DIR}/generated/reference_data.cpp)
@@ -367,6 +367,7 @@ set(core_source_files
     ${source_dir}/progress.cpp
     ${source_dir}/bgzf.cpp
     ${source_dir}/assay_detector.cpp
+    ${source_dir}/preview_main.cpp
     ${REFERENCE_GENERATED}
 )
 
@@ -390,33 +391,27 @@ if(WIN32)
 endif()
 
 add_executable(spring2 ${source_dir}/main.cpp ${core_source_files} ${win_resources})
-add_executable(spring2-preview ${source_dir}/preview_main.cpp ${core_source_files} ${win_resources})
 
 # Configure precompiled headers for faster incremental builds
 option(SPRING_ENABLE_PRECOMPILED_HEADERS "Use precompiled headers to speed up compilation" ON)
 if(SPRING_ENABLE_PRECOMPILED_HEADERS)
     target_precompile_headers(spring2 PRIVATE ${source_dir}/pch.h)
-    target_precompile_headers(spring2-preview PRIVATE ${source_dir}/pch.h)
     message(NOTICE "Precompiled headers enabled for faster rebuilds")
 endif()
 
 # Spring headers live in src/, while vendor/ exposes bundled libraries such
 # as BBHash, libbsc, id_compression, qvz, and the vendored libdeflate sources.
 target_include_directories(spring2 PRIVATE ${include_dir})
-target_include_directories(spring2-preview PRIVATE ${include_dir})
 
 if(WIN32)
     target_include_directories(spring2 PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_include_directories(spring2-preview PRIVATE ${CMAKE_SOURCE_DIR}/src)
 endif()
 
 if(SPRING_OPENMP_INCLUDE_DIRS)
     target_include_directories(spring2 SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
-    target_include_directories(spring2-preview SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
 endif()
 
 target_include_directories(spring2 SYSTEM PRIVATE ${LIBARCHIVE_DIR}/libarchive)
-target_include_directories(spring2-preview SYSTEM PRIVATE ${LIBARCHIVE_DIR}/libarchive)
 
 set(spring_libs
     libdeflate::libdeflate_static
@@ -429,26 +424,21 @@ set(spring_libs
 )
 
 target_link_libraries(spring2 PUBLIC ${spring_libs})
-target_link_libraries(spring2-preview PUBLIC ${spring_libs})
 if(TARGET OpenMP::OpenMP_CXX)
     target_link_libraries(spring2 PUBLIC OpenMP::OpenMP_CXX)
 endif()
 
 if(WIN32)
     target_link_libraries(spring2 PRIVATE ws2_32 psapi)
-    target_link_libraries(spring2-preview PRIVATE ws2_32 psapi)
 endif()
 
 target_compile_definitions(spring2 PRIVATE SPRING_RAPIDGZIP_EXECUTABLE=\"$<TARGET_FILE:rapidgzip>\")
-target_compile_definitions(spring2-preview PRIVATE SPRING_RAPIDGZIP_EXECUTABLE=\"$<TARGET_FILE:rapidgzip>\")
 
 if(WIN32)
     target_compile_definitions(spring2 PRIVATE IDOFILE_PATH_ROOT=\".spring-idtmp/idoFile.\")
-    target_compile_definitions(spring2-preview PRIVATE IDOFILE_PATH_ROOT=\".spring-idtmp/idoFile.\")
 endif()
 
 add_dependencies(spring2 rapidgzip)
-add_dependencies(spring2-preview rapidgzip)
 
 # On Windows with GNU toolchain: support static linking of GCC runtimes
 if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -532,11 +522,9 @@ if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         # Prefer modern CMake link options when available
         if(COMMAND target_link_options)
             target_link_options(spring2 PRIVATE -static)
-            target_link_options(spring2-preview PRIVATE -static)
             target_link_options(rapidgzip PRIVATE -static)
         else()
             set_property(TARGET spring2 APPEND_STRING PROPERTY LINK_FLAGS " -static")
-            set_property(TARGET spring2-preview APPEND_STRING PROPERTY LINK_FLAGS " -static")
             set_property(TARGET rapidgzip APPEND_STRING PROPERTY LINK_FLAGS " -static")
         endif()
     else()
@@ -545,15 +533,12 @@ if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         add_custom_target(copy_runtime_dlls ALL
             COMMENT "Copying GCC runtime DLLs next to spring2 executable"
         )
-        add_dependencies(copy_runtime_dlls spring2 spring2-preview rapidgzip)
+        add_dependencies(copy_runtime_dlls spring2 rapidgzip)
         foreach(_src IN LISTS SPRING_RUNTIME_DLL_PATHS)
             get_filename_component(_dll "${_src}" NAME)
             if(EXISTS "${_src}")
                 add_custom_command(TARGET copy_runtime_dlls POST_BUILD
                     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_src}" "$<TARGET_FILE_DIR:spring2>/${_dll}"
-                )
-                add_custom_command(TARGET copy_runtime_dlls POST_BUILD
-                    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_src}" "$<TARGET_FILE_DIR:spring2-preview>/${_dll}"
                 )
                 add_custom_command(TARGET copy_runtime_dlls POST_BUILD
                     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_src}" "$<TARGET_FILE_DIR:rapidgzip>/${_dll}"
@@ -572,7 +557,7 @@ elseif(UNIX AND NOT WIN32)
 endif()
 
 if(DEFINED SPRING_INSTALL_RPATH)
-    foreach(_target IN ITEMS spring2 spring2-preview rapidgzip)
+    foreach(_target IN ITEMS spring2 rapidgzip)
         set_target_properties(${_target} PROPERTIES
             BUILD_WITH_INSTALL_RPATH OFF
             INSTALL_RPATH "${SPRING_INSTALL_RPATH}"
@@ -621,7 +606,7 @@ elseif(UNIX)
         "libomp.so")
 endif()
 
-set(INSTALL_TARGETS spring2 spring2-preview rapidgzip)
+set(INSTALL_TARGETS spring2 rapidgzip)
 install(TARGETS ${INSTALL_TARGETS}
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
@@ -695,13 +680,13 @@ if(WIN32)
     if(POWERSHELL_PATH)
         add_test(NAME smoke_tests COMMAND ${POWERSHELL_PATH} -ExecutionPolicy Bypass -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/smoke_test.ps1)
         set_tests_properties(smoke_tests PROPERTIES
-            ENVIRONMENT "SPRING_BIN=$<TARGET_FILE:spring2>;SPRING_PREVIEW_BIN=$<TARGET_FILE:spring2-preview>"
+            ENVIRONMENT "SPRING_BIN=$<TARGET_FILE:spring2>;SPRING_PREVIEW_BIN=$<TARGET_FILE:spring2>"
         )
     endif()
 else()
     # Linux/macOS: Use Bash version
     add_test(NAME smoke_tests COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/smoke_test.sh)
     set_tests_properties(smoke_tests PROPERTIES
-        ENVIRONMENT "SPRING_BIN=$<TARGET_FILE:spring2>;SPRING_PREVIEW_BIN=$<TARGET_FILE:spring2-preview>"
+        ENVIRONMENT "SPRING_BIN=$<TARGET_FILE:spring2>;SPRING_PREVIEW_BIN=$<TARGET_FILE:spring2>"
     )
 endif()

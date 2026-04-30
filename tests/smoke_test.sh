@@ -42,7 +42,7 @@ if [[ "$BUILD_DIR" != /* ]]; then
 	BUILD_DIR="$ROOT_DIR/$BUILD_DIR"
 fi
 SPRING_BIN="${SPRING_BIN:-$BUILD_DIR/spring2}"
-SPRING_PREVIEW_BIN="${SPRING_PREVIEW_BIN:-$BUILD_DIR/spring2-preview}"
+SPRING_PREVIEW_BIN="${SPRING_PREVIEW_BIN:-$SPRING_BIN}"
 SPRING_BIN_CMD=()
 SPRING_PREVIEW_BIN_CMD=()
 SPRING_TEST_ARGS_CMD=()
@@ -121,7 +121,7 @@ dump_system_diagnostics() {
 	fi
 	if [[ -x "$SPRING_PREVIEW_BIN" ]]; then
 		preview_version=$($SPRING_PREVIEW_BIN --version 2>&1 | head -n 1)
-		echo "  spring2-preview: $preview_version" >&2
+		echo "  spring2 preview mode: $preview_version" >&2
 	fi
 }
 
@@ -173,19 +173,14 @@ ensure_smoke_binaries() {
 		exit 1
 	fi
 
-	echo "Building smoke binaries (spring2, spring2-preview)..."
-	cmake --build "$BUILD_DIR" --target spring2 spring2-preview --parallel
+	echo "Building smoke binaries (spring2)..."
+	cmake --build "$BUILD_DIR" --target spring2 --parallel
 }
 
 ensure_smoke_binaries
 
 if [[ ! -x "$SPRING_BIN" ]]; then
 	echo "Expected built binary at $SPRING_BIN"
-	exit 1
-fi
-
-if [[ ! -x "$SPRING_PREVIEW_BIN" ]]; then
-	echo "Expected built binary at $SPRING_PREVIEW_BIN"
 	exit 1
 fi
 
@@ -196,10 +191,10 @@ if [[ -n "${SPRING_BIN_WRAPPER:-}" ]]; then
 	SPRING_BIN_CMD+=("$SPRING_BIN")
 	# shellcheck disable=SC2206
 	SPRING_PREVIEW_BIN_CMD=(${SPRING_BIN_WRAPPER})
-	SPRING_PREVIEW_BIN_CMD+=("$SPRING_PREVIEW_BIN")
+	SPRING_PREVIEW_BIN_CMD+=("$SPRING_PREVIEW_BIN" -p)
 else
 	SPRING_BIN_CMD=("$SPRING_BIN")
-	SPRING_PREVIEW_BIN_CMD=("$SPRING_PREVIEW_BIN")
+	SPRING_PREVIEW_BIN_CMD=("$SPRING_PREVIEW_BIN" -p)
 fi
 
 if [[ -n "${SPRING_TEST_ARGS:-}" ]]; then

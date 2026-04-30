@@ -155,10 +155,7 @@ TEST_CASE("Archive Integrity Verification Test") {
 
   // 2. Verify (should pass)
   std::string spring2_path = SPRING2_EXECUTABLE;
-  std::string preview_path =
-      fs::path(spring2_path).parent_path().string() + "/spring2-preview";
-
-  std::string audit_cmd = preview_path + " -a " + archive_sp;
+  std::string audit_cmd = spring2_path + " -p -a " + archive_sp;
   CHECK(std::system(audit_cmd.c_str()) == 0);
 
   // 3. Corrupt the archive
@@ -185,7 +182,8 @@ TEST_CASE("Archive Integrity Verification Test") {
   // or clearly corrupted metadata output.
   std::string audit_log = test_dir + "/corrupt_audit.log";
   std::string audit_corrupt_cmd =
-      preview_path + " -a " + corrupted_sp + " > " + audit_log + " 2>&1";
+      spring2_path + " -p -a " + corrupted_sp + " > " + audit_log +
+      " 2>&1";
   int ret = std::system(audit_corrupt_cmd.c_str());
 
   bool audit_detected_corruption = (ret != 0);
@@ -293,11 +291,9 @@ TEST_CASE("ATAC adapter stripping round-trips and is recorded") {
   const std::string decompress_atac_cmd =
       std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_atac + " -o " +
       output_fastq + " -w " + test_dir + "/work_roundtrip -t 1";
-  const std::string spring2_path = SPRING2_EXECUTABLE;
-  const std::string preview_path =
-      fs::path(spring2_path).parent_path().string() + "/spring2-preview";
-  const std::string preview_cmd =
-      preview_path + " " + archive_atac + " > " + preview_log + " 2>&1";
+    const std::string spring2_path = SPRING2_EXECUTABLE;
+    const std::string preview_cmd =
+      spring2_path + " -p " + archive_atac + " > " + preview_log + " 2>&1";
 
   REQUIRE(std::system(compress_atac_cmd.c_str()) == 0);
   REQUIRE(std::system(decompress_atac_cmd.c_str()) == 0);
@@ -344,11 +340,9 @@ TEST_CASE("Sparse ATAC read-through keeps adapter stripping disabled") {
   const std::string decompress_atac_cmd =
       std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_atac + " -o " +
       output_fastq + " -w " + test_dir + "/work_roundtrip -t 1";
-  const std::string spring2_path = SPRING2_EXECUTABLE;
-  const std::string preview_path =
-      fs::path(spring2_path).parent_path().string() + "/spring2-preview";
-  const std::string preview_cmd =
-      preview_path + " " + archive_atac + " > " + preview_log + " 2>&1";
+    const std::string spring2_path = SPRING2_EXECUTABLE;
+    const std::string preview_cmd =
+      spring2_path + " -p " + archive_atac + " > " + preview_log + " 2>&1";
 
   REQUIRE(std::system(compress_atac_cmd.c_str()) == 0);
   REQUIRE(std::system(decompress_atac_cmd.c_str()) == 0);
@@ -406,11 +400,9 @@ TEST_CASE("Grouped sc-ATAC auto mode round-trips with N-containing reads") {
       std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_path + " -o " +
       out_r1 + " " + out_r2 + " " + out_r3 + " " + out_i1 + " -w " + test_dir +
       "/work_decompress -t 1";
-  const std::string spring2_path = SPRING2_EXECUTABLE;
-  const std::string preview_path =
-      fs::path(spring2_path).parent_path().string() + "/spring2-preview";
-  const std::string preview_cmd =
-      preview_path + " " + archive_path + " > " + preview_log + " 2>&1";
+    const std::string spring2_path = SPRING2_EXECUTABLE;
+    const std::string preview_cmd =
+      spring2_path + " -p " + archive_path + " > " + preview_log + " 2>&1";
 
   REQUIRE(std::system(compress_cmd.c_str()) == 0);
   REQUIRE(std::system(decompress_cmd.c_str()) == 0);
@@ -478,11 +470,9 @@ TEST_CASE("Grouped sc-RNA index IDs are reconstructed from I1/I2 reads") {
       std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_auto + " -o " +
       out_r1 + " " + out_r2 + " " + out_i1 + " " + out_i2 + " -w " + test_dir +
       "/work_roundtrip -t 1";
-  const std::string spring2_path = SPRING2_EXECUTABLE;
-  const std::string preview_path =
-      fs::path(spring2_path).parent_path().string() + "/spring2-preview";
-  const std::string preview_cmd =
-      preview_path + " " + archive_auto + " > " + preview_log + " 2>&1";
+    const std::string spring2_path = SPRING2_EXECUTABLE;
+    const std::string preview_cmd =
+      spring2_path + " -p " + archive_auto + " > " + preview_log + " 2>&1";
 
   REQUIRE(std::system(compress_auto_cmd.c_str()) == 0);
   REQUIRE(std::system(compress_dna_cmd.c_str()) == 0);

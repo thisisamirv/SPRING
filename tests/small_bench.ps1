@@ -6,13 +6,11 @@ $SCRIPT_DIR = $PSScriptRoot
 $ROOT_DIR = (Get-Item (Join-Path $SCRIPT_DIR "..")).FullName
 $BUILD_DIR = Join-Path $ROOT_DIR "build"
 $SPRING_BIN_NAME = if ($IsWindows) { "spring2.exe" } else { "spring2" }
-$SPRING_PREVIEW_NAME = if ($IsWindows) { "spring2-preview.exe" } else { "spring2-preview" }
 $RAPIDGZIP_NAME = if ($IsWindows) { "rapidgzip.exe" } else { "rapidgzip" }
 $SPRING_BIN_DEFAULT = Join-Path $BUILD_DIR $SPRING_BIN_NAME
-$SPRING_PREVIEW_DEFAULT = Join-Path $BUILD_DIR $SPRING_PREVIEW_NAME
 $RAPIDGZIP_DEFAULT = Join-Path $BUILD_DIR (Join-Path "indexed_bzip2-build\src\tools" $RAPIDGZIP_NAME)
 $SPRING_BIN = if ($env:SPRING_BIN) { $env:SPRING_BIN } else { $SPRING_BIN_DEFAULT }
-$SPRING_PREVIEW_BIN = if ($env:SPRING_PREVIEW_BIN) { $env:SPRING_PREVIEW_BIN } else { $SPRING_PREVIEW_DEFAULT }
+$SPRING_PREVIEW_BIN = if ($env:SPRING_PREVIEW_BIN) { $env:SPRING_PREVIEW_BIN } else { $SPRING_BIN }
 $RAPIDGZIP_BIN = if ($env:RAPIDGZIP_BIN) { $env:RAPIDGZIP_BIN } else { $RAPIDGZIP_DEFAULT }
 $THREADS = if ($env:THREADS) { [int]$env:THREADS } else { 8 }
 
@@ -127,7 +125,7 @@ function Get-ArchiveAssayLabel($archivePath) {
     }
 
     try {
-        $previewOutput = & $SPRING_PREVIEW_BIN $archivePath 2>$null
+        $previewOutput = & $SPRING_PREVIEW_BIN -p $archivePath 2>$null
         foreach ($line in $previewOutput) {
             if ($line -match '^Assay Type:\s*(.+)$') {
                 return $matches[1].Trim()

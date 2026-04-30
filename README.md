@@ -120,14 +120,14 @@ decompression with a single `-o <prefix>` emits grouped outputs using suffixes
 
 ## Previewing Archives
 
-You can use the `spring2-preview` tool to quickly inspect archive metadata, original filenames, and custom notes. It also provides a high-speed **Audit** mode to verify archive integrity without full decompression:
+You can use `spring2 --preview` to quickly inspect archive metadata, original filenames, and custom notes. It also provides a high-speed **Audit** mode to verify archive integrity without full decompression:
 
 ```bash
 # Display metadata preview
-spring2-preview archive.sp
+spring2 --preview archive.sp
 
 # Perform a high-speed integrity audit (dry-run)
-spring2-preview --audit archive.sp
+spring2 --preview --audit archive.sp
 ```
 
 Example:
