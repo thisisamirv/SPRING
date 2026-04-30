@@ -262,6 +262,11 @@ spring_supports_gzip_flag() {
 	"$runner" --help 2>&1 | grep -q 'gzipped-fastq'
 }
 
+is_spring_v1_label() {
+	local label="$1"
+	[[ "$label" == "spring_v1" ]]
+}
+
 write_metrics_file() {
 	local metrics_path="$1"
 	shift
@@ -450,17 +455,30 @@ run_benchmark() {
 
 	local spring_args=(
 		-c
-		--R1 "$INPUT_ABS_1"
 	)
-	if [[ -n "$INPUT_ABS_2" ]]; then
-		spring_args+=(--R2 "$INPUT_ABS_2")
+	if is_spring_v1_label "$label"; then
+		spring_args+=(-i "$INPUT_ABS_1")
+		if [[ -n "$INPUT_ABS_2" ]]; then
+			spring_args+=("$INPUT_ABS_2")
+		fi
+		spring_args+=(
+			-o "$output_file"
+			-w "$work_dir"
+			-t "$THREADS"
+			-q lossless
+		)
+	else
+		spring_args+=(--R1 "$INPUT_ABS_1")
+		if [[ -n "$INPUT_ABS_2" ]]; then
+			spring_args+=(--R2 "$INPUT_ABS_2")
+		fi
+		spring_args+=(
+			-o "$output_file"
+			-w "$work_dir"
+			-t "$THREADS"
+			-q lossless
+		)
 	fi
-	spring_args+=(
-		-o "$output_file"
-		-w "$work_dir"
-		-t "$THREADS"
-		-q lossless
-	)
 	if ((${MAX_READ_LENGTH} > ${MAX_SHORT_READ_LENGTH})) && [[ "$label" == "spring_v1" ]]; then
 		spring_args+=(-l)
 	fi
@@ -476,9 +494,21 @@ run_benchmark() {
 
 	local decompress_args=(
 		-d
-		-i "$output_file"
-		-o "$decompressed_output_file"
 	)
+	if is_spring_v1_label "$label"; then
+		decompress_args+=(
+			-i "$output_file"
+			-o "$decompressed_output_file"
+		)
+	else
+		decompress_args+=(
+			-i "$output_file"
+			-o "$decompressed_output_file"
+		)
+	fi
+	if [[ "$output_file" == *.gz ]] && spring_supports_gzip_flag "$runner"; then
+		decompress_args=(-g "${decompress_args[@]}")
+	fi
 
 	run_with_resource_log "$decompress_resource_log" "$runner" "${decompress_args[@]}"
 
