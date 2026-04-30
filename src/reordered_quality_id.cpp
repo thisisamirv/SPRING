@@ -561,6 +561,53 @@ void reorder_compress_quality_id(const std::string &temp_dir,
       }
     }
   }
+
+  if (cp.encoding.atac_adapter_stripped) {
+    SPRING_LOG_INFO("Reordering ATAC adapter tails");
+    for (int stream_index = 0; stream_index < 2; stream_index++) {
+      if (stream_index == 1 && !paired_end)
+        continue;
+      std::string adapter_path = base_dir + "/atac_adapter_" +
+                                 std::to_string(stream_index + 1) + ".bin";
+      if (!std::filesystem::exists(adapter_path))
+        continue;
+
+      const uint32_t file_read_count = reads_per_file(num_reads, paired_end);
+      struct AdapterRecord {
+        uint8_t info;
+        std::string qual;
+      };
+      std::vector<AdapterRecord> adapters(file_read_count);
+      std::ifstream adapter_in(adapter_path, std::ios::binary);
+      for (uint32_t i = 0; i < file_read_count; i++) {
+        uint8_t info = 0;
+        adapter_in.read(reinterpret_cast<char *>(&info), sizeof(uint8_t));
+        adapters[i].info = info;
+        const uint32_t overlap = info >> 1;
+        if (overlap > 0) {
+          adapters[i].qual.resize(overlap);
+          adapter_in.read(&adapters[i].qual[0], overlap);
+        }
+      }
+      adapter_in.close();
+
+      std::vector<AdapterRecord> reordered_adapters(file_read_count);
+      for (uint32_t i = 0; i < file_read_count; i++) {
+        reordered_adapters[reordered_positions[i]] = std::move(adapters[i]);
+      }
+
+      std::ofstream adapter_out(adapter_path, std::ios::binary);
+      for (uint32_t i = 0; i < file_read_count; i++) {
+        adapter_out.write(
+            reinterpret_cast<const char *>(&reordered_adapters[i].info),
+            sizeof(uint8_t));
+        const uint32_t overlap = reordered_adapters[i].info >> 1;
+        if (overlap > 0) {
+          adapter_out.write(reordered_adapters[i].qual.data(), overlap);
+        }
+      }
+    }
+  }
 }
 
 } // namespace spring

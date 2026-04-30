@@ -18,6 +18,10 @@ constexpr uint32_t MAX_NUM_READS = 4294967290U;
 // Runs of exactly this length are kept; only strictly longer runs are stripped.
 constexpr uint32_t POLY_AT_TAIL_MIN_LEN = 20;
 
+// Minimum terminal overlap against the canonical Tn5/Nextera mosaic-end
+// adapter required before the overlap is stripped for ATAC assays.
+constexpr uint32_t ATAC_ADAPTER_MIN_MATCH = 12;
+
 // Reordering parameters.
 constexpr int NUM_DICT_REORDER = 2;
 constexpr int MAX_SEARCH_REORDER = 1000;
@@ -74,11 +78,16 @@ struct compression_params {
     char depleted_base = 'N';
     bool cb_prefix_source_external =
         false; // Compression-time only: CB comes from I1/external lane.
-    bool poly_at_stripped = false;   // True when poly-A/T tail stripping was
-                                     // applied during RNA-mode compression.
+    bool poly_at_stripped = false; // True when poly-A/T tail stripping was
+                                   // applied during RNA-mode compression.
+    bool atac_adapter_stripped =
+        false; // True when ATAC adapter read-through stripping was applied.
     bool cb_prefix_stripped = false; // True when CB prefix was extracted from
                                      // R1 and stored in cb_prefix.dna.bsc.
     uint32_t cb_prefix_len = 0;      // Number of bases stripped from R1 start.
+    bool index_id_suffix_reconstructed =
+        false; // True when grouped sc-RNA index IDs omit the trailing I1/I2
+               // token and restore it from decoded index reads.
   } encoding;
 
   struct QualityConfig {

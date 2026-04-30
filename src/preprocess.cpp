@@ -14,6 +14,7 @@
 #include <omp.h>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "core_utils.h"
@@ -42,7 +43,8 @@ struct short_read_thread_buffers {
   std::string clean_read_bytes;
   std::string n_read_bytes;
   std::vector<uint32_t> n_read_positions;
-  std::string tail_info_bytes; // Per-clean-read uint16_t tail encodings
+  std::string tail_info_bytes;    // Per-clean-read uint16_t tail encodings
+  std::string atac_adapter_bytes; // Per-clean-read ATAC adapter encodings
   uint32_t clean_read_count = 0;
 };
 
@@ -85,6 +87,65 @@ uint16_t detect_and_strip_tail(std::string &read_str, uint32_t &read_length) {
   read_length -= run;
   read_str.resize(read_length);
   return static_cast<uint16_t>((run << 1) | (last == 'T' ? 1 : 0));
+}
+
+// Strip terminal Tn5/Nextera adapter read-through from the 3' end of a read.
+// Returns a uint8_t encoding: bit 0 = adapter id (0=forward, 1=reverse
+// complement), bits 7:1 = overlap length. Returns 0 if nothing was stripped.
+uint8_t detect_and_strip_atac_adapter_tail(std::string &read_str,
+                                           uint32_t &read_length) {
+  static constexpr std::array<std::string_view, 2> kAdapters = {
+      "CTGTCTCTTATACACATCT", "AGATGTGTATAAGAGACAG"};
+
+  for (uint16_t adapter_id = 0; adapter_id < kAdapters.size(); ++adapter_id) {
+    const std::string_view adapter = kAdapters[adapter_id];
+    const uint32_t max_overlap =
+        std::min<uint32_t>(read_length, static_cast<uint32_t>(adapter.size()));
+    for (uint32_t overlap = max_overlap; overlap >= ATAC_ADAPTER_MIN_MATCH;
+         --overlap) {
+      const size_t read_offset = static_cast<size_t>(read_length - overlap);
+      if (read_str.compare(read_offset, overlap,
+                           adapter.substr(0, overlap).data(), overlap) == 0) {
+        read_length -= overlap;
+        read_str.resize(read_length);
+        return static_cast<uint8_t>((overlap << 1) | adapter_id);
+      }
+      if (overlap == ATAC_ADAPTER_MIN_MATCH)
+        break;
+    }
+  }
+
+  return 0;
+}
+
+bool is_grouped_index_archive_note(const std::string &note) {
+  return note.find("index-group") != std::string::npos;
+}
+
+bool strip_grouped_index_suffix_from_id(std::string &id,
+                                        const std::string &stream_1_seq,
+                                        const bool paired_index) {
+  const size_t last_colon = id.rfind(':');
+  if (last_colon == std::string::npos || last_colon + 1 >= id.size()) {
+    return false;
+  }
+
+  const std::string_view suffix(id.data() + last_colon + 1,
+                                id.size() - last_colon - 1);
+  if (paired_index) {
+    const size_t plus = suffix.find('+');
+    if (plus == std::string::npos || plus == 0) {
+      return false;
+    }
+    if (suffix.substr(0, plus) != stream_1_seq) {
+      return false;
+    }
+  } else if (suffix != stream_1_seq) {
+    return false;
+  }
+
+  id.resize(last_colon + 1);
+  return true;
 }
 
 void append_encoded_dna_bits(std::string &buffer, const std::string &read) {
@@ -153,7 +214,8 @@ void append_encoded_dna_n_bits(std::string &buffer, const std::string &read) {
 uint32_t flush_short_read_thread_buffers(
     const std::vector<short_read_thread_buffers> &thread_buffers,
     std::ofstream &clean_output, std::ofstream &n_read_output,
-    std::ofstream &n_read_order_output, std::ofstream *tail_output) {
+    std::ofstream &n_read_order_output, std::ofstream *tail_output,
+    std::ofstream *atac_adapter_output) {
   uint32_t clean_read_count = 0;
   for (const short_read_thread_buffers &thread_buffer : thread_buffers) {
     if (!thread_buffer.clean_read_bytes.empty()) {
@@ -176,6 +238,11 @@ uint32_t flush_short_read_thread_buffers(
       tail_output->write(
           thread_buffer.tail_info_bytes.data(),
           static_cast<std::streamsize>(thread_buffer.tail_info_bytes.size()));
+    }
+    if (atac_adapter_output && !thread_buffer.atac_adapter_bytes.empty()) {
+      atac_adapter_output->write(thread_buffer.atac_adapter_bytes.data(),
+                                 static_cast<std::streamsize>(
+                                     thread_buffer.atac_adapter_bytes.size()));
     }
     clean_read_count += thread_buffer.clean_read_count;
   }
@@ -574,6 +641,13 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       (cp.read_info.assay_confidence == "N/A" ||
        cp.read_info.assay_confidence.starts_with("high"));
 
+  const bool apply_atac_adapter_strip =
+      !fasta_input && !cp.encoding.long_flag &&
+      (cp.read_info.assay == "atac" || cp.read_info.assay == "sc-atac") &&
+      (cp.read_info.assay_confidence == "N/A" ||
+       cp.read_info.assay_confidence.starts_with("high") ||
+       cp.read_info.assay_confidence.starts_with("medium"));
+
   std::array<std::ofstream, 2> tail_outputs;
   if (apply_poly_at) {
     tail_outputs[0].open(temp_dir + "/tail_1.bin", std::ios::binary);
@@ -586,6 +660,23 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
     }
     SPRING_LOG_DEBUG("poly-A/T tail stripping enabled (min run length > " +
                      std::to_string(POLY_AT_TAIL_MIN_LEN) + " bp)");
+  }
+
+  std::array<std::ofstream, 2> atac_adapter_outputs;
+  if (apply_atac_adapter_strip) {
+    atac_adapter_outputs[0].open(temp_dir + "/atac_adapter_1.bin",
+                                 std::ios::binary);
+    if (!atac_adapter_outputs[0])
+      throw std::runtime_error("Failed to open atac_adapter_1.bin for writing");
+    if (cp.encoding.paired_end) {
+      atac_adapter_outputs[1].open(temp_dir + "/atac_adapter_2.bin",
+                                   std::ios::binary);
+      if (!atac_adapter_outputs[1])
+        throw std::runtime_error(
+            "Failed to open atac_adapter_2.bin for writing");
+    }
+    SPRING_LOG_DEBUG("ATAC adapter stripping enabled (min overlap >= " +
+                     std::to_string(ATAC_ADAPTER_MIN_MATCH) + " bp)");
   }
 
   // Determine whether single-cell barcode prefix stripping should be applied.
@@ -604,7 +695,15 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   const bool apply_cb_strip =
       !cp.encoding.long_flag && cp.encoding.preserve_order &&
       !cp.encoding.cb_prefix_source_external && cp.encoding.cb_len > 0 &&
-      cp.read_info.assay == "sc-rna";
+      cp.read_info.assay == "sc-rna" &&
+      !is_grouped_index_archive_note(cp.read_info.note);
+  const bool maybe_strip_grouped_index_id_suffix =
+      !cp.encoding.long_flag && cp.encoding.preserve_order &&
+      cp.encoding.preserve_id && cp.read_info.assay == "sc-rna" &&
+      is_grouped_index_archive_note(cp.read_info.note);
+  bool grouped_index_id_suffix_strip_active = false;
+  bool grouped_index_id_suffix_strip_decided =
+      !maybe_strip_grouped_index_id_suffix;
 
   std::ofstream cb_seq_output, cb_qual_output;
   if (apply_cb_strip) {
@@ -743,6 +842,9 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
         bool any_stripped = false;
         // Strip serially — modifies read_array and read_lengths_array in place.
         for (uint32_t ri = 0; ri < reads_in_step; ++ri) {
+          if (read_contains_N_array[ri] != 0) {
+            continue;
+          }
           const uint16_t strip_info =
               detect_and_strip_tail(read_array[ri], read_lengths_array[ri]);
           step_tail_info[ri] = strip_info;
@@ -754,8 +856,60 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
           cp.encoding.poly_at_stripped = true;
       }
 
+      std::vector<uint8_t> step_atac_adapter_info;
+      if (apply_atac_adapter_strip && reads_in_step > 0) {
+        step_atac_adapter_info.resize(reads_in_step, 0);
+        bool any_stripped = false;
+        for (uint32_t ri = 0; ri < reads_in_step; ++ri) {
+          if (read_contains_N_array[ri] != 0) {
+            continue;
+          }
+          const uint8_t strip_info = detect_and_strip_atac_adapter_tail(
+              read_array[ri], read_lengths_array[ri]);
+          step_atac_adapter_info[ri] = strip_info;
+          if ((strip_info >> 1) > 0) {
+            any_stripped = true;
+          }
+        }
+        if (any_stripped)
+          cp.encoding.atac_adapter_stripped = true;
+      }
+
       // Sequence CRC was already computed by read_fastq_block above on original
       // data, matching what decompression will compute after full restoration.
+
+      if (maybe_strip_grouped_index_id_suffix && stream_index == 0 &&
+          reads_in_step > 0) {
+        if (!grouped_index_id_suffix_strip_decided) {
+          grouped_index_id_suffix_strip_active = true;
+          for (uint32_t ri = 0; ri < reads_in_step; ++ri) {
+            std::string candidate_id = id_array[ri];
+            if (!strip_grouped_index_suffix_from_id(
+                    candidate_id, read_array[ri], cp.encoding.paired_end)) {
+              grouped_index_id_suffix_strip_active = false;
+              break;
+            }
+          }
+          grouped_index_id_suffix_strip_decided = true;
+          if (grouped_index_id_suffix_strip_active) {
+            SPRING_LOG_DEBUG(
+                "Grouped sc-RNA index-ID suffix stripping enabled "
+                "(reconstruct trailing I1/I2 token from index reads)");
+          }
+        }
+
+        if (grouped_index_id_suffix_strip_active) {
+          for (uint32_t ri = 0; ri < reads_in_step; ++ri) {
+            if (!strip_grouped_index_suffix_from_id(
+                    id_array[ri], read_array[ri], cp.encoding.paired_end)) {
+              throw std::runtime_error(
+                  "Grouped sc-RNA index-ID suffix stripping became "
+                  "inconsistent across reads.");
+            }
+          }
+          cp.encoding.index_id_suffix_reconstructed = true;
+        }
+      }
 
       // Single-cell R1 prefix stripping must happen AFTER CRC computation but
       // BEFORE quality/read compression so that compressed data uses the
@@ -849,7 +1003,8 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
               read_length_output.write(
                   byte_ptr(&read_lengths_array[read_index]), sizeof(uint32_t));
 
-            if (stream_index == 1 && paired_id_match_array[thread_id])
+            if (stream_index == 1 && paired_id_match_array[thread_id] &&
+                !grouped_index_id_suffix_strip_active)
               paired_id_match_array[thread_id] =
                   check_id_pattern(id_array_1[read_index],
                                    id_array_2[read_index], paired_id_code);
@@ -949,6 +1104,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
           thread_buffer.n_read_bytes.clear();
           thread_buffer.n_read_positions.clear();
           thread_buffer.tail_info_bytes.clear();
+          thread_buffer.atac_adapter_bytes.clear();
           thread_buffer.clean_read_count = 0;
         }
 
@@ -1002,14 +1158,36 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                 append_uint16(thread_buffer.tail_info_bytes, 0);
               }
             }
+            if (apply_atac_adapter_strip) {
+              uint8_t info = 0;
+              if (read_contains_N_array[read_index] == 0 &&
+                  !step_atac_adapter_info.empty()) {
+                info = step_atac_adapter_info[read_index];
+                std::string &qual = quality_array[read_index];
+                const uint32_t strip_len = info >> 1;
+                if (strip_len > 0) {
+                  const std::string adapter_qual =
+                      qual.substr(qual.size() - strip_len);
+                  qual.resize(qual.size() - strip_len);
+                  thread_buffer.atac_adapter_bytes.push_back(
+                      static_cast<char>(info));
+                  thread_buffer.atac_adapter_bytes.append(adapter_qual);
+                } else {
+                  thread_buffer.atac_adapter_bytes.push_back('\0');
+                }
+              } else {
+                thread_buffer.atac_adapter_bytes.push_back('\0');
+              }
+            }
           }
         }
 
         num_reads_clean[stream_index] += flush_short_read_thread_buffers(
             short_read_buffers, clean_outputs[stream_index],
             n_read_outputs[stream_index], n_read_order_outputs[stream_index],
-            apply_poly_at ? &tail_outputs[stream_index] : nullptr);
-
+            apply_poly_at ? &tail_outputs[stream_index] : nullptr,
+            apply_atac_adapter_strip ? &atac_adapter_outputs[stream_index]
+                                     : nullptr);
         if (!cp.encoding.preserve_order) {
           quality_chunk.clear();
           id_chunk.clear();
@@ -1080,6 +1258,23 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       if (std::filesystem::exists(cb_qual_path)) {
         bsc::BSC_compress(cb_qual_path.c_str(), cb_qual_compressed.c_str());
         remove(cb_qual_path.c_str());
+      }
+    }
+  }
+  if (apply_atac_adapter_strip) {
+    for (int stream_index = 0; stream_index < 2; ++stream_index) {
+      if (stream_index == 1 && !cp.encoding.paired_end)
+        continue;
+      if (atac_adapter_outputs[stream_index].is_open())
+        atac_adapter_outputs[stream_index].close();
+
+      const std::string adapter_path = temp_dir + "/atac_adapter_" +
+                                       std::to_string(stream_index + 1) +
+                                       ".bin";
+      const std::string adapter_compressed = adapter_path + ".bsc";
+      if (std::filesystem::exists(adapter_path)) {
+        bsc::BSC_compress(adapter_path.c_str(), adapter_compressed.c_str());
+        remove(adapter_path.c_str());
       }
     }
   }

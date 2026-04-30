@@ -5,6 +5,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <string_view>
 
 #ifndef SPRING2_EXECUTABLE
 #define SPRING2_EXECUTABLE "spring2"
@@ -30,6 +31,82 @@ void create_dummy_fastq(const std::string &path, int num_records) {
     ofs << read << "\n";
     ofs << "+\n";
     ofs << std::string(read_len, 'I') << "\n";
+  }
+}
+
+void create_atac_like_fastq(const std::string &path, int num_records) {
+  std::ofstream ofs(path, std::ios::binary);
+  static constexpr std::string_view kAdapter = "CTGTCTCTTATACACATCT";
+  constexpr int read_len = 80;
+  constexpr int overlap = static_cast<int>(kAdapter.size());
+
+  for (int i = 0; i < num_records; ++i) {
+    const int insert_len = read_len - overlap;
+    std::string read;
+    read.reserve(read_len);
+    static constexpr char kBaseCycle[] = {'A', 'C', 'G', 'T'};
+    uint32_t state = static_cast<uint32_t>(0x9E3779B9u ^ (i * 2654435761u));
+    for (int j = 0; j < insert_len; ++j) {
+      state = state * 1664525u + 1013904223u;
+      read.push_back(kBaseCycle[(state >> 30) & 0x03]);
+    }
+    if (i % 7 == 0) {
+      read[static_cast<size_t>((i / 7) % insert_len)] = 'N';
+    }
+    read.append(kAdapter);
+
+    ofs << "@atac_read_" << i << "\n";
+    ofs << read << "\n";
+    ofs << "+\n";
+    ofs << std::string(static_cast<size_t>(read_len), 'I') << "\n";
+  }
+}
+
+void create_grouped_sc_rna_like_fastqs(const std::string &r1_path,
+                                       const std::string &r2_path,
+                                       const std::string &i1_path,
+                                       const std::string &i2_path,
+                                       int num_records) {
+  std::ofstream r1(r1_path, std::ios::binary);
+  std::ofstream r2(r2_path, std::ios::binary);
+  std::ofstream i1(i1_path, std::ios::binary);
+  std::ofstream i2(i2_path, std::ios::binary);
+  constexpr int read_len = 151;
+  static constexpr char kBaseCycle[] = {'A', 'C', 'G', 'T'};
+
+  for (int record = 0; record < num_records; ++record) {
+    std::string cb1(10, 'A');
+    std::string cb2(10, 'C');
+    for (int j = 0; j < 10; ++j) {
+      cb1[static_cast<size_t>(j)] = kBaseCycle[(record + j) % 4];
+      cb2[static_cast<size_t>(j)] = kBaseCycle[((record / 4) + j + 1) % 4];
+    }
+
+    std::string seq1;
+    std::string seq2;
+    seq1.reserve(read_len);
+    seq2.reserve(read_len);
+    for (int j = 0; j < read_len; ++j) {
+      seq1.push_back(kBaseCycle[(record + j * 3) % 4]);
+      seq2.push_back(kBaseCycle[(record + j * 5 + 1) % 4]);
+    }
+    seq1.replace(static_cast<size_t>(read_len - 30), 30, std::string(30, 'T'));
+    seq2.replace(static_cast<size_t>(read_len - 28), 28, std::string(28, 'A'));
+
+    const std::string suffix = cb1 + "+" + cb2;
+    const std::string id1 =
+        "@scrna_" + std::to_string(record) + " 1:N:0:" + suffix;
+    const std::string id2 =
+        "@scrna_" + std::to_string(record) + " 2:N:0:" + suffix;
+
+    r1 << id1 << "\n"
+       << seq1 << "\n+\n"
+       << std::string(static_cast<size_t>(read_len), 'I') << "\n";
+    r2 << id2 << "\n"
+       << seq2 << "\n+\n"
+       << std::string(static_cast<size_t>(read_len), 'I') << "\n";
+    i1 << id1 << "\n" << cb1 << "\n+\n" << std::string(10, 'I') << "\n";
+    i2 << id2 << "\n" << cb2 << "\n+\n" << std::string(10, 'I') << "\n";
   }
 }
 
@@ -167,6 +244,215 @@ TEST_CASE("Multi-thread compression compatibility") {
 
     // Exit code 0 means integrity check passed
     CHECK(std::system(decompress_cmd.c_str()) == 0);
+  }
+
+  fs::remove_all(test_dir);
+}
+
+TEST_CASE("ATAC adapter stripping round-trips and is recorded") {
+  const std::string test_dir = "atac_test_tmp";
+  fs::create_directories(test_dir);
+
+  const std::string input_fastq = test_dir + "/input.fastq";
+  const std::string archive_atac = test_dir + "/test_atac.sp";
+  const std::string output_fastq = test_dir + "/roundtrip.fastq";
+  const std::string preview_log = test_dir + "/preview.log";
+
+  create_atac_like_fastq(input_fastq, 50000);
+
+  const std::string compress_atac_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -c --R1 " + input_fastq + " -o " +
+      archive_atac + " -w " + test_dir + "/work_atac -t 1 -y atac";
+  const std::string decompress_atac_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_atac + " -o " +
+      output_fastq + " -w " + test_dir + "/work_roundtrip -t 1";
+  const std::string spring2_path = SPRING2_EXECUTABLE;
+  const std::string preview_path =
+      fs::path(spring2_path).parent_path().string() + "/spring2-preview";
+  const std::string preview_cmd =
+      preview_path + " " + archive_atac + " > " + preview_log + " 2>&1";
+
+  REQUIRE(std::system(compress_atac_cmd.c_str()) == 0);
+  REQUIRE(std::system(decompress_atac_cmd.c_str()) == 0);
+  REQUIRE(std::system(preview_cmd.c_str()) == 0);
+
+  std::ifstream preview_in(preview_log, std::ios::binary);
+  REQUIRE(preview_in.is_open());
+  const std::string preview_output((std::istreambuf_iterator<char>(preview_in)),
+                                   std::istreambuf_iterator<char>());
+  CHECK(preview_output.find(
+            "ATAC Adapters:     Stripped terminal Tn5/Nextera read-through") !=
+        std::string::npos);
+  preview_in.close();
+
+  std::ifstream original_in(input_fastq, std::ios::binary);
+  std::ifstream restored_in(output_fastq, std::ios::binary);
+  REQUIRE(original_in.is_open());
+  REQUIRE(restored_in.is_open());
+  const std::string original((std::istreambuf_iterator<char>(original_in)),
+                             std::istreambuf_iterator<char>());
+  const std::string restored((std::istreambuf_iterator<char>(restored_in)),
+                             std::istreambuf_iterator<char>());
+  CHECK(restored == original);
+  original_in.close();
+  restored_in.close();
+
+  fs::remove_all(test_dir);
+}
+
+TEST_CASE("Grouped sc-ATAC auto mode round-trips with N-containing reads") {
+  const std::string test_dir = "grouped_sc_atac_test_tmp";
+  fs::create_directories(test_dir);
+
+  const std::string r1_fastq = test_dir + "/input_R1.fastq";
+  const std::string r2_fastq = test_dir + "/input_R2.fastq";
+  const std::string r3_fastq = test_dir + "/input_R3.fastq";
+  const std::string i1_fastq = test_dir + "/input_I1.fastq";
+  const std::string archive_path = test_dir + "/grouped_auto.sp";
+  const std::string out_r1 = test_dir + "/roundtrip_R1.fastq";
+  const std::string out_r2 = test_dir + "/roundtrip_R2.fastq";
+  const std::string out_r3 = test_dir + "/roundtrip_R3.fastq";
+  const std::string out_i1 = test_dir + "/roundtrip_I1.fastq";
+  const std::string preview_log = test_dir + "/preview.log";
+
+  create_atac_like_fastq(r1_fastq, 2000);
+  create_atac_like_fastq(r2_fastq, 2000);
+  create_dummy_fastq(r3_fastq, 2000);
+  create_dummy_fastq(i1_fastq, 2000);
+
+  const std::string compress_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -c --R1 " + r1_fastq + " --R2 " +
+      r2_fastq + " --R3 " + r3_fastq + " --I1 " + i1_fastq + " -o " +
+      archive_path + " -w " + test_dir + "/work_compress -t 1 -y auto";
+  const std::string decompress_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_path + " -o " +
+      out_r1 + " " + out_r2 + " " + out_r3 + " " + out_i1 + " -w " + test_dir +
+      "/work_decompress -t 1";
+  const std::string spring2_path = SPRING2_EXECUTABLE;
+  const std::string preview_path =
+      fs::path(spring2_path).parent_path().string() + "/spring2-preview";
+  const std::string preview_cmd =
+      preview_path + " " + archive_path + " > " + preview_log + " 2>&1";
+
+  REQUIRE(std::system(compress_cmd.c_str()) == 0);
+  REQUIRE(std::system(decompress_cmd.c_str()) == 0);
+  REQUIRE(std::system(preview_cmd.c_str()) == 0);
+
+  std::ifstream preview_in(preview_log, std::ios::binary);
+  REQUIRE(preview_in.is_open());
+  const std::string preview_output((std::istreambuf_iterator<char>(preview_in)),
+                                   std::istreambuf_iterator<char>());
+  CHECK(preview_output.find("Assay Type:        sc-atac") != std::string::npos);
+  CHECK(preview_output.find(
+            "ATAC Adapters:     Stripped terminal Tn5/Nextera read-through") !=
+        std::string::npos);
+  preview_in.close();
+
+  for (const auto &[original_path, restored_path] :
+       {std::pair{r1_fastq, out_r1}, std::pair{r2_fastq, out_r2},
+        std::pair{r3_fastq, out_r3}, std::pair{i1_fastq, out_i1}}) {
+    std::ifstream original_in(original_path, std::ios::binary);
+    std::ifstream restored_in(restored_path, std::ios::binary);
+    REQUIRE(original_in.is_open());
+    REQUIRE(restored_in.is_open());
+    const std::string original((std::istreambuf_iterator<char>(original_in)),
+                               std::istreambuf_iterator<char>());
+    const std::string restored((std::istreambuf_iterator<char>(restored_in)),
+                               std::istreambuf_iterator<char>());
+    CHECK(restored == original);
+  }
+
+  fs::remove_all(test_dir);
+}
+
+TEST_CASE("Grouped sc-RNA index IDs are reconstructed from I1/I2 reads") {
+  const std::string test_dir = "grouped_sc_rna_index_test_tmp";
+  fs::create_directories(test_dir);
+
+  const std::string r1_fastq = test_dir + "/input_R1.fastq";
+  const std::string r2_fastq = test_dir + "/input_R2.fastq";
+  const std::string i1_fastq = test_dir + "/input_I1.fastq";
+  const std::string i2_fastq = test_dir + "/input_I2.fastq";
+  const std::string archive_auto = test_dir + "/grouped_sc_rna_auto.sp";
+  const std::string archive_dna = test_dir + "/grouped_sc_rna_dna.sp";
+  const std::string auto_extract_dir = test_dir + "/auto_extract";
+  const std::string dna_extract_dir = test_dir + "/dna_extract";
+  const std::string auto_index_extract_dir = test_dir + "/auto_index_extract";
+  const std::string dna_index_extract_dir = test_dir + "/dna_index_extract";
+  const std::string out_r1 = test_dir + "/roundtrip_R1.fastq";
+  const std::string out_r2 = test_dir + "/roundtrip_R2.fastq";
+  const std::string out_i1 = test_dir + "/roundtrip_I1.fastq";
+  const std::string out_i2 = test_dir + "/roundtrip_I2.fastq";
+  const std::string preview_log = test_dir + "/preview.log";
+
+  create_grouped_sc_rna_like_fastqs(r1_fastq, r2_fastq, i1_fastq, i2_fastq,
+                                    5000);
+
+  const std::string compress_auto_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -c --R1 " + r1_fastq + " --R2 " +
+      r2_fastq + " --I1 " + i1_fastq + " --I2 " + i2_fastq + " -o " +
+      archive_auto + " -w " + test_dir + "/work_auto -t 1 -y sc-rna";
+  const std::string compress_dna_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -c --R1 " + r1_fastq + " --R2 " +
+      r2_fastq + " --I1 " + i1_fastq + " --I2 " + i2_fastq + " -o " +
+      archive_dna + " -w " + test_dir + "/work_dna -t 1 -y dna";
+  const std::string decompress_auto_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_auto + " -o " +
+      out_r1 + " " + out_r2 + " " + out_i1 + " " + out_i2 + " -w " + test_dir +
+      "/work_roundtrip -t 1";
+  const std::string spring2_path = SPRING2_EXECUTABLE;
+  const std::string preview_path =
+      fs::path(spring2_path).parent_path().string() + "/spring2-preview";
+  const std::string preview_cmd =
+      preview_path + " " + archive_auto + " > " + preview_log + " 2>&1";
+
+  REQUIRE(std::system(compress_auto_cmd.c_str()) == 0);
+  REQUIRE(std::system(compress_dna_cmd.c_str()) == 0);
+  REQUIRE(std::system(decompress_auto_cmd.c_str()) == 0);
+  REQUIRE(std::system(preview_cmd.c_str()) == 0);
+
+  fs::create_directories(auto_extract_dir);
+  fs::create_directories(dna_extract_dir);
+  const std::string untar_auto_cmd =
+      "tar -xf " + archive_auto + " -C " + auto_extract_dir;
+  const std::string untar_dna_cmd =
+      "tar -xf " + archive_dna + " -C " + dna_extract_dir;
+  REQUIRE(std::system(untar_auto_cmd.c_str()) == 0);
+  REQUIRE(std::system(untar_dna_cmd.c_str()) == 0);
+  fs::create_directories(auto_index_extract_dir);
+  fs::create_directories(dna_index_extract_dir);
+  const std::string untar_auto_index_cmd = "tar -xf " + auto_extract_dir +
+                                           "/index_group.sp -C " +
+                                           auto_index_extract_dir;
+  const std::string untar_dna_index_cmd = "tar -xf " + dna_extract_dir +
+                                          "/index_group.sp -C " +
+                                          dna_index_extract_dir;
+  REQUIRE(std::system(untar_auto_index_cmd.c_str()) == 0);
+  REQUIRE(std::system(untar_dna_index_cmd.c_str()) == 0);
+
+  CHECK(fs::file_size(auto_index_extract_dir + "/id_1.0") <
+        fs::file_size(dna_index_extract_dir + "/id_1.0"));
+
+  std::ifstream preview_in(preview_log, std::ios::binary);
+  REQUIRE(preview_in.is_open());
+  const std::string preview_output((std::istreambuf_iterator<char>(preview_in)),
+                                   std::istreambuf_iterator<char>());
+  CHECK(preview_output.find("Index IDs:         Reconstructed trailing I1/I2 "
+                            "token from index reads") != std::string::npos);
+  preview_in.close();
+
+  for (const auto &[original_path, restored_path] :
+       {std::pair{r1_fastq, out_r1}, std::pair{r2_fastq, out_r2},
+        std::pair{i1_fastq, out_i1}, std::pair{i2_fastq, out_i2}}) {
+    std::ifstream original_in(original_path, std::ios::binary);
+    std::ifstream restored_in(restored_path, std::ios::binary);
+    REQUIRE(original_in.is_open());
+    REQUIRE(restored_in.is_open());
+    const std::string original((std::istreambuf_iterator<char>(original_in)),
+                               std::istreambuf_iterator<char>());
+    const std::string restored((std::istreambuf_iterator<char>(restored_in)),
+                               std::istreambuf_iterator<char>());
+    CHECK(restored == original);
   }
 
   fs::remove_all(test_dir);

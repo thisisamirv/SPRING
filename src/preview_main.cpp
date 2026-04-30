@@ -167,6 +167,14 @@ void preview_single(const std::string &archive_path, bool audit_only) {
     std::cout << "CB Prefix:         Extracted (" << cp.encoding.cb_prefix_len
               << " bp from R1 single-cell prefix)\n";
   }
+  if (cp.encoding.index_id_suffix_reconstructed) {
+    std::cout << "Index IDs:         Reconstructed trailing I1/I2 token from "
+                 "index reads\n";
+  }
+  if (cp.encoding.atac_adapter_stripped) {
+    std::cout
+        << "ATAC Adapters:     Stripped terminal Tn5/Nextera read-through\n";
+  }
   if (cp.encoding.barcode_sort) {
     std::cout << "Barcode Sort:      Yes (CB: R1 prefix or I1 lane, "
               << cp.encoding.cb_len << " bp) [Legacy]\n";
@@ -338,6 +346,14 @@ void preview(const std::string &archive_path, bool audit_only) {
         std::cout << "CB Prefix:         Extracted ("
                   << cp_reads.encoding.cb_prefix_len
                   << " bp from R1 single-cell prefix)\n";
+      }
+      if (has_index && cp_index.encoding.index_id_suffix_reconstructed) {
+        std::cout << "Index IDs:         Reconstructed trailing I1/I2 token "
+                     "from index reads\n";
+      }
+      if (cp_reads.encoding.atac_adapter_stripped) {
+        std::cout << "ATAC Adapters:     Stripped terminal Tn5/Nextera "
+                     "read-through\n";
       }
       if (cp_reads.encoding.barcode_sort) {
         std::cout << "Barcode Sort:      Yes (CB: R1 prefix or I1 lane, "

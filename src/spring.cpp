@@ -121,6 +121,19 @@ bool paths_refer_to_same_file(const std::string &left,
   return std::filesystem::equivalent(left_path, right_path, ec) && !ec;
 }
 
+std::string assay_from_archive_metadata(const std::string &archive_path) {
+  auto contents = read_files_from_tar_memory(archive_path, {"cp.bin"});
+  if (!contents.contains("cp.bin")) {
+    throw std::runtime_error("Could not find cp.bin in archive: " +
+                             archive_path);
+  }
+
+  compression_params cp{};
+  std::istringstream input(contents["cp.bin"], std::ios::binary);
+  read_compression_params(input, cp);
+  return cp.read_info.assay.empty() ? std::string("auto") : cp.read_info.assay;
+}
+
 void write_bundle_manifest(const std::string &manifest_path,
                            const bundle_manifest &manifest) {
   std::ofstream output(manifest_path, std::ios::binary);
@@ -1226,6 +1239,11 @@ void compress(const std::string &temp_dir,
                       quality_options, compression_level, note, verbosity_level,
                       audit_flag, "", i1_path, "", assay_type, i1_path, cb_len);
 
+    const std::string grouped_assay =
+        (assay_type == "auto")
+            ? assay_from_archive_metadata(bundle_dir + "/" + read_archive_name)
+            : assay_type;
+
     std::string read3_alias_source;
     if (has_r3) {
       if (paths_refer_to_same_file(r3_path, input_paths[0])) {
@@ -1239,7 +1257,7 @@ void compress(const std::string &temp_dir,
             no_quality_flag, no_ids_flag, quality_options, compression_level,
             note.empty() ? std::string("read3-group")
                          : (note + " | read3-group"),
-            verbosity_level, audit_flag, "", "", "", assay_type, "", cb_len);
+            verbosity_level, audit_flag, "", "", "", grouped_assay, "", cb_len);
       }
     }
 
@@ -1249,7 +1267,7 @@ void compress(const std::string &temp_dir,
           num_thr, pairing_only_flag, no_quality_flag, no_ids_flag,
           quality_options, compression_level,
           note.empty() ? std::string("index-group") : (note + " | index-group"),
-          verbosity_level, audit_flag, "", "", "", assay_type, "", cb_len);
+          verbosity_level, audit_flag, "", "", "", grouped_assay, "", cb_len);
     }
 
     std::error_code ec;

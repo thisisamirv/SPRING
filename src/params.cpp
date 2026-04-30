@@ -111,6 +111,8 @@ void write_compression_params(std::ostream &out, const compression_params &cp) {
   write_bool(out, cp.encoding.cb_prefix_stripped);
   out.write(byte_ptr(&cp.encoding.cb_prefix_len), sizeof(uint32_t));
   write_bool(out, cp.read_info.quality_header_has_id);
+  write_bool(out, cp.encoding.atac_adapter_stripped);
+  write_bool(out, cp.encoding.index_id_suffix_reconstructed);
 }
 
 void read_compression_params(std::istream &in, compression_params &cp) {
@@ -210,19 +212,36 @@ void read_compression_params(std::istream &in, compression_params &cp) {
                 in.read(byte_ptr(&cp.encoding.cb_prefix_len), sizeof(uint32_t));
                 if (in.peek() != std::char_traits<char>::eof()) {
                   cp.read_info.quality_header_has_id = read_bool(in);
+                  if (in.peek() != std::char_traits<char>::eof()) {
+                    cp.encoding.atac_adapter_stripped = read_bool(in);
+                    if (in.peek() != std::char_traits<char>::eof()) {
+                      cp.encoding.index_id_suffix_reconstructed = read_bool(in);
+                    } else {
+                      cp.encoding.index_id_suffix_reconstructed = false;
+                    }
+                  } else {
+                    cp.encoding.atac_adapter_stripped = false;
+                    cp.encoding.index_id_suffix_reconstructed = false;
+                  }
                 } else {
                   cp.read_info.quality_header_has_id = false;
+                  cp.encoding.atac_adapter_stripped = false;
+                  cp.encoding.index_id_suffix_reconstructed = false;
                 }
               } else {
                 cp.encoding.cb_prefix_stripped = false;
                 cp.encoding.cb_prefix_len = 0;
                 cp.read_info.quality_header_has_id = false;
+                cp.encoding.atac_adapter_stripped = false;
+                cp.encoding.index_id_suffix_reconstructed = false;
               }
             } else {
               cp.encoding.poly_at_stripped = false;
               cp.encoding.cb_prefix_stripped = false;
               cp.encoding.cb_prefix_len = 0;
               cp.read_info.quality_header_has_id = false;
+              cp.encoding.atac_adapter_stripped = false;
+              cp.encoding.index_id_suffix_reconstructed = false;
             }
           } else {
             cp.encoding.depleted_base = 'N';
@@ -230,6 +249,8 @@ void read_compression_params(std::istream &in, compression_params &cp) {
             cp.encoding.cb_prefix_stripped = false;
             cp.encoding.cb_prefix_len = 0;
             cp.read_info.quality_header_has_id = false;
+            cp.encoding.atac_adapter_stripped = false;
+            cp.encoding.index_id_suffix_reconstructed = false;
           }
         } else {
           cp.encoding.bisulfite_ternary = false;
@@ -238,6 +259,8 @@ void read_compression_params(std::istream &in, compression_params &cp) {
           cp.encoding.cb_prefix_stripped = false;
           cp.encoding.cb_prefix_len = 0;
           cp.read_info.quality_header_has_id = false;
+          cp.encoding.atac_adapter_stripped = false;
+          cp.encoding.index_id_suffix_reconstructed = false;
         }
       } else {
         cp.encoding.barcode_sort = false;
@@ -249,6 +272,8 @@ void read_compression_params(std::istream &in, compression_params &cp) {
         cp.encoding.cb_prefix_len = 0;
         cp.read_info.quality_header_has_id = false;
         cp.read_info.compressor_version = "<unknown>";
+        cp.encoding.atac_adapter_stripped = false;
+        cp.encoding.index_id_suffix_reconstructed = false;
       }
     } else {
       cp.read_info.assay = "auto";
@@ -262,6 +287,8 @@ void read_compression_params(std::istream &in, compression_params &cp) {
       cp.encoding.cb_prefix_stripped = false;
       cp.encoding.cb_prefix_len = 0;
       cp.read_info.quality_header_has_id = false;
+      cp.encoding.atac_adapter_stripped = false;
+      cp.encoding.index_id_suffix_reconstructed = false;
     }
   } else {
     cp.read_info.assay = "auto";
@@ -275,6 +302,8 @@ void read_compression_params(std::istream &in, compression_params &cp) {
     cp.encoding.poly_at_stripped = false;
     cp.encoding.cb_prefix_stripped = false;
     cp.encoding.cb_prefix_len = 0;
+    cp.encoding.atac_adapter_stripped = false;
+    cp.encoding.index_id_suffix_reconstructed = false;
   }
 }
 

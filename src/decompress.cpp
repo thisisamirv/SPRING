@@ -21,6 +21,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <string_view>
 #include <utility>
 #ifndef _WIN32
 #include <fcntl.h>
@@ -330,6 +331,47 @@ void append_tail(std::string &read_str, std::string *quality_str,
     } else {
       quality_str->append(run, 'I');
     }
+  }
+}
+
+void append_atac_adapter_tail(std::string &read_str, std::string *quality_str,
+                              uint8_t adapter_info,
+                              const std::string *tail_qual) {
+  static constexpr std::array<std::string_view, 2> kAdapters = {
+      "CTGTCTCTTATACACATCT", "AGATGTGTATAAGAGACAG"};
+  if (adapter_info == 0)
+    return;
+
+  const uint8_t adapter_id = adapter_info & 1;
+  const uint32_t overlap = adapter_info >> 1;
+  const std::string_view adapter = kAdapters[adapter_id];
+  if (overlap > adapter.size()) {
+    throw std::runtime_error("Corrupt ATAC adapter metadata: overlap exceeds "
+                             "adapter length");
+  }
+
+  read_str.append(adapter.substr(0, overlap));
+  if (quality_str) {
+    if (tail_qual) {
+      quality_str->append(*tail_qual);
+    } else {
+      quality_str->append(overlap, 'I');
+    }
+  }
+}
+
+void append_grouped_index_suffix_to_id(std::string &id,
+                                       const std::string &index_read_1,
+                                       const std::string *index_read_2) {
+  if (id.empty() || id.back() != ':') {
+    throw std::runtime_error("Corrupt grouped sc-RNA index metadata: stripped "
+                             "ID prefix missing ':'");
+  }
+
+  id.append(index_read_1);
+  if (index_read_2) {
+    id.push_back('+');
+    id.append(*index_read_2);
   }
 }
 } // namespace
@@ -669,7 +711,10 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
   bool preserve_quality = cp.encoding.preserve_quality;
   bool preserve_order = cp.encoding.preserve_order;
   const bool poly_at_stripped = cp.encoding.poly_at_stripped;
+  const bool atac_adapter_stripped = cp.encoding.atac_adapter_stripped;
   const bool cb_prefix_stripped = cp.encoding.cb_prefix_stripped;
+  const bool index_id_suffix_reconstructed =
+      cp.encoding.index_id_suffix_reconstructed;
   const uint32_t cb_prefix_len = cp.encoding.cb_prefix_len;
   const int archive_encoding_thread_count =
       resolve_archive_encoding_thread_count(cp);
@@ -685,6 +730,34 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
       if (!f_tail_2)
         throw std::runtime_error(
             "poly_at_stripped set but tail_2.bin not found");
+    }
+  }
+
+  std::ifstream f_atac_adapter_1, f_atac_adapter_2;
+  if (atac_adapter_stripped) {
+    const std::string atac_adapter_1_compressed =
+        temp_dir + "/atac_adapter_1.bin.bsc";
+    if (std::filesystem::exists(atac_adapter_1_compressed)) {
+      bsc::BSC_decompress(atac_adapter_1_compressed.c_str(),
+                          (temp_dir + "/atac_adapter_1.bin").c_str());
+    }
+    f_atac_adapter_1.open(temp_dir + "/atac_adapter_1.bin", std::ios::binary);
+    if (!f_atac_adapter_1) {
+      throw std::runtime_error(
+          "atac_adapter_stripped set but atac_adapter_1.bin not found");
+    }
+    if (paired_end) {
+      const std::string atac_adapter_2_compressed =
+          temp_dir + "/atac_adapter_2.bin.bsc";
+      if (std::filesystem::exists(atac_adapter_2_compressed)) {
+        bsc::BSC_decompress(atac_adapter_2_compressed.c_str(),
+                            (temp_dir + "/atac_adapter_2.bin").c_str());
+      }
+      f_atac_adapter_2.open(temp_dir + "/atac_adapter_2.bin", std::ios::binary);
+      if (!f_atac_adapter_2) {
+        throw std::runtime_error(
+            "atac_adapter_stripped set but atac_adapter_2.bin not found");
+      }
     }
   }
 
@@ -1053,6 +1126,14 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
       const std::string *quality_ptr =
           preserve_quality ? quality_buffer.data() : nullptr;
 
+      if (index_id_suffix_reconstructed && stream_index == 0) {
+        for (uint32_t i = 0; i < num_reads_cur_step; ++i) {
+          append_grouped_index_suffix_to_id(id_buffer[i], read_buffer_1[i],
+                                            paired_end ? &read_buffer_2[i]
+                                                       : nullptr);
+        }
+      }
+
       // Restore CB prefix to R1 reads before tail restoration.
       if (cb_prefix_stripped && stream_index == 0) {
         std::string *quality_buf_ptr =
@@ -1091,6 +1172,30 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
             append_tail(read_buffer_ptr[i],
                         quality_buf_ptr ? &quality_buf_ptr[i] : nullptr,
                         tail_info, tail_len > 0 ? &tail_qual : nullptr);
+          }
+        }
+      }
+
+      if (atac_adapter_stripped) {
+        std::ifstream &f_adapter =
+            (stream_index == 0) ? f_atac_adapter_1 : f_atac_adapter_2;
+        std::string *quality_buf_ptr =
+            preserve_quality ? quality_buffer.data() : nullptr;
+        for (uint32_t i = 0; i < num_reads_cur_step; ++i) {
+          uint8_t adapter_info = 0;
+          f_adapter.read(reinterpret_cast<char *>(&adapter_info),
+                         sizeof(uint8_t));
+          if (f_adapter && adapter_info != 0) {
+            const uint32_t strip_len = adapter_info >> 1;
+            std::string adapter_qual;
+            if (strip_len > 0) {
+              adapter_qual.resize(strip_len);
+              f_adapter.read(&adapter_qual[0], strip_len);
+            }
+            append_atac_adapter_tail(
+                read_buffer_ptr[i],
+                quality_buf_ptr ? &quality_buf_ptr[i] : nullptr, adapter_info,
+                strip_len > 0 ? &adapter_qual : nullptr);
           }
         }
       }
