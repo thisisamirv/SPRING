@@ -147,8 +147,8 @@ bool strip_grouped_index_suffix_from_id(std::string &id,
     return false;
   }
 
-  const std::string_view suffix(id.data() + last_colon + 1,
-                                id.size() - last_colon - 1);
+  std::string_view suffix{id};
+  suffix.remove_prefix(last_colon + 1);
   if (paired_index) {
     const size_t plus = suffix.find('+');
     if (plus == std::string::npos || plus == 0) {
