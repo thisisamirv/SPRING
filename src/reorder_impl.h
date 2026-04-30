@@ -31,7 +31,7 @@ namespace {
 bool deterministic_reorder_enabled() {
   const char *value = std::getenv("SPRING_DETERMINISTIC_REORDER");
   if (value == nullptr)
-    return true;
+    return false;
   const std::string normalized(value);
   return !(normalized.empty() || normalized == "0" || normalized == "false" ||
            normalized == "FALSE" || normalized == "off" || normalized == "OFF");
