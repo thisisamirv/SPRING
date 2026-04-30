@@ -2,6 +2,7 @@
 #define PTHASH_UTILS_LOGGER_HPP
 
 #include <cassert>
+#include <cstdint>
 #include <iostream>
 #include <ostream>
 #include <string>

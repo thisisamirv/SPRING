@@ -79,6 +79,28 @@ $TMP_INPUT_DIR = Join-Path $TMP_DIR "input"
 $TMP_LOG_DIR = Join-Path $TMP_DIR "logs"
 $TMP_OUTPUT_DIR = Join-Path $TMP_DIR "runs"
 $TMP_WORK_DIR = Join-Path $TMP_DIR "work"
+$BIG_BENCH_LOG = Join-Path $TMP_LOG_DIR "big_bench.log"
+
+function Write-BigBenchLine {
+    param(
+        [string]$Message,
+        [ConsoleColor]$Color = [ConsoleColor]::White
+    )
+
+    Write-Host $Message -ForegroundColor $Color
+    Add-Content -Path $BIG_BENCH_LOG -Value $Message
+}
+
+function Write-BigBenchRawText {
+    param([string]$Text)
+
+    if ([string]::IsNullOrEmpty($Text)) {
+        return
+    }
+
+    [Console]::Out.Write($Text)
+    Add-Content -Path $BIG_BENCH_LOG -Value $Text
+}
 
 # Dataset: SRR2990433 (EBI FTP)
 $URL_R1 = "ftp://ftp.sra.ebi.ac.uk/vol1/fastq/SRR818/009/SRR8185389/SRR8185389_1.fastq.gz"
@@ -93,15 +115,15 @@ function Invoke-BenchmarkDataDownload {
     if (Test-Path $path) { 
         # If file is smaller than 10MB, it's likely a corrupted/truncated previous attempt
         if ((Get-Item $path).Length -gt 10MB) {
-            Write-Host "Using existing file: $(Split-Path $path -Leaf)" -ForegroundColor Gray
+            Write-BigBenchLine "Using existing file: $(Split-Path $path -Leaf)" Gray
             return 
         }
-        Write-Host "Existing file $(Split-Path $path -Leaf) is too small, re-downloading..." -ForegroundColor Yellow
+        Write-BigBenchLine "Existing file $(Split-Path $path -Leaf) is too small, re-downloading..." Yellow
         Remove-Item $path -Force
     }
     
-    Write-Host "Downloading $(Split-Path $path -Leaf)..." -ForegroundColor Cyan
-    Write-Host "From: $url" -ForegroundColor Gray
+    Write-BigBenchLine "Downloading $(Split-Path $path -Leaf)..." Cyan
+    Write-BigBenchLine "From: $url" Gray
     
     # Use native curl.exe which is available on modern Windows and handles progress perfectly
     & curl.exe -L -# -o $path $url
@@ -115,34 +137,75 @@ function Invoke-BenchmarkDataDownload {
 # Helper: Resource tracking invocation
 function Invoke-ResourceLoggedProcess($binary, $arguments) {
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $argumentList = if ($arguments -is [System.Array]) { $arguments } else { @($arguments) }
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
     $psi.FileName = $binary
-    if ($arguments -is [System.Array]) {
-        $psi.Arguments = ($arguments | ForEach-Object {
-                if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '""') + '"' } else { $_ }
-            }) -join ' '
-    }
-    else {
-        $psi.Arguments = $arguments
-    }
     $psi.UseShellExecute = $false
-    $psi.RedirectStandardOutput = $false
-    $psi.RedirectStandardError = $false
-    
-    $process = [System.Diagnostics.Process]::Start($psi)
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    foreach ($argument in $argumentList) {
+        $null = $psi.ArgumentList.Add([string]$argument)
+    }
+
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $psi
+    $null = $process.Start()
+    $stdoutTask = $process.StandardOutput.ReadLineAsync()
+    $stderrTask = $process.StandardError.ReadLineAsync()
     $peakRss = 0
-    while (-not $process.HasExited) {
+    while (-not $process.HasExited -or $stdoutTask -or $stderrTask) {
+        $activeTasks = New-Object System.Collections.Generic.List[System.Threading.Tasks.Task]
+        if ($stdoutTask) { $activeTasks.Add($stdoutTask) }
+        if ($stderrTask) { $activeTasks.Add($stderrTask) }
+        if ($activeTasks.Count -gt 0) {
+            [void][System.Threading.Tasks.Task]::WaitAny($activeTasks.ToArray(), 500)
+        }
+
+        foreach ($pendingTaskInfo in @(
+                @{ Task = $stdoutTask; Stream = 'stdout' },
+                @{ Task = $stderrTask; Stream = 'stderr' })) {
+            if ($null -eq $pendingTaskInfo.Task -or -not $pendingTaskInfo.Task.IsCompleted) {
+                continue
+            }
+
+            $line = $pendingTaskInfo.Task.Result
+            if ($null -ne $line) {
+                Write-BigBenchLine $line
+                if ($pendingTaskInfo.Stream -eq 'stdout') {
+                    $stdoutTask = $process.StandardOutput.ReadLineAsync()
+                }
+                else {
+                    $stderrTask = $process.StandardError.ReadLineAsync()
+                }
+            }
+            else {
+                if ($pendingTaskInfo.Stream -eq 'stdout') {
+                    $stdoutTask = $null
+                }
+                else {
+                    $stderrTask = $null
+                }
+            }
+        }
+
         try {
-            $currentRss = $process.PeakWorkingSet64
+            if (-not $process.HasExited) {
+                $currentRss = $process.PeakWorkingSet64
+            }
+            else {
+                $currentRss = $peakRss
+            }
             if ($currentRss -gt $peakRss) { $peakRss = $currentRss }
         }
         catch {}
-        Start-Sleep -Milliseconds 500
     }
+    $process.WaitForExit()
     $sw.Stop()
     if ($process.ExitCode -ne 0) {
-        throw "Process failed with exit code $($process.ExitCode): $binary $arguments"
+        throw "Process failed with exit code $($process.ExitCode): $binary $($argumentList -join ' ')"
     }
+
     $result = @{}
     $result.elapsed_seconds = $sw.Elapsed.TotalSeconds
     $result.user_seconds = $process.UserProcessorTime.TotalSeconds
@@ -152,9 +215,53 @@ function Invoke-ResourceLoggedProcess($binary, $arguments) {
     return $result
 }
 
+function Show-StepTimingSummary {
+    param([string]$LogPath)
+
+    if (-not (Test-Path $LogPath)) {
+        Write-BigBenchLine ""
+        Write-BigBenchLine "Step timings"
+        Write-BigBenchLine "  No step timings found."
+        return
+    }
+
+    $pendingStep = $null
+    $stepIndex = 0
+    $summary = New-Object System.Collections.Generic.List[string]
+    foreach ($line in Get-Content $LogPath) {
+        if ($line -match '^\s*(.+?) \.\.\.\s*$') {
+            $pendingStep = $matches[1].Trim()
+            continue
+        }
+
+        if ($line -match '^\s*Time for this step:\s*(.+?)\s*$' -and $pendingStep) {
+            $stepIndex++
+            $summary.Add(("  {0:D2}. {1}: {2}" -f $stepIndex, $pendingStep, $matches[1].Trim()))
+            $pendingStep = $null
+            continue
+        }
+
+        if ($line -match '^\s*Total time for (compression|decompression):\s*(.+?)\s*$') {
+            $stepIndex++
+            $summary.Add(("  {0:D2}. Total time for {1}: {2}" -f $stepIndex, $matches[1], $matches[2].Trim()))
+        }
+    }
+
+    Write-BigBenchLine ""
+    Write-BigBenchLine "Step timings"
+    if ($summary.Count -eq 0) {
+        Write-BigBenchLine "  No step timings found."
+        return
+    }
+
+    $summary | ForEach-Object { Write-BigBenchLine $_ }
+}
+
 # Ensure environment
 function Initialize-BenchmarkEnv {
     New-Item -ItemType Directory -Path $TMP_INPUT_DIR, $TMP_LOG_DIR, $TMP_OUTPUT_DIR, $TMP_WORK_DIR -Force | Out-Null
+    if (Test-Path $BIG_BENCH_LOG) { Remove-Item $BIG_BENCH_LOG -Force }
+    New-Item -ItemType File -Path $BIG_BENCH_LOG -Force | Out-Null
     
     Invoke-BenchmarkDataDownload $URL_R1 $PATH_R1
     Invoke-BenchmarkDataDownload $URL_R2 $PATH_R2
@@ -175,7 +282,7 @@ function Initialize-BenchmarkEnv {
 
 function Initialize-SpringBinary {
     if (Test-Path $SPRING_BIN) { return }
-    Write-Host "Spring binary not found; building..." -ForegroundColor Yellow
+    Write-BigBenchLine "Spring binary not found; building..." Yellow
     $buildLog = Join-Path $TMP_LOG_DIR "build.log"
     $env:CC = "gcc"; $env:CXX = "g++"
     $cmakeConfigArgs = @("-S", "$ROOT_DIR", "-B", "$BUILD_DIR", "-G", "Ninja", "-DSPRING_STATIC_RUNTIMES=OFF")
@@ -184,39 +291,6 @@ function Initialize-SpringBinary {
     if ($IsWindows) { & cmake --build "$BUILD_DIR" --target copy_runtime_dlls 2>&1 | Add-Content $buildLog }
 }
 
-# --- Main Logic ---
-Initialize-BenchmarkEnv
-Initialize-SpringBinary
-
-# Cleanup previous
-foreach ($f in @($global:OUTPUT_FILE, $global:DECOMP_FILE_1, $global:DECOMP_FILE_2)) {
-    if (Test-Path $f) { Remove-Item $f -Force }
-}
-
-# --- Compression ---
-Write-Host "Running Spring paired-end compression (SRR2990433)" -ForegroundColor Cyan
-Write-Host "  R1:      $PATH_R1"
-Write-Host "  R2:      $PATH_R2"
-Write-Host "  threads: $THREADS"
-
-$compArgs = @($SPRING_VERBOSE_ARGS + @('-c', '--R1', $PATH_R1, '--R2', $PATH_R2, '-o', $global:OUTPUT_FILE, '-w', $global:WORK_DIR, '-t', $THREADS, '-q', 'lossless', '-n', 'Big Benchmark SRR2990433'))
-$compResults = Invoke-ResourceLoggedProcess $SPRING_BIN $compArgs
-
-# --- Decompression ---
-Write-Host "`nRunning Spring decompression" -ForegroundColor Cyan
-$decompArgs = @($SPRING_VERBOSE_ARGS + @('-d', '-i', $global:OUTPUT_FILE, '-o', $global:DECOMP_BASE, '-w', $global:WORK_DIR))
-$decompResults = Invoke-ResourceLoggedProcess $SPRING_BIN $decompArgs
-
-# --- Results ---
-$inputSize = (Get-Item $PATH_R1).Length + (Get-Item $PATH_R2).Length
-$outputSize = (Get-Item $global:OUTPUT_FILE).Length
-$decompSize = (Get-Item $global:DECOMP_FILE_1).Length + (Get-Item $global:DECOMP_FILE_2).Length
-
-$reduction = if ($inputSize -gt 0) { ($inputSize - $outputSize) * 100 / $inputSize } else { 0 }
-$ratio = if ($outputSize -gt 0) { $inputSize / $outputSize } else { 0 }
-
-# Integrity Check
-Write-Host "`nVerifying integrity..." -ForegroundColor Gray
 function Get-DecompHash($path) {
     if ($path.EndsWith(".gz")) {
         $ds = [BigBencher]::GetDecompressedStream($path)
@@ -233,33 +307,75 @@ function Get-DecompHash($path) {
     return [System.BitConverter]::ToString($hashBytes).Replace("-", "").ToLower()
 }
 
-$hash_orig_1 = Get-DecompHash $PATH_R1
-$hash_orig_2 = Get-DecompHash $PATH_R2
-$hash_decomp_1 = Get-DecompHash $global:DECOMP_FILE_1
-$hash_decomp_2 = Get-DecompHash $global:DECOMP_FILE_2
 
-$status1 = if ($hash_orig_1 -eq $hash_decomp_1) { "match" } else { "mismatch" }
-$status2 = if ($hash_orig_2 -eq $hash_decomp_2) { "match" } else { "mismatch" }
+# --- Main Logic ---
+Initialize-BenchmarkEnv
+Initialize-SpringBinary
 
-# Reporting
-Write-Output "`nBenchmark result (Paired-End combined)"
-Write-Output ("  original bytes:   {0:N0}" -f $inputSize)
-Write-Output ("  compressed bytes: {0:N0}" -f $outputSize)
-Write-Output ("  decompressed bytes: {0:N0}" -f $decompSize)
-Write-Output ("  compression pass time:    {0:N3}s" -f $compResults.elapsed_seconds)
-Write-Output ("  decompression pass time:  {0:N3}s" -f $decompResults.elapsed_seconds)
-Write-Output ("  size reduction:   {0:N2}%" -f $reduction)
-Write-Output ("  compression ratio {0:N3}x" -f $ratio)
+    # Cleanup previous
+    foreach ($f in @($global:OUTPUT_FILE, $global:DECOMP_FILE_1, $global:DECOMP_FILE_2)) {
+        if (Test-Path $f) { Remove-Item $f -Force }
+    }
 
-Write-Output "`nCompression resources"
-Write-Output ("  elapsed time:     {0:N3}s" -f $compResults.elapsed_seconds)
-Write-Output ("  peak memory:      {0} KB ({1:N2} MB RSS)" -f $compResults.max_rss_kb, ($compResults.max_rss_kb / 1024))
+    # --- Compression ---
+    Write-BigBenchLine "Running Spring paired-end compression (SRR2990433)" Cyan
+    Write-BigBenchLine "  R1:      $PATH_R1"
+    Write-BigBenchLine "  R2:      $PATH_R2"
+    Write-BigBenchLine "  threads: $THREADS"
 
-Write-Output "`nDecompression resources"
-Write-Output ("  elapsed time:     {0:N3}s" -f $decompResults.elapsed_seconds)
-Write-Output ("  peak memory:      {0} KB ({1:N2} MB RSS)" -f $decompResults.max_rss_kb, ($decompResults.max_rss_kb / 1024))
+    $compArgs = @($SPRING_VERBOSE_ARGS + @('-c', '--R1', $PATH_R1, '--R2', $PATH_R2, '-o', $global:OUTPUT_FILE, '-w', $global:WORK_DIR, '-t', $THREADS, '-q', 'lossless', '-n', 'Big Benchmark SRR2990433'))
+    $compResults = Invoke-ResourceLoggedProcess $SPRING_BIN $compArgs
 
-Write-Output "`nRound-trip check"
-Write-Output "  Read 1 status: $status1"
-Write-Output "  Read 2 status: $status2"
-Write-Output "  Overall status: $(if ($status1 -eq 'match' -and $status2 -eq 'match') { 'PASSED' } else { 'FAILED' })"
+    # --- Decompression ---
+    Write-BigBenchLine ""
+    Write-BigBenchLine "Running Spring decompression" Cyan
+    $decompArgs = @($SPRING_VERBOSE_ARGS + @('-d', '-i', $global:OUTPUT_FILE, '-o', $global:DECOMP_BASE, '-w', $global:WORK_DIR))
+    $decompResults = Invoke-ResourceLoggedProcess $SPRING_BIN $decompArgs
+
+    # --- Results ---
+    $inputSize = (Get-Item $PATH_R1).Length + (Get-Item $PATH_R2).Length
+    $outputSize = (Get-Item $global:OUTPUT_FILE).Length
+    $decompSize = (Get-Item $global:DECOMP_FILE_1).Length + (Get-Item $global:DECOMP_FILE_2).Length
+
+    $reduction = if ($inputSize -gt 0) { ($inputSize - $outputSize) * 100 / $inputSize } else { 0 }
+    $ratio = if ($outputSize -gt 0) { $inputSize / $outputSize } else { 0 }
+
+    # Integrity Check
+    Write-BigBenchLine ""
+    Write-BigBenchLine "Verifying integrity..." Gray
+    $hash_orig_1 = Get-DecompHash $PATH_R1
+    $hash_orig_2 = Get-DecompHash $PATH_R2
+    $hash_decomp_1 = Get-DecompHash $global:DECOMP_FILE_1
+    $hash_decomp_2 = Get-DecompHash $global:DECOMP_FILE_2
+
+    $status1 = if ($hash_orig_1 -eq $hash_decomp_1) { "match" } else { "mismatch" }
+    $status2 = if ($hash_orig_2 -eq $hash_decomp_2) { "match" } else { "mismatch" }
+
+    # Reporting
+    Write-BigBenchLine ""
+    Write-BigBenchLine "Benchmark result (Paired-End combined)"
+    Write-BigBenchLine ("  original bytes:   {0:N0}" -f $inputSize)
+    Write-BigBenchLine ("  compressed bytes: {0:N0}" -f $outputSize)
+    Write-BigBenchLine ("  decompressed bytes: {0:N0}" -f $decompSize)
+    Write-BigBenchLine ("  compression pass time:    {0:N3}s" -f $compResults.elapsed_seconds)
+    Write-BigBenchLine ("  decompression pass time:  {0:N3}s" -f $decompResults.elapsed_seconds)
+    Write-BigBenchLine ("  size reduction:   {0:N2}%" -f $reduction)
+    Write-BigBenchLine ("  compression ratio {0:N3}x" -f $ratio)
+
+    Write-BigBenchLine ""
+    Write-BigBenchLine "Compression resources"
+    Write-BigBenchLine ("  elapsed time:     {0:N3}s" -f $compResults.elapsed_seconds)
+    Write-BigBenchLine ("  peak memory:      {0} KB ({1:N2} MB RSS)" -f $compResults.max_rss_kb, ($compResults.max_rss_kb / 1024))
+
+    Write-BigBenchLine ""
+    Write-BigBenchLine "Decompression resources"
+    Write-BigBenchLine ("  elapsed time:     {0:N3}s" -f $decompResults.elapsed_seconds)
+    Write-BigBenchLine ("  peak memory:      {0} KB ({1:N2} MB RSS)" -f $decompResults.max_rss_kb, ($decompResults.max_rss_kb / 1024))
+
+    Write-BigBenchLine ""
+    Write-BigBenchLine "Round-trip check"
+    Write-BigBenchLine "  Read 1 status: $status1"
+    Write-BigBenchLine "  Read 2 status: $status2"
+    Write-BigBenchLine "  Overall status: $(if ($status1 -eq 'match' -and $status2 -eq 'match') { 'PASSED' } else { 'FAILED' })"
+
+Show-StepTimingSummary $BIG_BENCH_LOG

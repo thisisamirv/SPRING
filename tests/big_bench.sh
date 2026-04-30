@@ -12,6 +12,7 @@ TMP_INPUT_DIR="$TMP_DIR/input"
 TMP_LOG_DIR="$TMP_DIR/logs"
 TMP_OUTPUT_DIR="$TMP_DIR/runs"
 TMP_WORK_DIR="$TMP_DIR/work"
+BIG_BENCH_LOG="$TMP_LOG_DIR/big_bench.log"
 NO_DEBUG=0
 
 while (($#)); do
@@ -42,6 +43,10 @@ PATH_R2="$TMP_INPUT_DIR/SRR8185389_2.fastq.gz"
 BUILD_LOG="$TMP_LOG_DIR/build.log"
 COMPRESS_RESOURCE_LOG="$TMP_LOG_DIR/compress_resource_usage.log"
 DECOMPRESS_RESOURCE_LOG="$TMP_LOG_DIR/decompress_resource_usage.log"
+
+mkdir -p "$TMP_LOG_DIR"
+: >"$BIG_BENCH_LOG"
+exec > >(tee -a "$BIG_BENCH_LOG") 2>&1
 
 remove_empty_dir_if_present() {
 	local dir_path="$1"
@@ -93,6 +98,49 @@ run_with_resource_log() {
 	fi
 	TIMEFORMAT=$'elapsed_seconds=%3R\nuser_seconds=%3U\nsystem_seconds=%3S\ncpu_percent=unavailable\nmax_rss_kb=unavailable'
 	{ time "$@"; } 2>"$log_file"
+}
+
+print_step_timings() {
+	if [[ ! -f "$BIG_BENCH_LOG" ]]; then
+		echo -e "\nStep timings"
+		echo "  No step timings found."
+		return
+	fi
+
+	local summary
+	summary=$(awk '
+	BEGIN {
+	  pending = ""
+	  count = 0
+	}
+	/^[[:space:]]*.+ \.\.\.[[:space:]]*$/ {
+	  pending = $0
+	  sub(/^[[:space:]]*/, "", pending)
+	  sub(/[[:space:]]*\.\.\.[[:space:]]*$/, "", pending)
+	  next
+	}
+	/^[[:space:]]*Time for this step:[[:space:]]*/ {
+	  if (pending != "") {
+	    line = $0
+	    sub(/^[[:space:]]*Time for this step:[[:space:]]*/, "", line)
+	    printf("  %02d. %s: %s\n", ++count, pending, line)
+	    pending = ""
+	  }
+	  next
+	}
+	/^[[:space:]]*Total time for (compression|decompression):[[:space:]]*/ {
+	  line = $0
+	  sub(/^[[:space:]]*/, "", line)
+	  printf("  %02d. %s\n", ++count, line)
+	}
+	' "$BIG_BENCH_LOG")
+
+	echo -e "\nStep timings"
+	if [[ -z "$summary" ]]; then
+		echo "  No step timings found."
+	else
+		printf '%s\n' "$summary"
+	fi
 }
 
 populate_resource_vars() {
@@ -154,3 +202,5 @@ check_hash() {
 echo -e "\nVerifying integrity..."
 echo "  Read 1: $(check_hash "$PATH_R1" "$DECOMP_FILE_1")"
 echo "  Read 2: $(check_hash "$PATH_R2" "$DECOMP_FILE_2")"
+
+print_step_timings
