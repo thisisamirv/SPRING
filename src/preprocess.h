@@ -4,6 +4,7 @@
 #ifndef SPRING_PREPROCESS_H_
 #define SPRING_PREPROCESS_H_
 
+#include <array>
 #include <cstdint>
 #include <string>
 
@@ -21,7 +22,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
 uint32_t detect_max_read_length(const std::string &infile_1,
                                 const std::string &infile_2,
                                 const bool paired_end, const bool fasta_input,
-                                bool &use_crlf,
+                                std::array<bool, 2> &use_crlf_by_stream,
                                 bool &contains_non_acgtn_symbols);
 
 } // namespace spring

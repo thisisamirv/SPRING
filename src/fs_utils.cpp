@@ -5,6 +5,8 @@
 #include "progress.h"
 #include <archive.h>
 #include <archive_entry.h>
+#include <cerrno>
+#include <cstring>
 #include <fcntl.h>
 #include <filesystem>
 #include <sys/stat.h>
@@ -126,12 +128,9 @@ bool safe_rename_file(const std::string &old_path,
 void create_tar_archive(const std::string &archive_path,
                         const std::string &source_dir) {
   struct archive *a;
-  struct archive_entry *entry;
   struct stat st;
   constexpr size_t kArchiveBufferSize = 4ULL * 1024 * 1024;
   std::vector<char> buffer(kArchiveBufferSize);
-  int len;
-  int fd;
   uint64_t archived_file_count = 0;
   uint64_t archived_total_bytes = 0;
 
@@ -140,72 +139,132 @@ void create_tar_archive(const std::string &archive_path,
 
   a = archive_write_new();
   archive_write_set_format_pax_restricted(a);
-  if (archive_write_open_filename(a, archive_path.c_str()) != ARCHIVE_OK) {
-    throw std::runtime_error("Failed to open archive for writing: " +
-                             std::string(archive_error_string(a)));
-  }
-
-  std::filesystem::path root(source_dir);
-  for (const auto &dir_entry :
-       std::filesystem::recursive_directory_iterator(root)) {
-    if (!dir_entry.is_regular_file())
-      continue;
-
-    const std::string full_path = dir_entry.path().string();
-    const std::string rel_path =
-        std::filesystem::relative(dir_entry.path(), root).string();
-
-    stat(full_path.c_str(), &st);
-    entry = archive_entry_new();
-    archive_entry_set_pathname(entry, rel_path.c_str());
-    archive_entry_set_size(entry, st.st_size);
-    archived_file_count++;
-    archived_total_bytes += static_cast<uint64_t>(st.st_size);
-    archive_entry_set_filetype(entry, AE_IFREG);
-    archive_entry_set_perm(entry, 0644);
-    archive_write_header(a, entry);
-
-    int open_flags = O_RDONLY;
-#if defined(_WIN32) && defined(O_BINARY) && (O_BINARY != 0)
-    open_flags |= O_BINARY;
-#endif
-#if defined(O_CLOEXEC) && (O_CLOEXEC != 0)
-    open_flags |= O_CLOEXEC;
-#endif
-#ifdef _WIN32
-    if (_sopen_s(&fd, full_path.c_str(), open_flags, _SH_DENYNO, _S_IREAD) !=
-        0) {
-      fd = -1;
+  auto close_archive = [&]() noexcept {
+    if (a != nullptr) {
+      archive_write_close(a);
+      archive_write_free(a);
+      a = nullptr;
     }
-#else
-    fd = open(full_path.c_str(), open_flags);
-#endif
-    if (fd >= 0) {
+  };
+
+  auto close_fd = [](int fd) noexcept {
 #ifdef _WIN32
-      len = _read(fd, buffer.data(), static_cast<unsigned int>(buffer.size()));
-#else
-      len = read(fd, buffer.data(), buffer.size());
-#endif
-      while (len > 0) {
-        archive_write_data(a, buffer.data(), len);
-#ifdef _WIN32
-        len =
-            _read(fd, buffer.data(), static_cast<unsigned int>(buffer.size()));
-#else
-        len = read(fd, buffer.data(), buffer.size());
-#endif
-      }
-#ifdef _WIN32
+    if (fd >= 0)
       _close(fd);
 #else
+    if (fd >= 0)
       close(fd);
 #endif
+  };
+
+  auto archive_error = [a](const std::string &prefix) {
+    const char *message = archive_error_string(a);
+    return std::runtime_error(
+        prefix + (message ? ": " + std::string(message) : std::string()));
+  };
+
+  try {
+    if (archive_write_open_filename(a, archive_path.c_str()) != ARCHIVE_OK) {
+      throw archive_error("Failed to open archive for writing");
     }
-    archive_entry_free(entry);
+
+    std::filesystem::path root(source_dir);
+    for (const auto &dir_entry :
+         std::filesystem::recursive_directory_iterator(root)) {
+      if (!dir_entry.is_regular_file())
+        continue;
+
+      const std::string full_path = dir_entry.path().string();
+      const std::string rel_path =
+          std::filesystem::relative(dir_entry.path(), root).string();
+
+      if (stat(full_path.c_str(), &st) != 0) {
+        throw std::runtime_error("Failed to stat archive input '" + full_path +
+                                 "': " + std::strerror(errno));
+      }
+
+      struct archive_entry *entry = archive_entry_new();
+      if (entry == nullptr)
+        throw std::runtime_error("Failed to allocate archive entry for: " +
+                                 rel_path);
+      archive_entry_set_pathname(entry, rel_path.c_str());
+      archive_entry_set_size(entry, st.st_size);
+      archive_entry_set_filetype(entry, AE_IFREG);
+      archive_entry_set_perm(entry, 0644);
+      if (archive_write_header(a, entry) != ARCHIVE_OK) {
+        archive_entry_free(entry);
+        throw archive_error("Failed to write archive header for '" + rel_path +
+                            "'");
+      }
+
+      int open_flags = O_RDONLY;
+#if defined(_WIN32) && defined(O_BINARY) && (O_BINARY != 0)
+      open_flags |= O_BINARY;
+#endif
+#if defined(O_CLOEXEC) && (O_CLOEXEC != 0)
+      open_flags |= O_CLOEXEC;
+#endif
+      int fd = -1;
+#ifdef _WIN32
+      if (_sopen_s(&fd, full_path.c_str(), open_flags, _SH_DENYNO, _S_IREAD) !=
+          0) {
+        fd = -1;
+      }
+#else
+      fd = open(full_path.c_str(), open_flags);
+#endif
+      if (fd < 0) {
+        archive_entry_free(entry);
+        throw std::runtime_error("Failed to open archive input '" + full_path +
+                                 "': " + std::strerror(errno));
+      }
+
+      try {
+#ifdef _WIN32
+        int len =
+            _read(fd, buffer.data(), static_cast<unsigned int>(buffer.size()));
+#else
+        ssize_t len = read(fd, buffer.data(), buffer.size());
+#endif
+        while (len > 0) {
+          const la_ssize_t written = archive_write_data(a, buffer.data(), len);
+          if (written < 0 || written != static_cast<la_ssize_t>(len)) {
+            throw archive_error("Failed to write archive data for '" +
+                                rel_path + "'");
+          }
+#ifdef _WIN32
+          len = _read(fd, buffer.data(),
+                      static_cast<unsigned int>(buffer.size()));
+#else
+          len = read(fd, buffer.data(), buffer.size());
+#endif
+        }
+        if (len < 0) {
+          throw std::runtime_error("Failed reading archive input '" +
+                                   full_path + "': " + std::strerror(errno));
+        }
+      } catch (...) {
+        close_fd(fd);
+        archive_entry_free(entry);
+        throw;
+      }
+
+      close_fd(fd);
+      archive_entry_free(entry);
+      archived_file_count++;
+      archived_total_bytes += static_cast<uint64_t>(st.st_size);
+    }
+
+    if (archive_write_close(a) != ARCHIVE_OK) {
+      throw archive_error("Failed to finalize archive");
+    }
+    archive_write_free(a);
+    a = nullptr;
+  } catch (...) {
+    close_archive();
+    throw;
   }
 
-  archive_write_close(a);
-  archive_write_free(a);
   SPRING_LOG_DEBUG(
       "create_tar_archive complete: files=" +
       std::to_string(archived_file_count) +

@@ -387,16 +387,19 @@ void write_fastq_block(std::ostream &output_stream, std::string *id_buffer,
 FileDecompressionSink::FileDecompressionSink(const std::string &outfile_1,
                                              const std::string &outfile_2,
                                              const compression_params &cp,
-                                             bool crlf, const bool (&gzip)[2],
+                                             const bool (&gzip)[2],
                                              const bool (&bgzf)[2])
-    : use_crlf(crlf), fasta_mode(cp.encoding.fasta_mode),
-      quality_header_has_id(cp.read_info.quality_header_has_id),
+    : fasta_mode(cp.encoding.fasta_mode),
       compression_level(cp.encoding.compression_level),
       num_thr(cp.encoding.num_thr), paired_end(cp.encoding.paired_end) {
   should_gzip[0] = gzip[0];
   should_gzip[1] = gzip[1];
   should_bgzf[0] = bgzf[0];
   should_bgzf[1] = bgzf[1];
+  use_crlf_[0] = cp.encoding.use_crlf_by_stream[0];
+  use_crlf_[1] = cp.encoding.use_crlf_by_stream[1];
+  quality_header_has_id_[0] = cp.read_info.quality_header_has_id_by_stream[0];
+  quality_header_has_id_[1] = cp.read_info.quality_header_has_id_by_stream[1];
 
   output_streams[0].open(outfile_1, std::ios::binary);
   if (!output_streams[0])
@@ -423,8 +426,9 @@ void FileDecompressionSink::consume_step(std::string *id_buffer,
   }
   write_fastq_block(output_streams[stream_index], id_buffer, read_buffer,
                     quality_buffer, count, num_thr, should_gzip[stream_index],
-                    should_bgzf[stream_index], compression_level, use_crlf,
-                    fasta_mode, quality_header_has_id);
+                    should_bgzf[stream_index], compression_level,
+                    use_crlf_[stream_index], fasta_mode,
+                    quality_header_has_id_[stream_index]);
 }
 
 void write_step_output(std::ofstream &output_stream, std::string *id_buffer,
@@ -1278,79 +1282,91 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
     for (int stream_index = 0; stream_index < 2; stream_index++) {
       if (stream_index == 1 && !paired_end)
         continue;
+      std::exception_ptr omp_exception;
 #pragma omp parallel
       {
-        uint64_t thread_id = omp_get_thread_num();
-        if (thread_id * num_reads_per_block < num_reads_cur_step) {
-          const uint32_t thread_read_count = compute_thread_read_count(
-              num_reads_cur_step, num_reads_per_block, thread_id);
-          const uint64_t buffer_offset = thread_id * num_reads_per_block;
-          const uint32_t block_num = num_blocks_done + thread_id;
+        try {
+          uint64_t thread_id = omp_get_thread_num();
+          if (thread_id * num_reads_per_block < num_reads_cur_step) {
+            const uint32_t thread_read_count = compute_thread_read_count(
+                num_reads_cur_step, num_reads_per_block, thread_id);
+            const uint64_t buffer_offset = thread_id * num_reads_per_block;
+            const uint32_t block_num = num_blocks_done + thread_id;
 
-          // Decompress read lengths file and read into array
-          decompress_read_length_block(input_read_length_paths[stream_index],
-                                       block_num, read_lengths_buffer.data(),
-                                       buffer_offset, thread_read_count);
+            decompress_read_length_block(input_read_length_paths[stream_index],
+                                         block_num, read_lengths_buffer.data(),
+                                         buffer_offset, thread_read_count);
 
-          std::string block_base_path =
-              input_read_paths[stream_index] + "." + std::to_string(block_num);
-          const std::string compressed_read_path = block_base_path + ".bsc";
-          if (std::filesystem::exists(compressed_read_path)) {
-            safe_bsc_decompress(compressed_read_path, block_base_path);
-            safe_remove_file(compressed_read_path);
-          }
-          read_raw_string_block(
-              block_base_path, read_buffer.data() + buffer_offset,
-              thread_read_count, read_lengths_buffer.data() + buffer_offset);
-          safe_remove_file(block_base_path);
-
-          if (preserve_quality) {
-            std::string quality_base_path = input_quality_paths[stream_index] +
-                                            "." + std::to_string(block_num);
-            const std::string quality_raw_path = quality_base_path + ".raw";
-            safe_bsc_decompress(quality_base_path, quality_raw_path);
-            read_raw_string_block(
-                quality_raw_path, quality_buffer.data() + buffer_offset,
-                thread_read_count, read_lengths_buffer.data() + buffer_offset);
-            safe_remove_file(quality_raw_path);
-            safe_remove_file(quality_base_path);
-          }
-          if (!preserve_id) {
-            for (uint32_t i = buffer_offset;
-                 i < buffer_offset + thread_read_count; i++) {
-              std::string read_id;
-              read_id.reserve(32);
-              read_id.push_back('@');
-              read_id.append(std::to_string(num_reads_done + i + 1));
-              read_id.push_back('/');
-              read_id.append(std::to_string(stream_index + 1));
-              id_buffer[i] = std::move(read_id);
+            std::string block_base_path = input_read_paths[stream_index] + "." +
+                                          std::to_string(block_num);
+            const std::string compressed_read_path = block_base_path + ".bsc";
+            if (std::filesystem::exists(compressed_read_path)) {
+              safe_bsc_decompress(compressed_read_path, block_base_path);
+              safe_remove_file(compressed_read_path);
             }
-          } else {
-            if (stream_index == 1 && paired_id_match) {
+            read_raw_string_block(
+                block_base_path, read_buffer.data() + buffer_offset,
+                thread_read_count, read_lengths_buffer.data() + buffer_offset);
+            safe_remove_file(block_base_path);
+
+            if (preserve_quality) {
+              std::string quality_base_path =
+                  input_quality_paths[stream_index] + "." +
+                  std::to_string(block_num);
+              const std::string quality_raw_path = quality_base_path + ".raw";
+              safe_bsc_decompress(quality_base_path, quality_raw_path);
+              read_raw_string_block(quality_raw_path,
+                                    quality_buffer.data() + buffer_offset,
+                                    thread_read_count,
+                                    read_lengths_buffer.data() + buffer_offset);
+              safe_remove_file(quality_raw_path);
+              safe_remove_file(quality_base_path);
+            }
+            if (!preserve_id) {
               for (uint32_t i = buffer_offset;
-                   i < buffer_offset + thread_read_count; i++)
-                modify_id(id_buffer[i], paired_id_code);
+                   i < buffer_offset + thread_read_count; i++) {
+                std::string read_id;
+                read_id.reserve(32);
+                read_id.push_back('@');
+                read_id.append(std::to_string(num_reads_done + i + 1));
+                read_id.push_back('/');
+                read_id.append(std::to_string(stream_index + 1));
+                id_buffer[i] = std::move(read_id);
+              }
             } else {
-              std::string id_base_path = input_id_paths[stream_index] + "." +
-                                         std::to_string(block_num);
-              const std::string compressed_id_path = id_base_path + ".bsc";
-              if (std::filesystem::exists(compressed_id_path)) {
-                decompress_id_block(compressed_id_path.c_str(),
-                                    id_buffer.data() + buffer_offset,
-                                    thread_read_count, false);
-                safe_remove_file(compressed_id_path);
+              if (stream_index == 1 && paired_id_match) {
+                for (uint32_t i = buffer_offset;
+                     i < buffer_offset + thread_read_count; i++)
+                  modify_id(id_buffer[i], paired_id_code);
               } else {
-                // Backward compatibility: raw packed ID blocks from older
-                // long-mode archives.
-                decompress_id_block(id_base_path.c_str(),
-                                    id_buffer.data() + buffer_offset,
-                                    thread_read_count, true);
-                safe_remove_file(id_base_path);
+                std::string id_base_path = input_id_paths[stream_index] + "." +
+                                           std::to_string(block_num);
+                const std::string compressed_id_path = id_base_path + ".bsc";
+                if (std::filesystem::exists(compressed_id_path)) {
+                  decompress_id_block(compressed_id_path.c_str(),
+                                      id_buffer.data() + buffer_offset,
+                                      thread_read_count, false);
+                  safe_remove_file(compressed_id_path);
+                } else {
+                  decompress_id_block(id_base_path.c_str(),
+                                      id_buffer.data() + buffer_offset,
+                                      thread_read_count, true);
+                  safe_remove_file(id_base_path);
+                }
               }
             }
           }
+        } catch (...) {
+#pragma omp critical
+          {
+            if (!omp_exception)
+              omp_exception = std::current_exception();
+          }
         }
+      }
+
+      if (omp_exception) {
+        std::rethrow_exception(omp_exception);
       }
 
       std::string *read_buffer_ptr = read_buffer.data();

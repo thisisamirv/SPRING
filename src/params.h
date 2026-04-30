@@ -72,6 +72,7 @@ struct compression_params {
     int num_reads_per_block_long;
     bool fasta_mode;
     bool use_crlf;
+    bool use_crlf_by_stream[2] = {false, false};
     uint32_t cb_len = 16;      // CB length for extraction/display.
     bool barcode_sort = false; // Legacy field; always false in new archives.
     bool bisulfite_ternary = false;
@@ -124,6 +125,7 @@ struct compression_params {
     bool paired_id_match;
     bool quality_header_has_id =
         false; // True if FASTQ uses "+ID" format instead of "+"
+    bool quality_header_has_id_by_stream[2] = {false, false};
     static constexpr size_t kFileLenThrSize = 1024;
     uint64_t file_len_seq_thr[kFileLenThrSize];
     uint64_t file_len_id_thr[kFileLenThrSize];

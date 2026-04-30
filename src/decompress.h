@@ -62,7 +62,7 @@ class FileDecompressionSink : public DecompressionSink {
 public:
   FileDecompressionSink(const std::string &outfile_1,
                         const std::string &outfile_2,
-                        const compression_params &cp, bool use_crlf,
+                        const compression_params &cp,
                         const bool (&should_gzip)[2],
                         const bool (&should_bgzf)[2]);
   ~FileDecompressionSink() override;
@@ -75,9 +75,9 @@ private:
   std::ofstream output_streams[2];
   bool should_gzip[2];
   bool should_bgzf[2];
-  bool use_crlf;
+  bool use_crlf_[2];
   bool fasta_mode;
-  bool quality_header_has_id;
+  bool quality_header_has_id_[2];
   int compression_level;
   int num_thr;
   bool paired_end;

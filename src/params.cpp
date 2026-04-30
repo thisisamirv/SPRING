@@ -36,6 +36,20 @@ std::string read_string(std::istream &in) {
   return s;
 }
 
+namespace {
+
+void apply_legacy_stream_metadata(compression_params &cp) {
+  cp.encoding.use_crlf_by_stream[0] = cp.encoding.use_crlf;
+  cp.encoding.use_crlf_by_stream[1] =
+      cp.encoding.paired_end ? cp.encoding.use_crlf : false;
+  cp.read_info.quality_header_has_id_by_stream[0] =
+      cp.read_info.quality_header_has_id;
+  cp.read_info.quality_header_has_id_by_stream[1] =
+      cp.encoding.paired_end ? cp.read_info.quality_header_has_id : false;
+}
+
+} // namespace
+
 void write_compression_params(std::ostream &out, const compression_params &cp) {
   write_bool(out, cp.encoding.paired_end);
   write_bool(out, cp.encoding.preserve_order);
@@ -113,9 +127,14 @@ void write_compression_params(std::ostream &out, const compression_params &cp) {
   write_bool(out, cp.read_info.quality_header_has_id);
   write_bool(out, cp.encoding.atac_adapter_stripped);
   write_bool(out, cp.encoding.index_id_suffix_reconstructed);
+  for (int i = 0; i < 2; ++i)
+    write_bool(out, cp.encoding.use_crlf_by_stream[i]);
+  for (int i = 0; i < 2; ++i)
+    write_bool(out, cp.read_info.quality_header_has_id_by_stream[i]);
 }
 
 void read_compression_params(std::istream &in, compression_params &cp) {
+  bool has_stream_specific_fastq_metadata = false;
   cp.encoding.paired_end = read_bool(in);
   cp.encoding.preserve_order = read_bool(in);
   cp.encoding.preserve_quality = read_bool(in);
@@ -216,6 +235,15 @@ void read_compression_params(std::istream &in, compression_params &cp) {
                     cp.encoding.atac_adapter_stripped = read_bool(in);
                     if (in.peek() != std::char_traits<char>::eof()) {
                       cp.encoding.index_id_suffix_reconstructed = read_bool(in);
+                      if (in.peek() != std::char_traits<char>::eof()) {
+                        for (int i = 0; i < 2; ++i)
+                          cp.encoding.use_crlf_by_stream[i] = read_bool(in);
+                        for (int i = 0; i < 2; ++i) {
+                          cp.read_info.quality_header_has_id_by_stream[i] =
+                              read_bool(in);
+                        }
+                        has_stream_specific_fastq_metadata = true;
+                      }
                     } else {
                       cp.encoding.index_id_suffix_reconstructed = false;
                     }
@@ -305,6 +333,16 @@ void read_compression_params(std::istream &in, compression_params &cp) {
     cp.encoding.atac_adapter_stripped = false;
     cp.encoding.index_id_suffix_reconstructed = false;
   }
+
+  if (!has_stream_specific_fastq_metadata) {
+    apply_legacy_stream_metadata(cp);
+  }
+
+  cp.encoding.use_crlf =
+      cp.encoding.use_crlf_by_stream[0] ||
+      (cp.encoding.paired_end && cp.encoding.use_crlf_by_stream[1]);
+  cp.read_info.quality_header_has_id =
+      cp.read_info.quality_header_has_id_by_stream[0];
 }
 
 } // namespace spring

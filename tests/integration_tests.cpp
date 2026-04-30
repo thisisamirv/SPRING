@@ -16,6 +16,74 @@ using namespace spring;
 
 namespace {
 
+std::string read_file_binary(const std::string &path) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input.is_open())
+    return "";
+  return std::string((std::istreambuf_iterator<char>(input)),
+                     std::istreambuf_iterator<char>());
+}
+
+void write_fastq_record(std::ofstream &output, const std::string &id,
+                        const std::string &sequence, const std::string &quality,
+                        bool quality_header_has_id, bool use_crlf) {
+  const char *eol = use_crlf ? "\r\n" : "\n";
+  output << id << eol;
+  output << sequence << eol;
+  output << '+';
+  if (quality_header_has_id && !id.empty() && id.front() == '@')
+    output << id.substr(1);
+  output << eol;
+  output << quality << eol;
+}
+
+void create_custom_fastq(const std::string &path, int num_records,
+                         bool quality_header_has_id, bool use_crlf,
+                         int read_len = 80) {
+  std::ofstream output(path, std::ios::binary);
+  static constexpr char kBaseCycle[] = {'A', 'C', 'G', 'T'};
+  for (int record = 0; record < num_records; ++record) {
+    std::string sequence;
+    sequence.reserve(static_cast<size_t>(read_len));
+    for (int base = 0; base < read_len; ++base) {
+      sequence.push_back(kBaseCycle[(record + base) % 4]);
+    }
+
+    write_fastq_record(output, "@custom_" + std::to_string(record), sequence,
+                       std::string(static_cast<size_t>(read_len), 'I'),
+                       quality_header_has_id, use_crlf);
+  }
+}
+
+void create_custom_paired_fastqs(const std::string &r1_path,
+                                 const std::string &r2_path, int num_records,
+                                 bool r1_quality_header_has_id,
+                                 bool r2_quality_header_has_id,
+                                 bool r1_use_crlf, bool r2_use_crlf) {
+  std::ofstream r1(r1_path, std::ios::binary);
+  std::ofstream r2(r2_path, std::ios::binary);
+  static constexpr char kBaseCycle[] = {'A', 'C', 'G', 'T'};
+  constexpr int read_len = 90;
+
+  for (int record = 0; record < num_records; ++record) {
+    std::string seq1;
+    std::string seq2;
+    seq1.reserve(read_len);
+    seq2.reserve(read_len);
+    for (int base = 0; base < read_len; ++base) {
+      seq1.push_back(kBaseCycle[(record + base) % 4]);
+      seq2.push_back(kBaseCycle[(record + base + 1) % 4]);
+    }
+
+    write_fastq_record(r1, "@pair_" + std::to_string(record) + "/1", seq1,
+                       std::string(read_len, 'I'), r1_quality_header_has_id,
+                       r1_use_crlf);
+    write_fastq_record(r2, "@pair_" + std::to_string(record) + "/2", seq2,
+                       std::string(read_len, 'J'), r2_quality_header_has_id,
+                       r2_use_crlf);
+  }
+}
+
 void create_dummy_fastq(const std::string &path, int num_records) {
   std::ofstream ofs(path, std::ios::binary);
   constexpr int read_len = 80;
@@ -382,6 +450,83 @@ TEST_CASE("Sparse ATAC read-through keeps adapter stripping disabled") {
   CHECK(restored == original);
   original_in.close();
   restored_in.close();
+
+  fs::remove_all(test_dir);
+}
+
+TEST_CASE("Paired FASTQ preserves per-stream plus lines and line endings") {
+  const std::string test_dir = "paired_fastq_metadata_test_tmp";
+  fs::create_directories(test_dir);
+
+  const std::string r1_fastq = test_dir + "/input_R1.fastq";
+  const std::string r2_fastq = test_dir + "/input_R2.fastq";
+  const std::string archive_path = test_dir + "/paired_metadata.sp";
+  const std::string out_r1 = test_dir + "/roundtrip_R1.fastq";
+  const std::string out_r2 = test_dir + "/roundtrip_R2.fastq";
+
+  create_custom_paired_fastqs(r1_fastq, r2_fastq, 1500, false, true, false,
+                              true);
+
+  const std::string compress_cmd = std::string(SPRING2_EXECUTABLE) +
+                                   " -c --R1 " + r1_fastq + " --R2 " +
+                                   r2_fastq + " -o " + archive_path + " -w " +
+                                   test_dir + "/work_compress -t 1";
+  const std::string decompress_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_path + " -o " +
+      out_r1 + " " + out_r2 + " -w " + test_dir + "/work_decompress -t 1";
+
+  REQUIRE(std::system(compress_cmd.c_str()) == 0);
+  REQUIRE(std::system(decompress_cmd.c_str()) == 0);
+
+  CHECK(read_file_binary(out_r1) == read_file_binary(r1_fastq));
+  CHECK(read_file_binary(out_r2) == read_file_binary(r2_fastq));
+
+  fs::remove_all(test_dir);
+}
+
+TEST_CASE("Corrupt long-read archive reports a normal decompression error") {
+  const std::string test_dir = "long_read_error_test_tmp";
+  fs::create_directories(test_dir);
+
+  const std::string input_fastq = test_dir + "/input.fastq";
+  const std::string archive_path = test_dir + "/long_reads.sp";
+  const std::string corrupt_dir = test_dir + "/corrupt_extract";
+  const std::string corrupted_archive = test_dir + "/corrupted.sp";
+  const std::string output_fastq = test_dir + "/restored.fastq";
+  const std::string decompress_log = test_dir + "/decompress.log";
+  const std::string corrupted_archive_tar_path =
+      fs::absolute(corrupted_archive).generic_string();
+
+  create_custom_fastq(input_fastq, 128, false, false, 700);
+
+  const std::string compress_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -c --R1 " + input_fastq + " -o " +
+      archive_path + " -w " + test_dir + "/work_compress -t 1";
+  REQUIRE(std::system(compress_cmd.c_str()) == 0);
+
+  fs::create_directories(corrupt_dir);
+  REQUIRE(std::system(
+              ("tar -xf " + archive_path + " -C " + corrupt_dir).c_str()) == 0);
+
+  const fs::path read_length_block =
+      fs::path(corrupt_dir) / "readlength_1.0.bsc";
+  REQUIRE(fs::exists(read_length_block));
+  const auto block_size = fs::file_size(read_length_block);
+  REQUIRE(block_size > 8);
+  fs::resize_file(read_length_block, block_size / 2);
+
+  REQUIRE(std::system(("cd " + corrupt_dir + " && tar -cf \"" +
+                       corrupted_archive_tar_path + "\" *")
+                          .c_str()) == 0);
+
+  const std::string decompress_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -d -i " + corrupted_archive + " -o " +
+      output_fastq + " -w " + test_dir + "/work_decompress > " +
+      decompress_log + " 2>&1";
+  CHECK(std::system(decompress_cmd.c_str()) != 0);
+
+  const std::string output = read_file_binary(decompress_log);
+  CHECK(output.find("Program terminated unexpectedly") != std::string::npos);
 
   fs::remove_all(test_dir);
 }

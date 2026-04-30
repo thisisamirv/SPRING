@@ -939,11 +939,14 @@ void compress_standard(const std::string &temp_dir,
   const bool preserve_id = !no_ids_flag;
   const bool preserve_quality = !no_quality_flag && !fasta_input;
 
-  bool use_crlf = false;
+  std::array<bool, 2> use_crlf_by_stream = {false, false};
   bool contains_non_acgtn_symbols = false;
   const uint32_t max_read_length = detect_max_read_length(
       prepared_inputs.input_path_1, prepared_inputs.input_path_2,
-      io_config.paired_end, fasta_input, use_crlf, contains_non_acgtn_symbols);
+      io_config.paired_end, fasta_input, use_crlf_by_stream,
+      contains_non_acgtn_symbols);
+  const bool use_crlf =
+      use_crlf_by_stream[0] || (io_config.paired_end && use_crlf_by_stream[1]);
   const bool long_flag =
       (max_read_length > MAX_READ_LEN) || contains_non_acgtn_symbols;
   SPRING_LOG_DEBUG(
@@ -972,6 +975,9 @@ void compress_standard(const std::string &temp_dir,
   cp.encoding.preserve_id = preserve_id;
   cp.encoding.long_flag = long_flag;
   cp.encoding.use_crlf = use_crlf;
+  cp.encoding.use_crlf_by_stream[0] = use_crlf_by_stream[0];
+  cp.encoding.use_crlf_by_stream[1] =
+      io_config.paired_end ? use_crlf_by_stream[1] : false;
   cp.encoding.num_reads_per_block = NUM_READS_PER_BLOCK;
   cp.encoding.num_reads_per_block_long = NUM_READS_PER_BLOCK_LONG;
   cp.encoding.num_thr = num_thr;
@@ -1407,9 +1413,9 @@ void decompress_standard(const std::string &temp_dir,
   }
 
   std::unique_ptr<DecompressionSink> sink =
-      std::make_unique<FileDecompressionSink>(
-          io_config.output_path_1, io_config.output_path_2, cp,
-          cp.encoding.use_crlf, should_gzip, should_bgzf);
+      std::make_unique<FileDecompressionSink>(io_config.output_path_1,
+                                              io_config.output_path_2, cp,
+                                              should_gzip, should_bgzf);
 
   if (cp.encoding.long_flag) {
     decompress_long(temp_dir, *sink, cp, decoding_num_thr);

@@ -423,42 +423,39 @@ void detect_quality_header_format(
     std::array<std::istream *, 2> &input_streams,
     std::array<std::unique_ptr<gzip_istream>, 2> &gzip_streams,
     const preprocess_paths &paths, const compression_params &compression_params,
-    const bool gzip_enabled, bool &quality_header_has_id) {
+    const bool gzip_enabled,
+    std::array<bool, 2> &quality_header_has_id_by_stream) {
   if (compression_params.encoding.fasta_mode) {
-    quality_header_has_id = false;
+    quality_header_has_id_by_stream = {false, false};
     return;
   }
 
-  // Read first record from first stream to detect format
-  std::string line;
-  // Line 1: Header
-  if (!std::getline(*input_streams[0], line))
-    return;
-  // Line 2: Sequence
-  if (!std::getline(*input_streams[0], line))
-    return;
-  // Line 3: Plus line
-  if (!std::getline(*input_streams[0], line))
-    return;
+  for (int stream_index = 0; stream_index < 2; ++stream_index) {
+    if (stream_index == 1 && !compression_params.encoding.paired_end)
+      continue;
 
-  // Check if plus line has content beyond the '+' character
-  // Remove any trailing CR if present (std::getline removes \n already)
-  if (!line.empty() && line.back() == '\r') {
-    line.pop_back();
-  }
+    std::string line;
+    if (!std::getline(*input_streams[stream_index], line) ||
+        !std::getline(*input_streams[stream_index], line) ||
+        !std::getline(*input_streams[stream_index], line)) {
+      continue;
+    }
 
-  quality_header_has_id = line.length() > 1;
+    if (!line.empty() && line.back() == '\r') {
+      line.pop_back();
+    }
 
-  SPRING_LOG_DEBUG("Quality header detection: plus_line_length=" +
-                   std::to_string(line.length()) + ", has_id=" +
-                   std::string(quality_header_has_id ? "true" : "false"));
+    quality_header_has_id_by_stream[stream_index] = line.length() > 1;
 
-  // Reset stream to beginning for actual processing
-  reset_input_stream(input_files[0], input_streams[0], gzip_streams[0],
-                     paths.input_paths[0], gzip_enabled);
-  if (compression_params.encoding.paired_end) {
-    reset_input_stream(input_files[1], input_streams[1], gzip_streams[1],
-                       paths.input_paths[1], gzip_enabled);
+    SPRING_LOG_DEBUG(
+        "Quality header detection: stream=" + std::to_string(stream_index + 1) +
+        ", plus_line_length=" + std::to_string(line.length()) + ", has_id=" +
+        std::string(quality_header_has_id_by_stream[stream_index] ? "true"
+                                                                  : "false"));
+
+    reset_input_stream(input_files[stream_index], input_streams[stream_index],
+                       gzip_streams[stream_index],
+                       paths.input_paths[stream_index], gzip_enabled);
   }
 }
 
@@ -604,16 +601,17 @@ uint32_t detect_max_read_length_in_file(const std::string &path,
 uint32_t detect_max_read_length(const std::string &infile_1,
                                 const std::string &infile_2,
                                 const bool paired_end, const bool fasta_input,
-                                bool &use_crlf,
+                                std::array<bool, 2> &use_crlf_by_stream,
                                 bool &contains_non_acgtn_symbols) {
   SPRING_LOG_INFO("Auto-detecting read lengths and line endings ...");
-  use_crlf = false;
+  use_crlf_by_stream = {false, false};
   contains_non_acgtn_symbols = false;
   uint32_t max_len_1 = detect_max_read_length_in_file(
-      infile_1, fasta_input, use_crlf, contains_non_acgtn_symbols);
+      infile_1, fasta_input, use_crlf_by_stream[0], contains_non_acgtn_symbols);
   uint32_t max_len_2 = 0;
   if (paired_end) {
-    max_len_2 = detect_max_read_length_in_file(infile_2, fasta_input, use_crlf,
+    max_len_2 = detect_max_read_length_in_file(infile_2, fasta_input,
+                                               use_crlf_by_stream[1],
                                                contains_non_acgtn_symbols);
   }
   return std::max(max_len_1, max_len_2);
@@ -789,11 +787,16 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   }
 
   // Detect quality header format ("+ID" vs just "+")
-  bool quality_header_has_id = false;
+  std::array<bool, 2> quality_header_has_id_by_stream = {false, false};
   detect_quality_header_format(input_files, input_streams, gzip_streams, paths,
-                               cp, false, quality_header_has_id);
-  SPRING_LOG_DEBUG("Quality header format: " +
-                   std::string(quality_header_has_id ? "+ID" : "+"));
+                               cp, false, quality_header_has_id_by_stream);
+  SPRING_LOG_DEBUG(
+      "Quality header formats: stream1=" +
+      std::string(quality_header_has_id_by_stream[0] ? "+ID" : "+") +
+      (cp.encoding.paired_end
+           ? (", stream2=" +
+              std::string(quality_header_has_id_by_stream[1] ? "+ID" : "+"))
+           : std::string()));
 
   // Initialize integrity digests
   for (int i = 0; i < 2; ++i) {
@@ -1354,7 +1357,11 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                             num_reads_per_block);
   cp.read_info.paired_id_code = paired_id_code;
   cp.read_info.paired_id_match = paired_id_match;
-  cp.read_info.quality_header_has_id = quality_header_has_id;
+  cp.read_info.quality_header_has_id = quality_header_has_id_by_stream[0];
+  cp.read_info.quality_header_has_id_by_stream[0] =
+      quality_header_has_id_by_stream[0];
+  cp.read_info.quality_header_has_id_by_stream[1] =
+      cp.encoding.paired_end ? quality_header_has_id_by_stream[1] : false;
   cp.read_info.num_reads = num_reads[0] + num_reads[1];
   cp.read_info.num_reads_clean[0] = num_reads_clean[0];
   cp.read_info.num_reads_clean[1] = num_reads_clean[1];
