@@ -266,7 +266,7 @@ std::string build_options_description() {
       << "                                  lane is provided. Ignored when I1\n"
       << "                                  is present (auto-detected).\n"
       << "  -a [ --audit ]                  enable integrity verification; "
-        "with --preview,\n"
+         "with --preview,\n"
       << "                                  perform full archive audit\n"
       << "---------------------------------------------------------------------"
          "-----------\n"
@@ -275,10 +275,10 @@ std::string build_options_description() {
       << "  -i [ --input ] arg              input archive file (.sp)\n"
       << "  -u [ --unzip ]                  during decompression, force\n"
       << "                                  output to be uncompressed (even "
-        "if\n"
+         "if\n"
       << "                                  original was .gz)\n"
       << "---------------------------------------------------------------------"
-        "-----------\n"
+         "-----------\n"
       << "* Preview Options:\n"
       << "  -p [ --preview ]                inspect archive metadata without\n"
       << "                                  decompression\n"
@@ -466,8 +466,8 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
   }
 
   if (options.decompress_flag && !options.compress_flag &&
-      options.output_paths.size() > 4) {
-    throw std::runtime_error("Decompression accepts at most 4 output files.");
+      options.output_paths.size() > 5) {
+    throw std::runtime_error("Decompression accepts at most 5 output files.");
   }
 }
 
@@ -555,9 +555,9 @@ void validate_io_parameters(const command_line_options &options) {
   }
 
   if (options.preview_flag && options.input_paths.size() != 1) {
-    throw std::runtime_error(
-        "Preview requires exactly 1 input archive, but " +
-        std::to_string(options.input_paths.size()) + " provided.");
+    throw std::runtime_error("Preview requires exactly 1 input archive, but " +
+                             std::to_string(options.input_paths.size()) +
+                             " provided.");
   }
 
   for (const auto &path : options.input_paths) {
@@ -602,10 +602,11 @@ void validate_io_parameters(const command_line_options &options) {
         std::to_string(options.input_paths.size()) + " provided.");
   }
 
-  // Validate decompression output count: at most 4 output files
-  if (options.decompress_flag && options.output_paths.size() > 4) {
+  // Validate decompression output count: grouped archives may require up to 5
+  // outputs (R1, R2, R3, I1, I2).
+  if (options.decompress_flag && options.output_paths.size() > 5) {
     throw std::runtime_error(
-        "Decompression accepts at most 4 output files, but " +
+        "Decompression accepts at most 5 output files, but " +
         std::to_string(options.output_paths.size()) + " specified.");
   }
 }
@@ -677,11 +678,10 @@ void log_options_for_debugging(const command_line_options &options) {
   if (!spring::Logger::is_debug_enabled())
     return;
 
-  SPRING_LOG_DEBUG(
-      "CLI mode: " +
-      std::string(options.compress_flag    ? "compress"
-                  : options.decompress_flag ? "decompress"
-                                            : "preview"));
+  SPRING_LOG_DEBUG("CLI mode: " + std::string(options.compress_flag ? "compress"
+                                              : options.decompress_flag
+                                                  ? "decompress"
+                                                  : "preview"));
   SPRING_LOG_DEBUG(
       "CLI settings: threads=" + std::to_string(options.num_threads) +
       ", memory_cap_gb=" + std::to_string(options.memory_cap_gb) +
@@ -780,8 +780,7 @@ int main(int argc, char **argv) {
     } catch (const std::exception &e) {
       return print_unexpected_error_and_exit(
           options_description,
-          std::string(
-              "Program terminated unexpectedly with std::exception: ") +
+          std::string("Program terminated unexpectedly with std::exception: ") +
               e.what());
     } catch (...) {
       return print_unexpected_error_and_exit(options_description,

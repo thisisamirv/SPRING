@@ -21,8 +21,8 @@ namespace {
 constexpr const char *kBundleManifestName = "bundle.meta";
 constexpr const char *kBundleVersion = "SPRING2_BUNDLE_V1";
 
-std::filesystem::path create_preview_temp_dir(
-    const std::filesystem::path &working_dir) {
+std::filesystem::path
+create_preview_temp_dir(const std::filesystem::path &working_dir) {
   std::filesystem::create_directories(working_dir);
 
   while (true) {
@@ -50,13 +50,6 @@ read_key_value_string(const std::string &content) {
 }
 
 } // namespace
-
-void perform_verification(const std::string &archive_path,
-                          const std::string &temp_dir, compression_params &cp) {
-  (void)cp; // Metadata already extracted in preview(), perform_audit will
-            // re-extract what it needs
-  perform_audit(archive_path, temp_dir);
-}
 
 // Helper function to print gzip compression info for a single file
 void print_gzip_compression_info(int idx, const std::string &filename,
@@ -122,8 +115,7 @@ void preview_single(const std::string &archive_path, bool audit_only,
   if (audit_only) {
     const std::filesystem::path temp_dir = create_preview_temp_dir(working_dir);
     try {
-      compression_params cp;
-      perform_verification(archive_path, temp_dir.generic_string(), cp);
+      perform_audit(archive_path, temp_dir.generic_string());
     } catch (const std::exception &e) {
       std::error_code ec;
       std::filesystem::remove_all(temp_dir, ec);
@@ -263,6 +255,11 @@ void preview_single(const std::string &archive_path, bool audit_only,
 
 void preview(const std::string &archive_path, bool audit_only,
              const std::filesystem::path &working_dir) {
+  if (audit_only) {
+    preview_single(archive_path, true, working_dir);
+    return;
+  }
+
   auto contents =
       read_files_from_tar_memory(archive_path, {kBundleManifestName});
 
@@ -308,7 +305,7 @@ void preview(const std::string &archive_path, bool audit_only,
       compression_params cp_r3{};
       if (has_r3 && read3_alias_source.empty()) {
         auto r3_contents = read_files_from_tar_memory(
-          (temp_dir / read3_archive_name).generic_string(), {"cp.bin"});
+            (temp_dir / read3_archive_name).generic_string(), {"cp.bin"});
         if (r3_contents.contains("cp.bin")) {
           std::istringstream in_r3(r3_contents["cp.bin"], std::ios::binary);
           read_compression_params(in_r3, cp_r3);
@@ -319,7 +316,7 @@ void preview(const std::string &archive_path, bool audit_only,
       compression_params cp_index{};
       if (has_index) {
         auto index_contents = read_files_from_tar_memory(
-          (temp_dir / index_archive_name).generic_string(), {"cp.bin"});
+            (temp_dir / index_archive_name).generic_string(), {"cp.bin"});
         if (index_contents.contains("cp.bin")) {
           std::istringstream in_index(index_contents["cp.bin"],
                                       std::ios::binary);
@@ -333,6 +330,9 @@ void preview(const std::string &archive_path, bool audit_only,
       if (!cp_reads.read_info.compressor_version.empty()) {
         std::cout << "Compressor Version: "
                   << cp_reads.read_info.compressor_version << "\n";
+      }
+      if (!cp_reads.read_info.note.empty()) {
+        std::cout << "Note:              " << cp_reads.read_info.note << "\n";
       }
       std::cout << "Original Input 1:  " << manifest.at("r1_name") << "\n";
       std::cout << "Original Input 2:  " << manifest.at("r2_name") << "\n";

@@ -788,6 +788,9 @@ void perform_audit_standard(const std::string &archive_path,
 
     compression_params cp{};
     read_compression_params(compression_params_input, cp);
+    if (!compression_params_input.good()) {
+      throw std::runtime_error("Can't read parameter file in audit.");
+    }
     compression_params_input.close();
 
     NullDecompressionSink sink;

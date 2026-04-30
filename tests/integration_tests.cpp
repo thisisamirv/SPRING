@@ -137,6 +137,21 @@ void create_grouped_sc_rna_like_fastqs(const std::string &r1_path,
   }
 }
 
+std::string read_manifest_value(const std::string &manifest_path,
+                                const std::string &key) {
+  std::ifstream input(manifest_path, std::ios::binary);
+  if (!input.is_open())
+    return "";
+
+  std::string line;
+  const std::string prefix = key + "=";
+  while (std::getline(input, line)) {
+    if (line.rfind(prefix, 0) == 0)
+      return line.substr(prefix.size());
+  }
+  return "";
+}
+
 TEST_CASE("Archive Integrity Verification Test") {
   std::string test_dir = "integrity_test_tmp";
   fs::create_directories(test_dir);
@@ -182,8 +197,7 @@ TEST_CASE("Archive Integrity Verification Test") {
   // or clearly corrupted metadata output.
   std::string audit_log = test_dir + "/corrupt_audit.log";
   std::string audit_corrupt_cmd =
-      spring2_path + " -p -a " + corrupted_sp + " > " + audit_log +
-      " 2>&1";
+      spring2_path + " -p -a " + corrupted_sp + " > " + audit_log + " 2>&1";
   int ret = std::system(audit_corrupt_cmd.c_str());
 
   bool audit_detected_corruption = (ret != 0);
@@ -291,8 +305,8 @@ TEST_CASE("ATAC adapter stripping round-trips and is recorded") {
   const std::string decompress_atac_cmd =
       std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_atac + " -o " +
       output_fastq + " -w " + test_dir + "/work_roundtrip -t 1";
-    const std::string spring2_path = SPRING2_EXECUTABLE;
-    const std::string preview_cmd =
+  const std::string spring2_path = SPRING2_EXECUTABLE;
+  const std::string preview_cmd =
       spring2_path + " -p " + archive_atac + " > " + preview_log + " 2>&1";
 
   REQUIRE(std::system(compress_atac_cmd.c_str()) == 0);
@@ -340,8 +354,8 @@ TEST_CASE("Sparse ATAC read-through keeps adapter stripping disabled") {
   const std::string decompress_atac_cmd =
       std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_atac + " -o " +
       output_fastq + " -w " + test_dir + "/work_roundtrip -t 1";
-    const std::string spring2_path = SPRING2_EXECUTABLE;
-    const std::string preview_cmd =
+  const std::string spring2_path = SPRING2_EXECUTABLE;
+  const std::string preview_cmd =
       spring2_path + " -p " + archive_atac + " > " + preview_log + " 2>&1";
 
   REQUIRE(std::system(compress_atac_cmd.c_str()) == 0);
@@ -400,8 +414,8 @@ TEST_CASE("Grouped sc-ATAC auto mode round-trips with N-containing reads") {
       std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_path + " -o " +
       out_r1 + " " + out_r2 + " " + out_r3 + " " + out_i1 + " -w " + test_dir +
       "/work_decompress -t 1";
-    const std::string spring2_path = SPRING2_EXECUTABLE;
-    const std::string preview_cmd =
+  const std::string spring2_path = SPRING2_EXECUTABLE;
+  const std::string preview_cmd =
       spring2_path + " -p " + archive_path + " > " + preview_log + " 2>&1";
 
   REQUIRE(std::system(compress_cmd.c_str()) == 0);
@@ -421,6 +435,141 @@ TEST_CASE("Grouped sc-ATAC auto mode round-trips with N-containing reads") {
   for (const auto &[original_path, restored_path] :
        {std::pair{r1_fastq, out_r1}, std::pair{r2_fastq, out_r2},
         std::pair{r3_fastq, out_r3}, std::pair{i1_fastq, out_i1}}) {
+    std::ifstream original_in(original_path, std::ios::binary);
+    std::ifstream restored_in(restored_path, std::ios::binary);
+    REQUIRE(original_in.is_open());
+    REQUIRE(restored_in.is_open());
+    const std::string original((std::istreambuf_iterator<char>(original_in)),
+                               std::istreambuf_iterator<char>());
+    const std::string restored((std::istreambuf_iterator<char>(restored_in)),
+                               std::istreambuf_iterator<char>());
+    CHECK(restored == original);
+  }
+
+  fs::remove_all(test_dir);
+}
+
+TEST_CASE(
+    "Grouped preview audit detects corruption and preserves archive note") {
+  const std::string test_dir = "grouped_preview_audit_test_tmp";
+  fs::create_directories(test_dir);
+
+  const std::string r1_fastq = test_dir + "/input_R1.fastq";
+  const std::string r2_fastq = test_dir + "/input_R2.fastq";
+  const std::string r3_fastq = test_dir + "/input_R3.fastq";
+  const std::string i1_fastq = test_dir + "/input_I1.fastq";
+  const std::string archive_path = test_dir + "/grouped_note.sp";
+  const std::string preview_log = test_dir + "/preview.log";
+  const std::string corrupt_dir = test_dir + "/corrupt_extract";
+  const std::string nested_read_dir = test_dir + "/nested_read_extract";
+  const std::string corrupt_log = test_dir + "/corrupt_audit.log";
+  const fs::path corrupted_archive_path =
+      fs::absolute(fs::path(test_dir) / "grouped_corrupted.sp");
+
+  create_dummy_fastq(r1_fastq, 500);
+  create_dummy_fastq(r2_fastq, 500);
+  create_dummy_fastq(r3_fastq, 500);
+  create_dummy_fastq(i1_fastq, 500);
+
+  const std::string compress_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -c --R1 " + r1_fastq + " --R2 " +
+      r2_fastq + " --R3 " + r3_fastq + " --I1 " + i1_fastq +
+      " -n GROUPED_TEST_NOTE -o " + archive_path + " -w " + test_dir +
+      "/work_compress -t 1 -y auto";
+  const std::string preview_cmd = std::string(SPRING2_EXECUTABLE) + " -p " +
+                                  archive_path + " > " + preview_log + " 2>&1";
+  const std::string audit_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -p -a " + archive_path;
+
+  REQUIRE(std::system(compress_cmd.c_str()) == 0);
+  REQUIRE(std::system(preview_cmd.c_str()) == 0);
+  REQUIRE(std::system(audit_cmd.c_str()) == 0);
+
+  std::ifstream preview_in(preview_log, std::ios::binary);
+  REQUIRE(preview_in.is_open());
+  const std::string preview_output((std::istreambuf_iterator<char>(preview_in)),
+                                   std::istreambuf_iterator<char>());
+  CHECK(preview_output.find("Note:              GROUPED_TEST_NOTE") !=
+        std::string::npos);
+  preview_in.close();
+
+  fs::create_directories(corrupt_dir);
+  REQUIRE(std::system(
+              ("tar -xf " + archive_path + " -C " + corrupt_dir).c_str()) == 0);
+
+  fs::create_directories(nested_read_dir);
+  const std::string read_archive_name =
+      read_manifest_value(corrupt_dir + "/bundle.meta", "read_archive");
+  REQUIRE(!read_archive_name.empty());
+  const fs::path read_archive = fs::path(corrupt_dir) / read_archive_name;
+  const std::string read_archive_tar_path =
+      fs::absolute(read_archive).generic_string();
+  const std::string corrupted_archive_tar_path =
+      corrupted_archive_path.generic_string();
+  REQUIRE(fs::exists(read_archive));
+  REQUIRE(std::system(
+              ("tar -xf " + read_archive.string() + " -C " + nested_read_dir)
+                  .c_str()) == 0);
+
+  const fs::path cp_path = fs::path(nested_read_dir) / "cp.bin";
+  REQUIRE(fs::exists(cp_path));
+  const auto cp_size = fs::file_size(cp_path);
+  REQUIRE(cp_size > 16);
+  fs::resize_file(cp_path, cp_size / 2);
+
+  REQUIRE(std::system(("cd " + nested_read_dir + " && tar -cf \"" +
+                       read_archive_tar_path + "\" *")
+                          .c_str()) == 0);
+
+  REQUIRE(std::system(("cd " + corrupt_dir + " && tar -cf \"" +
+                       corrupted_archive_tar_path + "\" *")
+                          .c_str()) == 0);
+
+  const std::string corrupt_audit_cmd = std::string(SPRING2_EXECUTABLE) +
+                                        " -p -a " + corrupted_archive_tar_path +
+                                        " > " + corrupt_log + " 2>&1";
+  CHECK(std::system(corrupt_audit_cmd.c_str()) != 0);
+
+  fs::remove_all(test_dir);
+}
+
+TEST_CASE("Grouped decompression accepts five explicit output files") {
+  const std::string test_dir = "grouped_five_output_test_tmp";
+  fs::create_directories(test_dir);
+
+  const std::string r1_fastq = test_dir + "/input_R1.fastq";
+  const std::string r2_fastq = test_dir + "/input_R2.fastq";
+  const std::string r3_fastq = test_dir + "/input_R3.fastq";
+  const std::string i1_fastq = test_dir + "/input_I1.fastq";
+  const std::string i2_fastq = test_dir + "/input_I2.fastq";
+  const std::string archive_path = test_dir + "/grouped_five_out.sp";
+  const std::string out_r1 = test_dir + "/out_R1.fastq";
+  const std::string out_r2 = test_dir + "/out_R2.fastq";
+  const std::string out_r3 = test_dir + "/out_R3.fastq";
+  const std::string out_i1 = test_dir + "/out_I1.fastq";
+  const std::string out_i2 = test_dir + "/out_I2.fastq";
+
+  create_grouped_sc_rna_like_fastqs(r1_fastq, r2_fastq, i1_fastq, i2_fastq,
+                                    1000);
+  create_dummy_fastq(r3_fastq, 1000);
+
+  const std::string compress_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -c --R1 " + r1_fastq + " --R2 " +
+      r2_fastq + " --R3 " + r3_fastq + " --I1 " + i1_fastq + " --I2 " +
+      i2_fastq + " -o " + archive_path + " -w " + test_dir +
+      "/work_compress -t 1 -y sc-rna";
+  const std::string decompress_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_path + " -o " +
+      out_r1 + " " + out_r2 + " " + out_r3 + " " + out_i1 + " " + out_i2 +
+      " -w " + test_dir + "/work_decompress -t 1";
+
+  REQUIRE(std::system(compress_cmd.c_str()) == 0);
+  REQUIRE(std::system(decompress_cmd.c_str()) == 0);
+
+  for (const auto &[original_path, restored_path] :
+       {std::pair{r1_fastq, out_r1}, std::pair{r2_fastq, out_r2},
+        std::pair{r3_fastq, out_r3}, std::pair{i1_fastq, out_i1},
+        std::pair{i2_fastq, out_i2}}) {
     std::ifstream original_in(original_path, std::ios::binary);
     std::ifstream restored_in(restored_path, std::ios::binary);
     REQUIRE(original_in.is_open());
@@ -470,8 +619,8 @@ TEST_CASE("Grouped sc-RNA index IDs are reconstructed from I1/I2 reads") {
       std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_auto + " -o " +
       out_r1 + " " + out_r2 + " " + out_i1 + " " + out_i2 + " -w " + test_dir +
       "/work_roundtrip -t 1";
-    const std::string spring2_path = SPRING2_EXECUTABLE;
-    const std::string preview_cmd =
+  const std::string spring2_path = SPRING2_EXECUTABLE;
+  const std::string preview_cmd =
       spring2_path + " -p " + archive_auto + " > " + preview_log + " 2>&1";
 
   REQUIRE(std::system(compress_auto_cmd.c_str()) == 0);
