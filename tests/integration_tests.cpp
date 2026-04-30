@@ -62,6 +62,33 @@ void create_atac_like_fastq(const std::string &path, int num_records) {
   }
 }
 
+void create_sparse_atac_like_fastq(const std::string &path, int num_records) {
+  std::ofstream ofs(path, std::ios::binary);
+  static constexpr std::string_view kAdapter = "CTGTCTCTTATACACATCT";
+  constexpr int read_len = 80;
+  constexpr int overlap = 14;
+
+  for (int i = 0; i < num_records; ++i) {
+    std::string read;
+    read.reserve(read_len);
+    static constexpr char kBaseCycle[] = {'A', 'C', 'G', 'T'};
+    uint32_t state = static_cast<uint32_t>(0x7F4A7C15u ^ (i * 2246822519u));
+    for (int j = 0; j < read_len; ++j) {
+      state = state * 1664525u + 1013904223u;
+      read.push_back(kBaseCycle[(state >> 30) & 0x03]);
+    }
+    if (i % 64 == 0) {
+      read.replace(static_cast<size_t>(read_len - overlap), overlap,
+                   std::string(kAdapter.substr(0, overlap)));
+    }
+
+    ofs << "@sparse_atac_read_" << i << "\n";
+    ofs << read << "\n";
+    ofs << "+\n";
+    ofs << std::string(static_cast<size_t>(read_len), 'I') << "\n";
+  }
+}
+
 void create_grouped_sc_rna_like_fastqs(const std::string &r1_path,
                                        const std::string &r2_path,
                                        const std::string &i1_path,
@@ -282,6 +309,57 @@ TEST_CASE("ATAC adapter stripping round-trips and is recorded") {
                                    std::istreambuf_iterator<char>());
   CHECK(preview_output.find(
             "ATAC Adapters:     Stripped terminal Tn5/Nextera read-through") !=
+        std::string::npos);
+  preview_in.close();
+
+  std::ifstream original_in(input_fastq, std::ios::binary);
+  std::ifstream restored_in(output_fastq, std::ios::binary);
+  REQUIRE(original_in.is_open());
+  REQUIRE(restored_in.is_open());
+  const std::string original((std::istreambuf_iterator<char>(original_in)),
+                             std::istreambuf_iterator<char>());
+  const std::string restored((std::istreambuf_iterator<char>(restored_in)),
+                             std::istreambuf_iterator<char>());
+  CHECK(restored == original);
+  original_in.close();
+  restored_in.close();
+
+  fs::remove_all(test_dir);
+}
+
+TEST_CASE("Sparse ATAC read-through keeps adapter stripping disabled") {
+  const std::string test_dir = "sparse_atac_test_tmp";
+  fs::create_directories(test_dir);
+
+  const std::string input_fastq = test_dir + "/input.fastq";
+  const std::string archive_atac = test_dir + "/test_atac.sp";
+  const std::string output_fastq = test_dir + "/roundtrip.fastq";
+  const std::string preview_log = test_dir + "/preview.log";
+
+  create_sparse_atac_like_fastq(input_fastq, 50000);
+
+  const std::string compress_atac_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -c --R1 " + input_fastq + " -o " +
+      archive_atac + " -w " + test_dir + "/work_atac -t 1 -y atac";
+  const std::string decompress_atac_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_atac + " -o " +
+      output_fastq + " -w " + test_dir + "/work_roundtrip -t 1";
+  const std::string spring2_path = SPRING2_EXECUTABLE;
+  const std::string preview_path =
+      fs::path(spring2_path).parent_path().string() + "/spring2-preview";
+  const std::string preview_cmd =
+      preview_path + " " + archive_atac + " > " + preview_log + " 2>&1";
+
+  REQUIRE(std::system(compress_atac_cmd.c_str()) == 0);
+  REQUIRE(std::system(decompress_atac_cmd.c_str()) == 0);
+  REQUIRE(std::system(preview_cmd.c_str()) == 0);
+
+  std::ifstream preview_in(preview_log, std::ios::binary);
+  REQUIRE(preview_in.is_open());
+  const std::string preview_output((std::istreambuf_iterator<char>(preview_in)),
+                                   std::istreambuf_iterator<char>());
+  CHECK(preview_output.find(
+            "ATAC Adapters:     Stripped terminal Tn5/Nextera read-through") ==
         std::string::npos);
   preview_in.close();
 

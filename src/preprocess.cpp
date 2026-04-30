@@ -92,8 +92,11 @@ uint16_t detect_and_strip_tail(std::string &read_str, uint32_t &read_length) {
 // Strip terminal Tn5/Nextera adapter read-through from the 3' end of a read.
 // Returns a uint8_t encoding: bit 0 = adapter id (0=forward, 1=reverse
 // complement), bits 7:1 = overlap length. Returns 0 if nothing was stripped.
-uint8_t detect_and_strip_atac_adapter_tail(std::string &read_str,
-                                           uint32_t &read_length) {
+uint8_t detect_atac_adapter_tail_info(const std::string &read_str,
+                                      const uint32_t read_length) {
+  if (read_length < ATAC_ADAPTER_MIN_MATCH)
+    return 0;
+
   static constexpr std::array<std::string_view, 2> kAdapters = {
       "CTGTCTCTTATACACATCT", "AGATGTGTATAAGAGACAG"};
 
@@ -106,8 +109,6 @@ uint8_t detect_and_strip_atac_adapter_tail(std::string &read_str,
       const size_t read_offset = static_cast<size_t>(read_length - overlap);
       if (read_str.compare(read_offset, overlap,
                            adapter.substr(0, overlap).data(), overlap) == 0) {
-        read_length -= overlap;
-        read_str.resize(read_length);
         return static_cast<uint8_t>((overlap << 1) | adapter_id);
       }
       if (overlap == ATAC_ADAPTER_MIN_MATCH)
@@ -118,8 +119,24 @@ uint8_t detect_and_strip_atac_adapter_tail(std::string &read_str,
   return 0;
 }
 
+uint8_t detect_and_strip_atac_adapter_tail(std::string &read_str,
+                                           uint32_t &read_length) {
+  const uint8_t strip_info =
+      detect_atac_adapter_tail_info(read_str, read_length);
+  const uint32_t overlap = strip_info >> 1;
+  if (overlap > 0) {
+    read_length -= overlap;
+    read_str.resize(read_length);
+  }
+  return strip_info;
+}
+
 bool is_grouped_index_archive_note(const std::string &note) {
   return note.find("index-group") != std::string::npos;
+}
+
+bool is_grouped_read3_archive_note(const std::string &note) {
+  return note.find("read3-group") != std::string::npos;
 }
 
 bool strip_grouped_index_suffix_from_id(std::string &id,
@@ -641,12 +658,19 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       (cp.read_info.assay_confidence == "N/A" ||
        cp.read_info.assay_confidence.starts_with("high"));
 
-  const bool apply_atac_adapter_strip =
+  const bool allow_grouped_atac_adapter_strip =
+      !is_grouped_index_archive_note(cp.read_info.note) &&
+      !is_grouped_read3_archive_note(cp.read_info.note);
+  const bool maybe_apply_atac_adapter_strip =
       !fasta_input && !cp.encoding.long_flag &&
       (cp.read_info.assay == "atac" || cp.read_info.assay == "sc-atac") &&
       (cp.read_info.assay_confidence == "N/A" ||
        cp.read_info.assay_confidence.starts_with("high") ||
-       cp.read_info.assay_confidence.starts_with("medium"));
+       cp.read_info.assay_confidence.starts_with("medium")) &&
+      allow_grouped_atac_adapter_strip;
+  constexpr double kMinAtacAdapterBasesPerRead = 1.0;
+  bool atac_adapter_strip_active = false;
+  bool atac_adapter_strip_decided = !maybe_apply_atac_adapter_strip;
 
   std::array<std::ofstream, 2> tail_outputs;
   if (apply_poly_at) {
@@ -663,7 +687,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   }
 
   std::array<std::ofstream, 2> atac_adapter_outputs;
-  if (apply_atac_adapter_strip) {
+  if (maybe_apply_atac_adapter_strip) {
     atac_adapter_outputs[0].open(temp_dir + "/atac_adapter_1.bin",
                                  std::ios::binary);
     if (!atac_adapter_outputs[0])
@@ -857,22 +881,51 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       }
 
       std::vector<uint8_t> step_atac_adapter_info;
-      if (apply_atac_adapter_strip && reads_in_step > 0) {
+      if (maybe_apply_atac_adapter_strip && reads_in_step > 0) {
         step_atac_adapter_info.resize(reads_in_step, 0);
-        bool any_stripped = false;
+        uint32_t eligible_reads = 0;
+        uint64_t stripped_bases = 0;
         for (uint32_t ri = 0; ri < reads_in_step; ++ri) {
           if (read_contains_N_array[ri] != 0) {
             continue;
           }
-          const uint8_t strip_info = detect_and_strip_atac_adapter_tail(
+          const uint8_t strip_info = detect_atac_adapter_tail_info(
               read_array[ri], read_lengths_array[ri]);
           step_atac_adapter_info[ri] = strip_info;
-          if ((strip_info >> 1) > 0) {
+          eligible_reads++;
+          stripped_bases += static_cast<uint64_t>(strip_info >> 1);
+        }
+        if (!atac_adapter_strip_decided) {
+          const double avg_stripped_bases_per_read =
+              eligible_reads == 0 ? 0.0
+                                  : static_cast<double>(stripped_bases) /
+                                        static_cast<double>(eligible_reads);
+          atac_adapter_strip_active =
+              avg_stripped_bases_per_read >= kMinAtacAdapterBasesPerRead;
+          atac_adapter_strip_decided = true;
+          SPRING_LOG_DEBUG(
+              std::string("ATAC adapter stripping ") +
+              (atac_adapter_strip_active ? "enabled" : "disabled") +
+              " after sampling " + std::to_string(eligible_reads) +
+              " reads (avg stripped bases/read=" +
+              std::to_string(avg_stripped_bases_per_read) + ")");
+        }
+        if (atac_adapter_strip_active) {
+          bool any_stripped = false;
+          for (uint32_t ri = 0; ri < reads_in_step; ++ri) {
+            const uint32_t strip_len = step_atac_adapter_info[ri] >> 1;
+            if (strip_len == 0) {
+              continue;
+            }
+            read_lengths_array[ri] -= strip_len;
+            read_array[ri].resize(read_lengths_array[ri]);
             any_stripped = true;
           }
+          if (any_stripped)
+            cp.encoding.atac_adapter_stripped = true;
+        } else {
+          step_atac_adapter_info.clear();
         }
-        if (any_stripped)
-          cp.encoding.atac_adapter_stripped = true;
       }
 
       // Sequence CRC was already computed by read_fastq_block above on original
@@ -1158,7 +1211,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                 append_uint16(thread_buffer.tail_info_bytes, 0);
               }
             }
-            if (apply_atac_adapter_strip) {
+            if (atac_adapter_strip_active) {
               uint8_t info = 0;
               if (read_contains_N_array[read_index] == 0 &&
                   !step_atac_adapter_info.empty()) {
@@ -1186,8 +1239,8 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
             short_read_buffers, clean_outputs[stream_index],
             n_read_outputs[stream_index], n_read_order_outputs[stream_index],
             apply_poly_at ? &tail_outputs[stream_index] : nullptr,
-            apply_atac_adapter_strip ? &atac_adapter_outputs[stream_index]
-                                     : nullptr);
+            atac_adapter_strip_active ? &atac_adapter_outputs[stream_index]
+                                      : nullptr);
         if (!cp.encoding.preserve_order) {
           quality_chunk.clear();
           id_chunk.clear();
@@ -1261,7 +1314,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       }
     }
   }
-  if (apply_atac_adapter_strip) {
+  if (maybe_apply_atac_adapter_strip) {
     for (int stream_index = 0; stream_index < 2; ++stream_index) {
       if (stream_index == 1 && !cp.encoding.paired_end)
         continue;
@@ -1272,6 +1325,13 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                                        std::to_string(stream_index + 1) +
                                        ".bin";
       const std::string adapter_compressed = adapter_path + ".bsc";
+      if (!cp.encoding.atac_adapter_stripped) {
+        if (std::filesystem::exists(adapter_path))
+          remove(adapter_path.c_str());
+        if (std::filesystem::exists(adapter_compressed))
+          remove(adapter_compressed.c_str());
+        continue;
+      }
       if (std::filesystem::exists(adapter_path)) {
         bsc::BSC_compress(adapter_path.c_str(), adapter_compressed.c_str());
         remove(adapter_path.c_str());

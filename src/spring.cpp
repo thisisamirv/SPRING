@@ -1206,6 +1206,15 @@ void compress(const std::string &temp_dir,
     const std::string read3_work_dir = temp_dir + "/bundle_read3_work";
     const std::string index_work_dir = temp_dir + "/bundle_index_work";
 
+    std::error_code cleanup_ec;
+    std::filesystem::remove_all(bundle_dir, cleanup_ec);
+    cleanup_ec.clear();
+    std::filesystem::remove_all(read_work_dir, cleanup_ec);
+    cleanup_ec.clear();
+    std::filesystem::remove_all(read3_work_dir, cleanup_ec);
+    cleanup_ec.clear();
+    std::filesystem::remove_all(index_work_dir, cleanup_ec);
+
     std::filesystem::create_directories(bundle_dir);
     std::filesystem::create_directories(read_work_dir);
     if (has_r3) {

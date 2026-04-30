@@ -289,14 +289,17 @@ function Invoke-AssaySuite() {
         $out_auto = Join-Path $OUTPUT_DIR "$stem.auto.sp"
         $out_dna = Join-Path $OUTPUT_DIR "$stem.dna.sp"
         $work = Join-Path $WORK_ROOT_DIR "$stem.bench"
+        $work_auto = Join-Path $work "auto"
+        $work_decomp = Join-Path $work "decomp"
+        $work_dna = Join-Path $work "dna"
         
         if (Test-Path $work) { Remove-Item $work -Recurse -Force }
-        New-Item -ItemType Directory -Path $work -Force | Out-Null
+        New-Item -ItemType Directory -Path $work_auto, $work_decomp, $work_dna -Force | Out-Null
 
         # 1. Auto-detected assay (or explicit for test_6)
         $assay_mode = if ($s.assay -eq "sc-bisulfite") { "sc-bisulfite" } else { "auto" }
         Write-Host "  Step 1: Compression with --assay $assay_mode (expected: $($s.assay))" -ForegroundColor Cyan
-        $args_auto = "-c $base_args -o `"$out_auto`" -w `"$work`" -t $THREADS -q lossless --assay $assay_mode"
+        $args_auto = "-c $base_args -o `"$out_auto`" -w `"$work_auto`" -t $THREADS -q lossless --assay $assay_mode"
         [void](Invoke-ResourceLoggedProcess $SPRING_BIN $args_auto)
         $size_auto = (Get-Item $out_auto).Length
         $actual_auto_assay = Get-ArchiveAssayLabel $out_auto
@@ -304,14 +307,14 @@ function Invoke-AssaySuite() {
 
         # 2. Restoration check (Full Round-Trip)
         Write-Host "  Step 2: Verifying bit-perfect restoration..." -ForegroundColor Cyan
-        $decomp_dir = Join-Path $work "decomp"
+        $decomp_dir = Join-Path $work_decomp "restored"
         New-Item -ItemType Directory -Path $decomp_dir -Force | Out-Null
         $decomp_files = @()
         foreach ($f in $files) {
             $decomp_files += Join-Path $decomp_dir ($f.Replace(".gz", ""))
         }
         $o_args = $decomp_files | ForEach-Object { "`"$_`"" }
-        $decomp_args = "-d -i `"$out_auto`" -o $($o_args -join ' ') -w `"$work`""
+        $decomp_args = "-d -i `"$out_auto`" -o $($o_args -join ' ') -w `"$work_decomp`""
         [void](Invoke-ResourceLoggedProcess $SPRING_BIN $decomp_args)
 
         $isIdentical = $true
@@ -319,7 +322,7 @@ function Invoke-AssaySuite() {
             $orig = $input_abs_paths[$i]
             $restored = $decomp_files[$i]
             
-            $baseline = Join-Path $work "baseline_$i.fastq"
+            $baseline = Join-Path $work_decomp "baseline_$i.fastq"
             Expand-GzipToFile $orig $baseline
             $hash1 = Get-FileHash $baseline -Algorithm SHA256
             $hash2 = Get-FileHash $restored -Algorithm SHA256
@@ -338,7 +341,7 @@ function Invoke-AssaySuite() {
 
         # 3. DNA-mode comparison
         Write-Host "  Step 3: Compression with --assay dna" -ForegroundColor Cyan
-        $args_dna = "-c $base_args -o `"$out_dna`" -w `"$work`" -t $THREADS -q lossless --assay dna"
+        $args_dna = "-c $base_args -o `"$out_dna`" -w `"$work_dna`" -t $THREADS -q lossless --assay dna"
         [void](Invoke-ResourceLoggedProcess $SPRING_BIN $args_dna)
         $size_dna = (Get-Item $out_dna).Length
 
