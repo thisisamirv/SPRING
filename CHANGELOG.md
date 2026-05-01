@@ -46,6 +46,7 @@
 - Fixed preview mode and `SpringReader` metadata handling so truncated `cp.bin` streams are rejected consistently instead of being treated as valid partially parsed metadata.
 - Fixed grouped bundle metadata validation drift by centralizing `bundle.meta` parsing and invariants in a shared helper used by compression, decompression, preview, and `SpringReader`; malformed grouped manifests now fail consistently, including invalid `has_i2=1` without `has_index=1`.
 - Fixed grouped preview mode to validate nested member `cp.bin` streams (`reads_group`, `read3_group`, and `index_group`) after parsing instead of trusting partially read metadata from grouped subarchives.
+- Fixed preview read-count reporting so archive metadata now labels the aggregate paired-end count as `Total Read Records` and reports per-input clean reads with explicit non-clean read counts, instead of presenting incompatible totals under `Reads Processed`.
 - Fixed compression output validation so archive creation now refuses output paths that would overwrite any input FASTQ/FASTA file, preventing destructive in-place compression mistakes.
 - Fixed `SpringReader` lifecycle handling by allowing the background producer to shut down cleanly when the reader is destroyed before the archive is fully consumed, avoiding a queue-backpressure deadlock on early exit.
 - Fixed `SpringReader::get_digests()` so library callers can retrieve the actual computed sequence, quality, and ID CRCs after fully consuming an archive, instead of always receiving zeroed outputs.

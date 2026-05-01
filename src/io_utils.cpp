@@ -11,7 +11,6 @@
 #include <cctype>
 #include <cstring>
 #include <filesystem>
-#include <libdeflate.h>
 #include <stdexcept>
 #include <vector>
 #include <zstd.h>
@@ -252,29 +251,44 @@ std::string gzip_compress_string(const std::string &input, int level) {
                    "start: input_bytes=" +
                    std::to_string(input.size()) +
                    ", level=" + std::to_string(level));
-  libdeflate_compressor *compressor = libdeflate_alloc_compressor(level);
-  if (!compressor) {
+  z_stream stream{};
+  int resolved_level = level;
+  if (resolved_level == Z_DEFAULT_COMPRESSION) {
+    resolved_level = 6;
+  }
+  resolved_level = std::clamp(resolved_level, 1, 9);
+
+  const int init_result = deflateInit2(&stream, resolved_level, Z_DEFLATED,
+                                       15 + 16, 8, Z_DEFAULT_STRATEGY);
+  if (init_result != Z_OK) {
     SPRING_LOG_DEBUG("block_id=io-utils:gzip-compress, gzip_compress_string "
-                     "alloc failure: input_bytes=" +
+                     "init failure: input_bytes=" +
                      std::to_string(input.size()) +
-                     ", level=" + std::to_string(level));
-    throw std::runtime_error("Failed allocating libdeflate gzip compressor.");
+                     ", level=" + std::to_string(resolved_level) +
+                     ", zlib_code=" + std::to_string(init_result));
+    throw std::runtime_error("Failed initializing gzip compressor.");
   }
 
   std::string output;
-  output.resize(libdeflate_gzip_compress_bound(compressor, input.size()));
-  const size_t compressed_size = libdeflate_gzip_compress(
-      compressor, input.data(), input.size(), output.data(), output.size());
+  output.resize(compressBound(static_cast<uLong>(input.size())));
+  stream.next_in = reinterpret_cast<Bytef *>(const_cast<char *>(input.data()));
+  stream.avail_in = static_cast<uInt>(input.size());
+  stream.next_out = reinterpret_cast<Bytef *>(output.data());
+  stream.avail_out = static_cast<uInt>(output.size());
 
-  libdeflate_free_compressor(compressor);
-
-  if (compressed_size == 0) {
+  const int deflate_result = deflate(&stream, Z_FINISH);
+  if (deflate_result != Z_STREAM_END) {
+    deflateEnd(&stream);
     SPRING_LOG_DEBUG("block_id=io-utils:gzip-compress, gzip_compress_string "
                      "compression failure: input_bytes=" +
                      std::to_string(input.size()) +
-                     ", output_capacity=" + std::to_string(output.size()));
+                     ", output_capacity=" + std::to_string(output.size()) +
+                     ", zlib_code=" + std::to_string(deflate_result));
     throw std::runtime_error("Failed compressing gzip payload.");
   }
+
+  const size_t compressed_size = output.size() - stream.avail_out;
+  deflateEnd(&stream);
   output.resize(compressed_size);
   SPRING_LOG_DEBUG("block_id=io-utils:gzip-compress, gzip_compress_string "
                    "done: output_bytes=" +

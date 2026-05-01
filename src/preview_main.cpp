@@ -171,12 +171,36 @@ void preview_single(const std::string &archive_path, bool audit_only,
     std::cout << "Barcode Sort:      Yes (CB: R1 prefix or I1 lane, "
               << cp.encoding.cb_len << " bp) [Legacy]\n";
   }
+  const uint32_t input_1_total_reads = cp.encoding.paired_end
+                                           ? cp.read_info.num_reads / 2
+                                           : cp.read_info.num_reads;
+  const uint32_t input_2_total_reads =
+      cp.encoding.paired_end ? cp.read_info.num_reads / 2 : 0;
+  const uint32_t input_1_non_clean_reads =
+      input_1_total_reads >= cp.read_info.num_reads_clean[0]
+          ? input_1_total_reads - cp.read_info.num_reads_clean[0]
+          : 0;
+  const uint32_t input_2_non_clean_reads =
+      input_2_total_reads >= cp.read_info.num_reads_clean[1]
+          ? input_2_total_reads - cp.read_info.num_reads_clean[1]
+          : 0;
   std::cout << "Mode:              "
             << (cp.encoding.paired_end ? "Paired-end" : "Single-end") << "\n";
-  std::cout << "Reads Processed:   " << cp.read_info.num_reads << "\n";
+  std::cout << "Total Read Records:" << std::setw(4) << " "
+            << cp.read_info.num_reads << "\n";
   if (cp.encoding.paired_end) {
-    std::cout << "  (Input 1: " << cp.read_info.num_reads_clean[0]
-              << ", Input 2: " << cp.read_info.num_reads_clean[1] << ")\n";
+    std::cout << "Clean Reads:       Input 1: "
+              << cp.read_info.num_reads_clean[0];
+    if (input_1_non_clean_reads > 0) {
+      std::cout << " (+ " << input_1_non_clean_reads << " non-clean)";
+    }
+    std::cout << "\n";
+    std::cout << "                   Input 2: "
+              << cp.read_info.num_reads_clean[1];
+    if (input_2_non_clean_reads > 0) {
+      std::cout << " (+ " << input_2_non_clean_reads << " non-clean)";
+    }
+    std::cout << "\n";
   }
 
   uint64_t total_orig_compressed_size = cp.gzip.streams[0].compressed_size;
@@ -353,15 +377,37 @@ void preview(const std::string &archive_path, bool audit_only,
         std::cout << "Barcode Sort:      Yes (CB: R1 prefix or I1 lane, "
                   << cp_reads.encoding.cb_len << " bp) [Legacy]\n";
       }
+      const uint32_t input_1_total_reads =
+          cp_reads.encoding.paired_end ? cp_reads.read_info.num_reads / 2
+                                       : cp_reads.read_info.num_reads;
+      const uint32_t input_2_total_reads =
+          cp_reads.encoding.paired_end ? cp_reads.read_info.num_reads / 2 : 0;
+      const uint32_t input_1_non_clean_reads =
+          input_1_total_reads >= cp_reads.read_info.num_reads_clean[0]
+              ? input_1_total_reads - cp_reads.read_info.num_reads_clean[0]
+              : 0;
+      const uint32_t input_2_non_clean_reads =
+          input_2_total_reads >= cp_reads.read_info.num_reads_clean[1]
+              ? input_2_total_reads - cp_reads.read_info.num_reads_clean[1]
+              : 0;
       std::cout << "Mode:              Grouped (R + I lanes), "
                 << (cp_reads.encoding.paired_end ? "Paired-end" : "Single-end")
                 << "\n";
-      std::cout << "Reads Processed:   " << cp_reads.read_info.num_reads
-                << "\n";
+      std::cout << "Total Read Records:" << std::setw(4) << " "
+                << cp_reads.read_info.num_reads << "\n";
       if (cp_reads.encoding.paired_end) {
-        std::cout << "  (Input 1: " << cp_reads.read_info.num_reads_clean[0]
-                  << ", Input 2: " << cp_reads.read_info.num_reads_clean[1]
-                  << ")\n";
+        std::cout << "Clean Reads:       Input 1: "
+                  << cp_reads.read_info.num_reads_clean[0];
+        if (input_1_non_clean_reads > 0) {
+          std::cout << " (+ " << input_1_non_clean_reads << " non-clean)";
+        }
+        std::cout << "\n";
+        std::cout << "                   Input 2: "
+                  << cp_reads.read_info.num_reads_clean[1];
+        if (input_2_non_clean_reads > 0) {
+          std::cout << " (+ " << input_2_non_clean_reads << " non-clean)";
+        }
+        std::cout << "\n";
       }
 
       uint64_t total_orig_compressed_size =
