@@ -21,6 +21,9 @@
 #include <utility>
 #include <vector>
 
+#include <ParallelGzipReader.hpp>
+#include <Standard.hpp>
+
 #include "assay_detector.h"
 #include "bundle_manifest.h"
 #include "decompress.h"
@@ -309,21 +312,33 @@ std::string decompressed_input_path(const std::string &temp_dir,
          filename;
 }
 
-#ifdef SPRING_RAPIDGZIP_EXECUTABLE
-constexpr const char *kRapidgzipExecutable = SPRING_RAPIDGZIP_EXECUTABLE;
-#else
-constexpr const char *kRapidgzipExecutable = "";
-#endif
+void decompress_gzip_input_file_with_rapidgzip(const std::string &input_path,
+                                               const std::string &output_path,
+                                               const int num_thr) {
+  SPRING_LOG_DEBUG("Using built-in rapidgzip to decompress staged input: " +
+                   input_path + " -> " + output_path);
 
-std::string build_rapidgzip_command(const std::string &input_path,
-                                    const std::string &output_path,
-                                    const int num_thr) {
-  const int decoder_parallelism = num_thr > 0 ? num_thr : 0;
-  return shell_quote(shell_path(kRapidgzipExecutable)) +
-         " --decompress --force --output " +
-         shell_quote(shell_path(output_path)) + " --decoder-parallelism " +
-         std::to_string(decoder_parallelism) + " " +
-         shell_quote(shell_path(input_path));
+  rapidgzip::ParallelGzipReader<> reader(
+      std::make_unique<rapidgzip::StandardFileReader>(input_path),
+      num_thr > 0 ? static_cast<size_t>(num_thr) : size_t(0));
+  std::ofstream output(output_path, std::ios::binary);
+  if (!output) {
+    throw std::runtime_error(
+        "Failed to open staged output file for rapidgzip decompression");
+  }
+
+  std::vector<char> buffer(1 << 20);
+  while (true) {
+    const size_t bytes_read = reader.read(buffer.data(), buffer.size());
+    if (bytes_read == 0) {
+      break;
+    }
+    output.write(buffer.data(), static_cast<std::streamsize>(bytes_read));
+    if (!output) {
+      throw std::runtime_error(
+          "Failed writing staged output during rapidgzip decompression");
+    }
+  }
 }
 
 void decompress_gzip_input_file_with_zlib(const std::string &input_path,
@@ -404,24 +419,14 @@ void decompress_gzip_input_file_with_zlib(const std::string &input_path,
 void decompress_gzip_input_file(const std::string &input_path,
                                 const std::string &output_path,
                                 const int num_thr) {
-  if (kRapidgzipExecutable[0] != '\0' &&
-      std::filesystem::exists(kRapidgzipExecutable)) {
-    SPRING_LOG_DEBUG("Attempting staged gzip decompression with rapidgzip.");
-    const std::string rapidgzip_command =
-        build_rapidgzip_command(input_path, output_path, num_thr);
-#ifdef _WIN32
-    std::string wrapped_command = "\"" + rapidgzip_command + "\"";
-    if (std::system(wrapped_command.c_str()) == 0) {
-      SPRING_LOG_DEBUG("Staged gzip decompression completed via rapidgzip.");
-      return;
-    }
-#else
-    if (std::system(rapidgzip_command.c_str()) == 0) {
-      SPRING_LOG_DEBUG("Staged gzip decompression completed via rapidgzip.");
-      return;
-    }
-#endif
-    SPRING_LOG_DEBUG("rapidgzip invocation failed; falling back to zlib.");
+  try {
+    decompress_gzip_input_file_with_rapidgzip(input_path, output_path, num_thr);
+    return;
+  } catch (const std::exception &e) {
+    SPRING_LOG_DEBUG(
+        std::string(
+            "Built-in rapidgzip staging failed; falling back to zlib: ") +
+        e.what());
   }
 
   decompress_gzip_input_file_with_zlib(input_path, output_path);

@@ -212,6 +212,9 @@ string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/pthash\"")
 string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/qvz\"")
 string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/libbsc\"")
 string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/libdeflate\"")
+string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/indexed_bzip2\"")
+string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/indexed_bzip2/isa-l/include\"")
+string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/indexed_bzip2/isa-l\"")
 foreach(openmp_include_dir IN LISTS SPRING_OPENMP_INCLUDE_DIRS)
     string(APPEND SPRING_CLANGD_FLAGS ", \"-I${openmp_include_dir}\"")
 endforeach()
@@ -237,7 +240,21 @@ add_custom_target(copy_compile_commands ALL
 
 # Option to statically link common GCC runtimes so the executable can run
 # on Windows `cmd.exe` without shipping DLLs next to the binary.
-option(SPRING_STATIC_RUNTIMES "Statically link libgcc/libstdc++/libgomp on supported toolchains" OFF)
+set(_spring_static_runtimes_default OFF)
+if(WIN32)
+    set(_spring_static_runtimes_default ON)
+endif()
+option(SPRING_STATIC_RUNTIMES "Statically link libgcc/libstdc++/libgomp on supported toolchains" ${_spring_static_runtimes_default})
+unset(_spring_static_runtimes_default)
+
+macro(add_vendor_subdirectory_no_install source_dir binary_dir)
+    set(_spring_prev_suppress_vendor_install "${SPRING_SUPPRESS_VENDOR_INSTALL}")
+    set(SPRING_SUPPRESS_VENDOR_INSTALL TRUE)
+    set(SPRING_SUPPRESS_VENDOR_INSTALL TRUE CACHE INTERNAL "Suppress install rules for vendored dependencies" FORCE)
+    add_subdirectory("${source_dir}" "${binary_dir}" ${ARGN})
+    set(SPRING_SUPPRESS_VENDOR_INSTALL "${_spring_prev_suppress_vendor_install}")
+    set(SPRING_SUPPRESS_VENDOR_INSTALL "${_spring_prev_suppress_vendor_install}" CACHE INTERNAL "Suppress install rules for vendored dependencies" FORCE)
+endmacro()
 
 set(PTHASH_DIR "${build_vendor_dir}/pthash")
 set(CLOUDFLARE_ZLIB_DIR ${build_vendor_dir}/cloudflare_zlib)
@@ -248,7 +265,7 @@ set(LIBDEFLATE_DIR ${build_vendor_dir}/libdeflate)
 set(QVZ_DIR ${build_vendor_dir}/qvz)
 set(LIBARCHIVE_DIR ${build_vendor_dir}/libarchive)
 set(include_dir ${CMAKE_SOURCE_DIR}/src)
-add_subdirectory("${PTHASH_DIR}" "${CMAKE_BINARY_DIR}/pthash-build")
+add_vendor_subdirectory_no_install("${PTHASH_DIR}" "${CMAKE_BINARY_DIR}/pthash-build")
 
 # Zstd build configuration
 set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
@@ -260,12 +277,12 @@ set(ZSTD_BUILD_STATIC ON CACHE BOOL "" FORCE)
 set(ZSTD_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 set(ZSTD_LEGACY_SUPPORT OFF CACHE BOOL "" FORCE)
 add_compile_definitions(ZSTD_NO_TRACE)
-add_subdirectory("${ZSTD_DIR}" "${CMAKE_BINARY_DIR}/zstd-build")
-add_subdirectory("${LIBBSC_DIR}" "${CMAKE_BINARY_DIR}/libbsc-build")
+add_vendor_subdirectory_no_install("${ZSTD_DIR}" "${CMAKE_BINARY_DIR}/zstd-build")
+add_vendor_subdirectory_no_install("${LIBBSC_DIR}" "${CMAKE_BINARY_DIR}/libbsc-build")
 if(TARGET libbsc AND SPRING_OPENMP_INCLUDE_DIRS)
     target_include_directories(libbsc SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
 endif()
-add_subdirectory("${QVZ_DIR}" "${CMAKE_BINARY_DIR}/qvz-build")
+add_vendor_subdirectory_no_install("${QVZ_DIR}" "${CMAKE_BINARY_DIR}/qvz-build")
 if(TARGET qvz AND SPRING_OPENMP_INCLUDE_DIRS)
     target_include_directories(qvz SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
 endif()
@@ -281,25 +298,19 @@ set(LIBDEFLATE_BUILD_SHARED_LIB OFF CACHE BOOL "" FORCE)
 set(LIBDEFLATE_BUILD_GZIP OFF CACHE BOOL "" FORCE)
 set(LIBDEFLATE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(LIBDEFLATE_INSTALL OFF CACHE BOOL "" FORCE)
-add_subdirectory("${LIBDEFLATE_DIR}" "${CMAKE_BINARY_DIR}/libdeflate-build")
+add_vendor_subdirectory_no_install("${LIBDEFLATE_DIR}" "${CMAKE_BINARY_DIR}/libdeflate-build")
 
-add_subdirectory("${CLOUDFLARE_ZLIB_DIR}" "${CMAKE_BINARY_DIR}/cloudflare_zlib-build")
+add_vendor_subdirectory_no_install("${CLOUDFLARE_ZLIB_DIR}" "${CMAKE_BINARY_DIR}/cloudflare_zlib-build")
 
 set(LIBRAPIDARCHIVE_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
 set(LIBRAPIDARCHIVE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(LIBRAPIDARCHIVE_BUILD_TOOLS ON CACHE BOOL "" FORCE)
+set(LIBRAPIDARCHIVE_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
 set(LIBRAPIDARCHIVE_RUN_CLANG_TIDY OFF CACHE BOOL "" FORCE)
 set(LIBRAPIDARCHIVE_USE_SYSTEM_ZLIB ON CACHE BOOL "" FORCE)
 set(LIBRAPIDARCHIVE_USE_ZLIB_NG OFF CACHE BOOL "" FORCE)
 set(LIBRAPIDARCHIVE_WITH_RPMALLOC OFF CACHE BOOL "" FORCE)
 set(LIBRAPIDARCHIVE_WITH_ISAL ON CACHE BOOL "Build with ISA-L support")
-add_subdirectory("${INDEXED_BZIP2_DIR}" "${CMAKE_BINARY_DIR}/indexed_bzip2-build" EXCLUDE_FROM_ALL)
-if(TARGET rapidgzip)
-    target_compile_options(rapidgzip PRIVATE -fno-fast-math)
-    if(SPRING_OPENMP_INCLUDE_DIRS)
-        target_include_directories(rapidgzip SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
-    endif()
-endif()
+add_vendor_subdirectory_no_install("${INDEXED_BZIP2_DIR}" "${CMAKE_BINARY_DIR}/indexed_bzip2-build" EXCLUDE_FROM_ALL)
 
 # Standard archive support via vendored libarchive.
 set(ENABLE_MBEDTLS OFF CACHE BOOL "" FORCE)
@@ -330,7 +341,7 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(ENABLE_TEST OFF CACHE BOOL "" FORCE)
 set(ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-add_subdirectory("${LIBARCHIVE_DIR}" "${CMAKE_BINARY_DIR}/libarchive-build" EXCLUDE_FROM_ALL)
+add_vendor_subdirectory_no_install("${LIBARCHIVE_DIR}" "${CMAKE_BINARY_DIR}/libarchive-build" EXCLUDE_FROM_ALL)
 
 # Core source files shared by the spring2 executable and tests.
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
@@ -420,6 +431,7 @@ set(spring_libs
     libbsc
     qvz
     pthash
+    rapidgzip::rapidgzip
     archive_static
 )
 
@@ -432,13 +444,9 @@ if(WIN32)
     target_link_libraries(spring2 PRIVATE ws2_32 psapi)
 endif()
 
-target_compile_definitions(spring2 PRIVATE SPRING_RAPIDGZIP_EXECUTABLE=\"$<TARGET_FILE:rapidgzip>\")
-
 if(WIN32)
     target_compile_definitions(spring2 PRIVATE IDOFILE_PATH_ROOT=\".spring-idtmp/idoFile.\")
 endif()
-
-add_dependencies(spring2 rapidgzip)
 
 # On Windows with GNU toolchain: support static linking of GCC runtimes
 if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -522,10 +530,8 @@ if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         # Prefer modern CMake link options when available
         if(COMMAND target_link_options)
             target_link_options(spring2 PRIVATE -static)
-            target_link_options(rapidgzip PRIVATE -static)
         else()
             set_property(TARGET spring2 APPEND_STRING PROPERTY LINK_FLAGS " -static")
-            set_property(TARGET rapidgzip APPEND_STRING PROPERTY LINK_FLAGS " -static")
         endif()
     else()
         # Convenience target to copy commonly required GCC runtime DLLs for
@@ -533,15 +539,12 @@ if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         add_custom_target(copy_runtime_dlls ALL
             COMMENT "Copying GCC runtime DLLs next to spring2 executable"
         )
-        add_dependencies(copy_runtime_dlls spring2 rapidgzip)
+        add_dependencies(copy_runtime_dlls spring2)
         foreach(_src IN LISTS SPRING_RUNTIME_DLL_PATHS)
             get_filename_component(_dll "${_src}" NAME)
             if(EXISTS "${_src}")
                 add_custom_command(TARGET copy_runtime_dlls POST_BUILD
                     COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_src}" "$<TARGET_FILE_DIR:spring2>/${_dll}"
-                )
-                add_custom_command(TARGET copy_runtime_dlls POST_BUILD
-                    COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_src}" "$<TARGET_FILE_DIR:rapidgzip>/${_dll}"
                 )
             endif()
         endforeach()
@@ -557,7 +560,7 @@ elseif(UNIX AND NOT WIN32)
 endif()
 
 if(DEFINED SPRING_INSTALL_RPATH)
-    foreach(_target IN ITEMS spring2 rapidgzip)
+    foreach(_target IN ITEMS spring2)
         set_target_properties(${_target} PROPERTIES
             BUILD_WITH_INSTALL_RPATH OFF
             INSTALL_RPATH "${SPRING_INSTALL_RPATH}"
@@ -606,7 +609,7 @@ elseif(UNIX)
         "libomp.so")
 endif()
 
-set(INSTALL_TARGETS spring2 rapidgzip)
+set(INSTALL_TARGETS spring2)
 install(TARGETS ${INSTALL_TARGETS}
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
@@ -649,7 +652,6 @@ endif()
 if(SPRING_OPENMP_INCLUDE_DIRS)
     target_include_directories(spring2-tests SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
 endif()
-target_compile_definitions(spring2-tests PRIVATE SPRING_RAPIDGZIP_EXECUTABLE=\"$<TARGET_FILE:rapidgzip>\")
 add_test(NAME unit_tests COMMAND spring2-tests)
 
 add_executable(integration-tests tests/integration_tests.cpp ${core_source_files})
@@ -664,7 +666,6 @@ endif()
 if(SPRING_OPENMP_INCLUDE_DIRS)
     target_include_directories(integration-tests SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
 endif()
-target_compile_definitions(integration-tests PRIVATE SPRING_RAPIDGZIP_EXECUTABLE=\"$<TARGET_FILE:rapidgzip>\")
 target_compile_definitions(integration-tests PRIVATE SPRING2_EXECUTABLE=\"$<TARGET_FILE:spring2>\")
 add_test(NAME integration_tests COMMAND integration-tests)
 

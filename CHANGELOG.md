@@ -27,6 +27,7 @@
 - Pruned vendored libs even further.
 - Had vendored libs flattened for easier maintenance. This allows easier future pruning and specialized modifications.
 - Merged preview into the main binary. spring2 now accepts `-p` or `--preview` and runs the old `spring2-preview` behavior, including `-a/--audit` in preview mode.
+- Changed gzipped input staging to use the vendored rapidgzip library in-process instead of spawning a separate helper executable, so rapidgzip support is embedded directly into `spring2` rather than relying on a sibling runtime tool.
 
 ### Fixed
 
@@ -51,6 +52,7 @@
 - Fixed `SpringReader` lifecycle handling by allowing the background producer to shut down cleanly when the reader is destroyed before the archive is fully consumed, avoiding a queue-backpressure deadlock on early exit.
 - Fixed `SpringReader::get_digests()` so library callers can retrieve the actual computed sequence, quality, and ID CRCs after fully consuming an archive, instead of always receiving zeroed outputs.
 - Fixed paired-end preprocess cleanup so merged mate-side `input_N.dna.2`, `read_order_N.bin.2`, and redundant mate-ID intermediates are closed before deletion and removed with the safe filesystem helper; this prevents stale raw temporary files from being packaged into `.sp` archives on Windows and reduces final archive size.
+- Fixed release/install packaging drift so fresh self-contained builds no longer install vendored dependency artifacts or a standalone `rapidgzip` tool; Windows now defaults to static runtime linking, and a clean install produces a single `spring2.exe` instead of extra dependency binaries and headers.
 
 ## V1.0.0-beta
 

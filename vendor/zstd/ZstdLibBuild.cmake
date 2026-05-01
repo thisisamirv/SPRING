@@ -284,24 +284,26 @@ set(LIBS_PRIVATE "${THREADS_LIBS}")
 set(VERSION "${zstd_VERSION}")
 
 configure_file("${LIBRARY_DIR}/libzstd.pc.in" "${CMAKE_CURRENT_BINARY_DIR}/libzstd.pc" @ONLY)
-install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libzstd.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
+if(NOT SPRING_SUPPRESS_VENDOR_INSTALL)
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libzstd.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
 
-# install target
-install(FILES ${PublicHeaders} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+    # install target
+    install(FILES ${PublicHeaders} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 
-foreach(target_suffix IN ITEMS "_shared" "_static" "")
-    if(TARGET "libzstd${target_suffix}")
-        install(TARGETS "libzstd${target_suffix}"
-            EXPORT "zstdExports${target_suffix}"
-            INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-            ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-            LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-            RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-            BUNDLE DESTINATION "${CMAKE_INSTALL_BINDIR}"
-            FRAMEWORK DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT runtime OPTIONAL
-            PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-        )
-    endif()
-endforeach()
+    foreach(target_suffix IN ITEMS "_shared" "_static" "")
+        if(TARGET "libzstd${target_suffix}")
+            install(TARGETS "libzstd${target_suffix}"
+                EXPORT "zstdExports${target_suffix}"
+                INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+                ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+                LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+                RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+                BUNDLE DESTINATION "${CMAKE_INSTALL_BINDIR}"
+                FRAMEWORK DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT runtime OPTIONAL
+                PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+            )
+        endif()
+    endforeach()
+endif()
 
 # (Removed uninstall target for lean spring build)
