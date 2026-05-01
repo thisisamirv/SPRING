@@ -2,6 +2,7 @@
 #include <string>
 // Archive reading utilities and DecompressionSink implementations used to
 // stream records out of SPRING archives into consumer buffers or pipelines.
+#include "bundle_manifest.h"
 #include "decompress.h"
 #include "fs_utils.h"
 #include "integrity_utils.h"
@@ -15,13 +16,10 @@
 #include <queue>
 #include <stdexcept>
 #include <thread>
-#include <unordered_map>
 
 namespace spring {
 
 namespace {
-
-constexpr const char *kBundleManifestName = "bundle.meta";
 
 class SpringReaderShutdown final : public std::exception {
 public:
@@ -29,24 +27,6 @@ public:
     return "SpringReader shutdown requested";
   }
 };
-
-std::unordered_map<std::string, std::string>
-read_key_value_file(const std::string &path) {
-  std::ifstream input(path, std::ios::binary);
-  if (!input.is_open()) {
-    throw std::runtime_error("Failed to open grouped bundle manifest: " + path);
-  }
-
-  std::unordered_map<std::string, std::string> kv;
-  std::string line;
-  while (std::getline(input, line)) {
-    const size_t sep = line.find('=');
-    if (sep == std::string::npos)
-      continue;
-    kv[line.substr(0, sep)] = line.substr(sep + 1);
-  }
-  return kv;
-}
 
 /**
  * @brief Sink implementation that buffers records into a thread-safe queue.
@@ -212,16 +192,10 @@ public:
     archive_root_ = temp_dir_;
     const std::string manifest_path = temp_dir_ + "/" + kBundleManifestName;
     if (std::filesystem::exists(manifest_path)) {
-      const auto manifest = read_key_value_file(manifest_path);
-      const auto read_archive_it = manifest.find("read_archive");
-      if (read_archive_it == manifest.end() ||
-          read_archive_it->second.empty()) {
-        throw std::runtime_error(
-            "Failed to read grouped archive metadata: missing read archive.");
-      }
+      const bundle_manifest manifest = read_bundle_manifest(manifest_path);
 
       const std::string read_archive_path =
-          temp_dir_ + "/" + read_archive_it->second;
+          temp_dir_ + "/" + manifest.read_archive_name;
       if (!std::filesystem::exists(read_archive_path)) {
         throw std::runtime_error(
             "Failed to read grouped archive metadata: read archive not found.");

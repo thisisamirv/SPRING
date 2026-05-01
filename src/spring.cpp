@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "assay_detector.h"
+#include "bundle_manifest.h"
 #include "decompress.h"
 #include "fs_utils.h"
 #include "io_utils.h"
@@ -54,40 +55,6 @@ struct decompression_io_config {
   std::string output_path_1;
   std::string output_path_2;
 };
-
-constexpr const char *kBundleManifestName = "bundle.meta";
-constexpr const char *kBundleVersion = "SPRING2_BUNDLE_V1";
-
-struct bundle_manifest {
-  std::string version;
-  std::string read_archive_name;
-  bool has_r3 = false;
-  std::string read3_archive_name;
-  std::string read3_alias_source;
-  bool has_index = false;
-  std::string index_archive_name;
-  bool has_i2 = false;
-  std::string r1_name;
-  std::string r2_name;
-  std::string r3_name;
-  std::string i1_name;
-  std::string i2_name;
-};
-
-std::string trim_ascii_whitespace(const std::string &input) {
-  size_t begin = 0;
-  while (begin < input.size() &&
-         (input[begin] == ' ' || input[begin] == '\t' || input[begin] == '\r' ||
-          input[begin] == '\n')) {
-    begin++;
-  }
-  size_t end = input.size();
-  while (end > begin && (input[end - 1] == ' ' || input[end - 1] == '\t' ||
-                         input[end - 1] == '\r' || input[end - 1] == '\n')) {
-    end--;
-  }
-  return input.substr(begin, end - begin);
-}
 
 std::string default_archive_name_from_input(const std::string &input_path) {
   std::filesystem::path p = std::filesystem::path(input_path).filename();
@@ -151,6 +118,17 @@ void validate_output_targets(const std::string &archive_path,
     if (output_key == archive_key) {
       throw std::runtime_error(
           "Output path must not overwrite the input archive.");
+    }
+  }
+}
+
+void validate_compression_target(const std::vector<std::string> &input_paths,
+                                 const std::string &archive_path) {
+  const std::string archive_key = normalized_path_key(archive_path);
+  for (const std::string &input_path : input_paths) {
+    if (normalized_path_key(input_path) == archive_key) {
+      throw std::runtime_error(
+          "Output archive path must not overwrite an input file.");
     }
   }
 }
@@ -251,102 +229,6 @@ build_default_grouped_output_paths(const bundle_manifest &manifest) {
   }
 
   return resolved_outputs;
-}
-
-void write_bundle_manifest(const std::string &manifest_path,
-                           const bundle_manifest &manifest) {
-  std::ofstream output(manifest_path, std::ios::binary);
-  if (!output.is_open()) {
-    throw std::runtime_error("Unable to write bundle manifest: " +
-                             manifest_path);
-  }
-  output << "version=" << manifest.version << "\n";
-  output << "read_archive=" << manifest.read_archive_name << "\n";
-  output << "has_r3=" << (manifest.has_r3 ? "1" : "0") << "\n";
-  output << "read3_archive=" << manifest.read3_archive_name << "\n";
-  output << "read3_alias_source=" << manifest.read3_alias_source << "\n";
-  output << "has_index=" << (manifest.has_index ? "1" : "0") << "\n";
-  output << "index_archive=" << manifest.index_archive_name << "\n";
-  output << "has_i2=" << (manifest.has_i2 ? "1" : "0") << "\n";
-  output << "r1_name=" << manifest.r1_name << "\n";
-  output << "r2_name=" << manifest.r2_name << "\n";
-  output << "r3_name=" << manifest.r3_name << "\n";
-  output << "i1_name=" << manifest.i1_name << "\n";
-  output << "i2_name=" << manifest.i2_name << "\n";
-}
-
-bundle_manifest read_bundle_manifest(const std::string &manifest_path) {
-  std::ifstream input(manifest_path, std::ios::binary);
-  if (!input.is_open()) {
-    throw std::runtime_error("Unable to read bundle manifest: " +
-                             manifest_path);
-  }
-
-  std::unordered_map<std::string, std::string> kv;
-  std::string line;
-  while (std::getline(input, line)) {
-    const size_t delimiter = line.find('=');
-    if (delimiter == std::string::npos)
-      continue;
-    const std::string key = trim_ascii_whitespace(line.substr(0, delimiter));
-    const std::string value = trim_ascii_whitespace(line.substr(delimiter + 1));
-    if (!key.empty())
-      kv[key] = value;
-  }
-
-  bundle_manifest manifest;
-  manifest.version = kv["version"];
-  manifest.read_archive_name = kv["read_archive"];
-  manifest.has_r3 = kv["has_r3"] == "1";
-  manifest.read3_archive_name = kv["read3_archive"];
-  manifest.read3_alias_source = kv["read3_alias_source"];
-  manifest.has_index = kv["has_index"] == "1";
-  manifest.index_archive_name = kv["index_archive"];
-  manifest.has_i2 = kv["has_i2"] == "1";
-  manifest.r1_name = kv["r1_name"];
-  manifest.r2_name = kv["r2_name"];
-  manifest.r3_name = kv["r3_name"];
-  manifest.i1_name = kv["i1_name"];
-  manifest.i2_name = kv["i2_name"];
-
-  if (manifest.version != kBundleVersion ||
-      manifest.read_archive_name.empty() || manifest.r1_name.empty()) {
-    throw std::runtime_error("Invalid or unsupported bundle manifest format.");
-  }
-  if (manifest.has_r3 && manifest.r3_name.empty()) {
-    throw std::runtime_error(
-        "Invalid bundle manifest: has_r3=1 but r3_name is missing.");
-  }
-  if (manifest.has_r3 && manifest.read3_archive_name.empty() &&
-      manifest.read3_alias_source.empty()) {
-    throw std::runtime_error("Invalid bundle manifest: has_r3=1 but no read3 "
-                             "archive or alias source.");
-  }
-  if (!manifest.read3_alias_source.empty() &&
-      manifest.read3_alias_source != "R1" &&
-      manifest.read3_alias_source != "R2") {
-    throw std::runtime_error("Invalid bundle manifest: read3 alias source must "
-                             "be R1 or R2.");
-  }
-  if (manifest.has_r3 && !manifest.read3_archive_name.empty() &&
-      !manifest.read3_alias_source.empty()) {
-    throw std::runtime_error("Invalid bundle manifest: read3 cannot specify "
-                             "both an archive and an alias source.");
-  }
-  if (manifest.has_index && manifest.index_archive_name.empty()) {
-    throw std::runtime_error(
-        "Invalid bundle manifest: has_index=1 but index archive is missing.");
-  }
-  if (manifest.has_index && manifest.i1_name.empty()) {
-    throw std::runtime_error(
-        "Invalid bundle manifest: has_index=1 but i1_name is missing.");
-  }
-  if (manifest.has_i2 && manifest.i2_name.empty()) {
-    throw std::runtime_error(
-        "Invalid bundle manifest: has_i2=1 but i2_name is missing.");
-  }
-
-  return manifest;
 }
 
 struct prepared_compression_inputs {
@@ -1049,6 +931,7 @@ void compress_standard(const std::string &temp_dir,
 
   const compression_io_config io_config =
       resolve_compression_io(input_paths, output_paths);
+  validate_compression_target(input_paths, io_config.archive_path);
   const prepared_compression_inputs prepared_inputs =
       prepare_compression_inputs(io_config, temp_dir, num_thr);
   const input_record_format input_format_1 =
@@ -1337,6 +1220,7 @@ void compress(const std::string &temp_dir,
     const std::string output_archive_path =
         output_paths.empty() ? default_archive_name_from_input(input_paths[0])
                              : output_paths[0];
+    validate_compression_target(input_paths, output_archive_path);
     const std::string read_archive_name = "reads_group.sp";
     const std::string read3_archive_name = "read3_group.sp";
     const std::string index_archive_name = "index_group.sp";

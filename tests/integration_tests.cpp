@@ -753,6 +753,28 @@ TEST_CASE("Decompression rejects colliding output paths") {
   fs::remove_all(test_dir);
 }
 
+TEST_CASE("Compression rejects archive paths that overwrite inputs") {
+  const std::string test_dir = "compression_output_collision_test_tmp";
+  fs::create_directories(test_dir);
+
+  const std::string input_fastq = test_dir + "/input.fastq";
+  const std::string collision_log = test_dir + "/collision.log";
+
+  create_dummy_fastq(input_fastq, 160);
+
+  const std::string compress_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -c --R1 " + input_fastq + " -o " +
+      input_fastq + " -w " + test_dir + "/work_compress -t 1 > " +
+      collision_log + " 2>&1";
+  CHECK(std::system(compress_cmd.c_str()) != 0);
+
+  const std::string log_output = read_file_binary(collision_log);
+  CHECK(log_output.find("must not overwrite an input file") !=
+        std::string::npos);
+
+  fs::remove_all(test_dir);
+}
+
 TEST_CASE("Grouped sc-ATAC auto mode round-trips with N-containing reads") {
   const std::string test_dir = "grouped_sc_atac_test_tmp";
   fs::create_directories(test_dir);
@@ -830,6 +852,7 @@ TEST_CASE(
   const std::string corrupt_dir = test_dir + "/corrupt_extract";
   const std::string nested_read_dir = test_dir + "/nested_read_extract";
   const std::string corrupt_log = test_dir + "/corrupt_audit.log";
+  const std::string corrupt_preview_log = test_dir + "/corrupt_preview.log";
   const fs::path corrupted_archive_path =
       fs::absolute(fs::path(test_dir) / "grouped_corrupted.sp");
 
@@ -895,7 +918,11 @@ TEST_CASE(
   const std::string corrupt_audit_cmd = std::string(SPRING2_EXECUTABLE) +
                                         " -p -a " + corrupted_archive_tar_path +
                                         " > " + corrupt_log + " 2>&1";
+  const std::string corrupt_preview_cmd = std::string(SPRING2_EXECUTABLE) +
+                                          " -p " + corrupted_archive_tar_path +
+                                          " > " + corrupt_preview_log + " 2>&1";
   CHECK(std::system(corrupt_audit_cmd.c_str()) != 0);
+  CHECK(std::system(corrupt_preview_cmd.c_str()) != 0);
 
   fs::remove_all(test_dir);
 }
@@ -1085,6 +1112,51 @@ TEST_CASE("Grouped decompression rejects invalid read3 alias metadata") {
       "/out_R3.fastq -w " + test_dir + "/work_decompress -t 1 > " +
       corrupt_log + " 2>&1";
   CHECK(std::system(decompress_cmd.c_str()) != 0);
+
+  fs::remove_all(test_dir);
+}
+
+TEST_CASE(
+    "Grouped preview and SpringReader reject inconsistent index metadata") {
+  const std::string test_dir = "grouped_invalid_index_manifest_test_tmp";
+  fs::create_directories(test_dir);
+
+  const std::string r1_fastq = test_dir + "/input_R1.fastq";
+  const std::string r2_fastq = test_dir + "/input_R2.fastq";
+  const std::string i1_fastq = test_dir + "/input_I1.fastq";
+  const std::string archive_path = test_dir + "/grouped_index.sp";
+  const std::string extract_dir = test_dir + "/extract";
+  const std::string corrupted_archive = test_dir + "/grouped_index_corrupt.sp";
+  const std::string preview_log = test_dir + "/preview.log";
+  const std::string corrupted_archive_tar_path =
+      fs::absolute(corrupted_archive).generic_string();
+
+  create_dummy_fastq(r1_fastq, 200);
+  create_dummy_fastq(r2_fastq, 200);
+  create_dummy_fastq(i1_fastq, 200);
+
+  const std::string compress_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -c --R1 " + r1_fastq + " --R2 " +
+      r2_fastq + " --I1 " + i1_fastq + " -o " + archive_path + " -w " +
+      test_dir + "/work_compress -t 1";
+  REQUIRE(std::system(compress_cmd.c_str()) == 0);
+
+  fs::create_directories(extract_dir);
+  REQUIRE(std::system(
+              ("tar -xf " + archive_path + " -C " + extract_dir).c_str()) == 0);
+  replace_exact_in_file(extract_dir + "/bundle.meta", "has_index=1",
+                        "has_index=0");
+  replace_exact_in_file(extract_dir + "/bundle.meta", "has_i2=0", "has_i2=1");
+  REQUIRE(std::system(("cd " + extract_dir + " && tar -cf \"" +
+                       corrupted_archive_tar_path + "\" *")
+                          .c_str()) == 0);
+
+  const std::string preview_cmd = std::string(SPRING2_EXECUTABLE) + " -p " +
+                                  corrupted_archive + " > " + preview_log +
+                                  " 2>&1";
+  CHECK(std::system(preview_cmd.c_str()) != 0);
+  CHECK_THROWS_AS(SpringReader(corrupted_archive, 1, test_dir + "/work_reader"),
+                  std::runtime_error);
 
   fs::remove_all(test_dir);
 }
