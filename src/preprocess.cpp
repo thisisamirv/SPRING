@@ -19,6 +19,7 @@
 
 #include "core_utils.h"
 
+#include "fs_utils.h"
 #include "io_utils.h"
 #include "libbsc/bsc.h"
 #include "params.h"
@@ -490,7 +491,9 @@ void merge_paired_n_reads(const preprocess_paths &paths,
                                      std::ios::app | std::ios::binary);
   std::ifstream mate_n_read_input(paths.n_read_paths[1], std::ios::binary);
   merged_n_read_output << mate_n_read_input.rdbuf();
-  remove(paths.n_read_paths[1].c_str());
+  mate_n_read_input.close();
+  merged_n_read_output.close();
+  spring::safe_remove_file(paths.n_read_paths[1]);
 
   std::ofstream merged_n_read_order_output(paths.n_read_order_paths[0],
                                            std::ios::app | std::ios::binary);
@@ -507,7 +510,9 @@ void merge_paired_n_reads(const preprocess_paths &paths,
     merged_n_read_order_output.write(byte_ptr(n_read_orders.data()),
                                      mate_n_read_count * sizeof(uint32_t));
   }
-  remove(paths.n_read_order_paths[1].c_str());
+  mate_n_read_order_input.close();
+  merged_n_read_order_output.close();
+  spring::safe_remove_file(paths.n_read_order_paths[1]);
 }
 
 void remove_redundant_mate_ids(const preprocess_paths &paths,
@@ -520,7 +525,7 @@ void remove_redundant_mate_ids(const preprocess_paths &paths,
 
   if (!compression_params.encoding.long_flag &&
       !compression_params.encoding.preserve_order) {
-    remove(paths.id_output_paths[1].c_str());
+    spring::safe_remove_file(paths.id_output_paths[1]);
     return;
   }
 
@@ -530,7 +535,7 @@ void remove_redundant_mate_ids(const preprocess_paths &paths,
         compression_params.encoding.long_flag
             ? compressed_block_file_path(paths.id_output_paths[1], block_index)
             : block_file_path(paths.id_output_paths[1], block_index);
-    remove(block_path.c_str());
+    spring::safe_remove_file(block_path);
   }
 }
 
