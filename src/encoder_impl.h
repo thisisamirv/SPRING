@@ -89,7 +89,7 @@ inline void merge_thread_encoded_outputs(const encoder_global &encoder_state) {
 
   for (int thread_id = 0; thread_id < encoder_state.num_thr; thread_id++) {
     const std::string block_id =
-        "enc-merge-thread-" + std::to_string(thread_id);
+        std::string("enc-merge-thread-") + std::to_string(thread_id);
     append_thread_stream(
         order_output,
         thread_output_tmp_path(encoder_state.infile_order, thread_id), block_id,
@@ -205,7 +205,8 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
   {
     bool done = false;
     int thread_id = omp_get_thread_num();
-    const std::string block_id = "enc-thread-" + std::to_string(thread_id);
+    const std::string block_id =
+        std::string("enc-thread-") + std::to_string(thread_id);
     const std::string read_path = eg.infile + '.' + std::to_string(thread_id);
     const std::string flag_path =
         eg.infile_flag + '.' + std::to_string(thread_id);
@@ -281,7 +282,8 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
                                     (order_output.is_open() ? 1 : 0) +
                                     (orientation_output.is_open() ? 1 : 0) +
                                     (read_length_output.is_open() ? 1 : 0);
-      std::string error_msg = "Thread " + std::to_string(thread_id) +
+      std::string error_msg = std::string("Thread ") +
+                              std::to_string(thread_id) +
                               ": Failed to open one or more temporary "
                               "files in encoder. Working directory: " +
                               eg.basedir;

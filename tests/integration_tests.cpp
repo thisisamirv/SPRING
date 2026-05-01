@@ -110,7 +110,8 @@ void create_custom_fastq(const std::string &path, int num_records,
       sequence.push_back(kBaseCycle[(record + base) % 4]);
     }
 
-    write_fastq_record(output, "@custom_" + std::to_string(record), sequence,
+    write_fastq_record(output, std::string("@custom_") + std::to_string(record),
+                       sequence,
                        std::string(static_cast<size_t>(read_len), 'I'),
                        quality_header_has_id, use_crlf);
   }
@@ -136,12 +137,12 @@ void create_custom_paired_fastqs(const std::string &r1_path,
       seq2.push_back(kBaseCycle[(record + base + 1) % 4]);
     }
 
-    write_fastq_record(r1, "@pair_" + std::to_string(record) + "/1", seq1,
-                       std::string(read_len, 'I'), r1_quality_header_has_id,
-                       r1_use_crlf);
-    write_fastq_record(r2, "@pair_" + std::to_string(record) + "/2", seq2,
-                       std::string(read_len, 'J'), r2_quality_header_has_id,
-                       r2_use_crlf);
+    write_fastq_record(
+        r1, std::string("@pair_") + std::to_string(record) + "/1", seq1,
+        std::string(read_len, 'I'), r1_quality_header_has_id, r1_use_crlf);
+    write_fastq_record(
+        r2, std::string("@pair_") + std::to_string(record) + "/2", seq2,
+        std::string(read_len, 'J'), r2_quality_header_has_id, r2_use_crlf);
   }
 }
 
@@ -267,9 +268,9 @@ void create_grouped_sc_rna_like_fastqs(const std::string &r1_path,
 
     const std::string suffix = cb1 + "+" + cb2;
     const std::string id1 =
-        "@scrna_" + std::to_string(record) + " 1:N:0:" + suffix;
+        std::string("@scrna_") + std::to_string(record) + " 1:N:0:" + suffix;
     const std::string id2 =
-        "@scrna_" + std::to_string(record) + " 2:N:0:" + suffix;
+        std::string("@scrna_") + std::to_string(record) + " 2:N:0:" + suffix;
 
     r1 << id1 << "\n"
        << seq1 << "\n+\n"
@@ -432,7 +433,7 @@ TEST_CASE("SpringReader Integration Test") {
     ReadRecord rec;
     int count = 0;
     while (reader.next(rec)) {
-      CHECK(rec.id == "@read_" + std::to_string(count));
+      CHECK(rec.id == std::string("@read_") + std::to_string(count));
       count++;
     }
     CHECK(count == num_records);
@@ -500,8 +501,8 @@ TEST_CASE("SpringReader streams grouped archives via primary read member") {
   ReadRecord mate2;
   int count = 0;
   while (reader.next(mate1, mate2)) {
-    CHECK(mate1.id == "@read_" + std::to_string(count));
-    CHECK(mate2.id == "@read_" + std::to_string(count));
+    CHECK(mate1.id == std::string("@read_") + std::to_string(count));
+    CHECK(mate2.id == std::string("@read_") + std::to_string(count));
     count++;
   }
   CHECK(count == 120);

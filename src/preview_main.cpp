@@ -25,7 +25,7 @@ create_preview_temp_dir(const std::filesystem::path &working_dir) {
 
   while (true) {
     const std::filesystem::path temp_dir =
-        working_dir / ("tmp_preview_" + random_string(10));
+        working_dir / (std::string("tmp_preview_") + random_string(10));
     if (!std::filesystem::exists(temp_dir) &&
         std::filesystem::create_directory(temp_dir)) {
       return temp_dir;
