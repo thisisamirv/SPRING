@@ -71,6 +71,34 @@ std::runtime_error gzip_runtime_error(gzFile file_handle,
 
 thread_local std::string tl_plain_buffer;
 
+uint64_t count_gzip_uncompressed_bytes(const std::string &path) {
+  gzFile file_handle = gzopen(path.c_str(), "rb");
+  if (file_handle == nullptr) {
+    return 0;
+  }
+
+  std::vector<char> buffer(static_cast<size_t>(kGzipChunkSize));
+  uint64_t total_uncompressed_bytes = 0;
+
+  while (true) {
+    const int bytes_read = gzread(file_handle, buffer.data(),
+                                  static_cast<unsigned int>(buffer.size()));
+    if (bytes_read > 0) {
+      total_uncompressed_bytes += static_cast<uint64_t>(bytes_read);
+      continue;
+    }
+    if (bytes_read == 0) {
+      break;
+    }
+
+    gzclose(file_handle);
+    return 0;
+  }
+
+  gzclose(file_handle);
+  return total_uncompressed_bytes;
+}
+
 void write_gzip_data(gzFile file_handle, const char *data,
                      std::streamsize size) {
   std::streamsize written_total = 0;
@@ -1102,11 +1130,7 @@ void extract_gzip_detailed_info(const std::string &path, bool &is_gzipped,
     if (current_flg & 0x02)
       fin.seekg(2, std::ios::cur);
 
-    fin.seekg(-4,
-              std::ios::end); // ISIZE is the last 4 bytes of the gzip trailer
-    uint32_t isize;
-    fin.read(reinterpret_cast<char *>(&isize), 4);
-    uncompressed_size = isize;
+    uncompressed_size = count_gzip_uncompressed_bytes(path);
     break;
   }
 }

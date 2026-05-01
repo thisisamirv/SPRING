@@ -1049,6 +1049,14 @@ void compress_standard(const std::string &temp_dir,
       cp.gzip.streams[0].is_bgzf, cp.gzip.streams[0].bgzf_block_size,
       cp.gzip.streams[0].uncompressed_size, cp.gzip.streams[0].compressed_size,
       cp.gzip.streams[0].member_count);
+  if (prepared_inputs.input_1_actual_was_gzipped) {
+    std::error_code ec;
+    const auto staged_size =
+        std::filesystem::file_size(prepared_inputs.input_path_1, ec);
+    if (!ec) {
+      cp.gzip.streams[0].uncompressed_size = staged_size;
+    }
+  }
 
   // Extract detailed gzip metadata for input 2 (if paired-end)
   if (io_config.paired_end) {
@@ -1059,6 +1067,14 @@ void compress_standard(const std::string &temp_dir,
         cp.gzip.streams[1].is_bgzf, cp.gzip.streams[1].bgzf_block_size,
         cp.gzip.streams[1].uncompressed_size,
         cp.gzip.streams[1].compressed_size, cp.gzip.streams[1].member_count);
+    if (prepared_inputs.input_2_actual_was_gzipped) {
+      std::error_code ec;
+      const auto staged_size =
+          std::filesystem::file_size(prepared_inputs.input_path_2, ec);
+      if (!ec) {
+        cp.gzip.streams[1].uncompressed_size = staged_size;
+      }
+    }
   }
 
   if (preserve_quality)

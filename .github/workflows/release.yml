@@ -77,6 +77,7 @@ jobs:
                       \$CMAKE_EXTRA_FLAGS && \
                     cmake --build build --parallel && \
                     cmake --install build --prefix spring2 && \
+                    tar -czf spring2-linux-${{ matrix.arch }}.tar.gz spring2 && \
                     file spring2/bin/spring2 && \
                     ldd spring2/bin/spring2 && \
                     export LINUXDEPLOY_DEBUG=1 && \
@@ -181,6 +182,7 @@ jobs:
                   mkdir -p release
                   if [ "${{ matrix.name }}" == "linux" ]; then
                     cp spring2-linux-${{ matrix.arch }}.AppImage release/
+                    cp spring2-linux-${{ matrix.arch }}.tar.gz release/
                   else
                     cp spring2/bin/spring2 "release/${{ matrix.artifact_name }}"
                   fi
@@ -233,6 +235,7 @@ jobs:
                   files: |
                       release/${{ matrix.artifact_name }}
                       release/*.AppImage
+                      release/*.tar.gz
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
