@@ -30,6 +30,61 @@ std::string read_file_binary(const std::string &path) {
                      std::istreambuf_iterator<char>());
 }
 
+std::string read_gzip_file_binary(const std::string &path) {
+  const std::string compressed = read_file_binary(path);
+  z_stream stream{};
+  stream.next_in =
+      reinterpret_cast<Bytef *>(const_cast<char *>(compressed.data()));
+  stream.avail_in = static_cast<uInt>(compressed.size());
+
+  if (inflateInit2(&stream, 16 + MAX_WBITS) != Z_OK) {
+    throw std::runtime_error("Failed to initialize gzip inflater.");
+  }
+
+  std::string output;
+  char buffer[1 << 15];
+  while (true) {
+    stream.next_out = reinterpret_cast<Bytef *>(buffer);
+    stream.avail_out = sizeof(buffer);
+
+    const int status = inflate(&stream, Z_NO_FLUSH);
+    const size_t produced = sizeof(buffer) - stream.avail_out;
+    if (produced != 0) {
+      output.append(buffer, produced);
+    }
+
+    if (status == Z_STREAM_END) {
+      Bytef *next_in = stream.next_in;
+      uInt avail_in = stream.avail_in;
+      inflateEnd(&stream);
+
+      while (avail_in > 0 && *next_in == 0) {
+        ++next_in;
+        --avail_in;
+      }
+
+      if (avail_in == 0) {
+        break;
+      }
+
+      stream = {};
+      stream.next_in = next_in;
+      stream.avail_in = avail_in;
+      if (inflateInit2(&stream, 16 + MAX_WBITS) != Z_OK) {
+        throw std::runtime_error("Failed to initialize gzip inflater.");
+      }
+      continue;
+    }
+
+    if (status != Z_OK) {
+      inflateEnd(&stream);
+      throw std::runtime_error("Failed to inflate gzip data.");
+    }
+  }
+
+  return output;
+}
+
 void write_fastq_record(std::ofstream &output, const std::string &id,
                         const std::string &sequence, const std::string &quality,
                         bool quality_header_has_id, bool use_crlf) {
@@ -95,12 +150,14 @@ void create_gzip_copy(const std::string &input_path,
   std::ifstream input(input_path, std::ios::binary);
   REQUIRE(input.is_open());
 
-  gzip_ostream output(output_path, level);
+  std::ofstream output(output_path, std::ios::binary | std::ios::trunc);
   REQUIRE(output.is_open());
 
   std::string contents((std::istreambuf_iterator<char>(input)),
                        std::istreambuf_iterator<char>());
-  output.write(contents.data(), static_cast<std::streamsize>(contents.size()));
+  const std::string compressed = gzip_compress_string(contents, level);
+  output.write(compressed.data(),
+               static_cast<std::streamsize>(compressed.size()));
   output.close();
 }
 
@@ -1065,12 +1122,8 @@ TEST_CASE("Grouped aliased R3 output honors requested target format") {
                              compressed_size, member_count);
   CHECK(is_gzipped);
 
-  gzip_istream gz_input(out_r3);
-  REQUIRE(gz_input.is_open());
-  const std::string restored((std::istreambuf_iterator<char>(gz_input)),
-                             std::istreambuf_iterator<char>());
+  const std::string restored = read_gzip_file_binary(out_r3);
   CHECK(restored == read_file_binary(r1_fastq));
-  gz_input.close();
 
   fs::remove_all(test_dir);
 }
@@ -1219,18 +1272,10 @@ TEST_CASE("Paired gzip outputs preserve per-stream compression profile") {
   CHECK(fs::file_size(baseline_r2) < fs::file_size(baseline_r1));
   CHECK(fs::file_size(out_r2) < fs::file_size(out_r1));
 
-  gzip_istream out_r1_stream(out_r1);
-  gzip_istream out_r2_stream(out_r2);
-  REQUIRE(out_r1_stream.is_open());
-  REQUIRE(out_r2_stream.is_open());
-  const std::string restored_r1((std::istreambuf_iterator<char>(out_r1_stream)),
-                                std::istreambuf_iterator<char>());
-  const std::string restored_r2((std::istreambuf_iterator<char>(out_r2_stream)),
-                                std::istreambuf_iterator<char>());
+  const std::string restored_r1 = read_gzip_file_binary(out_r1);
+  const std::string restored_r2 = read_gzip_file_binary(out_r2);
   CHECK(restored_r1 == read_file_binary(r1_fastq));
   CHECK(restored_r2 == read_file_binary(r2_fastq));
-  out_r1_stream.close();
-  out_r2_stream.close();
 
   fs::remove_all(test_dir);
 }

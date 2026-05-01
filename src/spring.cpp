@@ -154,7 +154,7 @@ int gzip_output_compression_level(
     const compression_params::GzipMetadata::Stream &stream,
     const int default_level) {
   if (stream.xfl == 2)
-    return 9;
+    return 8;
   if (stream.xfl == 4)
     return 1;
   return default_level;
