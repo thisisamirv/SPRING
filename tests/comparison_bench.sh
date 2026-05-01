@@ -72,6 +72,30 @@ fi
 MAMBA_BIN=""
 SPRING_V1_RUNNER=""
 
+sum_file_sizes() {
+	local total_size=0
+	local file_path
+
+	for file_path in "$@"; do
+		if [[ -f "$file_path" ]]; then
+			((total_size += $(stat -c%s "$file_path")))
+		fi
+	done
+
+	echo "$total_size"
+}
+
+sum_normalized_input_sizes() {
+	local total_size=0
+	local file_path
+
+	for file_path in "$@"; do
+		((total_size += $(stream_input_bytes "$file_path" | wc -c)))
+	done
+
+	echo "$total_size"
+}
+
 compute_checksum() {
 	local file_path="$1"
 
@@ -107,6 +131,36 @@ compute_normalized_input_checksum() {
 
 	if [[ -n "$(type -P shasum)" ]]; then
 		stream_input_bytes "$file_path" | shasum -a 256 | awk '{print $1}'
+		return
+	fi
+}
+
+compute_combined_checksum() {
+	if [[ -n "$(type -P sha256sum)" ]]; then
+		cat -- "$@" | sha256sum | awk '{print $1}'
+		return
+	fi
+
+	if [[ -n "$(type -P shasum)" ]]; then
+		cat -- "$@" | shasum -a 256 | awk '{print $1}'
+		return
+	fi
+}
+
+compute_combined_normalized_input_checksum() {
+	local file_path
+
+	if [[ -n "$(type -P sha256sum)" ]]; then
+		for file_path in "$@"; do
+			stream_input_bytes "$file_path"
+		done | sha256sum | awk '{print $1}'
+		return
+	fi
+
+	if [[ -n "$(type -P shasum)" ]]; then
+		for file_path in "$@"; do
+			stream_input_bytes "$file_path"
+		done | shasum -a 256 | awk '{print $1}'
 		return
 	fi
 }
@@ -163,6 +217,15 @@ ensure_spring_binary() {
 	fi
 
 	echo "Spring build completed. Full log: $BUILD_LOG"
+}
+
+ensure_gzip_binary() {
+	if type -P gzip >/dev/null 2>&1; then
+		return
+	fi
+
+	echo "gzip is required for the gzip comparison scenario, but it was not found on PATH." >&2
+	exit 1
 }
 
 ensure_spring_v1_runner() {
@@ -265,6 +328,11 @@ spring_supports_gzip_flag() {
 is_spring_v1_label() {
 	local label="$1"
 	[[ "$label" == "spring_v1" ]]
+}
+
+is_gzip_label() {
+	local label="$1"
+	[[ "$label" == "gzip" ]]
 }
 
 write_metrics_file() {
@@ -420,12 +488,15 @@ run_benchmark() {
 	local runner="$3"
 
 	local output_prefix="$TMP_OUTPUT_DIR/$INPUT_STEM.$label"
-	local output_file="$output_prefix.sp"
-	local decompressed_output_file="$output_prefix.roundtrip.fastq"
 	local work_dir="$TMP_WORK_DIR/$INPUT_STEM.$label.work"
 	local compress_resource_log="$TMP_LOG_DIR/${label}_compress_resource_usage.log"
 	local decompress_resource_log="$TMP_LOG_DIR/${label}_decompress_resource_usage.log"
 	local metrics_path="$TMP_LOG_DIR/${label}.metrics"
+	local gzip_compress_runner="$TMP_LOG_DIR/${label}_compress_runner.sh"
+	local gzip_decompress_runner="$TMP_LOG_DIR/${label}_decompress_runner.sh"
+	local -a input_paths=("$INPUT_ABS_1")
+	local -a compressed_paths=()
+	local -a decompressed_paths=()
 	local input_size
 	local output_size
 	local decompressed_size
@@ -434,102 +505,146 @@ run_benchmark() {
 	local decompressed_checksum=""
 	local checksum_status="unavailable"
 	local roundtrip_status="different"
+	local file_count=1
+	local index
+
+	if [[ -n "$INPUT_ABS_2" ]]; then
+		input_paths+=("$INPUT_ABS_2")
+		file_count=2
+	fi
+
+	if is_gzip_label "$label"; then
+		for ((index = 0; index < file_count; ++index)); do
+			compressed_paths+=("$output_prefix.$((index + 1)).fastq.gz")
+			decompressed_paths+=("$output_prefix.roundtrip.$((index + 1)).fastq")
+		done
+	else
+		compressed_paths+=("$output_prefix.sp")
+		if ((file_count == 1)); then
+			decompressed_paths+=("$output_prefix.roundtrip.fastq")
+		else
+			decompressed_paths+=("$output_prefix.roundtrip.fastq.1")
+			decompressed_paths+=("$output_prefix.roundtrip.fastq.2")
+		fi
+	fi
 
 	mkdir -p "$TMP_INPUT_DIR" "$TMP_LOG_DIR" "$TMP_OUTPUT_DIR" "$TMP_WORK_DIR"
 	rm -rf "$work_dir"
 	mkdir -p "$work_dir"
-	rm -f "$output_file" "$decompressed_output_file"
+	rm -f "${compressed_paths[@]}" "${decompressed_paths[@]}"
 	rm -f "$compress_resource_log" "$decompress_resource_log" "$metrics_path"
+	rm -f "$gzip_compress_runner" "$gzip_decompress_runner"
 
 	echo "Running $display_name lossless compression"
-	echo "  input:   $INPUT_ABS"
-	echo "  output:  $output_file"
-	echo "  workdir: $work_dir"
-	echo "  threads: $THREADS"
+	echo "  input:   $INPUT_ABS_1"
+	if [[ -n "$INPUT_ABS_2" ]]; then
+		echo "  input 2: $INPUT_ABS_2"
+	fi
+	echo "  output:  ${compressed_paths[*]}"
+	if ! is_gzip_label "$label"; then
+		echo "  workdir: $work_dir"
+		echo "  threads: $THREADS"
+	fi
 	echo "  max read length: $MAX_READ_LENGTH"
-	if ((${MAX_READ_LENGTH} > ${MAX_SHORT_READ_LENGTH})) && [[ "$label" == "spring_v1" ]]; then
+	if ((${MAX_READ_LENGTH} > ${MAX_SHORT_READ_LENGTH})) && is_spring_v1_label "$label"; then
 		echo "  mode:    lossless long-read mode (-l)"
+	elif is_gzip_label "$label"; then
+		echo "  mode:    gzip (-n)"
 	else
 		echo "  mode:    lossless"
 	fi
 
-	local spring_args=(
-		-c
-	)
-	if is_spring_v1_label "$label"; then
-		spring_args+=(-i "$INPUT_ABS_1")
-		if [[ -n "$INPUT_ABS_2" ]]; then
-			spring_args+=("$INPUT_ABS_2")
+	if is_gzip_label "$label"; then
+		cat >"$gzip_compress_runner" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$INPUT_ABS_1" == *.gz ]]; then
+	gzip -dc -- "$INPUT_ABS_1" | gzip -c -n > "${compressed_paths[0]}"
+else
+	gzip -c -n -- "$INPUT_ABS_1" > "${compressed_paths[0]}"
+fi
+EOF
+		if ((file_count == 2)); then
+			cat >>"$gzip_compress_runner" <<EOF
+if [[ "$INPUT_ABS_2" == *.gz ]]; then
+	gzip -dc -- "$INPUT_ABS_2" | gzip -c -n > "${compressed_paths[1]}"
+else
+	gzip -c -n -- "$INPUT_ABS_2" > "${compressed_paths[1]}"
+fi
+EOF
 		fi
-		spring_args+=(
-			-o "$output_file"
-			-w "$work_dir"
-			-t "$THREADS"
-			-q lossless
-		)
+		chmod +x "$gzip_compress_runner"
+		run_with_resource_log "$compress_resource_log" "$gzip_compress_runner"
 	else
-		spring_args+=(--R1 "$INPUT_ABS_1")
-		if [[ -n "$INPUT_ABS_2" ]]; then
-			spring_args+=(--R2 "$INPUT_ABS_2")
-		fi
-		spring_args+=(
-			-o "$output_file"
-			-w "$work_dir"
-			-t "$THREADS"
-			-q lossless
+		local spring_args=(
+			-c
 		)
-	fi
-	if ((${MAX_READ_LENGTH} > ${MAX_SHORT_READ_LENGTH})) && [[ "$label" == "spring_v1" ]]; then
-		spring_args+=(-l)
-	fi
-	if [[ "$INPUT_ABS_1" == *.gz ]] && spring_supports_gzip_flag "$runner"; then
-		spring_args=(-g "${spring_args[@]}")
-	fi
+		if is_spring_v1_label "$label"; then
+			spring_args+=(-i "$INPUT_ABS_1")
+			if [[ -n "$INPUT_ABS_2" ]]; then
+				spring_args+=("$INPUT_ABS_2")
+			fi
+			spring_args+=(
+				-o "${compressed_paths[0]}"
+				-w "$work_dir"
+				-t "$THREADS"
+				-q lossless
+			)
+		else
+			spring_args+=(--R1 "$INPUT_ABS_1")
+			if [[ -n "$INPUT_ABS_2" ]]; then
+				spring_args+=(--R2 "$INPUT_ABS_2")
+			fi
+			spring_args+=(
+				-o "${compressed_paths[0]}"
+				-w "$work_dir"
+				-t "$THREADS"
+				-q lossless
+			)
+		fi
+		if ((${MAX_READ_LENGTH} > ${MAX_SHORT_READ_LENGTH})) && is_spring_v1_label "$label"; then
+			spring_args+=(-l)
+		fi
+		if [[ "$INPUT_ABS_1" == *.gz ]] && spring_supports_gzip_flag "$runner"; then
+			spring_args=(-g "${spring_args[@]}")
+		fi
 
-	run_with_resource_log "$compress_resource_log" "$runner" "${spring_args[@]}"
+		run_with_resource_log "$compress_resource_log" "$runner" "${spring_args[@]}"
+	fi
 
 	echo "Running $display_name decompression"
-	echo "  input:   $output_file"
-	echo "  output:  $decompressed_output_file"
+	echo "  input:   ${compressed_paths[*]}"
+	echo "  output:  ${decompressed_paths[*]}"
 
-	local decompress_args=(
-		-d
-	)
-	if is_spring_v1_label "$label"; then
-		decompress_args+=(
-			-i "$output_file"
-			-o "$decompressed_output_file"
-		)
-	else
-		decompress_args+=(
-			-i "$output_file"
-			-o "$decompressed_output_file"
-		)
-	fi
-	if [[ "$output_file" == *.gz ]] && spring_supports_gzip_flag "$runner"; then
-		decompress_args=(-g "${decompress_args[@]}")
-	fi
-
-	run_with_resource_log "$decompress_resource_log" "$runner" "${decompress_args[@]}"
-
-	input_size=$(stat -c%s "$INPUT_ABS_1")
-	if [[ -n "$INPUT_ABS_2" ]]; then
-		((input_size += $(stat -c%s "$INPUT_ABS_2")))
-	fi
-	output_size=$(stat -c%s "$output_file")
-
-	if [[ -f "$decompressed_output_file" ]]; then
-		decompressed_size=$(stat -c%s "$decompressed_output_file")
-	else
-		# Handle paired-end decompression output .1 and .2
-		decompressed_size=0
-		if [[ -f "$decompressed_output_file.1" ]]; then
-			((decompressed_size += $(stat -c%s "$decompressed_output_file.1")))
+	if is_gzip_label "$label"; then
+		cat >"$gzip_decompress_runner" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+gzip -dc -- "${compressed_paths[0]}" > "${decompressed_paths[0]}"
+EOF
+		if ((file_count == 2)); then
+			printf 'gzip -dc -- "%s" > "%s"\n' "${compressed_paths[1]}" "${decompressed_paths[1]}" >>"$gzip_decompress_runner"
 		fi
-		if [[ -f "$decompressed_output_file.2" ]]; then
-			((decompressed_size += $(stat -c%s "$decompressed_output_file.2")))
+		chmod +x "$gzip_decompress_runner"
+		run_with_resource_log "$decompress_resource_log" "$gzip_decompress_runner"
+	else
+		local decompress_args=(
+			-d
+		)
+		decompress_args+=(
+			-i "${compressed_paths[0]}"
+			-o "$output_prefix.roundtrip.fastq"
+		)
+		if [[ "${compressed_paths[0]}" == *.gz ]] && spring_supports_gzip_flag "$runner"; then
+			decompress_args=(-g "${decompress_args[@]}")
 		fi
+
+		run_with_resource_log "$decompress_resource_log" "$runner" "${decompress_args[@]}"
 	fi
+
+	input_size=$(sum_normalized_input_sizes "${input_paths[@]}")
+	output_size=$(sum_file_sizes "${compressed_paths[@]}")
+	decompressed_size=$(sum_file_sizes "${decompressed_paths[@]}")
 
 	populate_resource_vars "${label}_compress" "$compress_resource_log"
 	populate_resource_vars "${label}_decompress" "$decompress_resource_log"
@@ -558,12 +673,8 @@ run_benchmark() {
 
 	if [[ -n "$(type -P sha256sum)" || -n "$(type -P shasum)" ]]; then
 		integrity_method="SHA-256 + byte comparison"
-		original_checksum=$(compute_normalized_input_checksum "$INPUT_ABS_1")
-		if [[ -f "$decompressed_output_file" ]]; then
-			decompressed_checksum=$(compute_checksum "$decompressed_output_file")
-		elif [[ -f "$decompressed_output_file.1" ]]; then
-			decompressed_checksum=$(compute_checksum "$decompressed_output_file.1")
-		fi
+		original_checksum=$(compute_combined_normalized_input_checksum "${input_paths[@]}")
+		decompressed_checksum=$(compute_combined_checksum "${decompressed_paths[@]}")
 
 		if [[ "$original_checksum" == "$decompressed_checksum" ]]; then
 			checksum_status="match"
@@ -572,13 +683,18 @@ run_benchmark() {
 		fi
 	fi
 
-	if [[ -f "$decompressed_output_file" ]]; then
-		if cmp -s <(stream_input_bytes "$INPUT_ABS_1") "$decompressed_output_file"; then
-			roundtrip_status="identical"
-		fi
-	elif [[ -f "$decompressed_output_file.1" ]]; then
-		if cmp -s <(stream_input_bytes "$INPUT_ABS_1") "$decompressed_output_file.1"; then
-			roundtrip_status="identical (read 1)"
+	roundtrip_status="identical"
+	if ((${#input_paths[@]} != ${#decompressed_paths[@]})); then
+		roundtrip_status="different"
+	else
+		for ((index = 0; index < ${#input_paths[@]}; ++index)); do
+			if [[ ! -f "${decompressed_paths[index]}" ]] || ! cmp -s <(stream_input_bytes "${input_paths[index]}") "${decompressed_paths[index]}"; then
+				roundtrip_status="different"
+				break
+			fi
+		done
+		if [[ "$roundtrip_status" == "identical" ]] && ((${#input_paths[@]} > 1)); then
+			roundtrip_status="identical (${#input_paths[@]} files)"
 		fi
 	fi
 
@@ -632,68 +748,107 @@ run_benchmark() {
 print_comparison_summary() {
 	local current_metrics="$1"
 	local v1_metrics="$2"
+	local gzip_metrics="$3"
 
 	load_metrics_file current "$current_metrics"
 	load_metrics_file v1 "$v1_metrics"
+	load_metrics_file gzip "$gzip_metrics"
 
 	awk \
 		-v current_output_size="$current_output_size" \
 		-v v1_output_size="$v1_output_size" \
+		-v gzip_output_size="$gzip_output_size" \
 		-v current_ratio="$current_compression_ratio" \
 		-v v1_ratio="$v1_compression_ratio" \
+		-v gzip_ratio="$gzip_compression_ratio" \
 		-v current_reduction="$current_reduction_percent" \
 		-v v1_reduction="$v1_reduction_percent" \
+		-v gzip_reduction="$gzip_reduction_percent" \
 		-v current_compress_elapsed="$current_compress_elapsed_seconds" \
 		-v v1_compress_elapsed="$v1_compress_elapsed_seconds" \
+		-v gzip_compress_elapsed="$gzip_compress_elapsed_seconds" \
 		-v current_decompress_elapsed="$current_decompress_elapsed_seconds" \
 		-v v1_decompress_elapsed="$v1_decompress_elapsed_seconds" \
+		-v gzip_decompress_elapsed="$gzip_decompress_elapsed_seconds" \
 		-v current_compress_cpu="$current_compress_cpu_percent" \
 		-v v1_compress_cpu="$v1_compress_cpu_percent" \
+		-v gzip_compress_cpu="$gzip_compress_cpu_percent" \
 		-v current_decompress_cpu="$current_decompress_cpu_percent" \
 		-v v1_decompress_cpu="$v1_decompress_cpu_percent" \
+		-v gzip_decompress_cpu="$gzip_decompress_cpu_percent" \
 		-v current_compress_rss="$current_compress_max_rss_kb" \
 		-v v1_compress_rss="$v1_compress_max_rss_kb" \
+		-v gzip_compress_rss="$gzip_compress_max_rss_kb" \
 		-v current_decompress_rss="$current_decompress_max_rss_kb" \
-		-v v1_decompress_rss="$v1_decompress_max_rss_kb" '
+		-v v1_decompress_rss="$v1_decompress_max_rss_kb" \
+		-v gzip_decompress_rss="$gzip_decompress_max_rss_kb" '
 BEGIN {
-  output_delta = v1_output_size - current_output_size
+	winner_label = "current Spring"
+	winner_size = current_output_size
+	runner_up_size = -1
+	if (v1_output_size < winner_size) {
+		winner_label = "Spring v1"
+		winner_size = v1_output_size
+	}
+	if (gzip_output_size < winner_size) {
+		winner_label = "gzip"
+		winner_size = gzip_output_size
+	}
+	if (current_output_size != winner_size) {
+		runner_up_size = current_output_size
+	}
+	if (v1_output_size != winner_size && (runner_up_size < 0 || v1_output_size < runner_up_size)) {
+		runner_up_size = v1_output_size
+	}
+	if (gzip_output_size != winner_size && (runner_up_size < 0 || gzip_output_size < runner_up_size)) {
+		runner_up_size = gzip_output_size
+	}
   printf("\nComparison summary\n")
   printf("  current compressed bytes:   %d\n", current_output_size)
   printf("  spring v1 compressed bytes: %d\n", v1_output_size)
-  if (output_delta > 0) {
-    printf("  size winner:                current Spring by %d bytes\n", output_delta)
-  } else if (output_delta < 0) {
-    printf("  size winner:                Spring v1 by %d bytes\n", -output_delta)
+	printf("  gzip compressed bytes:      %d\n", gzip_output_size)
+	if ((current_output_size == v1_output_size) && (current_output_size == gzip_output_size)) {
+		printf("  size winner:                tie\n")
+	} else if (runner_up_size >= 0) {
+		printf("  size winner:                %s by %d bytes\n", winner_label, runner_up_size - winner_size)
   } else {
-    printf("  size winner:                tie\n")
+		printf("  size winner:                %s\n", winner_label)
   }
   printf("  current compression ratio:  %sx\n", current_ratio)
   printf("  spring v1 compression ratio:%sx\n", v1_ratio)
+	printf("  gzip compression ratio:     %sx\n", gzip_ratio)
   printf("  current size reduction:     %s%%\n", current_reduction)
   printf("  spring v1 size reduction:   %s%%\n", v1_reduction)
-  if (current_compress_elapsed != "" && v1_compress_elapsed != "") {
+	printf("  gzip size reduction:        %s%%\n", gzip_reduction)
+	if (current_compress_elapsed != "" && v1_compress_elapsed != "" && gzip_compress_elapsed != "") {
     printf("  current compression time:   %ss\n", current_compress_elapsed)
     printf("  spring v1 compression time: %ss\n", v1_compress_elapsed)
+		printf("  gzip compression time:      %ss\n", gzip_compress_elapsed)
   }
-  if (current_decompress_elapsed != "" && v1_decompress_elapsed != "") {
+	if (current_decompress_elapsed != "" && v1_decompress_elapsed != "" && gzip_decompress_elapsed != "") {
     printf("  current decompression time: %ss\n", current_decompress_elapsed)
     printf("  spring v1 decompression time:%ss\n", v1_decompress_elapsed)
+		printf("  gzip decompression time:    %ss\n", gzip_decompress_elapsed)
   }
-  if (current_compress_cpu != "" && v1_compress_cpu != "") {
+	if (current_compress_cpu != "" && v1_compress_cpu != "" && gzip_compress_cpu != "") {
     printf("  current compression CPU usage:   %s\n", current_compress_cpu)
     printf("  spring v1 compression CPU usage: %s\n", v1_compress_cpu)
+		printf("  gzip compression CPU usage:      %s\n", gzip_compress_cpu)
   }
-  if (current_decompress_cpu != "" && v1_decompress_cpu != "") {
+	if (current_decompress_cpu != "" && v1_decompress_cpu != "" && gzip_decompress_cpu != "") {
     printf("  current decompression CPU usage: %s\n", current_decompress_cpu)
     printf("  spring v1 decompression CPU usage:%s\n", v1_decompress_cpu)
+		printf("  gzip decompression CPU usage:    %s\n", gzip_decompress_cpu)
   }
-  if (current_compress_rss != "" && current_compress_rss != "unavailable" && v1_compress_rss != "" && v1_compress_rss != "unavailable") {
+	if (current_compress_rss != "" && current_compress_rss != "unavailable" && v1_compress_rss != "" && v1_compress_rss != "unavailable" && gzip_compress_rss != "" && gzip_compress_rss != "unavailable") {
     printf("  current peak compression RSS: %s KB\n", current_compress_rss)
     printf("  spring v1 peak compression RSS: %s KB\n", v1_compress_rss)
+		printf("  gzip peak compression RSS:      %s KB\n", gzip_compress_rss)
   }
-  if (current_decompress_rss != "" && current_decompress_rss != "unavailable" && v1_decompress_rss != "" && v1_decompress_rss != "unavailable") {
+	if (current_decompress_rss != "" && current_decompress_rss != "unavailable" && v1_decompress_rss != "" && v1_decompress_rss != "unavailable" && gzip_decompress_rss != "" && gzip_decompress_rss != "unavailable") {
     printf("  current peak decompression RSS: %s KB\n", current_decompress_rss)
     printf("  spring v1 peak decompression RSS: %s KB\n", v1_decompress_rss)
+		printf("  gzip peak decompression RSS:      %s KB\n", gzip_decompress_rss)
   }
 }
 '
@@ -702,6 +857,7 @@ BEGIN {
 ensure_benchmark_input
 ensure_spring_binary
 ensure_spring_v1_runner
+ensure_gzip_binary
 
 INPUT_ABS_1=$(realpath -m -- "$INPUT_FASTQ_1")
 INPUT_ABS_2=""
@@ -717,4 +873,5 @@ MAX_READ_LENGTH=$(stream_input_bytes "$INPUT_ABS_1" | awk 'NR % 4 == 2 { if (len
 
 run_benchmark "current" "Current Spring" "$SPRING_BIN"
 run_benchmark "spring_v1" "Spring v1" "$SPRING_V1_RUNNER"
-print_comparison_summary "$TMP_LOG_DIR/current.metrics" "$TMP_LOG_DIR/spring_v1.metrics"
+run_benchmark "gzip" "gzip" "gzip"
+print_comparison_summary "$TMP_LOG_DIR/current.metrics" "$TMP_LOG_DIR/spring_v1.metrics" "$TMP_LOG_DIR/gzip.metrics"

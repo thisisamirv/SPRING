@@ -38,9 +38,9 @@ See also the bsc and libbsc web site:
 #include "libbsc.h"
 #include "platform.h"
 
+#include "coder_tables.h"
 #include "predictor.h"
 #include "rangecoder.h"
-#include "coder_tables.h"
 
 #include "qlfc_model.h"
 
@@ -900,7 +900,7 @@ int QLFC_ADAPTIVE_ENCODE_FUNCTION_NAME(const unsigned char *input,
     }
 
     if (currentChar == prevChar) {
-      maxRank = bsc_bit_scan_reverse(rank - 1);
+      maxRank = (rank > 1) ? bsc_bit_scan_reverse(rank - 1) : 0;
       break;
     }
 
@@ -1351,7 +1351,7 @@ int QLFC_STATIC_ENCODE_FUNCTION_NAME(const unsigned char *input,
     }
 
     if (currentChar == prevChar) {
-      maxRank = bsc_bit_scan_reverse(rank - 1);
+      maxRank = (rank > 1) ? bsc_bit_scan_reverse(rank - 1) : 0;
       break;
     }
 
@@ -1977,7 +1977,7 @@ int QLFC_ADAPTIVE_DECODE_FUNCTION_NAME(const unsigned char *input,
     MTFTable[rank] = currentChar;
 
     if (currentChar == prevChar) {
-      maxRank = bsc_bit_scan_reverse(rank - 1);
+      maxRank = (rank > 1) ? bsc_bit_scan_reverse(rank - 1) : 0;
       break;
     }
 
@@ -2360,7 +2360,7 @@ int QLFC_STATIC_DECODE_FUNCTION_NAME(const unsigned char *input,
     MTFTable[rank] = currentChar;
 
     if (currentChar == prevChar) {
-      maxRank = bsc_bit_scan_reverse(rank - 1);
+      maxRank = (rank > 1) ? bsc_bit_scan_reverse(rank - 1) : 0;
       break;
     }
 

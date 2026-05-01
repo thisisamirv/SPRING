@@ -136,8 +136,8 @@ public:
                      ", max_queue_depth=" + std::to_string(max_queue_depth_));
   }
 
-  void get_digests(uint32_t seq_crc[2], uint32_t qual_crc[2],
-                   uint32_t id_crc[2]) const {
+  void copy_digests(uint32_t seq_crc[2], uint32_t qual_crc[2],
+                    uint32_t id_crc[2]) const {
     for (int i = 0; i < 2; ++i) {
       seq_crc[i] = sequence_crc_[i];
       qual_crc[i] = quality_crc_[i];
@@ -251,7 +251,7 @@ public:
           decompress_short(archive_root_, sink, params_, decode_num_thr_);
         }
         sink.log_summary();
-        sink.get_digests(sequence_crc_, quality_crc_, id_crc_);
+        sink.copy_digests(sequence_crc_, quality_crc_, id_crc_);
         const auto elapsed_ms =
             std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - worker_start)

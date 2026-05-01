@@ -33,6 +33,8 @@ See also the bsc and libbsc web site:
 #ifndef _LIBBSC_CODER_RANGECODER_H
 #define _LIBBSC_CODER_RANGECODER_H
 
+#include <string.h>
+
 #include "platform.h"
 
 class RangeCoder {
@@ -51,27 +53,21 @@ private:
   unsigned int ari_cache;
   unsigned int ari_range;
 
-  const unsigned short *RESTRICT ari_input;
-  unsigned short *RESTRICT ari_output;
-  unsigned short *RESTRICT ari_outputEOB;
-  unsigned short *RESTRICT ari_outputStart;
+  const unsigned char *RESTRICT ari_input;
+  unsigned char *RESTRICT ari_output;
+  unsigned char *RESTRICT ari_outputEOB;
+  unsigned char *RESTRICT ari_outputStart;
 
   INLINE void OutputShort(unsigned short s) {
-#ifndef LIBBSC_NO_UNALIGNED_ACCESS
-    *ari_output++ = s;
-#else
-    memcpy(ari_output++, &s, sizeof(unsigned short));
-#endif
+    memcpy(ari_output, &s, sizeof(unsigned short));
+    ari_output += sizeof(unsigned short);
   };
 
   INLINE unsigned short InputShort() {
-#ifndef LIBBSC_NO_UNALIGNED_ACCESS
-    return *ari_input++;
-#else
     unsigned short s;
-    memcpy(&s, ari_input++, sizeof(unsigned short));
+    memcpy(&s, ari_input, sizeof(unsigned short));
+    ari_input += sizeof(unsigned short);
     return s;
-#endif
   };
 
   NOINLINE unsigned int ShiftLowSlow() {
@@ -111,9 +107,9 @@ public:
   INLINE bool CheckEOB() { return ari_output >= ari_outputEOB; }
 
   INLINE void InitEncoder(unsigned char *output, int outputSize) {
-    ari_outputStart = (unsigned short *)output;
-    ari_output = (unsigned short *)output;
-    ari_outputEOB = (unsigned short *)(output + outputSize - 16);
+    ari_outputStart = output;
+    ari_output = output;
+    ari_outputEOB = output + outputSize - 16;
     ari.low = 0;
     ari_ffnum = 0;
     ari_cache = 0;
@@ -128,7 +124,7 @@ public:
     ShiftLow();
     ShiftLow();
     ShiftLow();
-    return (int)(ari_output - ari_outputStart) * sizeof(ari_output[0]);
+    return (int)(ari_output - ari_outputStart);
   }
 
   template <int P = 12> INLINE void EncodeBit0(int probability) {
@@ -181,7 +177,7 @@ public:
   };
 
   INLINE void InitDecoder(const unsigned char *input) {
-    ari_input = (unsigned short *)input;
+    ari_input = input;
     ari_code = 0;
     ari_range = 0xffffffff;
     ari_code = (ari_code << 16) | InputShort();
