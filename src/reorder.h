@@ -14,7 +14,7 @@ namespace spring {
 // Forward declarations to keep this header thin.
 struct compression_params;
 template <size_t bitset_size> struct reorder_global;
-struct bbhashdict;
+class bbhashdict;
 
 template <size_t bitset_size>
 void bitsettostring(std::bitset<bitset_size> encoded_bases, char *read_chars,

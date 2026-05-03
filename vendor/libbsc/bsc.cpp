@@ -81,7 +81,7 @@ class bsc_class {
   int paramCoder = LIBBSC_CODER_QLFC_STATIC;
   int paramSortingContexts = LIBBSC_CONTEXTS_FOLLOWING;
 
-  int paramEnableParallelProcessing = 0;
+  [[maybe_unused]] int paramEnableParallelProcessing = 0;
   int paramEnableMultiThreading = 1;
   int paramEnableFastMode = 1;
   int paramEnableLargePages = 0;
@@ -91,7 +91,7 @@ class bsc_class {
   int paramEnableLZP = 1;
   int paramLZPHashSize = 16;
   int paramLZPMinLen = 128;
-  int paramnumthr = 1;
+  [[maybe_unused]] int paramnumthr = 1;
 
   int paramFeatures() {
     int features =

@@ -86,7 +86,7 @@ class bsc_str_array_class {
   int paramCoder = LIBBSC_CODER_QLFC_STATIC;
   int paramSortingContexts = LIBBSC_CONTEXTS_FOLLOWING;
 
-  int paramEnableParallelProcessing = 0;
+  [[maybe_unused]] int paramEnableParallelProcessing = 0;
   int paramEnableMultiThreading = 1;
   int paramEnableFastMode = 1;
   int paramEnableLargePages = 0;
@@ -96,7 +96,7 @@ class bsc_str_array_class {
   int paramEnableLZP = 1;
   int paramLZPHashSize = 16;
   int paramLZPMinLen = 128;
-  int paramnumthr = 1;
+  [[maybe_unused]] int paramnumthr = 1;
 
   int paramFeatures() {
     int features =
@@ -114,7 +114,7 @@ class bsc_str_array_class {
 #define BSC_FTELL ftell
 #define BSC_FILEOFFSET long
 
-  int segmentedBlock[256];
+  [[maybe_unused]] int segmentedBlock[256];
 
   int read_str_array(unsigned char *buf, int bsize) {
 

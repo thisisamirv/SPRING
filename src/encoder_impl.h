@@ -175,9 +175,6 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
             const encoder_global_b<bitset_size> &egb) {
   static const int thresh_s = THRESH_ENCODER;
   static const int maxsearch = MAX_SEARCH_ENCODER;
-  // Use a fixed large size for locks to avoid any BBHash-related out-of-bounds
-  // indexing.
-  const uint32_t num_locks = NUM_LOCKS_REORDER;
 
   std::vector<std::bitset<bitset_size>> index_masks(
       static_cast<size_t>(eg.numdict_s));

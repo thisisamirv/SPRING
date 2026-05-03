@@ -239,12 +239,6 @@ void preview_single(const std::string &archive_path, bool audit_only,
   std::cout << "Use CRLF:          " << (cp.encoding.use_crlf ? "Yes" : "No")
             << "\n";
 
-  auto get_suggested_uncomp_name = [](const std::string &path) {
-    if (path.size() >= 3 && path.substr(path.size() - 3) == ".gz")
-      return path.substr(0, path.size() - 3);
-    return path;
-  };
-
   print_gzip_compression_info(
       1, cp.read_info.input_filename_1, cp.gzip.streams[0].was_gzipped,
       cp.gzip.streams[0].flg, cp.gzip.streams[0].mtime, cp.gzip.streams[0].xfl,

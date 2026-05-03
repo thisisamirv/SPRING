@@ -12,6 +12,13 @@ The current CI workflow validates SPRING2 on:
 - macOS
 - Windows (native MinGW-w64)
 
+The CMake build supports these compiler frontends:
+
+- GCC
+- Clang / Apple Clang
+- MSVC
+- IntelLLVM
+
 The build system currently requires:
 
 - A C++20-capable compiler
@@ -114,3 +121,34 @@ cmake --install build --prefix spring2
 ```
 
 With the Ninja generator, CMake will use the vendored executable under `dev/ninja/` automatically. ISA-L will also use the vendored NASM under `dev/nasm/` automatically.
+
+### Windows (Visual Studio / MSVC-compatible frontends)
+
+You can also build with Visual Studio generators using either MSVC or ClangCL.
+
+Configure with the default MSVC toolset:
+
+```powershell
+cmake -S . -B build-msvc -G "Visual Studio 18 2026" -A x64
+cmake --build build-msvc --config Release --parallel
+cmake --install build-msvc --config Release --prefix spring2
+```
+
+Configure with ClangCL:
+
+```powershell
+cmake -S . -B build-clangcl -G "Visual Studio 18 2026" -A x64 -T ClangCL
+cmake --build build-clangcl --config Release --parallel
+cmake --install build-clangcl --config Release --prefix spring2
+```
+
+### Linux (IntelLLVM)
+
+IntelLLVM can be used with the same Ninja-based flow on Linux when the oneAPI environment is active:
+
+```bash
+source /opt/intel/oneapi/setvars.sh
+CC=icx CXX=icpx cmake -S . -B build-intel -G Ninja
+cmake --build build-intel --parallel
+cmake --install build-intel --prefix spring2
+```

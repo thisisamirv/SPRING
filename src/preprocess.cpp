@@ -122,18 +122,6 @@ uint8_t detect_atac_adapter_tail_info(const std::string &read_str,
   return 0;
 }
 
-uint8_t detect_and_strip_atac_adapter_tail(std::string &read_str,
-                                           uint32_t &read_length) {
-  const uint8_t strip_info =
-      detect_atac_adapter_tail_info(read_str, read_length);
-  const uint32_t overlap = strip_info >> 1;
-  if (overlap > 0) {
-    read_length -= overlap;
-    read_str.resize(read_length);
-  }
-  return strip_info;
-}
-
 bool is_grouped_index_archive_note(const std::string &note) {
   return note.find("index-group") != std::string::npos;
 }

@@ -260,6 +260,12 @@ jobs:
                     - os: ubuntu-latest
                       name: Linux Clang
                       build_dir: build-linux-clang
+                    - os: ubuntu-latest
+                      name: Linux IntelLLVM
+                      build_dir: build-linux-intelllvm
+                    - os: windows-latest
+                      name: Windows MSVC
+                      build_dir: build-windows-msvc
                     - os: windows-latest
                       name: Windows Clang
                       build_dir: build-windows-clang
@@ -279,7 +285,7 @@ jobs:
                   chmod +x dev/nasm/linux/nasm dev/nasm/macosx/nasm
 
             - name: Install Linux Clang dependencies
-              if: runner.os == 'Linux'
+              if: matrix.name == 'Linux Clang'
               run: |
                   sudo apt-get update
                   sudo apt-get install -y \
@@ -289,6 +295,26 @@ jobs:
                     python3 \
                     python3-pip \
                     python3-venv
+
+            - name: Install Linux IntelLLVM dependencies
+              if: matrix.name == 'Linux IntelLLVM'
+              shell: bash
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y \
+                    ca-certificates \
+                    gpg \
+                    python3 \
+                    python3-pip \
+                    python3-venv \
+                    wget
+                  wget -O- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB \
+                    | gpg --dearmor \
+                    | sudo tee /usr/share/keyrings/oneapi-archive-keyring.gpg > /dev/null
+                  echo "deb [signed-by=/usr/share/keyrings/oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" \
+                    | sudo tee /etc/apt/sources.list.d/oneAPI.list
+                  sudo apt-get update
+                  sudo apt-get install -y intel-oneapi-compiler-dpcpp-cpp
 
             - name: Install CMake on Linux
               if: runner.os == 'Linux'
@@ -302,7 +328,7 @@ jobs:
                   "$CMAKE_VENV/bin/cmake" --version
 
             - name: Configure Linux Clang build
-              if: runner.os == 'Linux'
+              if: matrix.name == 'Linux Clang'
               env:
                   CC: clang
                   CXX: clang++
@@ -311,8 +337,25 @@ jobs:
                     -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/dev/ninja/linux/ninja"
 
             - name: Build Linux Clang target
-              if: runner.os == 'Linux'
+              if: matrix.name == 'Linux Clang'
               run: cmake --build ${{ matrix.build_dir }} --parallel
+
+            - name: Configure Linux IntelLLVM build
+              if: matrix.name == 'Linux IntelLLVM'
+              shell: bash
+              run: |
+                  source /opt/intel/oneapi/setvars.sh
+                  icx --version
+                  icpx --version
+                  CC=icx CXX=icpx cmake -S . -B ${{ matrix.build_dir }} -G Ninja \
+                    -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/dev/ninja/linux/ninja"
+
+            - name: Build Linux IntelLLVM target
+              if: matrix.name == 'Linux IntelLLVM'
+              shell: bash
+              run: |
+                  source /opt/intel/oneapi/setvars.sh
+                  cmake --build ${{ matrix.build_dir }} --parallel
 
             - name: Set up MSYS2 Clang environment
               if: matrix.name == 'Windows Clang'
@@ -382,11 +425,62 @@ jobs:
                   $env:CXX='clang++'
                   cmake --build ${{ matrix.build_dir }} --parallel
 
+            - name: Resolve Visual Studio generator
+              if: matrix.name == 'Windows ClangCL' || matrix.name == 'Windows MSVC'
+              shell: powershell
+              run: |
+                  $vsWhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+                  if (-not (Test-Path $vsWhere)) {
+                    throw 'Unable to locate vswhere.exe to detect installed Visual Studio versions'
+                  }
+
+                  $candidates = @(
+                    @{ Version = '[18.0,19.0)'; Generator = 'Visual Studio 18 2026' },
+                    @{ Version = '[17.0,18.0)'; Generator = 'Visual Studio 17 2022' }
+                  )
+
+                  $selectedGenerator = $null
+                  foreach ($candidate in $candidates) {
+                    $vsWhereArgs = @(
+                      '-version', $candidate.Version,
+                      '-products', '*',
+                      '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64',
+                      '-property', 'installationPath'
+                    )
+                    $installationPath = & $vsWhere @vsWhereArgs | Select-Object -First 1
+                    if ($LASTEXITCODE -eq 0 -and $installationPath) {
+                      $selectedGenerator = $candidate.Generator
+                      break
+                    }
+                  }
+
+                  if (-not $selectedGenerator) {
+                    throw 'Unable to find a supported Visual Studio installation (looked for Visual Studio 18 2026, then Visual Studio 17 2022)'
+                  }
+
+                  Add-Content -Path $env:GITHUB_ENV -Value "SPRING_VS_GENERATOR=$selectedGenerator"
+                  Write-Host "Using Visual Studio generator: $selectedGenerator"
+
             - name: Configure Windows ClangCL build
               if: matrix.name == 'Windows ClangCL'
               shell: powershell
               run: |
-                  cmake -S . -B ${{ matrix.build_dir }} -G "Visual Studio 17 2022" -A x64 -T ClangCL
+                  cmake -S . -B ${{ matrix.build_dir }} -G "$env:SPRING_VS_GENERATOR" -A x64 -T ClangCL
+
+            - name: Configure Windows MSVC build
+              if: matrix.name == 'Windows MSVC'
+              shell: powershell
+              run: |
+                  cmake -S . -B ${{ matrix.build_dir }} -G "$env:SPRING_VS_GENERATOR" -A x64
+
+            - name: Build Windows MSVC target
+              if: matrix.name == 'Windows MSVC'
+              shell: powershell
+              run: |
+                  magick assets/icons/logo.png `
+                    -define icon:auto-resize=16,32,48,64,128,256 `
+                    assets/icons/logo.ico
+                  cmake --build ${{ matrix.build_dir }} --config Release --parallel
 
             - name: Build Windows ClangCL target
               if: matrix.name == 'Windows ClangCL'
