@@ -12,8 +12,8 @@ permissions:
     contents: read
 
 jobs:
-    build-and-smoke:
-        name: Build and smoke / ${{ matrix.name }}
+    build-test-and-analysis:
+        name: CI / ${{ matrix.name }}
         runs-on: ${{ matrix.os }}
         strategy:
             fail-fast: false
@@ -21,13 +21,10 @@ jobs:
                 include:
                     - os: ubuntu-latest
                       name: Linux
-                      shell: bash
                     - os: macos-latest
                       name: macOS
-                      shell: bash
                     - os: windows-latest
                       name: Windows
-                      shell: msys2 {0}
 
         steps:
             - name: Checkout repository
@@ -47,20 +44,24 @@ jobs:
                   sudo apt-get install -y \
                     build-essential \
                     ccache \
+                    clang-tidy \
+                    cppcheck \
                     libomp-dev \
                     lld \
                     mold \
                     python3 \
                     python3-pip \
-                    python3-venv
+                    python3-venv \
+                    valgrind
 
             - name: Install macOS dependencies
               if: runner.os == 'macOS'
               shell: bash
               run: |
                   brew update
-                  brew install ccache libomp lld python
+                  brew install ccache libomp lld llvm cppcheck python
                   echo "MACOS_LIBOMP_PREFIX=$(brew --prefix libomp)" >> "$GITHUB_ENV"
+                  echo "HOMEBREW_LLVM_BIN=$(brew --prefix llvm)/bin" >> "$GITHUB_ENV"
 
             - name: Install CMake on Linux and macOS
               if: runner.os != 'Windows'
@@ -126,7 +127,7 @@ jobs:
                   CXX: g++
               run: |
                   cmake -S . -B build -G Ninja \
-                  -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/dev/ninja/linux/ninja"
+                    -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/dev/ninja/linux/ninja"
 
             - name: Configure on macOS
               if: runner.os == 'macOS'
@@ -136,8 +137,8 @@ jobs:
                   CXX: clang++
               run: |
                   cmake -S . -B build -G Ninja \
-                  -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/dev/ninja/mac/ninja" \
-                  -DOpenMP_ROOT="$MACOS_LIBOMP_PREFIX"
+                    -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/dev/ninja/mac/ninja" \
+                    -DOpenMP_ROOT="$MACOS_LIBOMP_PREFIX"
 
             - name: Configure on Windows
               if: runner.os == 'Windows'
@@ -175,83 +176,6 @@ jobs:
               shell: powershell
               run: ctest --test-dir build --output-on-failure --verbose
 
-    static-analysis:
-        name: Analysis / ${{ matrix.name }}
-        runs-on: ${{ matrix.os }}
-        strategy:
-            fail-fast: false
-            matrix:
-                include:
-                    - os: ubuntu-latest
-                      name: Linux
-                      shell: bash
-                    - os: macos-latest
-                      name: macOS
-                      shell: bash
-                    - os: windows-latest
-                      name: Windows
-                      shell: msys2 {0}
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v4
-
-            - name: Ensure vendored tools are executable on Unix
-              if: runner.os != 'Windows'
-              shell: bash
-              run: |
-                  chmod +x dev/ninja/linux/ninja dev/ninja/linux-aarch64/ninja dev/ninja/mac/ninja
-                  chmod +x dev/nasm/linux/nasm dev/nasm/macosx/nasm
-
-            - name: Install Linux analysis dependencies
-              if: runner.os == 'Linux'
-              run: |
-                  sudo apt-get update
-                  sudo apt-get install -y \
-                    build-essential \
-                    ccache \
-                    clang-tidy \
-                    cppcheck \
-                    libomp-dev \
-                    lld \
-                    mold \
-                    python3 \
-                    python3-venv \
-                    valgrind
-
-            - name: Install macOS analysis dependencies
-              if: runner.os == 'macOS'
-              shell: bash
-              run: |
-                  brew update
-                  brew install ccache libomp lld llvm cppcheck python
-                  echo "MACOS_LIBOMP_PREFIX=$(brew --prefix libomp)" >> "$GITHUB_ENV"
-                  echo "HOMEBREW_LLVM_BIN=$(brew --prefix llvm)/bin" >> "$GITHUB_ENV"
-
-            - name: Install sccache on Windows
-              if: runner.os == 'Windows'
-              shell: powershell
-              run: |
-                  $wingetFlags = @(
-                    "--source", "winget",
-                    "--exact",
-                    "--accept-source-agreements",
-                    "--accept-package-agreements",
-                    "--disable-interactivity"
-                  )
-
-                  winget install --id Mozilla.sccache @wingetFlags
-
-            - name: Install CMake on Linux and macOS
-              if: runner.os != 'Windows'
-              shell: bash
-              run: |
-                  CMAKE_VENV="$RUNNER_TEMP/cmake-venv"
-                  python3 -m venv "$CMAKE_VENV"
-                  "$CMAKE_VENV/bin/python" -m pip install --upgrade pip
-                  "$CMAKE_VENV/bin/python" -m pip install "cmake==4.2.0"
-                  echo "$CMAKE_VENV/bin" >> "$GITHUB_PATH"
-                  "$CMAKE_VENV/bin/cmake" --version
-
             - name: Set up MSYS2 analysis environment
               if: runner.os == 'Windows'
               uses: msys2/setup-msys2@v2
@@ -263,52 +187,12 @@ jobs:
                       mingw-w64-ucrt-x86_64-clang-tools-extra
                       mingw-w64-ucrt-x86_64-lld mingw-w64-ucrt-x86_64-python
 
-            - name: Configure on Linux
-              if: runner.os == 'Linux'
-              env:
-                  CC: gcc
-                  CXX: g++
-              run: |
-                  cmake -S . -B build -G Ninja \
-                  -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/dev/ninja/linux/ninja"
-
-            - name: Configure on macOS
-              if: runner.os == 'macOS'
-              shell: bash
-              env:
-                  CC: clang
-                  CXX: clang++
-              run: |
-                  cmake -S . -B build -G Ninja \
-                  -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/dev/ninja/mac/ninja" \
-                  -DOpenMP_ROOT="$MACOS_LIBOMP_PREFIX"
-
-            - name: Configure on Windows
-              if: runner.os == 'Windows'
-              shell: msys2 {0}
-              env:
-                  CC: gcc
-                  CXX: g++
-              run: |
-                  cmake -S . -B build -G Ninja \
-                  -DCMAKE_MAKE_PROGRAM="$(cygpath -u "$GITHUB_WORKSPACE")/dev/ninja/win/ninja.exe"
-
-            - name: Build for analysis on Linux and macOS
-              if: runner.os != 'Windows'
-              run: cmake --build build --parallel
-
-            - name: Generate Icon on Windows
+            - name: Expose MSYS2 UCRT64 tools on PATH
               if: runner.os == 'Windows'
               shell: powershell
               run: |
-                  magick assets/icons/logo.png `
-                    -define icon:auto-resize=16,32,48,64,128,256 `
-                    assets/icons/logo.ico
-
-            - name: Build for analysis on Windows
-              if: runner.os == 'Windows'
-              shell: msys2 {0}
-              run: cmake --build build --parallel
+                  Add-Content -Path $env:GITHUB_PATH -Value 'C:\msys64\ucrt64\bin'
+                  Add-Content -Path $env:GITHUB_PATH -Value 'C:\msys64\usr\bin'
 
             - name: Run lint on Linux
               if: runner.os == 'Linux'
@@ -346,3 +230,203 @@ jobs:
               run: |
                   Write-Host ("Valgrind is not available on GitHub-hosted Windows " + `
                               "runners; skipping.")
+
+    compiler-compatibility-builds:
+        name: Compiler Compatibility / ${{ matrix.name }}
+        runs-on: ${{ matrix.os }}
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - os: ubuntu-latest
+                      name: Linux Clang
+                      build_dir: build-linux-clang
+                    - os: windows-latest
+                      name: Windows Clang
+                      build_dir: build-windows-clang
+                    - os: windows-latest
+                      name: Windows ClangCL
+                      build_dir: build-windows-clangcl
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Ensure vendored tools are executable on Unix
+              if: runner.os != 'Windows'
+              shell: bash
+              run: |
+                  chmod +x dev/ninja/linux/ninja dev/ninja/linux-aarch64/ninja dev/ninja/mac/ninja
+                  chmod +x dev/nasm/linux/nasm dev/nasm/macosx/nasm
+
+            - name: Install Linux Clang dependencies
+              if: runner.os == 'Linux'
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y \
+                    clang \
+                    libomp-dev \
+                    lld \
+                    python3 \
+                    python3-pip \
+                    python3-venv
+
+            - name: Install CMake on Linux
+              if: runner.os == 'Linux'
+              shell: bash
+              run: |
+                  CMAKE_VENV="$RUNNER_TEMP/cmake-venv"
+                  python3 -m venv "$CMAKE_VENV"
+                  "$CMAKE_VENV/bin/python" -m pip install --upgrade pip
+                  "$CMAKE_VENV/bin/python" -m pip install "cmake==4.2.0"
+                  echo "$CMAKE_VENV/bin" >> "$GITHUB_PATH"
+                  "$CMAKE_VENV/bin/cmake" --version
+
+            - name: Configure Linux Clang build
+              if: runner.os == 'Linux'
+              env:
+                  CC: clang
+                  CXX: clang++
+              run: |
+                  cmake -S . -B ${{ matrix.build_dir }} -G Ninja \
+                    -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/dev/ninja/linux/ninja"
+
+            - name: Build Linux Clang target
+              if: runner.os == 'Linux'
+              run: cmake --build ${{ matrix.build_dir }} --parallel
+
+            - name: Set up MSYS2 Clang environment
+              if: matrix.name == 'Windows Clang'
+              uses: msys2/setup-msys2@v2
+              with:
+                  msystem: CLANG64
+                  update: true
+                  install: >-
+                      mingw-w64-clang-x86_64-clang mingw-w64-clang-x86_64-lld
+                      mingw-w64-clang-x86_64-python
+                      mingw-w64-clang-x86_64-libomp
+
+            - name: Expose MSYS2 CLANG64 tools on PATH
+              if: matrix.name == 'Windows Clang'
+              shell: powershell
+              run: |
+                  Add-Content -Path $env:GITHUB_PATH -Value 'C:\msys64\clang64\bin'
+                  Add-Content -Path $env:GITHUB_PATH -Value 'C:\msys64\usr\bin'
+
+            - name: Install CMake on Windows
+              if: runner.os == 'Windows'
+              shell: powershell
+              run: |
+                  $cmakeVenv = Join-Path $env:RUNNER_TEMP 'cmake-venv'
+                  py -3 -m venv $cmakeVenv
+                  & "$cmakeVenv\Scripts\python.exe" -m pip install --upgrade pip
+                  & "$cmakeVenv\Scripts\python.exe" -m pip install "cmake==4.2.0"
+                  Add-Content -Path $env:GITHUB_PATH -Value "$cmakeVenv\Scripts"
+                  & "$cmakeVenv\Scripts\cmake.exe" --version
+
+            - name: Configure Windows Clang build
+              if: matrix.name == 'Windows Clang'
+              shell: powershell
+              run: |
+                  $env:CC='clang'
+                  $env:CXX='clang++'
+                  $vendoredNinja = (Join-Path $env:GITHUB_WORKSPACE 'dev/ninja/win/ninja.exe') -replace '\\','/'
+                  cmake -S . -B ${{ matrix.build_dir }} -G Ninja -DCMAKE_MAKE_PROGRAM="$vendoredNinja"
+
+            - name: Build Windows Clang target
+              if: matrix.name == 'Windows Clang'
+              shell: powershell
+              run: |
+                  magick assets/icons/logo.png `
+                    -define icon:auto-resize=16,32,48,64,128,256 `
+                    assets/icons/logo.ico
+                  $env:CC='clang'
+                  $env:CXX='clang++'
+                  cmake --build ${{ matrix.build_dir }} --parallel
+
+            - name: Configure Windows ClangCL build
+              if: matrix.name == 'Windows ClangCL'
+              shell: powershell
+              run: |
+                  cmake -S . -B ${{ matrix.build_dir }} -G "Visual Studio 17 2022" -A x64 -T ClangCL
+
+            - name: Build Windows ClangCL target
+              if: matrix.name == 'Windows ClangCL'
+              shell: powershell
+              run: |
+                  magick assets/icons/logo.png `
+                    -define icon:auto-resize=16,32,48,64,128,256 `
+                    assets/icons/logo.ico
+                  cmake --build ${{ matrix.build_dir }} --config Release --parallel
+
+    sanitizers:
+        name: Sanitizers / ${{ matrix.sanitizer }}
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                sanitizer: [ asan_ubsan, tsan ]
+                include:
+                    - sanitizer: asan_ubsan
+                      build_dir: build-asan
+                      san_flags: "-g -O1 -fno-omit-frame-pointer -fsanitize=address,undefined"
+                      ld_flags: "-fsanitize=address,undefined"
+                      options: "ASAN_OPTIONS=detect_leaks=1:abort_on_error=1"
+                    - sanitizer: tsan
+                      build_dir: build-tsan
+                      san_flags: "-g -O1 -fno-omit-frame-pointer -fsanitize=thread"
+                      ld_flags: "-fsanitize=thread"
+                      options: "TSAN_OPTIONS=halt_on_error=1:suppressions=${{ github.workspace
+                          }}/tests/tsan.supp"
+        env:
+            BUILD_DIR: ${{ matrix.build_dir }}
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Ensure vendored tools are executable
+              run: |
+                  chmod +x dev/ninja/linux/ninja dev/ninja/linux-aarch64/ninja
+                  chmod +x dev/nasm/linux/nasm
+
+            - name: Install build dependencies
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y build-essential libomp-dev python3 python3-pip python3-venv
+
+            - name: Install CMake (pip v4.2.0)
+              run: |
+                  CMAKE_VENV="$RUNNER_TEMP/cmake-venv"
+                  python3 -m venv "$CMAKE_VENV"
+                  "$CMAKE_VENV/bin/python" -m pip install "cmake==4.2.0"
+                  echo "$CMAKE_VENV/bin" >> "$GITHUB_PATH"
+
+            - name: Configure CMake with sanitizer flags
+              run: |
+                  if [ "${{ matrix.sanitizer }}" = "tsan" ]; then
+                    echo "TSAN_OPTIONS=halt_on_error=1:suppressions=$GITHUB_WORKSPACE/tests/tsan.supp" >> $GITHUB_ENV
+                  else
+                    echo "${{ matrix.options }}" >> $GITHUB_ENV
+                  fi
+                  cmake -S . -B $BUILD_DIR -G Ninja \
+                    -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/dev/ninja/linux/ninja" \
+                    -DCMAKE_BUILD_TYPE=Debug \
+                    -DCMAKE_C_FLAGS="${{ matrix.san_flags }}" -DCMAKE_CXX_FLAGS="${{ matrix.san_flags }}" \
+                    -DCMAKE_EXE_LINKER_FLAGS="${{ matrix.ld_flags }}" -DCMAKE_SHARED_LINKER_FLAGS="${{ matrix.ld_flags }}"
+
+            - name: Build
+              run: |
+                  cmake --build $BUILD_DIR -j
+
+            - name: Run all tests (Unit + Smoke) with Sanitizers
+              env:
+                  BUILD_DIR: ${{ github.workspace }}/${{ matrix.build_dir }}
+              run: ctest --test-dir ${{ matrix.build_dir }} --output-on-failure
+
+            - name: Upload logs on failure
+              if: failure()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: ${{ matrix.sanitizer }}-build-artifacts
+                  path: |
+                      $BUILD_DIR
