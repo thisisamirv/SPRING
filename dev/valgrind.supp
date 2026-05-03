@@ -11,3 +11,19 @@
    ...
    fun:GOMP_parallel
 }
+
+{
+   glibc-rapidgzip-thread-tls-possible-leak
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:calloc
+   fun:calloc
+   fun:allocate_dtv
+   fun:_dl_allocate_tls
+   fun:allocate_stack
+   fun:pthread_create*
+   ...
+   fun:std::thread::_M_start_thread*
+   ...
+   fun:rapidgzip::JoiningThread*
+}

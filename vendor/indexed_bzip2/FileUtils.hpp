@@ -54,6 +54,14 @@
 #include "AtomicMutex.hpp"
 #endif
 
+#ifndef _MSC_VER
+#ifdef O_CLOEXEC
+constexpr int RAPIDGZIP_OPEN_WRITE_FLAGS = O_WRONLY | O_CLOEXEC;
+#else
+constexpr int RAPIDGZIP_OPEN_WRITE_FLAGS = O_WRONLY;
+#endif
+#endif
+
 namespace rapidgzip {
 #ifdef _MSC_VER
 [[nodiscard]] inline bool stdinHasInput() {
@@ -632,7 +640,7 @@ public:
         } catch (const std::filesystem::filesystem_error &) {
         }
 
-        m_fileDescriptor = ::open(filePath.c_str(), O_WRONLY);
+        m_fileDescriptor = ::open(filePath.c_str(), RAPIDGZIP_OPEN_WRITE_FLAGS);
         m_ownedFd = unique_file_descriptor(m_fileDescriptor);
       }
 #endif
