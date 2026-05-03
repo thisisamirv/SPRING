@@ -210,14 +210,19 @@ createReversedBitsLUT<uint16_t>() {
   return result;
 }
 
-template <typename T>
-alignas(8) static constexpr auto REVERSED_BITS_LUT = createReversedBitsLUT<T>();
+template <typename T> [[nodiscard]] inline const auto &reversedBitsLUT() {
+  alignas(8) static const auto lut = createReversedBitsLUT<T>();
+  return lut;
+}
 
 template <typename T> [[nodiscard]] constexpr T reverseBits(T value) {
   static_assert(std::is_unsigned_v<T> && std::is_integral_v<T>);
 
   if constexpr (sizeof(T) <= 2) {
-    return REVERSED_BITS_LUT<T>[value];
+    if (std::is_constant_evaluated()) {
+      return reverseBitsWithoutLUT(value);
+    }
+    return reversedBitsLUT<T>()[value];
   } else {
     return reverseBitsWithoutLUT(value);
   }

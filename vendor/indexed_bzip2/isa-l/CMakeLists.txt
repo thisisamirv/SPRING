@@ -107,7 +107,15 @@ set_target_properties(isal PROPERTIES
 if(WIN32 AND CMAKE_C_COMPILER_ID STREQUAL "Clang"
     AND (MSVC OR CMAKE_C_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"
          OR CMAKE_C_SIMULATE_ID STREQUAL "MSVC"))
-    target_compile_options(isal PRIVATE -Wno-unsafe-buffer-usage)
+    target_compile_options(isal PRIVATE
+        -Wno-declaration-after-statement
+        -Wno-implicit-fallthrough
+        -Wno-shorten-64-to-32
+        -Wno-sign-conversion
+        -Wno-switch-default
+        -Wno-unsafe-buffer-usage
+        -Wno-unused-macros
+    )
 endif()
 if(CPU_X86_64 AND USE_NASM)
     foreach(source IN LISTS ERASURE_CODE_SOURCES RAID_SOURCES CRC_SOURCES IGZIP_SOURCES MEM_SOURCES)

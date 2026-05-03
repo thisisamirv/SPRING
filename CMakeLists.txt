@@ -288,9 +288,6 @@ if(NOT SPRING_OPENMP_INCLUDE_DIRS AND DEFINED OpenMP_ROOT)
 endif()
 list(REMOVE_DUPLICATES SPRING_OPENMP_INCLUDE_DIRS)
 
-execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=include
-    OUTPUT_VARIABLE COMPILER_INCLUDE_DIR
-    OUTPUT_STRIP_TRAILING_WHITESPACE)
 set(source_dir ${CMAKE_SOURCE_DIR}/src)
 set(vendor_dir ${CMAKE_SOURCE_DIR}/vendor)
 set(build_vendor_dir ${vendor_dir})

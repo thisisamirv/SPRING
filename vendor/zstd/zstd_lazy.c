@@ -776,11 +776,12 @@ FORCE_INLINE_TEMPLATE U32 ZSTD_row_nextIndex(BYTE *const tagRow,
   return next;
 }
 
-MEM_STATIC __attribute__((unused)) int ZSTD_isAligned(void const *ptr,
-                                                      size_t align) {
+#ifndef NDEBUG
+MEM_STATIC int ZSTD_isAligned(void const *ptr, size_t align) {
   assert((align & (align - 1)) == 0);
   return (((size_t)ptr) & (align - 1)) == 0;
 }
+#endif
 
 FORCE_INLINE_TEMPLATE void ZSTD_row_prefetch(U32 const *hashTable,
                                              BYTE const *tagTable,
@@ -1048,9 +1049,9 @@ FORCE_INLINE_TEMPLATE ZSTD_VecMask ZSTD_row_getRVVMask(int rowEntries,
 #endif
 
 FORCE_INLINE_TEMPLATE
-    ZSTD_VecMask ZSTD_row_getMatchMask(const BYTE *const tagRow, const BYTE tag,
-                                       const U32 headGrouped,
-                                       const U32 rowEntries) {
+ZSTD_VecMask ZSTD_row_getMatchMask(const BYTE *const tagRow, const BYTE tag,
+                                   const U32 headGrouped,
+                                   const U32 rowEntries) {
   const BYTE *const src = tagRow;
   assert((rowEntries == 16) || (rowEntries == 32) || rowEntries == 64);
   assert(rowEntries <= ZSTD_ROW_HASH_MAX_ENTRIES);

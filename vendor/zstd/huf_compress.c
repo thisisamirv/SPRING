@@ -483,8 +483,8 @@ static void HUF_swapNodes(nodeElt *a, nodeElt *b) {
   *b = tmp;
 }
 
-MEM_STATIC __attribute__((unused)) int HUF_isSorted(nodeElt huffNode[],
-                                                    U32 const maxSymbolValue1) {
+#ifndef NDEBUG
+MEM_STATIC int HUF_isSorted(nodeElt huffNode[], U32 const maxSymbolValue1) {
   U32 i;
   for (i = 1; i < maxSymbolValue1; ++i) {
     if (huffNode[i].count > huffNode[i - 1].count) {
@@ -493,6 +493,7 @@ MEM_STATIC __attribute__((unused)) int HUF_isSorted(nodeElt huffNode[],
   }
   return 1;
 }
+#endif
 
 HINT_INLINE void HUF_insertionSort(nodeElt huffNode[], int const low,
                                    int const high) {
