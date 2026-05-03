@@ -19,6 +19,7 @@
 - Implemented **lossless poly-A/T tail stripping and restoration for RNA-seq assays**: Strips long terminal poly-A/T runs (>20bp) during preprocessing to improve compression ratios for transcriptomics data. The optimization is strictly lossless, storing stripped sequence bases and quality scores in a synchronized metadata stream that is reordered in tandem with reads. Restoration during decompression ensures identical reconstruction and passes all integrity audits. Activated automatically for high-confidence RNA assays or via `--assay rna`.
 - Added regressions covering the shared 10,000-fragment startup sampler, late overlength escalation from sampled short-read input into long mode, and late CRLF metadata discovery during preprocessing retry.
 - Added integration regressions covering grouped preview/audit corruption detection, grouped decompression with five explicit output files, grouped `SpringReader` streaming, aliased grouped `R3` output formatting, mixed paired FASTQ plus-line and LF/CRLF round-trips, per-stream gzip reconstruction behavior, archive extraction path containment, preview and `SpringReader` rejection of truncated metadata, decompression output-path collision rejection, compression output-path collision rejection, grouped default-output name deduplication, grouped alias metadata validation, grouped invalid-index manifest rejection, working `SpringReader` digests, and graceful failure for corrupted long-read archives.
+- Added support for a range of compilers.
 
 ### Changed
 

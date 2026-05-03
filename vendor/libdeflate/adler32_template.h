@@ -3,6 +3,14 @@
 #include "common_defs.h"
 #include <immintrin.h>
 
+#if defined(_MSC_VER) && !defined(__clang__) &&                                \
+    !defined(LIBDEFLATE_MSVC_UNALIGNED_VEC_TYPES_DEFINED)
+#define LIBDEFLATE_MSVC_UNALIGNED_VEC_TYPES_DEFINED 1
+typedef __m128i __m128i_u;
+typedef __m256i __m256i_u;
+typedef __m512i __m512i_u;
+#endif
+
 #define CONCAT_IMPL(a, b) a##b
 #define CONCAT(a, b) CONCAT_IMPL(a, b)
 #define ADD_SUFFIX(name) CONCAT(name, SUFFIX)

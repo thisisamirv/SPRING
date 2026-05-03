@@ -270,19 +270,6 @@ void run_timed_step(const char *start_message, const char *step_name,
   print_step_summary(step_name, step_start, step_end);
 }
 
-void run_system_command_or_throw(const std::string &command,
-                                 const char *error_message) {
-  SPRING_LOG_DEBUG("Executing system command: " + command);
-#ifdef _WIN32
-  std::string wrapped_command = "\"" + command + "\"";
-  const int command_status = std::system(wrapped_command.c_str());
-#else
-  const int command_status = std::system(command.c_str());
-#endif
-  if (command_status != 0)
-    throw std::runtime_error(error_message);
-}
-
 std::string to_ascii_lowercase(std::string value) {
   for (char &character : value) {
     character =
