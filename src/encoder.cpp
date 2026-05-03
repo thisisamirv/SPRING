@@ -408,9 +408,7 @@ std::string buildcontig(std::list<contig_reads> &current_contig,
 
 void writecontig(const std::string &ref,
                  std::list<contig_reads> &current_contig, std::ofstream &f_seq,
-                 std::ofstream &f_pos, std::ofstream &f_noise,
-                 std::ofstream &f_noisepos, std::ofstream &f_order,
-                 std::ofstream &f_RC, std::ofstream &f_readlength,
+                 encoded_metadata_buffer &metadata_output,
                  const encoder_global &eg, uint64_t &abs_pos) {
   uint32_t ref_len = static_cast<uint32_t>(ref.size());
   f_seq.write(reinterpret_cast<const char *>(&ref_len), sizeof(uint32_t));
@@ -428,14 +426,14 @@ void writecontig(const std::string &ref,
          ++read_offset) {
       const size_t pos = static_cast<size_t>(current_position) + read_offset;
       if ((*current_contig_it).read[read_offset] != ref[pos]) {
-        f_noise << eg.enc_noise[(
-            uint8_t)ref[pos]][(uint8_t)(*current_contig_it).read[read_offset]];
+        metadata_output.noise_serialized.push_back(eg.enc_noise[(
+            uint8_t)ref[pos]][(uint8_t)(*current_contig_it).read[read_offset]]);
         pos_var = static_cast<uint16_t>(read_offset - previous_noise_offset);
-        f_noisepos.write(byte_ptr(&pos_var), sizeof(uint16_t));
+        metadata_output.noise_positions.push_back(pos_var);
         previous_noise_offset = read_offset;
       }
     }
-    f_noise << "\n";
+    metadata_output.noise_serialized.push_back('\n');
     absolute_current_position = abs_pos + current_position;
     if (static_cast<uint64_t>(current_position) +
             (*current_contig_it).read_length >
@@ -446,11 +444,11 @@ void writecontig(const std::string &ref,
           " exceeds ref.size()=" + std::to_string(ref.size()) +
           ", abs_pos=" + std::to_string(abs_pos));
     }
-    f_pos.write(byte_ptr(&absolute_current_position), sizeof(uint64_t));
-    f_order.write(byte_ptr(&((*current_contig_it).order)), sizeof(uint32_t));
-    f_readlength.write(byte_ptr(&((*current_contig_it).read_length)),
-                       sizeof(uint16_t));
-    f_RC << (*current_contig_it).RC;
+    metadata_output.position_entries.push_back(absolute_current_position);
+    metadata_output.read_order_entries.push_back((*current_contig_it).order);
+    metadata_output.read_length_entries.push_back(
+        (*current_contig_it).read_length);
+    metadata_output.orientation_entries.push_back((*current_contig_it).RC);
   }
   abs_pos += ref.size();
   return;

@@ -1174,6 +1174,8 @@ void compress_standard(const std::string &temp_dir,
   print_temp_dir_size(temp_dir);
 
   if (!long_flag) {
+    reordered_stream_artifact reordered_streams_artifact;
+
     // Run overlap-based reordering for all assays.
     run_timed_step("Reordering ...", "Reordering", [&] {
       progress.set_stage("Reordering", 0.25F, 0.50F);
@@ -1184,7 +1186,7 @@ void compress_standard(const std::string &temp_dir,
 
     run_timed_step("Encoding ...", "Encoding", [&] {
       progress.set_stage("Encoding", 0.50F, 0.85F);
-      call_encoder(temp_dir, cp);
+      reordered_streams_artifact = call_encoder(temp_dir, cp);
     });
 
     print_temp_dir_size(temp_dir);
@@ -1206,7 +1208,8 @@ void compress_standard(const std::string &temp_dir,
     run_timed_step("Reordering and compressing streams ...",
                    "Reordering and compressing streams", [&] {
                      progress.set_stage("Compressing streams", 0.85F, 0.95F);
-                     reorder_compress_streams(temp_dir, cp);
+                     reorder_compress_streams(temp_dir, cp,
+                                              reordered_streams_artifact);
                    });
     print_temp_dir_size(temp_dir);
   }

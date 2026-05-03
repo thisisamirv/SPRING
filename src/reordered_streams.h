@@ -4,15 +4,29 @@
 #ifndef SPRING_REORDERED_STREAMS_H_
 #define SPRING_REORDERED_STREAMS_H_
 
+#include <cstdint>
 #include <string>
+#include <vector>
 
 namespace spring {
 
 struct compression_params;
 
+struct reordered_stream_artifact {
+  std::vector<char> orientation_entries;
+  std::vector<uint64_t> position_entries;
+  std::vector<uint16_t> read_length_entries;
+  std::vector<uint32_t> read_order_entries;
+  std::vector<char> noise_serialized;
+  std::vector<uint16_t> noise_positions;
+  std::vector<char> unaligned_serialized;
+  uint64_t unaligned_char_count = 0;
+};
+
 // Rebuild the aligned and unaligned side streams into per-block archives.
 void reorder_compress_streams(const std::string &temp_dir,
-                              const compression_params &cp);
+                              const compression_params &cp,
+                              const reordered_stream_artifact &artifact);
 
 } // namespace spring
 

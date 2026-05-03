@@ -6,6 +6,8 @@
 
 #include <string>
 
+#include "reordered_streams.h"
+
 namespace spring {
 
 struct compression_params;
@@ -14,7 +16,8 @@ struct compression_params;
 // points used by reorder and encoder.
 void call_reorder(const std::string &temp_dir, compression_params &cp);
 
-void call_encoder(const std::string &temp_dir, compression_params &cp);
+reordered_stream_artifact call_encoder(const std::string &temp_dir,
+                                       compression_params &cp);
 
 } // namespace spring
 

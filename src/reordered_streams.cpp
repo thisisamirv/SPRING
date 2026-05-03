@@ -1,24 +1,34 @@
 // Writes reordered alignment-related streams, unaligned payloads, and per-block
 // compressed outputs that become part of the final Spring archive.
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
-#include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
+#include <mutex>
 #include <omp.h>
 #include <string>
 #include <vector>
 
-#include "core_utils.h"
 #include "fs_utils.h"
-#include "libbsc/bsc.h"
+#include "libbsc/libbsc.h"
+#include "params.h"
 #include "progress.h"
 #include "reordered_streams.h"
 
 namespace spring {
 
 namespace {
+
+#pragma pack(push, 1)
+struct bsc_block_header {
+  long long block_offset;
+  signed char record_size;
+  signed char sorting_contexts;
+};
+#pragma pack(pop)
 
 struct reordered_stream_paths {
   std::string flag_path;
@@ -33,14 +43,16 @@ struct reordered_stream_paths {
   std::string order_path;
 };
 
-struct temporary_stream_paths {
-  std::string position_path;
-  std::string noise_path;
-  std::string noise_position_path;
-  std::string orientation_path;
-  std::string flag_path;
-  std::string unaligned_path;
-  std::string read_length_path;
+struct output_block_buffers {
+  std::vector<char> flag_bytes;
+  std::vector<char> position_bytes;
+  std::vector<char> noise_bytes;
+  std::vector<char> noise_position_bytes;
+  std::vector<char> orientation_bytes;
+  std::vector<char> unaligned_bytes;
+  std::vector<char> read_length_bytes;
+  std::vector<char> mate_position_bytes;
+  std::vector<char> mate_orientation_bytes;
 };
 
 struct block_range {
@@ -59,33 +71,71 @@ std::string compressed_block_file_path(const std::string &base_path,
   return block_file_path(base_path, block_num) + ".bsc";
 }
 
-std::string thread_output_path(const std::string &base_path,
-                               const int thread_id,
-                               const std::string &suffix = std::string()) {
-  return base_path + '.' + std::to_string(thread_id) + suffix;
+void ensure_libbsc_ready() {
+  static std::once_flag init_once;
+  std::call_once(init_once, []() {
+    const int init_result = ::bsc_init(LIBBSC_DEFAULT_FEATURES);
+    if (init_result != LIBBSC_NO_ERROR) {
+      throw std::runtime_error("Failed to initialize libbsc.");
+    }
+  });
 }
 
-void compress_block_file(const std::string &input_path,
-                         const std::string &output_path) {
-  std::error_code ec;
-  const auto input_size = std::filesystem::file_size(input_path, ec);
-  if (!ec && input_size == 0) {
-    std::ofstream empty_output(output_path, std::ios::binary);
+void compress_block_buffer(const std::vector<char> &input_bytes,
+                           const std::string &output_path) {
+  if (input_bytes.empty()) {
+    std::ofstream empty_output(output_path, std::ios::binary | std::ios::trunc);
     if (!empty_output.is_open()) {
       throw std::runtime_error("Failed to create empty compressed block: " +
                                output_path);
     }
-  } else {
-    bsc::BSC_compress(input_path.c_str(), output_path.c_str());
+    return;
   }
-  safe_remove_file(input_path);
-}
 
-void compress_temp_block(const std::string &temp_base_path,
-                         const std::string &output_base_path,
-                         const uint64_t block_num) {
-  compress_block_file(block_file_path(temp_base_path, block_num),
-                      compressed_block_file_path(output_base_path, block_num));
+  ensure_libbsc_ready();
+  if (input_bytes.size() >
+      static_cast<size_t>(std::numeric_limits<int>::max())) {
+    throw std::runtime_error("Block too large for libbsc compressor: " +
+                             output_path);
+  }
+
+  std::vector<unsigned char> compressed(input_bytes.size() +
+                                        LIBBSC_HEADER_SIZE);
+  int compressed_size = ::bsc_compress(
+      reinterpret_cast<const unsigned char *>(input_bytes.data()),
+      compressed.data(), static_cast<int>(input_bytes.size()), 16, 128,
+      LIBBSC_BLOCKSORTER_BWT, LIBBSC_CODER_QLFC_STATIC,
+      LIBBSC_DEFAULT_FEATURES);
+  if (compressed_size == LIBBSC_NOT_COMPRESSIBLE) {
+    compressed_size =
+        ::bsc_store(reinterpret_cast<const unsigned char *>(input_bytes.data()),
+                    compressed.data(), static_cast<int>(input_bytes.size()),
+                    LIBBSC_DEFAULT_FEATURES);
+  }
+  if (compressed_size < LIBBSC_NO_ERROR) {
+    throw std::runtime_error("libbsc compression failed for block: " +
+                             output_path);
+  }
+
+  std::ofstream output(output_path, std::ios::binary | std::ios::trunc);
+  if (!output.is_open()) {
+    throw std::runtime_error("Failed to open compressed block output: " +
+                             output_path);
+  }
+
+  const int nblocks = 1;
+  const bsc_block_header header = {
+      0,
+      1,
+      static_cast<signed char>(1) /* LIBBSC_CONTEXTS_FOLLOWING */,
+  };
+
+  output.write(reinterpret_cast<const char *>(&nblocks),
+               static_cast<std::streamsize>(sizeof(nblocks)));
+  output.write(reinterpret_cast<const char *>(&header),
+               static_cast<std::streamsize>(sizeof(header)));
+  output.write(reinterpret_cast<const char *>(compressed.data()),
+               static_cast<std::streamsize>(compressed_size));
 }
 
 reordered_stream_paths
@@ -102,111 +152,46 @@ build_reordered_stream_paths(const std::string &temp_dir) {
           .order_path = temp_dir + "/read_order.bin"};
 }
 
-temporary_stream_paths
-build_temporary_stream_paths(const std::string &temp_dir) {
-  return {.position_path = temp_dir + "/a",
-          .noise_path = temp_dir + "/b",
-          .noise_position_path = temp_dir + "/c",
-          .orientation_path = temp_dir + "/d",
-          .flag_path = temp_dir + "/e",
-          .unaligned_path = temp_dir + "/f",
-          .read_length_path = temp_dir + "/g"};
-}
-
 block_range block_read_range(const uint64_t block_num,
                              const uint32_t num_reads_per_block,
                              const uint64_t read_limit) {
   const uint64_t begin = block_num * num_reads_per_block;
-  if (begin >= read_limit)
+  if (begin >= read_limit) {
     return {.begin = 0, .end = 0, .valid = false};
+  }
 
   const uint64_t end =
       std::min((block_num + 1) * uint64_t(num_reads_per_block), read_limit);
   return {.begin = begin, .end = end, .valid = true};
 }
 
-std::vector<char> read_binary_file_all(const std::string &path) {
-  std::ifstream input(path, std::ios::binary | std::ios::ate);
-  if (!input.is_open()) {
-    throw std::runtime_error("Failed to open binary file: " + path);
-  }
-  const std::streamsize file_size = input.tellg();
-  if (file_size < 0) {
-    throw std::runtime_error("Failed to determine file size: " + path);
-  }
-  std::vector<char> data(static_cast<size_t>(file_size));
-  input.seekg(0, std::ios::beg);
-  if (file_size > 0 && !input.read(data.data(), file_size)) {
-    throw std::runtime_error("Failed to read binary file: " + path);
-  }
-  return data;
-}
-
-std::vector<char>
-read_binary_file_all_sharded(const std::string &base_path,
-                             const int num_threads,
-                             const std::string &suffix = std::string()) {
-  std::vector<char> merged;
-  for (int thread_id = 0; thread_id < num_threads; thread_id++) {
-    const std::string shard_path =
-        thread_output_path(base_path, thread_id, suffix);
-    const std::vector<char> shard = read_binary_file_all(shard_path);
-    const size_t old_size = merged.size();
-    merged.resize(old_size + shard.size());
-    if (!shard.empty()) {
-      std::memcpy(merged.data() + old_size, shard.data(), shard.size());
-    }
-  }
-  return merged;
-}
-
-void remove_sharded_stream_files(const std::string &base_path,
-                                 const int num_threads,
-                                 const std::string &suffix = std::string()) {
-  for (int thread_id = 0; thread_id < num_threads; thread_id++) {
-    safe_remove_file(thread_output_path(base_path, thread_id, suffix));
-  }
-}
-
 template <typename T>
-std::vector<T> read_binary_records_all(const std::string &path) {
-  const std::vector<char> raw = read_binary_file_all(path);
-  if (raw.size() % sizeof(T) != 0) {
-    throw std::runtime_error("Corrupted record stream (size mismatch): " +
-                             path);
-  }
-  std::vector<T> records(raw.size() / sizeof(T));
-  if (!raw.empty()) {
-    std::memcpy(records.data(), raw.data(), raw.size());
-  }
-  return records;
+void append_binary(std::vector<char> &buffer, const T &value) {
+  const size_t old_size = buffer.size();
+  buffer.resize(old_size + sizeof(T));
+  std::memcpy(buffer.data() + old_size, &value, sizeof(T));
 }
 
-void decode_unaligned_reads(const std::string &path,
+void decode_unaligned_reads(const std::vector<char> &encoded,
                             const uint32_t expected_read_count,
                             std::vector<char> &decoded_chars,
                             std::vector<uint16_t> &decoded_lengths,
                             bool bisulfite_ternary) {
-  const std::vector<char> encoded = read_binary_file_all(path);
+  (void)bisulfite_ternary;
   decoded_lengths.assign(expected_read_count, 0);
   std::vector<uint64_t> encoded_offsets(expected_read_count, 0);
   std::vector<uint64_t> decoded_offsets(expected_read_count, 0);
 
   uint64_t encoded_cursor = 0;
   uint64_t decoded_total = 0;
-  std::ifstream fin;
-  if (bisulfite_ternary) {
-    fin.open(path, std::ios::binary);
-  }
-
   for (uint32_t read_index = 0; read_index < expected_read_count;
        ++read_index) {
-    if (encoded_cursor + sizeof(uint16_t) > encoded.size()) {
+    if (encoded_cursor + sizeof(uint32_t) > encoded.size()) {
       throw std::runtime_error(
           "Corrupted unaligned stream: truncated read length header.");
     }
 
-    uint32_t read_length;
+    uint32_t read_length = 0;
     std::memcpy(&read_length, encoded.data() + encoded_cursor,
                 sizeof(uint32_t));
     encoded_cursor += sizeof(uint32_t);
@@ -236,13 +221,38 @@ void decode_unaligned_reads(const std::string &path,
     const uint16_t read_length = decoded_lengths[read_index];
     const char *encoded_read = encoded.data() + encoded_offsets[read_index];
     char *decoded_read = decoded_chars.data() + decoded_offsets[read_index];
-
     std::memcpy(decoded_read, encoded_read, read_length);
   }
 }
 
-void write_noise_for_read(std::ofstream &noise_output,
-                          std::ofstream &noise_position_output,
+std::vector<uint32_t> load_read_order_entries(const std::string &order_path,
+                                              const uint32_t expected_reads) {
+  std::ifstream order_input(order_path, std::ios::binary | std::ios::ate);
+  if (!order_input.is_open()) {
+    throw std::runtime_error("Failed to open reordered read order file: " +
+                             order_path);
+  }
+
+  const std::streamsize file_size = order_input.tellg();
+  const std::streamsize expected_size =
+      static_cast<std::streamsize>(expected_reads * sizeof(uint32_t));
+  if (file_size != expected_size) {
+    throw std::runtime_error(
+        "Corruption in read order stream: unexpected file size.");
+  }
+
+  order_input.seekg(0);
+  std::vector<uint32_t> read_orders(expected_reads);
+  if (!order_input.read(reinterpret_cast<char *>(read_orders.data()),
+                        expected_size)) {
+    throw std::runtime_error("Failed to read reordered read order file: " +
+                             order_path);
+  }
+  return read_orders;
+}
+
+void write_noise_for_read(std::vector<char> &noise_output,
+                          std::vector<char> &noise_position_output,
                           const std::vector<char> &noise_codes,
                           const std::vector<uint16_t> &noise_positions,
                           const std::vector<uint64_t> &noise_offset_by_read,
@@ -250,95 +260,96 @@ void write_noise_for_read(std::ofstream &noise_output,
                           const uint64_t read_index) {
   for (uint16_t noise_index = 0; noise_index < noise_count_by_read[read_index];
        noise_index++) {
-    noise_output << noise_codes[noise_offset_by_read[read_index] + noise_index];
-    noise_position_output.write(
-        byte_ptr(
-            &noise_positions[noise_offset_by_read[read_index] + noise_index]),
-        sizeof(uint16_t));
+    noise_output.push_back(
+        noise_codes[noise_offset_by_read[read_index] + noise_index]);
+    append_binary(
+        noise_position_output,
+        noise_positions[noise_offset_by_read[read_index] + noise_index]);
   }
-  noise_output << "\n";
+  noise_output.push_back('\n');
 }
 
-void write_unaligned_read(std::ofstream &unaligned_output,
+void write_unaligned_read(std::vector<char> &unaligned_output,
                           const std::vector<char> &unaligned_chars,
                           const std::vector<uint64_t> &position_by_read,
                           const std::vector<uint16_t> &read_lengths_by_read,
                           const uint64_t read_index) {
-  unaligned_output.write(unaligned_chars.data() + position_by_read[read_index],
-                         read_lengths_by_read[read_index]);
+  const uint64_t offset = position_by_read[read_index];
+  const uint16_t read_length = read_lengths_by_read[read_index];
+  unaligned_output.insert(unaligned_output.end(),
+                          unaligned_chars.begin() + offset,
+                          unaligned_chars.begin() + offset + read_length);
 }
 
-void write_aligned_position(std::ofstream &position_output,
+void write_aligned_position(std::vector<char> &position_output,
                             const bool preserve_order,
                             const bool first_read_in_block,
                             const uint64_t current_position,
                             uint64_t &previous_position) {
   if (preserve_order || first_read_in_block) {
-    position_output.write(byte_ptr(&current_position), sizeof(uint64_t));
+    append_binary(position_output, current_position);
     previous_position = current_position;
     return;
   }
 
   const uint64_t position_delta = current_position - previous_position;
-  uint16_t encoded_delta;
+  uint16_t encoded_delta = 0;
   if (position_delta < 65535) {
     encoded_delta = static_cast<uint16_t>(position_delta);
-    position_output.write(byte_ptr(&encoded_delta), sizeof(uint16_t));
+    append_binary(position_output, encoded_delta);
   } else {
     encoded_delta = 65535;
-    position_output.write(byte_ptr(&encoded_delta), sizeof(uint16_t));
-    position_output.write(byte_ptr(&current_position), sizeof(uint64_t));
+    append_binary(position_output, encoded_delta);
+    append_binary(position_output, current_position);
   }
   previous_position = current_position;
 }
 
-void remove_input_stream_files(const reordered_stream_paths &paths,
-                               const int num_threads) {
-  safe_remove_file(paths.noise_path);
-  safe_remove_file(paths.noise_position_path);
-  safe_remove_file(paths.orientation_path);
+void cleanup_consumed_input_files(const reordered_stream_paths &paths) {
   safe_remove_file(paths.order_path);
-  safe_remove_file(paths.read_length_path);
-  safe_remove_file(paths.read_length_path + ".unaligned");
-  safe_remove_file(paths.unaligned_path);
-  safe_remove_file(paths.position_path);
-
-  remove_sharded_stream_files(paths.noise_path, num_threads);
-  remove_sharded_stream_files(paths.noise_position_path, num_threads);
-  remove_sharded_stream_files(paths.orientation_path, num_threads, ".tmp");
-  remove_sharded_stream_files(paths.read_length_path, num_threads, ".tmp");
 }
 
-void compress_output_block(const temporary_stream_paths &temp_paths,
+void compress_output_block(const output_block_buffers &block_buffers,
                            const reordered_stream_paths &paths,
                            const uint64_t block_num, const bool paired_end) {
-  compress_temp_block(temp_paths.flag_path, paths.flag_path, block_num);
-  compress_temp_block(temp_paths.position_path, paths.position_path, block_num);
-  compress_temp_block(temp_paths.noise_path, paths.noise_path, block_num);
-  compress_temp_block(temp_paths.noise_position_path, paths.noise_position_path,
-                      block_num);
-  compress_temp_block(temp_paths.unaligned_path, paths.unaligned_path,
-                      block_num);
-  compress_temp_block(temp_paths.read_length_path, paths.read_length_path,
-                      block_num);
-  compress_temp_block(temp_paths.orientation_path, paths.orientation_path,
-                      block_num);
+  compress_block_buffer(block_buffers.flag_bytes,
+                        compressed_block_file_path(paths.flag_path, block_num));
+  compress_block_buffer(
+      block_buffers.position_bytes,
+      compressed_block_file_path(paths.position_path, block_num));
+  compress_block_buffer(
+      block_buffers.noise_bytes,
+      compressed_block_file_path(paths.noise_path, block_num));
+  compress_block_buffer(
+      block_buffers.noise_position_bytes,
+      compressed_block_file_path(paths.noise_position_path, block_num));
+  compress_block_buffer(
+      block_buffers.unaligned_bytes,
+      compressed_block_file_path(paths.unaligned_path, block_num));
+  compress_block_buffer(
+      block_buffers.read_length_bytes,
+      compressed_block_file_path(paths.read_length_path, block_num));
+  compress_block_buffer(
+      block_buffers.orientation_bytes,
+      compressed_block_file_path(paths.orientation_path, block_num));
 
-  if (!paired_end)
+  if (!paired_end) {
     return;
+  }
 
-  compress_block_file(
-      block_file_path(paths.mate_position_path, block_num),
+  compress_block_buffer(
+      block_buffers.mate_position_bytes,
       compressed_block_file_path(paths.mate_position_path, block_num));
-  compress_block_file(
-      block_file_path(paths.mate_orientation_path, block_num),
+  compress_block_buffer(
+      block_buffers.mate_orientation_bytes,
       compressed_block_file_path(paths.mate_orientation_path, block_num));
 }
 
 } // namespace
 
 void reorder_compress_streams(const std::string &temp_dir,
-                              const compression_params &cp) {
+                              const compression_params &cp,
+                              const reordered_stream_artifact &artifact) {
   const reordered_stream_paths paths = build_reordered_stream_paths(temp_dir);
   SPRING_LOG_DEBUG(
       "reorder_compress_streams start: temp_dir=" + temp_dir +
@@ -348,9 +359,9 @@ void reorder_compress_streams(const std::string &temp_dir,
       std::string(cp.encoding.preserve_order ? "true" : "false") +
       ", threads=" + std::to_string(cp.encoding.num_thr));
 
-  uint32_t num_reads = cp.read_info.num_reads;
+  const uint32_t num_reads = cp.read_info.num_reads;
   uint32_t aligned_read_count = 0;
-  uint32_t unaligned_read_count;
+  uint32_t unaligned_read_count = 0;
   const uint32_t half_read_count = num_reads / 2;
   const int num_thr = cp.encoding.num_thr;
   const bool paired_end = cp.encoding.paired_end;
@@ -363,83 +374,20 @@ void reorder_compress_streams(const std::string &temp_dir,
   std::vector<uint64_t> position_by_read(num_reads);
   std::vector<uint16_t> noise_count_by_read(num_reads);
 
-  std::vector<char> orientation_entries;
-  std::vector<uint64_t> position_entries;
-  std::vector<uint16_t> read_length_entries;
-  std::vector<uint32_t> read_order_entries;
-  std::vector<char> noise_serialized;
-  std::vector<uint16_t> noise_positions;
-
-#pragma omp parallel sections
-  {
-#pragma omp section
-    {
-      orientation_entries =
-          read_binary_file_all_sharded(paths.orientation_path, num_thr, ".tmp");
-    }
-#pragma omp section
-    {
-      position_entries = read_binary_records_all<uint64_t>(paths.position_path);
-    }
-#pragma omp section
-    {
-      const std::vector<char> aligned_lengths =
-          read_binary_file_all_sharded(paths.read_length_path, num_thr, ".tmp");
-      const std::vector<char> unaligned_lengths =
-          read_binary_file_all(paths.read_length_path + ".unaligned");
-      SPRING_LOG_DEBUG(
-          "Read length stream: aligned_size=" +
-          std::to_string(aligned_lengths.size() / sizeof(uint16_t)) +
-          ", unaligned_size=" +
-          std::to_string(unaligned_lengths.size() / sizeof(uint16_t)) +
-          ", total_reads=" + std::to_string(num_reads) +
-          ", base_path=" + paths.read_length_path);
-      std::vector<char> merged_lengths;
-      merged_lengths.reserve(aligned_lengths.size() + unaligned_lengths.size());
-      merged_lengths.insert(merged_lengths.end(), aligned_lengths.begin(),
-                            aligned_lengths.end());
-      merged_lengths.insert(merged_lengths.end(), unaligned_lengths.begin(),
-                            unaligned_lengths.end());
-      if (merged_lengths.size() % sizeof(uint16_t) != 0) {
-        throw std::runtime_error(
-            "Corrupted read length stream: byte count is not divisible by "
-            "record width.");
-      }
-      read_length_entries.resize(merged_lengths.size() / sizeof(uint16_t));
-      if (!merged_lengths.empty()) {
-        std::memcpy(read_length_entries.data(), merged_lengths.data(),
-                    merged_lengths.size());
-      }
-    }
-#pragma omp section
-    {
-      noise_serialized =
-          read_binary_file_all_sharded(paths.noise_path, num_thr);
-    }
-#pragma omp section
-    {
-      const std::vector<char> serialized_noise_positions =
-          read_binary_file_all_sharded(paths.noise_position_path, num_thr);
-      if (serialized_noise_positions.size() % sizeof(uint16_t) != 0) {
-        throw std::runtime_error(
-            "Corrupted noise-position stream: byte count is not divisible by "
-            "record width.");
-      }
-      noise_positions.resize(serialized_noise_positions.size() /
-                             sizeof(uint16_t));
-      if (!serialized_noise_positions.empty()) {
-        std::memcpy(noise_positions.data(), serialized_noise_positions.data(),
-                    serialized_noise_positions.size());
-      }
-    }
-#pragma omp section
-    {
-      if (paired_end || preserve_order) {
-        read_order_entries =
-            read_binary_records_all<uint32_t>(paths.order_path);
-      }
-    }
+  const std::vector<char> &orientation_entries = artifact.orientation_entries;
+  const std::vector<uint64_t> &position_entries = artifact.position_entries;
+  const std::vector<uint16_t> &read_length_entries =
+      artifact.read_length_entries;
+  std::vector<uint32_t> read_order_entries_storage;
+  const std::vector<uint32_t> *read_order_entries =
+      &artifact.read_order_entries;
+  if (paired_end && !preserve_order) {
+    read_order_entries_storage =
+        load_read_order_entries(paths.order_path, num_reads);
+    read_order_entries = &read_order_entries_storage;
   }
+  const std::vector<char> &noise_serialized = artifact.noise_serialized;
+  const std::vector<uint16_t> &noise_positions = artifact.noise_positions;
 
   if (orientation_entries.size() != position_entries.size()) {
     throw std::runtime_error(
@@ -458,7 +406,7 @@ void reorder_compress_streams(const std::string &temp_dir,
   }
 
   if ((paired_end || preserve_order) &&
-      read_order_entries.size() != num_reads) {
+      read_order_entries->size() != num_reads) {
     throw std::runtime_error(
         "Corruption in read order stream: entry count does not match reads.");
   }
@@ -470,7 +418,7 @@ void reorder_compress_streams(const std::string &temp_dir,
   for (uint32_t entry_index = 0; entry_index < aligned_read_count;
        ++entry_index) {
     const uint32_t read_order = (paired_end || preserve_order)
-                                    ? read_order_entries[entry_index]
+                                    ? (*read_order_entries)[entry_index]
                                     : entry_index;
 
     orientation_by_read[read_order] = orientation_entries[entry_index];
@@ -527,31 +475,24 @@ void reorder_compress_streams(const std::string &temp_dir,
       std::to_string(aligned_read_count) +
       ", unaligned_reads=" + std::to_string(unaligned_read_count) +
       ", noise_entries=" + std::to_string(noise_positions.size()));
-  std::string unaligned_count_path = paths.unaligned_path + ".count";
-  std::ifstream unaligned_count_input(unaligned_count_path, std::ios::binary);
-  uint64_t unaligned_char_count;
-  unaligned_count_input.read(byte_ptr(&unaligned_char_count), sizeof(uint64_t));
-  unaligned_count_input.close();
-  remove(unaligned_count_path.c_str());
+
   std::vector<char> unaligned_chars;
   std::vector<uint16_t> unaligned_lengths;
-  decode_unaligned_reads(paths.unaligned_path, unaligned_read_count,
+  decode_unaligned_reads(artifact.unaligned_serialized, unaligned_read_count,
                          unaligned_chars, unaligned_lengths,
                          cp.encoding.bisulfite_ternary);
-  if (unaligned_chars.size() != unaligned_char_count) {
+  if (unaligned_chars.size() != artifact.unaligned_char_count) {
     throw std::runtime_error(
         "Corruption in unaligned stream: decoded size does not match recorded "
         "character count.");
   }
 
-  // Both aligned and unaligned lengths live sequentially in read_length_input
-  // (write_unaligned_range appends to the same file). Read them all in order.
   uint64_t current_unaligned_offset = 0;
   for (uint32_t read_index = 0; read_index < unaligned_read_count;
        read_index++) {
     const uint32_t read_order =
         (paired_end || preserve_order)
-            ? read_order_entries[aligned_read_count + read_index]
+            ? (*read_order_entries)[aligned_read_count + read_index]
             : (aligned_read_count + read_index);
     const uint16_t read_length =
         read_length_entries[aligned_read_count + read_index];
@@ -566,12 +507,10 @@ void reorder_compress_streams(const std::string &temp_dir,
     aligned_flags[read_order] = false;
   }
 
-  remove_input_stream_files(paths, num_thr);
+  cleanup_consumed_input_files(paths);
 
   omp_set_num_threads(num_thr);
   const uint32_t num_reads_per_block = cp.encoding.num_reads_per_block;
-  const temporary_stream_paths temp_paths =
-      build_temporary_stream_paths(temp_dir);
   const uint64_t read_limit = paired_end ? half_read_count : num_reads;
   const uint64_t output_blocks =
       (read_limit == 0)
@@ -583,7 +522,6 @@ void reorder_compress_streams(const std::string &temp_dir,
                    std::to_string(num_reads_per_block) +
                    ", output_blocks=" + std::to_string(output_blocks));
 
-  // In paired-end mode, the block indices count read pairs rather than reads.
 #pragma omp parallel
   {
     uint64_t thread_id = omp_get_thread_num();
@@ -591,154 +529,118 @@ void reorder_compress_streams(const std::string &temp_dir,
     while (true) {
       const block_range current_block =
           block_read_range(block_num, num_reads_per_block, read_limit);
-      if (!current_block.valid)
+      if (!current_block.valid) {
         break;
-
-      std::ofstream flag_output(
-          block_file_path(temp_paths.flag_path, block_num), std::ios::binary);
-      std::ofstream noise_output(
-          block_file_path(temp_paths.noise_path, block_num), std::ios::binary);
-      std::ofstream noise_position_output(
-          block_file_path(temp_paths.noise_position_path, block_num),
-          std::ios::binary);
-      std::ofstream position_output(
-          block_file_path(temp_paths.position_path, block_num),
-          std::ios::binary);
-      std::ofstream orientation_output(
-          block_file_path(temp_paths.orientation_path, block_num),
-          std::ios::binary);
-      std::ofstream unaligned_output(
-          block_file_path(temp_paths.unaligned_path, block_num),
-          std::ios::binary);
-      std::ofstream read_length_output(
-          block_file_path(temp_paths.read_length_path, block_num),
-          std::ios::binary);
-      std::ofstream mate_position_output;
-      std::ofstream mate_orientation_output;
-      if (paired_end) {
-        mate_position_output.open(
-            block_file_path(paths.mate_position_path, block_num),
-            std::ios::binary);
-        mate_orientation_output.open(
-            block_file_path(paths.mate_orientation_path, block_num),
-            std::ios::binary);
       }
 
+      output_block_buffers block_buffers;
       uint64_t previous_position = 0;
       for (uint64_t read_index = current_block.begin;
            read_index < current_block.end; read_index++) {
         if (!paired_end) {
-          read_length_output.write(byte_ptr(&read_lengths_by_read[read_index]),
-                                   sizeof(uint16_t));
-          if (aligned_flags[read_index] == true) {
-            flag_output << '0';
-            orientation_output << orientation_by_read[read_index];
-            write_aligned_position(position_output, preserve_order,
+          append_binary(block_buffers.read_length_bytes,
+                        read_lengths_by_read[read_index]);
+          if (aligned_flags[read_index]) {
+            block_buffers.flag_bytes.push_back('0');
+            block_buffers.orientation_bytes.push_back(
+                orientation_by_read[read_index]);
+            write_aligned_position(block_buffers.position_bytes, preserve_order,
                                    read_index == current_block.begin,
                                    position_by_read[read_index],
                                    previous_position);
-            write_noise_for_read(noise_output, noise_position_output,
-                                 noise_codes, noise_positions,
-                                 noise_offset_by_read, noise_count_by_read,
-                                 read_index);
+            write_noise_for_read(
+                block_buffers.noise_bytes, block_buffers.noise_position_bytes,
+                noise_codes, noise_positions, noise_offset_by_read,
+                noise_count_by_read, read_index);
           } else {
-            flag_output << '2';
-            write_unaligned_read(unaligned_output, unaligned_chars,
+            block_buffers.flag_bytes.push_back('2');
+            write_unaligned_read(block_buffers.unaligned_bytes, unaligned_chars,
                                  position_by_read, read_lengths_by_read,
                                  read_index);
           }
         } else {
-          uint64_t mate_read_index = half_read_count + read_index;
-          read_length_output.write(byte_ptr(&read_lengths_by_read[read_index]),
-                                   sizeof(uint16_t));
-          read_length_output.write(
-              byte_ptr(&read_lengths_by_read[mate_read_index]),
-              sizeof(uint16_t));
-          int64_t mate_position_delta =
-              (int64_t)position_by_read[mate_read_index] -
-              (int64_t)position_by_read[read_index];
+          const uint64_t mate_read_index = half_read_count + read_index;
+          append_binary(block_buffers.read_length_bytes,
+                        read_lengths_by_read[read_index]);
+          append_binary(block_buffers.read_length_bytes,
+                        read_lengths_by_read[mate_read_index]);
+          const int64_t mate_position_delta =
+              static_cast<int64_t>(position_by_read[mate_read_index]) -
+              static_cast<int64_t>(position_by_read[read_index]);
           int read_flag = 2;
           if (aligned_flags[read_index] && aligned_flags[mate_read_index] &&
-              mate_position_delta >= 0 && mate_position_delta < 32767)
+              mate_position_delta >= 0 && mate_position_delta < 32767) {
             read_flag = 0;
-          else if (aligned_flags[read_index] && aligned_flags[mate_read_index])
+          } else if (aligned_flags[read_index] &&
+                     aligned_flags[mate_read_index]) {
             read_flag = 1;
-          else if (!aligned_flags[read_index] &&
-                   !aligned_flags[mate_read_index])
+          } else if (!aligned_flags[read_index] &&
+                     !aligned_flags[mate_read_index]) {
             read_flag = 2;
-          else if (aligned_flags[read_index] && !aligned_flags[mate_read_index])
+          } else if (aligned_flags[read_index] &&
+                     !aligned_flags[mate_read_index]) {
             read_flag = 3;
-          else if (!aligned_flags[read_index] && aligned_flags[mate_read_index])
+          } else if (!aligned_flags[read_index] &&
+                     aligned_flags[mate_read_index]) {
             read_flag = 4;
-          flag_output << read_flag;
-          if (read_flag == 0 && paired_end) {
-            int16_t mate_position_delta_16 = (int16_t)mate_position_delta;
-            mate_position_output.write(byte_ptr(&mate_position_delta_16),
-                                       sizeof(int16_t));
-            if (orientation_by_read[read_index] !=
-                orientation_by_read[mate_read_index])
-              mate_orientation_output << '0';
-            else
-              mate_orientation_output << '1';
+          }
+
+          block_buffers.flag_bytes.push_back(
+              static_cast<char>('0' + read_flag));
+          if (read_flag == 0) {
+            const int16_t mate_position_delta_16 =
+                static_cast<int16_t>(mate_position_delta);
+            append_binary(block_buffers.mate_position_bytes,
+                          mate_position_delta_16);
+            block_buffers.mate_orientation_bytes.push_back(
+                orientation_by_read[read_index] !=
+                        orientation_by_read[mate_read_index]
+                    ? '0'
+                    : '1');
           }
           if (read_flag == 0 || read_flag == 1 || read_flag == 3) {
-            // read 1 is aligned
-            write_aligned_position(position_output, preserve_order,
+            write_aligned_position(block_buffers.position_bytes, preserve_order,
                                    read_index == current_block.begin,
                                    position_by_read[read_index],
                                    previous_position);
-            write_noise_for_read(noise_output, noise_position_output,
-                                 noise_codes, noise_positions,
-                                 noise_offset_by_read, noise_count_by_read,
-                                 read_index);
-            orientation_output << orientation_by_read[read_index];
+            write_noise_for_read(
+                block_buffers.noise_bytes, block_buffers.noise_position_bytes,
+                noise_codes, noise_positions, noise_offset_by_read,
+                noise_count_by_read, read_index);
+            block_buffers.orientation_bytes.push_back(
+                orientation_by_read[read_index]);
           } else {
-            write_unaligned_read(unaligned_output, unaligned_chars,
+            write_unaligned_read(block_buffers.unaligned_bytes, unaligned_chars,
                                  position_by_read, read_lengths_by_read,
                                  read_index);
           }
 
           if (read_flag == 0 || read_flag == 1 || read_flag == 4) {
-            write_noise_for_read(noise_output, noise_position_output,
-                                 noise_codes, noise_positions,
-                                 noise_offset_by_read, noise_count_by_read,
-                                 mate_read_index);
+            write_noise_for_read(
+                block_buffers.noise_bytes, block_buffers.noise_position_bytes,
+                noise_codes, noise_positions, noise_offset_by_read,
+                noise_count_by_read, mate_read_index);
             if (read_flag == 1 || read_flag == 4) {
-              position_output.write(
-                  byte_ptr(&position_by_read[mate_read_index]),
-                  sizeof(uint64_t));
-              orientation_output << orientation_by_read[mate_read_index];
+              append_binary(block_buffers.position_bytes,
+                            position_by_read[mate_read_index]);
+              block_buffers.orientation_bytes.push_back(
+                  orientation_by_read[mate_read_index]);
             }
           } else {
-            write_unaligned_read(unaligned_output, unaligned_chars,
+            write_unaligned_read(block_buffers.unaligned_bytes, unaligned_chars,
                                  position_by_read, read_lengths_by_read,
                                  mate_read_index);
           }
         }
       }
 
-      flag_output.close();
-      noise_output.close();
-      noise_position_output.close();
-      position_output.close();
-      orientation_output.close();
-      unaligned_output.close();
-      read_length_output.close();
-      if (paired_end) {
-        mate_position_output.close();
-        mate_orientation_output.close();
-      }
-
-      compress_output_block(temp_paths, paths, block_num, paired_end);
-
+      compress_output_block(block_buffers, paths, block_num, paired_end);
       block_num += num_thr;
     }
   }
 
   SPRING_LOG_DEBUG("reorder_compress_streams complete: blocks_written=" +
                    std::to_string(output_blocks));
-
-  return;
 }
 
 } // namespace spring

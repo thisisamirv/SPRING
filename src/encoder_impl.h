@@ -9,6 +9,7 @@
 #include "progress.h"
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <bitset>
 #include <cstdio>
 #include <cstdlib>
@@ -40,27 +41,6 @@ template <size_t bitset_size> struct encoder_global_b {
 
 namespace detail {
 
-inline std::string thread_output_tmp_path(const std::string &base_path,
-                                          const int thread_id) {
-  return base_path + '.' + std::to_string(thread_id) + ".tmp";
-}
-
-inline void append_thread_stream(
-    std::ofstream &merged_output, const std::string &thread_output_path,
-    const std::string &block_id,
-    const std::ios::openmode mode = std::ios::in | std::ios::binary) {
-  std::ifstream thread_input(thread_output_path, mode);
-  if (!thread_input.is_open()) {
-    SPRING_LOG_DEBUG(
-        "block_id=" + block_id + ", Encoder merge stream open failure: path=" +
-        thread_output_path + ", expected_bytes=1, actual_bytes=0, index=0");
-    std::cerr << "Warning: Failed to open thread output stream for merging at "
-              << thread_output_path << "\n";
-    return;
-  }
-  copy_stream_buffered(thread_input, merged_output);
-}
-
 inline void cleanup_thread_encoder_inputs(const encoder_global &encoder_state,
                                           const int thread_id) {
   safe_remove_file(encoder_state.infile_order + '.' +
@@ -73,38 +53,11 @@ inline void cleanup_thread_encoder_inputs(const encoder_global &encoder_state,
   safe_remove_file(encoder_state.infile + '.' + std::to_string(thread_id));
 }
 
-inline void
-cleanup_thread_order_merge_artifacts(const encoder_global &encoder_state,
-                                     const int thread_id) {
-  safe_remove_file(
-      thread_output_tmp_path(encoder_state.infile_order, thread_id));
-}
-
-inline void merge_thread_encoded_outputs(const encoder_global &encoder_state) {
-  SPRING_LOG_DEBUG("block_id=enc-merge-main, Merging required per-thread "
-                   "encoder outputs: threads=" +
-                   std::to_string(encoder_state.num_thr));
-  std::ofstream order_output(encoder_state.infile_order,
-                             std::ios::binary | std::ios::app);
-
-  for (int thread_id = 0; thread_id < encoder_state.num_thr; thread_id++) {
-    const std::string block_id =
-        std::string("enc-merge-thread-") + std::to_string(thread_id);
-    append_thread_stream(
-        order_output,
-        thread_output_tmp_path(encoder_state.infile_order, thread_id), block_id,
-        std::ios::binary);
-    cleanup_thread_order_merge_artifacts(encoder_state, thread_id);
-    cleanup_thread_encoder_inputs(encoder_state, thread_id);
-  }
-}
-
 template <size_t bitset_size>
 uint32_t write_unaligned_range(
-    std::ofstream &order_output, std::ofstream &read_length_output,
-    std::ofstream &unaligned_output, const std::bitset<bitset_size> *reads,
-    const uint32_t *read_orders, const uint16_t *read_lengths,
-    const bool *remaining_reads,
+    std::ofstream &order_output, reordered_stream_artifact &artifact,
+    const std::bitset<bitset_size> *reads, const uint32_t *read_orders,
+    const uint16_t *read_lengths, const bool *remaining_reads,
     const encoder_global_b<bitset_size> &encoder_bits,
     const uint32_t begin_read_index, const uint32_t end_read_index,
     uint64_t &unaligned_length, const encoder_global &eg) {
@@ -117,10 +70,21 @@ uint32_t write_unaligned_range(
     aligned_read_count++;
     const std::string unaligned_read = bitsettostring<bitset_size>(
         reads[read_index], read_lengths[read_index], encoder_bits);
-    write_dnaN_in_bits(unaligned_read, unaligned_output);
     order_output.write(byte_ptr(&read_orders[read_index]), sizeof(uint32_t));
-    read_length_output.write(byte_ptr(&read_lengths[read_index]),
-                             sizeof(uint16_t));
+    artifact.read_order_entries.push_back(read_orders[read_index]);
+    artifact.read_length_entries.push_back(read_lengths[read_index]);
+    const uint32_t unaligned_size =
+        static_cast<uint32_t>(unaligned_read.size());
+    const size_t old_size = artifact.unaligned_serialized.size();
+    artifact.unaligned_serialized.resize(old_size + sizeof(uint32_t) +
+                                         unaligned_read.size());
+    std::memcpy(artifact.unaligned_serialized.data() + old_size,
+                &unaligned_size, sizeof(uint32_t));
+    if (!unaligned_read.empty()) {
+      std::memcpy(artifact.unaligned_serialized.data() + old_size +
+                      sizeof(uint32_t),
+                  unaligned_read.data(), unaligned_read.size());
+    }
     unaligned_length += read_lengths[read_index];
   }
 
@@ -171,7 +135,9 @@ template <size_t bitset_size>
 void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
             uint32_t *read_orders, uint16_t *read_lengths,
             bool *remaining_reads, OmpLock *read_locks,
-            OmpLock *dictionary_locks, const encoder_global &eg,
+            OmpLock *dictionary_locks,
+            std::vector<encoded_metadata_buffer> &thread_metadata_outputs,
+            const encoder_global &eg,
             const encoder_global_b<bitset_size> &egb) {
   static const int thresh_s = THRESH_ENCODER;
   static const int maxsearch = MAX_SEARCH_ENCODER;
@@ -217,18 +183,6 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
         eg.infile_readlength + '.' + std::to_string(thread_id);
     const std::string seq_out_path =
         eg.outfile_seq + '.' + std::to_string(thread_id);
-    const std::string pos_out_path =
-        eg.outfile_pos + '.' + std::to_string(thread_id);
-    const std::string noise_out_path =
-        eg.outfile_noise + '.' + std::to_string(thread_id);
-    const std::string noise_pos_out_path =
-        eg.outfile_noisepos + '.' + std::to_string(thread_id);
-    const std::string order_out_path =
-        eg.infile_order + '.' + std::to_string(thread_id) + ".tmp";
-    const std::string orientation_out_path =
-        eg.infile_RC + '.' + std::to_string(thread_id) + ".tmp";
-    const std::string read_len_out_path =
-        eg.infile_readlength + '.' + std::to_string(thread_id) + ".tmp";
 
     std::ifstream read_input(read_path, std::ios::binary);
     std::ifstream flag_stream(flag_path, std::ios::binary);
@@ -237,48 +191,28 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
     std::ifstream orientation_stream(orientation_in_path, std::ios::binary);
     std::ifstream read_length_stream(read_len_in_path, std::ios::binary);
     std::ofstream sequence_output(seq_out_path, std::ios::binary);
-    std::ofstream position_output(pos_out_path, std::ios::binary);
-    std::ofstream noise_output(noise_out_path, std::ios::binary);
-    std::ofstream noise_position_output(noise_pos_out_path, std::ios::binary);
-    std::ofstream order_output(order_out_path, std::ios::binary);
-    std::ofstream orientation_output(orientation_out_path, std::ios::binary);
-    std::ofstream read_length_output(read_len_out_path, std::ios::binary);
+    encoded_metadata_buffer thread_metadata;
     // Check if any streams failed to open.
     if (!read_input.is_open() || !flag_stream.is_open() ||
         !position_stream.is_open() || !order_input.is_open() ||
         !orientation_stream.is_open() || !read_length_stream.is_open() ||
-        !sequence_output.is_open() || !position_output.is_open() ||
-        !noise_output.is_open() || !noise_position_output.is_open() ||
-        !order_output.is_open() || !read_length_output.is_open() ||
-        !orientation_output.is_open()) {
+        !sequence_output.is_open()) {
       const std::string first_failed_path =
-          !read_input.is_open()              ? read_path
-          : !flag_stream.is_open()           ? flag_path
-          : !position_stream.is_open()       ? pos_path
-          : !order_input.is_open()           ? order_in_path
-          : !orientation_stream.is_open()    ? orientation_in_path
-          : !read_length_stream.is_open()    ? read_len_in_path
-          : !sequence_output.is_open()       ? seq_out_path
-          : !position_output.is_open()       ? pos_out_path
-          : !noise_output.is_open()          ? noise_out_path
-          : !noise_position_output.is_open() ? noise_pos_out_path
-          : !order_output.is_open()          ? order_out_path
-          : !orientation_output.is_open()    ? orientation_out_path
-          : !read_length_output.is_open()    ? read_len_out_path
-                                             : "";
+          !read_input.is_open()           ? read_path
+          : !flag_stream.is_open()        ? flag_path
+          : !position_stream.is_open()    ? pos_path
+          : !order_input.is_open()        ? order_in_path
+          : !orientation_stream.is_open() ? orientation_in_path
+          : !read_length_stream.is_open() ? read_len_in_path
+          : !sequence_output.is_open()    ? seq_out_path
+                                          : "";
       const int open_stream_count = (read_input.is_open() ? 1 : 0) +
                                     (flag_stream.is_open() ? 1 : 0) +
                                     (position_stream.is_open() ? 1 : 0) +
                                     (order_input.is_open() ? 1 : 0) +
                                     (orientation_stream.is_open() ? 1 : 0) +
                                     (read_length_stream.is_open() ? 1 : 0) +
-                                    (sequence_output.is_open() ? 1 : 0) +
-                                    (position_output.is_open() ? 1 : 0) +
-                                    (noise_output.is_open() ? 1 : 0) +
-                                    (noise_position_output.is_open() ? 1 : 0) +
-                                    (order_output.is_open() ? 1 : 0) +
-                                    (orientation_output.is_open() ? 1 : 0) +
-                                    (read_length_output.is_open() ? 1 : 0);
+                                    (sequence_output.is_open() ? 1 : 0);
       std::string error_msg = std::string("Thread ") +
                               std::to_string(thread_id) +
                               ": Failed to open one or more temporary "
@@ -574,9 +508,7 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
             return a.pos < b.pos;
           });
           writecontig(reference_contig, current_contig, sequence_output,
-                      position_output, noise_output, noise_position_output,
-                      order_output, orientation_output, read_length_output, eg,
-                      abs_pos);
+                      thread_metadata, eg, abs_pos);
         }
         if (!done) {
           current_contig = {{current_read, relative_position, orientation,
@@ -597,12 +529,9 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
     orientation_stream.close();
     read_length_stream.close();
     sequence_output.close();
-    position_output.close();
-    noise_output.close();
-    noise_position_output.close();
-    order_output.close();
-    read_length_output.close();
-    orientation_output.close();
+    thread_metadata_outputs[static_cast<size_t>(thread_id)] =
+        std::move(thread_metadata);
+    detail::cleanup_thread_encoder_inputs(eg, thread_id);
     SPRING_LOG_DEBUG(
         "block_id=" + block_id + ", Encoder thread " +
         std::to_string(thread_id) + " summary: contig_flushes=" +
@@ -735,7 +664,8 @@ void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
 }
 
 template <size_t bitset_size>
-void encoder_main(const std::string &temp_dir, compression_params &cp) {
+reordered_stream_artifact encoder_main(const std::string &temp_dir,
+                                       compression_params &cp) {
   if (cp.encoding.num_thr >
       static_cast<int>(compression_params::ReadMetadata::kFileLenThrSize)) {
     throw std::runtime_error(
@@ -778,6 +708,8 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   std::vector<std::bitset<bitset_size>> read;
   std::vector<uint32_t> order_s;
   std::vector<uint16_t> read_lengths_s;
+  std::vector<encoded_metadata_buffer> thread_metadata_outputs(
+      static_cast<size_t>(eg.num_thr));
   read.resize(static_cast<size_t>(singleton_pool_size));
   order_s.resize(static_cast<size_t>(singleton_pool_size));
   read_lengths_s.resize(static_cast<size_t>(singleton_pool_size));
@@ -815,54 +747,85 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
 
   encode<bitset_size>(read.data(), dict.data(), order_s.data(),
                       read_lengths_s.data(), remaining_reads, read_locks.data(),
-                      dictionary_locks.data(), eg, egb);
+                      dictionary_locks.data(), thread_metadata_outputs, eg,
+                      egb);
 
-  // Stitch the per-thread streams back into the final encoded outputs.
-  detail::merge_thread_encoded_outputs(eg);
-
+  reordered_stream_artifact artifact;
   std::ofstream order_output(eg.infile_order,
                              std::ios::out | std::ios::binary | std::ios::app);
-  std::ofstream read_length_output(eg.infile_readlength + ".unaligned",
-                                   std::ios::out | std::ios::binary |
-                                       std::ios::trunc);
-  std::ofstream unaligned_output(eg.outfile_unaligned, std::ios::binary);
+
+  // Cleanup state arrays and locks (OmpLock destructors handle locks)
+  // remaining_reads_storage will be freed automatically
+
+  // Final sequence block synchronization.
+  // We calculate absolute offsets for global positioning, then pack each
+  // thread's sequence data into a separate .bsc block for the decompressor.
+  std::vector<uint64_t> file_len_seq_thr(static_cast<size_t>(eg.num_thr));
+  std::vector<uint64_t> thread_sequence_bases(static_cast<size_t>(eg.num_thr),
+                                              0);
+  uint64_t abs_pos = 0;
+  uint64_t abs_pos_thr;
+
+  calculate_sequence_lengths(eg, file_len_seq_thr.data());
+
+  for (int tid = 0; tid < eg.num_thr; tid++) {
+    thread_sequence_bases[static_cast<size_t>(tid)] = abs_pos;
+    abs_pos += file_len_seq_thr[static_cast<size_t>(tid)];
+  }
+
+  for (int tid = 0; tid < eg.num_thr; tid++) {
+    const encoded_metadata_buffer &thread_output =
+        thread_metadata_outputs[static_cast<size_t>(tid)];
+    const uint64_t thread_base =
+        thread_sequence_bases[static_cast<size_t>(tid)];
+    for (const uint64_t position : thread_output.position_entries) {
+      artifact.position_entries.push_back(position + thread_base);
+    }
+    artifact.noise_serialized.insert(artifact.noise_serialized.end(),
+                                     thread_output.noise_serialized.begin(),
+                                     thread_output.noise_serialized.end());
+    artifact.noise_positions.insert(artifact.noise_positions.end(),
+                                    thread_output.noise_positions.begin(),
+                                    thread_output.noise_positions.end());
+    artifact.orientation_entries.insert(
+        artifact.orientation_entries.end(),
+        thread_output.orientation_entries.begin(),
+        thread_output.orientation_entries.end());
+    artifact.read_length_entries.insert(
+        artifact.read_length_entries.end(),
+        thread_output.read_length_entries.begin(),
+        thread_output.read_length_entries.end());
+    artifact.read_order_entries.insert(artifact.read_order_entries.end(),
+                                       thread_output.read_order_entries.begin(),
+                                       thread_output.read_order_entries.end());
+    if (!thread_output.read_order_entries.empty()) {
+      order_output.write(
+          byte_ptr(thread_output.read_order_entries.data()),
+          static_cast<std::streamsize>(thread_output.read_order_entries.size() *
+                                       sizeof(uint32_t)));
+    }
+  }
 
   uint64_t len_unaligned = 0;
 
   const uint32_t remaining_singleton_reads = detail::write_unaligned_range(
-      order_output, read_length_output, unaligned_output, read.data(),
-      order_s.data(), read_lengths_s.data(), remaining_reads, egb, 0,
-      eg.numreads_s, len_unaligned, eg);
+      order_output, artifact, read.data(), order_s.data(),
+      read_lengths_s.data(), remaining_reads, egb, 0, eg.numreads_s,
+      len_unaligned, eg);
   const uint32_t remaining_n_reads = detail::write_unaligned_range(
-      order_output, read_length_output, unaligned_output, read.data(),
-      order_s.data(), read_lengths_s.data(), remaining_reads, egb,
-      eg.numreads_s, eg.numreads_s + eg.numreads_N, len_unaligned, eg);
+      order_output, artifact, read.data(), order_s.data(),
+      read_lengths_s.data(), remaining_reads, egb, eg.numreads_s,
+      eg.numreads_s + eg.numreads_N, len_unaligned, eg);
 
   order_output.close();
-  read_length_output.close();
-  unaligned_output.close();
+  artifact.unaligned_char_count = len_unaligned;
   SPRING_LOG_DEBUG(
       "block_id=enc-main, Encoder residual unaligned writes: singleton_reads=" +
       std::to_string(remaining_singleton_reads) +
       ", N_reads=" + std::to_string(remaining_n_reads) +
       ", unaligned_bases=" + std::to_string(len_unaligned));
 
-  // Cleanup state arrays and locks (OmpLock destructors handle locks)
-  // remaining_reads_storage will be freed automatically
-
-  std::ofstream f_unaligned_count(eg.outfile_unaligned + ".count",
-                                  std::ios::out | std::ios::binary);
-  f_unaligned_count.write(byte_ptr(&len_unaligned), sizeof(uint64_t));
-  f_unaligned_count.close();
-
-  // Final sequence block synchronization.
-  // We calculate absolute offsets for global positioning, then pack each
-  // thread's sequence data into a separate .bsc block for the decompressor.
-  std::vector<uint64_t> file_len_seq_thr(static_cast<size_t>(eg.num_thr));
-  uint64_t abs_pos = 0;
-  uint64_t abs_pos_thr;
-
-  calculate_sequence_lengths(eg, file_len_seq_thr.data());
+  abs_pos = 0;
 
   std::ofstream fout_pos(eg.outfile_pos, std::ios::binary);
   for (int tid = 0; tid < eg.num_thr; tid++) {
@@ -910,7 +873,7 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
                                eg.outfile_seq + ".bsc");
     }
     empty_seq_output.close();
-    return;
+    return artifact;
   }
 
   // Generate per-thread .bsc sequence blocks as expected by the decompressor.
@@ -922,6 +885,7 @@ void encoder_main(const std::string &temp_dir, compression_params &cp) {
   }
 
   // read/order_s/read_lengths_s are RAII-managed (std::vector)
+  return artifact;
 }
 
 } // namespace spring

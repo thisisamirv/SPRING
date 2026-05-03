@@ -31,6 +31,7 @@
 - Merged preview into the main binary. spring2 now accepts `-p` or `--preview` and runs the old `spring2-preview` behavior, including `-a/--audit` in preview mode.
 - Changed gzipped input staging to use the vendored rapidgzip library in-process instead of spawning a separate helper executable, so rapidgzip support is embedded directly into `spring2` rather than relying on a sibling runtime tool.
 - Changed compression startup to reuse one shared 10,000-fragment sample for assay detection plus initial read-length, newline, and non-ACGTN analysis instead of running separate startup passes; sampled-long inputs still take the existing full prescan, while sampled-short inputs defer full validation to preprocessing.
+- Changed the short-read post-encode stream handoff to keep encoder metadata streams in memory until final archive block generation: `call_encoder()` now returns a `reordered_stream_artifact`, `reorder_compress_streams()` consumes that artifact directly instead of rereading temporary shard files, and final `.bsc` side-stream blocks are compressed directly from in-memory buffers rather than through intermediate uncompressed block files.
 - Vendored NASM and Ninja for easier development.
 
 ### Fixed

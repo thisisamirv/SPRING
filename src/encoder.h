@@ -3,6 +3,7 @@
 
 #include "params.h"
 #include "raii.h"
+#include "reordered_streams.h"
 #include <bitset>
 #include <cstdint>
 #include <fstream>
@@ -52,15 +53,22 @@ struct contig_reads {
   uint16_t read_length;
 };
 
+struct encoded_metadata_buffer {
+  std::vector<uint64_t> position_entries;
+  std::string noise_serialized;
+  std::vector<uint16_t> noise_positions;
+  std::vector<uint32_t> read_order_entries;
+  std::string orientation_entries;
+  std::vector<uint16_t> read_length_entries;
+};
+
 // Non-template helpers (definitions in encoder.cpp)
 std::string buildcontig(std::list<contig_reads> &current_contig,
                         const uint32_t &list_size);
 
 void writecontig(const std::string &ref,
                  std::list<contig_reads> &current_contig, std::ofstream &f_seq,
-                 std::ofstream &f_pos, std::ofstream &f_noise,
-                 std::ofstream &f_noisepos, std::ofstream &f_order,
-                 std::ofstream &f_RC, std::ofstream &f_readlength,
+                 encoded_metadata_buffer &metadata_output,
                  const encoder_global &eg, uint64_t &abs_pos);
 
 void pack_compress_seq(const encoder_global &encoder_state,
@@ -95,7 +103,8 @@ void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
                     const encoder_global_b<bitset_size> &egb);
 
 template <size_t bitset_size>
-void encoder_main(const std::string &temp_dir, compression_params &cp);
+reordered_stream_artifact encoder_main(const std::string &temp_dir,
+                                       compression_params &cp);
 
 } // namespace spring
 

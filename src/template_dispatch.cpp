@@ -12,7 +12,10 @@ namespace spring {
 
 namespace {
 
-using template_main_fn = void (*)(const std::string &, compression_params &);
+using reorder_template_main_fn = void (*)(const std::string &,
+                                          compression_params &);
+using encoder_template_main_fn =
+    reordered_stream_artifact (*)(const std::string &, compression_params &);
 
 constexpr size_t kBitsetStep = 64;
 constexpr size_t kMaxReorderBitsetSize = 1024;
@@ -25,14 +28,14 @@ void call_reorder_main(const std::string &temp_dir,
 }
 
 template <size_t bitset_size>
-void call_encoder_main(const std::string &temp_dir,
-                       compression_params &params) {
-  encoder_main<bitset_size>(temp_dir, params);
+reordered_stream_artifact call_encoder_main(const std::string &temp_dir,
+                                            compression_params &params) {
+  return encoder_main<bitset_size>(temp_dir, params);
 }
 
 // Keep the runtime-to-template mapping explicit so supported bitset sizes stay
 // easy to audit.
-const std::array<template_main_fn, 16> reorder_dispatchers = {
+const std::array<reorder_template_main_fn, 16> reorder_dispatchers = {
     &call_reorder_main<64>,   &call_reorder_main<128>, &call_reorder_main<192>,
     &call_reorder_main<256>,  &call_reorder_main<320>, &call_reorder_main<384>,
     &call_reorder_main<448>,  &call_reorder_main<512>, &call_reorder_main<576>,
@@ -41,7 +44,7 @@ const std::array<template_main_fn, 16> reorder_dispatchers = {
     &call_reorder_main<1024>,
 };
 
-const std::array<template_main_fn, 24> encoder_dispatchers = {
+const std::array<encoder_template_main_fn, 24> encoder_dispatchers = {
     &call_encoder_main<64>,   &call_encoder_main<128>,
     &call_encoder_main<192>,  &call_encoder_main<256>,
     &call_encoder_main<320>,  &call_encoder_main<384>,
@@ -81,10 +84,11 @@ void call_reorder(const std::string &temp_dir, compression_params &params) {
                                      kMaxReorderBitsetSize)](temp_dir, params);
 }
 
-void call_encoder(const std::string &temp_dir, compression_params &params) {
+reordered_stream_artifact call_encoder(const std::string &temp_dir,
+                                       compression_params &params) {
   const size_t encoder_bitset_size = rounded_bitset_size(
       3 * static_cast<size_t>(params.read_info.max_readlen));
-  encoder_dispatchers[dispatch_index(encoder_bitset_size,
-                                     kMaxEncoderBitsetSize)](temp_dir, params);
+  return encoder_dispatchers[dispatch_index(
+      encoder_bitset_size, kMaxEncoderBitsetSize)](temp_dir, params);
 }
 } // namespace spring
