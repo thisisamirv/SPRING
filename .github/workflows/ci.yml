@@ -33,6 +33,13 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@v4
 
+            - name: Ensure vendored tools are executable on Unix
+              if: runner.os != 'Windows'
+              shell: bash
+              run: |
+                  chmod +x dev/ninja/linux/ninja dev/ninja/linux-aarch64/ninja dev/ninja/mac/ninja
+                  chmod +x dev/nasm/linux/nasm dev/nasm/macosx/nasm
+
             - name: Install Linux dependencies
               if: runner.os == 'Linux'
               run: |
@@ -43,8 +50,6 @@ jobs:
                     libomp-dev \
                     lld \
                     mold \
-                    nasm \
-                    ninja-build \
                     python3 \
                     python3-pip \
                     python3-venv
@@ -54,7 +59,7 @@ jobs:
               shell: bash
               run: |
                   brew update
-                  brew install ccache libomp lld nasm ninja python
+                  brew install ccache libomp lld python
                   echo "MACOS_LIBOMP_PREFIX=$(brew --prefix libomp)" >> "$GITHUB_ENV"
 
             - name: Install CMake on Linux and macOS
@@ -82,8 +87,6 @@ jobs:
 
                   winget install --id BrechtSanders.WinLibs.MCF.UCRT @wingetFlags
                   winget install --id Mozilla.sccache --exact @wingetFlags
-                  winget install --id Ninja-build.Ninja @wingetFlags
-                  winget install --id NASM.NASM @wingetFlags
                   winget install --id Git.Git @wingetFlags
 
                   Write-Host 'Configuring PATH for WinLibs GCC toolchain'
@@ -122,7 +125,8 @@ jobs:
                   CC: gcc
                   CXX: g++
               run: |
-                  cmake -S . -B build -G Ninja
+                  cmake -S . -B build -G Ninja \
+                  -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/dev/ninja/linux/ninja"
 
             - name: Configure on macOS
               if: runner.os == 'macOS'
@@ -131,7 +135,9 @@ jobs:
                   CC: clang
                   CXX: clang++
               run: |
-                  cmake -S . -B build -G Ninja -DOpenMP_ROOT="$MACOS_LIBOMP_PREFIX"
+                  cmake -S . -B build -G Ninja \
+                  -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/dev/ninja/mac/ninja" \
+                  -DOpenMP_ROOT="$MACOS_LIBOMP_PREFIX"
 
             - name: Configure on Windows
               if: runner.os == 'Windows'
@@ -139,7 +145,8 @@ jobs:
               run: |
                   $env:CC="gcc"
                   $env:CXX="g++"
-                  cmake -S . -B build -G Ninja
+                  $vendoredNinja = (Join-Path $env:GITHUB_WORKSPACE 'dev/ninja/win/ninja.exe') -replace '\\','/'
+                  cmake -S . -B build -G Ninja -DCMAKE_MAKE_PROGRAM="$vendoredNinja"
 
             - name: Build on Linux and macOS
               if: runner.os != 'Windows'
@@ -188,6 +195,13 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@v4
 
+            - name: Ensure vendored tools are executable on Unix
+              if: runner.os != 'Windows'
+              shell: bash
+              run: |
+                  chmod +x dev/ninja/linux/ninja dev/ninja/linux-aarch64/ninja dev/ninja/mac/ninja
+                  chmod +x dev/nasm/linux/nasm dev/nasm/macosx/nasm
+
             - name: Install Linux analysis dependencies
               if: runner.os == 'Linux'
               run: |
@@ -200,8 +214,6 @@ jobs:
                     libomp-dev \
                     lld \
                     mold \
-                    nasm \
-                    ninja-build \
                     python3 \
                     python3-venv \
                     valgrind
@@ -211,7 +223,7 @@ jobs:
               shell: bash
               run: |
                   brew update
-                  brew install ccache libomp lld nasm ninja llvm cppcheck python
+                  brew install ccache libomp lld llvm cppcheck python
                   echo "MACOS_LIBOMP_PREFIX=$(brew --prefix libomp)" >> "$GITHUB_ENV"
                   echo "HOMEBREW_LLVM_BIN=$(brew --prefix llvm)/bin" >> "$GITHUB_ENV"
 
@@ -248,7 +260,6 @@ jobs:
                   update: true
                   install: >-
                       mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake
-                      mingw-w64-ucrt-x86_64-nasm mingw-w64-ucrt-x86_64-ninja
                       mingw-w64-ucrt-x86_64-clang-tools-extra
                       mingw-w64-ucrt-x86_64-lld mingw-w64-ucrt-x86_64-python
 
@@ -258,7 +269,8 @@ jobs:
                   CC: gcc
                   CXX: g++
               run: |
-                  cmake -S . -B build -G Ninja
+                  cmake -S . -B build -G Ninja \
+                  -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/dev/ninja/linux/ninja"
 
             - name: Configure on macOS
               if: runner.os == 'macOS'
@@ -267,7 +279,9 @@ jobs:
                   CC: clang
                   CXX: clang++
               run: |
-                  cmake -S . -B build -G Ninja -DOpenMP_ROOT="$MACOS_LIBOMP_PREFIX"
+                  cmake -S . -B build -G Ninja \
+                  -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/dev/ninja/mac/ninja" \
+                  -DOpenMP_ROOT="$MACOS_LIBOMP_PREFIX"
 
             - name: Configure on Windows
               if: runner.os == 'Windows'
@@ -276,7 +290,8 @@ jobs:
                   CC: gcc
                   CXX: g++
               run: |
-                  cmake -S . -B build -G Ninja
+                  cmake -S . -B build -G Ninja \
+                  -DCMAKE_MAKE_PROGRAM="$(cygpath -u "$GITHUB_WORKSPACE")/dev/ninja/win/ninja.exe"
 
             - name: Build for analysis on Linux and macOS
               if: runner.os != 'Windows'

@@ -42,6 +42,13 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@v4
 
+            - name: Ensure vendored tools are executable on Unix
+              if: matrix.name != 'windows'
+              shell: bash
+              run: |
+                  chmod +x dev/ninja/linux/ninja dev/ninja/linux-aarch64/ninja dev/ninja/mac/ninja
+                  chmod +x dev/nasm/linux/nasm dev/nasm/macosx/nasm
+
             - name: Build Linux (Docker)
               if: matrix.name == 'linux'
               run: |
@@ -66,13 +73,19 @@ jobs:
                     (dnf config-manager --set-enabled powertools || \
                       dnf config-manager --set-enabled crb) && \
                     dnf install -y gcc-toolset-12-gcc-c++ libomp-devel \
-                      ninja-build nasm python39 python39-pip wget \
+                      python39 python39-pip wget \
                       fuse-libs file && \
                     source /opt/rh/gcc-toolset-12/enable && \
                     python3.9 -m venv .cmake-venv && \
                     . .cmake-venv/bin/activate && \
+                    NINJA_PATH=/work/dev/ninja/linux/ninja && \
+                    if [ "\$ARCH_SUFFIX" = "aarch64" ]; then \
+                      NINJA_PATH=/work/dev/ninja/linux-aarch64/ninja; \
+                    fi && \
+                    chmod +x \$NINJA_PATH /work/dev/nasm/linux/nasm && \
                     python3.9 -m pip install 'cmake==4.2.0' && \
                     cmake -S . -B build -G Ninja \
+                      -DCMAKE_MAKE_PROGRAM=\$NINJA_PATH \
                       -DLIBRAPIDARCHIVE_WITH_ISAL=OFF \
                       \$CMAKE_EXTRA_FLAGS && \
                     cmake --build build --parallel && \
@@ -109,7 +122,7 @@ jobs:
               if: matrix.name == 'macos'
               run: |
                   brew update
-                  brew install libomp nasm ninja python
+                  brew install libomp python
                   echo "MACOS_LIBOMP_PREFIX=$(brew --prefix libomp)" >> "$GITHUB_ENV"
                   CMAKE_VENV="$RUNNER_TEMP/cmake-venv"
                   python3 -m venv "$CMAKE_VENV"
@@ -129,8 +142,6 @@ jobs:
                   )
 
                   winget install --id BrechtSanders.WinLibs.MCF.UCRT @wingetFlags
-                  winget install --id Ninja-build.Ninja @wingetFlags
-                  winget install --id NASM.NASM @wingetFlags
                   winget install --id Git.Git @wingetFlags
 
                   Write-Host 'Configuring PATH for WinLibs GCC toolchain'
@@ -167,7 +178,8 @@ jobs:
             - name: Configure (macOS)
               if: matrix.name == 'macos'
               run: |
-                  cmake -S . -B build -G Ninja
+                  cmake -S . -B build -G Ninja \
+                    -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/dev/ninja/mac/ninja"
 
             - name: Build and Strip (macOS)
               if: matrix.name == 'macos'
@@ -193,8 +205,10 @@ jobs:
               run: |
                   $env:CC="gcc"
                   $env:CXX="g++"
+                  $vendoredNinja = (Join-Path $env:GITHUB_WORKSPACE 'dev/ninja/win/ninja.exe') -replace '\\','/'
                   cmake -S . -B build `
                     -G Ninja `
+                    -DCMAKE_MAKE_PROGRAM="$vendoredNinja" `
                     -DSPRING_STATIC_RUNTIMES=ON
 
             - name: Build (Windows)

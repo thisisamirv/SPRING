@@ -16,9 +16,9 @@ The build system currently requires:
 
 - A C++20-capable compiler
 - CMake 4.2 or newer
-- Ninja
-- NASM
 - OpenMP
+
+Vendored copies of Ninja and NASM are used automatically from `dev/ninja/` and `dev/nasm/` when available, so you do not need separate system installations for those tools on the supported host platforms.
 
 ## Getting the Source
 
@@ -37,11 +37,15 @@ Install the build requirements:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y build-essential libomp-dev nasm ninja-build python3 python3-pip python3-venv
-python3 -m venv .cmake-venv
-. .cmake-venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install "cmake==4.2.0"
+sudo apt-get install -y build-essential libomp-dev python3 python3-pip
+python3 -m pip install --upgrade --user pip
+python3 -m pip install --user "cmake==4.2.0"
+```
+
+If your Python user bin directory is not already on `PATH`, add it before running CMake:
+
+```bash
+export PATH="$(python3 -m site --user-base)/bin:$PATH"
 ```
 
 Configure and build:
@@ -64,11 +68,15 @@ Install Homebrew packages:
 
 ```bash
 brew update
-brew install libomp nasm ninja python llvm cppcheck
-python3 -m venv .cmake-venv
-. .cmake-venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install "cmake==4.2.0"
+brew install libomp python llvm cppcheck
+python3 -m pip install --upgrade --user pip
+python3 -m pip install --user "cmake==4.2.0"
+```
+
+If your Python user bin directory is not already on `PATH`, add it before running CMake:
+
+```bash
+export PATH="$(python3 -m site --user-base)/bin:$PATH"
 ```
 
 Configure and build with Apple Clang and Homebrew `libomp`:
@@ -82,13 +90,11 @@ cmake --install build --prefix spring2
 
 ### Windows (native MinGW-w64)
 
-You can build using a standalone MinGW-w64 (UCRT) distribution and native CMake/Ninja:
+You can build using a standalone MinGW-w64 (UCRT) distribution and native CMake:
 
 ```powershell
 winget install --id BrechtSanders.WinLibs.MCF.UCRT -e
 winget install --id Kitware.CMake -e
-winget install --id Ninja-build.Ninja -e
-winget install --id NASM.NASM -e
 winget install --id Git.Git -e
 ```
 
@@ -106,3 +112,5 @@ cmake -S . -B build -G Ninja
 cmake --build build --parallel
 cmake --install build --prefix spring2
 ```
+
+With the Ninja generator, CMake will use the vendored executable under `dev/ninja/` automatically. ISA-L will also use the vendored NASM under `dev/nasm/` automatically.
