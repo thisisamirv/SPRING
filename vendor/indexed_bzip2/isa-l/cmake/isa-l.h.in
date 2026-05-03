@@ -21,6 +21,5 @@
 #include <igzip_lib.h>
 #include <mem_routines.h>
 #include <raid.h>
-#include <test.h>
 
 #endif //_ISAL_H_

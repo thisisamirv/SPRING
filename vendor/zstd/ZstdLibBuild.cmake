@@ -274,36 +274,4 @@ if(ZSTD_BUILD_STATIC)
     endif()
 endif()
 
-# pkg-config
-include(JoinPaths) # can be replaced by cmake_path(APPEND) in CMake 3.20
-set(PREFIX "${CMAKE_INSTALL_PREFIX}")
-set(EXEC_PREFIX "\${prefix}")
-join_paths(LIBDIR "\${exec_prefix}" "${CMAKE_INSTALL_LIBDIR}")
-join_paths(INCLUDEDIR "\${prefix}" "${CMAKE_INSTALL_INCLUDEDIR}")
-set(LIBS_PRIVATE "${THREADS_LIBS}")
-set(VERSION "${zstd_VERSION}")
-
-configure_file("${LIBRARY_DIR}/libzstd.pc.in" "${CMAKE_CURRENT_BINARY_DIR}/libzstd.pc" @ONLY)
-if(NOT SPRING_SUPPRESS_VENDOR_INSTALL)
-    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/libzstd.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
-
-    # install target
-    install(FILES ${PublicHeaders} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
-
-    foreach(target_suffix IN ITEMS "_shared" "_static" "")
-        if(TARGET "libzstd${target_suffix}")
-            install(TARGETS "libzstd${target_suffix}"
-                EXPORT "zstdExports${target_suffix}"
-                INCLUDES DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-                ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-                LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-                RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-                BUNDLE DESTINATION "${CMAKE_INSTALL_BINDIR}"
-                FRAMEWORK DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT runtime OPTIONAL
-                PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-            )
-        endif()
-    endforeach()
-endif()
-
 # (Removed uninstall target for lean spring build)

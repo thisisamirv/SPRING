@@ -123,9 +123,6 @@ include(cmake/crc.cmake)
 include(cmake/igzip.cmake)
 #include(cmake/mem.cmake)
 
-# Add test.h to extern headers (used by all modules)
-list(APPEND EXTERN_HEADERS include/test.h)
-
 # Create the main ISA-L library
 # Build type option
 option(ISAL_BUILD_SHARED_LIBS "Build shared libraries" ON)
@@ -170,71 +167,3 @@ target_include_directories(isal
 # Generate isa-l.h header
 set(ISAL_HEADER "${CMAKE_BINARY_DIR}/isa-l.h")
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/isa-l.h.in ${ISAL_HEADER} @ONLY)
-
-# Install targets
-include(GNUInstallDirs)
-
-# Install library
-install(TARGETS isal
-    EXPORT ISALTargets
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/isa-l
-)
-
-# Install generated header
-install(FILES ${ISAL_HEADER}
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-)
-
-# Install headers
-install(DIRECTORY include/
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/isa-l
-    FILES_MATCHING PATTERN "*.h"
-)
-
-# Export targets
-install(EXPORT ISALTargets
-    FILE ISALTargets.cmake
-    NAMESPACE ISAL::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ISAL
-)
-
-# Generate and install package config files
-include(CMakePackageConfigHelpers)
-
-configure_package_config_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ISALConfig.cmake.in"
-    "${CMAKE_BINARY_DIR}/ISALConfig.cmake"
-    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ISAL
-)
-
-write_basic_package_version_file(
-    "${CMAKE_BINARY_DIR}/ISALConfigVersion.cmake"
-    VERSION ${PROJECT_VERSION}
-    COMPATIBILITY SameMajorVersion
-)
-
-install(FILES
-    "${CMAKE_BINARY_DIR}/ISALConfig.cmake"
-    "${CMAKE_BINARY_DIR}/ISALConfigVersion.cmake"
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/ISAL
-)
-
-# Optional: Create pkg-config file
-set(prefix ${CMAKE_INSTALL_PREFIX})
-set(exec_prefix \${prefix})
-set(libdir \${prefix}/${CMAKE_INSTALL_LIBDIR})
-set(includedir \${prefix}/${CMAKE_INSTALL_INCLUDEDIR})
-set(VERSION ${PROJECT_VERSION})
-
-configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/libisal.pc.in"
-    "${CMAKE_BINARY_DIR}/libisal.pc"
-    @ONLY
-)
-
-install(FILES "${CMAKE_BINARY_DIR}/libisal.pc"
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
-)

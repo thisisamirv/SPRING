@@ -159,18 +159,3 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU")
 elseif(CMAKE_C_COMPILER_ID MATCHES "Clang|AppleClang")
     target_compile_options(archive_static PRIVATE -Wno-ignored-qualifiers)
 endif()
-
-if(ENABLE_INSTALL)
-    # How to install the libraries
-    if(BUILD_SHARED_LIBS)
-        install(TARGETS archive
-            RUNTIME DESTINATION bin
-            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-    endif(BUILD_SHARED_LIBS)
-    install(TARGETS archive_static
-        RUNTIME DESTINATION bin
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-    install(FILES ${include_HEADERS} DESTINATION include)
-endif()
