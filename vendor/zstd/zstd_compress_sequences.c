@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  * All rights reserved.
  *
@@ -8,16 +8,8 @@
  * You may select, at your option, one of the above-listed licenses.
  */
 
-/*-*************************************
- *  Dependencies
- ***************************************/
 #include "zstd_compress_sequences.h"
 
-/**
- * -log2(x / 256) lookup table for x in [0, 256).
- * If x == 0: Return 0
- * Else: Return floor(-log2(x / 256) * 256)
- */
 static unsigned const kInverseProbabilityLog256[256] = {
     0,    2048, 1792, 1642, 1536, 1453, 1386, 1329, 1280, 1236, 1197, 1162,
     1130, 1100, 1073, 1047, 1024, 1001, 980,  960,  941,  923,  906,  889,
@@ -50,22 +42,11 @@ static unsigned ZSTD_getFSEMaxSymbolValue(FSE_CTable const *ctable) {
   return maxSymbolValue;
 }
 
-/**
- * Returns true if we should use ncount=-1 else we should
- * use ncount=1 for low probability symbols instead.
- */
 static unsigned ZSTD_useLowProbCount(size_t const nbSeq) {
-  /* Heuristic: This should cover most blocks <= 16K and
-   * start to fade out after 16K to about 32K depending on
-   * compressibility.
-   */
+
   return nbSeq >= 2048;
 }
 
-/**
- * Returns the cost in bytes of encoding the normalized count header.
- * Returns an error if any of the helper functions return an error.
- */
 static size_t ZSTD_NCountCost(unsigned const *count, unsigned const max,
                               size_t const nbSeq, unsigned const FSELog) {
   BYTE wksp[FSE_NCOUNTBOUND];
@@ -77,10 +58,6 @@ static size_t ZSTD_NCountCost(unsigned const *count, unsigned const max,
   return FSE_writeNCount(wksp, sizeof(wksp), norm, max, tableLog);
 }
 
-/**
- * Returns the cost in bits of encoding the distribution described by count
- * using the entropy bound.
- */
 static size_t ZSTD_entropyCost(unsigned const *count, unsigned const max,
                                size_t const total) {
   unsigned cost = 0;
@@ -97,10 +74,6 @@ static size_t ZSTD_entropyCost(unsigned const *count, unsigned const max,
   return cost >> 8;
 }
 
-/**
- * Returns the cost in bits of encoding the distribution in count using ctable.
- * Returns an error if ctable cannot represent all the symbols in count.
- */
 size_t ZSTD_fseBitCost(FSE_CTable const *ctable, unsigned const *count,
                        unsigned const max) {
   unsigned const kAccuracyLog = 8;
@@ -129,11 +102,6 @@ size_t ZSTD_fseBitCost(FSE_CTable const *ctable, unsigned const *count,
   return cost >> kAccuracyLog;
 }
 
-/**
- * Returns the cost in bits of encoding the distribution in count using the
- * table described by norm. The max symbol support by norm is assumed >= max.
- * norm must be valid for every symbol with non-zero probability in count.
- */
 size_t ZSTD_crossEntropyCost(short const *norm, unsigned accuracyLog,
                              unsigned const *count, unsigned const max) {
   unsigned const shift = 8 - accuracyLog;
@@ -159,10 +127,7 @@ SymbolEncodingType_e ZSTD_selectEncodingType(
   if (mostFrequent == nbSeq) {
     *repeatMode = FSE_repeat_none;
     if (isDefaultAllowed && nbSeq <= 2) {
-      /* Prefer set_basic over set_rle when there are 2 or fewer symbols,
-       * since RLE uses 1 byte, but set_basic uses 5-6 bits per symbol.
-       * If basic encoding isn't possible, always choose RLE.
-       */
+
       DEBUGLOG(5, "Selected set_basic");
       return set_basic;
     }
@@ -175,10 +140,8 @@ SymbolEncodingType_e ZSTD_selectEncodingType(
       size_t const mult = 10 - strategy;
       size_t const baseLog = 3;
       size_t const dynamicFse_nbSeq_min =
-          (((size_t)1 << defaultNormLog) * mult) >>
-          baseLog; /* 28-36 for offset, 56-72 for lengths */
-      assert(defaultNormLog >= 5 &&
-             defaultNormLog <= 6); /* xx_DEFAULTNORMLOG */
+          (((size_t)1 << defaultNormLog) * mult) >> baseLog;
+      assert(defaultNormLog >= 5 && defaultNormLog <= 6);
       assert(mult <= 9 && mult >= 7);
       if ((*repeatMode == FSE_repeat_valid) && (nbSeq < staticFse_nbSeq_max)) {
         DEBUGLOG(5, "Selected set_repeat");
@@ -187,12 +150,7 @@ SymbolEncodingType_e ZSTD_selectEncodingType(
       if ((nbSeq < dynamicFse_nbSeq_min) ||
           (mostFrequent < (nbSeq >> (defaultNormLog - 1)))) {
         DEBUGLOG(5, "Selected set_basic");
-        /* The format allows default tables to be repeated, but it isn't useful.
-         * When using simple heuristics to select encoding type, we don't want
-         * to confuse these tables with dictionaries. When running more careful
-         * analysis, we don't need to waste time checking both repeating tables
-         * and default tables.
-         */
+
         *repeatMode = FSE_repeat_none;
         return set_basic;
       }
@@ -265,7 +223,7 @@ size_t ZSTD_buildCTable(void *dst, size_t dstCapacity, FSE_CTable *nextCTable,
     FORWARD_IF_ERROR(FSE_buildCTable_wksp(nextCTable, defaultNorm, defaultMax,
                                           defaultNormLog, entropyWorkspace,
                                           entropyWorkspaceSize),
-                     ""); /* note : could be pre-calculated */
+                     "");
     return 0;
   case set_compressed: {
     ZSTD_BuildCTableWksp *wksp = (ZSTD_BuildCTableWksp *)entropyWorkspace;
@@ -284,8 +242,7 @@ size_t ZSTD_buildCTable(void *dst, size_t dstCapacity, FSE_CTable *nextCTable,
     assert(oend >= op);
     {
       size_t const NCountSize =
-          FSE_writeNCount(op, (size_t)(oend - op), wksp->norm, max,
-                          tableLog); /* overflow protected */
+          FSE_writeNCount(op, (size_t)(oend - op), wksp->norm, max, tableLog);
       FORWARD_IF_ERROR(NCountSize, "FSE_writeNCount failed");
       FORWARD_IF_ERROR(FSE_buildCTable_wksp(nextCTable, wksp->norm, max,
                                             tableLog, wksp->wksp,
@@ -317,7 +274,6 @@ FORCE_INLINE_TEMPLATE size_t ZSTD_encodeSequences_body(
            (int)(blockStream.endPtr - blockStream.startPtr),
            (unsigned)dstCapacity);
 
-  /* first symbols */
   FSE_initCState2(&stateMatchLength, CTable_MatchLength,
                   mlCodeTable[nbSeq - 1]);
   FSE_initCState2(&stateOffsetBits, CTable_OffsetBits, ofCodeTable[nbSeq - 1]);
@@ -347,7 +303,7 @@ FORCE_INLINE_TEMPLATE size_t ZSTD_encodeSequences_body(
 
   {
     size_t n;
-    for (n = nbSeq - 2; n < nbSeq; n--) { /* intentional underflow */
+    for (n = nbSeq - 2; n < nbSeq; n--) {
       BYTE const llCode = llCodeTable[n];
       BYTE const ofCode = ofCodeTable[n];
       BYTE const mlCode = mlCodeTable[n];
@@ -358,18 +314,17 @@ FORCE_INLINE_TEMPLATE size_t ZSTD_encodeSequences_body(
                (unsigned)sequences[n].litLength,
                (unsigned)sequences[n].mlBase + MINMATCH,
                (unsigned)sequences[n].offBase);
-      /* 32b*/ /* 64b*/
-      /* (7)*/ /* (7)*/
+
       FSE_encodeSymbol(&blockStream, &stateOffsetBits, ofCode);
-      /* 15 */ /* 15 */
+
       FSE_encodeSymbol(&blockStream, &stateMatchLength, mlCode);
-      /* 24 */ /* 24 */
+
       if (MEM_32bits())
-        BIT_flushBits(&blockStream);                                    /* (7)*/
-      FSE_encodeSymbol(&blockStream, &stateLitLength, llCode); /* 16 */ /* 33 */
+        BIT_flushBits(&blockStream);
+      FSE_encodeSymbol(&blockStream, &stateLitLength, llCode);
       if (MEM_32bits() || (ofBits + mlBits + llBits >=
                            64 - 7 - (LLFSELog + MLFSELog + OffFSELog)))
-        BIT_flushBits(&blockStream); /* (7)*/
+        BIT_flushBits(&blockStream);
       BIT_addBits(&blockStream, sequences[n].litLength, llBits);
       if (MEM_32bits() && ((llBits + mlBits) > 24))
         BIT_flushBits(&blockStream);
@@ -381,14 +336,14 @@ FORCE_INLINE_TEMPLATE size_t ZSTD_encodeSequences_body(
             ofBits - MIN(ofBits, STREAM_ACCUMULATOR_MIN - 1);
         if (extraBits) {
           BIT_addBits(&blockStream, sequences[n].offBase, extraBits);
-          BIT_flushBits(&blockStream); /* (7)*/
+          BIT_flushBits(&blockStream);
         }
         BIT_addBits(&blockStream, sequences[n].offBase >> extraBits,
-                    ofBits - extraBits); /* 31 */
+                    ofBits - extraBits);
       } else {
-        BIT_addBits(&blockStream, sequences[n].offBase, ofBits); /* 31 */
+        BIT_addBits(&blockStream, sequences[n].offBase, ofBits);
       }
-      BIT_flushBits(&blockStream); /* (7)*/
+      BIT_flushBits(&blockStream);
       DEBUGLOG(7, "remaining space : %i",
                (int)(blockStream.endPtr - blockStream.ptr));
     }

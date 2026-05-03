@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  * All rights reserved.
  *
@@ -11,9 +11,9 @@
 #ifndef ZSTD_COMPRESS_SEQUENCES_H
 #define ZSTD_COMPRESS_SEQUENCES_H
 
-#include "fse.h"           /* FSE_repeat, FSE_CTable */
-#include "zstd_internal.h" /* SymbolEncodingType_e, ZSTD_strategy */
-#include "zstd_compress_internal.h" /* SeqDef */
+#include "fse.h"
+#include "zstd_compress_internal.h"
+#include "zstd_internal.h"
 
 typedef enum {
   ZSTD_defaultDisallowed = 0,
@@ -48,4 +48,4 @@ size_t ZSTD_fseBitCost(const FSE_CTable *ctable, const unsigned *count,
 
 size_t ZSTD_crossEntropyCost(const short *norm, unsigned accuracyLog,
                              const unsigned *count, unsigned max);
-#endif /* ZSTD_COMPRESS_SEQUENCES_H */
+#endif

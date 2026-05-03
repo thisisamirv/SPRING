@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2009-2011 Michihiro NAKAJIMA
  * Copyright (c) 2003-2006 Tim Kientzle
  * All rights reserved.
@@ -25,20 +25,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/*
- * TODO: A lot of stuff in here isn't actually used by libarchive and
- * can be trimmed out.  Note that this file is used by libarchive and
- * libarchive_test but nowhere else.  (But note that it gets compiled
- * with many different Windows environments, including MinGW, Visual
- * Studio, and Cygwin.  Significant changes should be tested in all three.)
- */
-
-/*
- * TODO: Don't use off_t in here.  Use __int64 instead.  Note that
- * Visual Studio and the Windows SDK define off_t as 32 bits; Win32's
- * more modern file handling APIs all use __int64 instead of off_t.
- */
-
 #ifndef LIBARCHIVE_ARCHIVE_WINDOWS_H_INCLUDED
 #define LIBARCHIVE_ARCHIVE_WINDOWS_H_INCLUDED
 
@@ -47,7 +33,6 @@
 #include <sys/types.h>
 #endif
 
-/* Provide guarded fallbacks only if common guard macros are not present. */
 #if !defined(_ARCHIVE_SSIZE_T_DEFINED) && !defined(_SSIZE_T_) &&               \
     !defined(_SSIZE_T_DEFINED) && !defined(__ssize_t_defined)
 typedef long ssize_t;
@@ -57,15 +42,12 @@ typedef long ssize_t;
 #if !defined(_ARCHIVE_PID_T_DEFINED) && !defined(_PID_T) &&                    \
     !defined(_PID_T_DEFINED) && !defined(__pid_t_defined) &&                   \
     !defined(__MINGW32__) && !defined(__MINGW64__)
-/* MinGW defines pid_t in <sys/types.h> as _pid_t; it doesn't always
- * provide a guard macro we can check. Avoid redefining `pid_t` when
- * compiling under MinGW/MSYS to prevent conflicting typedef errors. */
+
 typedef int pid_t;
 #define _ARCHIVE_PID_T_DEFINED
 #endif
 #endif
 
-/* Start of configuration for native Win32  */
 #ifndef MINGW_HAS_SECURE_API
 #define MINGW_HAS_SECURE_API 1
 #endif
@@ -73,7 +55,7 @@ typedef int pid_t;
 #include <errno.h>
 #define set_errno(val) ((errno) = val)
 #include <io.h>
-#include <stdlib.h> //brings in NULL
+#include <stdlib.h>
 #if defined(HAVE_STDINT_H)
 #include <stdint.h>
 #endif
@@ -83,13 +65,12 @@ typedef int pid_t;
 #include <stdio.h>
 #include <sys/stat.h>
 #if defined(__MINGW32__) && defined(HAVE_UNISTD_H)
-/* Prevent build error from a type mismatch of ftruncate().
- * This unistd.h defines it as ftruncate(int, off_t). */
+
 #include <unistd.h>
 #endif
 #define NOCRYPT
 #if defined(__LIBARCHIVE_BUILD)
-/* Ensure Windows core types are available before pulling in wincrypt. */
+
 #include <windows.h>
 #if defined(__has_include)
 #if __has_include(<wincrypt.h>)
@@ -99,10 +80,7 @@ typedef int pid_t;
 #include <wincrypt.h>
 #endif
 #else
-/* Minimal, parsing-only fallbacks for a few Windows types and macros
- * so editors and static analyzers can parse this header when the full
- * Windows SDK isn't available. Real builds that define __LIBARCHIVE_BUILD
- * will include the system headers above and skip these. */
+
 #ifndef HANDLE
 typedef void *HANDLE;
 #endif
@@ -125,15 +103,14 @@ typedef wchar_t *LPWSTR;
 #define WINAPI
 #endif
 #endif
-// #define	EFTYPE 7
 
 #include "archive_platform_stat.h"
 
 typedef unsigned int id_t;
 
 #if defined(__BORLANDC__)
-#pragma warn - 8068 /* Constant out of range in comparison. */
-#pragma warn - 8072 /* Suspicious pointer arithmetic. */
+#pragma warn - 8068
+#pragma warn - 8072
 #endif
 
 #ifndef NULL
@@ -144,9 +121,8 @@ typedef unsigned int id_t;
 #endif
 #endif
 
-/* Alias the Windows _function to the POSIX equivalent. */
 #define close _close
-#define fcntl(fd, cmd, flg) /* No operation. */
+#define fcntl(fd, cmd, flg)
 #ifndef fileno
 #define fileno _fileno
 #endif
@@ -195,35 +171,34 @@ typedef unsigned int id_t;
 #endif
 
 #ifndef _S_IFIFO
-#define _S_IFIFO 0010000 /* pipe */
+#define _S_IFIFO 0010000
 #endif
 #ifndef _S_IFCHR
-#define _S_IFCHR 0020000 /* character special */
+#define _S_IFCHR 0020000
 #endif
 #ifndef _S_IFDIR
-#define _S_IFDIR 0040000 /* directory */
+#define _S_IFDIR 0040000
 #endif
 #ifndef _S_IFBLK
-#define _S_IFBLK 0060000 /* block special */
+#define _S_IFBLK 0060000
 #endif
 #ifndef _S_IFLNK
-#define _S_IFLNK 0120000 /* symbolic link */
+#define _S_IFLNK 0120000
 #endif
 #ifndef _S_IFSOCK
-#define _S_IFSOCK 0140000 /* socket */
+#define _S_IFSOCK 0140000
 #endif
 #ifndef _S_IFREG
-#define _S_IFREG 0100000 /* regular */
+#define _S_IFREG 0100000
 #endif
 #ifndef _S_IFMT
-#define _S_IFMT 0170000 /* file type mask */
+#define _S_IFMT 0170000
 #endif
 
 #ifndef S_IFIFO
 #define S_IFIFO _S_IFIFO
 #endif
-// #define	S_IFCHR  _S_IFCHR
-// #define	S_IFDIR  _S_IFDIR
+
 #ifndef S_IFBLK
 #define S_IFBLK _S_IFBLK
 #endif
@@ -233,39 +208,37 @@ typedef unsigned int id_t;
 #ifndef S_IFSOCK
 #define S_IFSOCK _S_IFSOCK
 #endif
-// #define	S_IFREG  _S_IFREG
-// #define	S_IFMT   _S_IFMT
 
 #ifndef S_ISBLK
-#define S_ISBLK(m) (((m) & S_IFMT) == S_IFBLK)  /* block special */
-#define S_ISFIFO(m) (((m) & S_IFMT) == S_IFIFO) /* fifo or socket */
-#define S_ISCHR(m) (((m) & S_IFMT) == S_IFCHR)  /* char special */
-#define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)  /* directory */
-#define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)  /* regular file */
+#define S_ISBLK(m) (((m) & S_IFMT) == S_IFBLK)
+#define S_ISFIFO(m) (((m) & S_IFMT) == S_IFIFO)
+#define S_ISCHR(m) (((m) & S_IFMT) == S_IFCHR)
+#define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)
+#define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)
 #endif
-#define S_ISLNK(m) (((m) & S_IFMT) == S_IFLNK)   /* Symbolic link */
-#define S_ISSOCK(m) (((m) & S_IFMT) == S_IFSOCK) /* Socket */
+#define S_ISLNK(m) (((m) & S_IFMT) == S_IFLNK)
+#define S_ISSOCK(m) (((m) & S_IFMT) == S_IFSOCK)
 
-#define _S_ISUID 0004000 /* set user id on execution */
-#define _S_ISGID 0002000 /* set group id on execution */
-#define _S_ISVTX 0001000 /* save swapped text even after use */
+#define _S_ISUID 0004000
+#define _S_ISGID 0002000
+#define _S_ISVTX 0001000
 
 #define S_ISUID _S_ISUID
 #define S_ISGID _S_ISGID
 #define S_ISVTX _S_ISVTX
 
 #define _S_IRWXU (_S_IREAD | _S_IWRITE | _S_IEXEC)
-#define _S_IXUSR _S_IEXEC  /* read permission, user */
-#define _S_IWUSR _S_IWRITE /* write permission, user */
-#define _S_IRUSR _S_IREAD  /* execute/search permission, user */
+#define _S_IXUSR _S_IEXEC
+#define _S_IWUSR _S_IWRITE
+#define _S_IRUSR _S_IREAD
 #define _S_IRWXG (_S_IRWXU >> 3)
-#define _S_IXGRP (_S_IXUSR >> 3) /* read permission, group */
-#define _S_IWGRP (_S_IWUSR >> 3) /* write permission, group */
-#define _S_IRGRP (_S_IRUSR >> 3) /* execute/search permission, group */
+#define _S_IXGRP (_S_IXUSR >> 3)
+#define _S_IWGRP (_S_IWUSR >> 3)
+#define _S_IRGRP (_S_IRUSR >> 3)
 #define _S_IRWXO (_S_IRWXG >> 3)
-#define _S_IXOTH (_S_IXGRP >> 3) /* read permission, other */
-#define _S_IWOTH (_S_IWGRP >> 3) /* write permission, other */
-#define _S_IROTH (_S_IRGRP >> 3) /* execute/search permission, other */
+#define _S_IXOTH (_S_IXGRP >> 3)
+#define _S_IWOTH (_S_IWGRP >> 3)
+#define _S_IROTH (_S_IRGRP >> 3)
 
 #ifndef S_IRWXU
 #define S_IRWXU _S_IRWXU
@@ -290,43 +263,35 @@ typedef unsigned int id_t;
 
 #endif
 
-#define F_DUPFD 0  /* Duplicate file descriptor.  */
-#define F_GETFD 1  /* Get file descriptor flags.  */
-#define F_SETFD 2  /* Set file descriptor flags.  */
-#define F_GETFL 3  /* Get file status flags.  */
-#define F_SETFL 4  /* Set file status flags.  */
-#define F_GETOWN 5 /* Get owner (receiver of SIGIO).  */
-#define F_SETOWN 6 /* Set owner (receiver of SIGIO).  */
-#define F_GETLK 7  /* Get record locking info.  */
-#define F_SETLK 8  /* Set record locking info (non-blocking).  */
-#define F_SETLKW 9 /* Set record locking info (blocking).  */
+#define F_DUPFD 0
+#define F_GETFD 1
+#define F_SETFD 2
+#define F_GETFL 3
+#define F_SETFL 4
+#define F_GETOWN 5
+#define F_SETOWN 6
+#define F_GETLK 7
+#define F_SETLK 8
+#define F_SETLKW 9
 
-/* XXX missing */
-#define F_GETLK64 7  /* Get record locking info.  */
-#define F_SETLK64 8  /* Set record locking info (non-blocking).  */
-#define F_SETLKW64 9 /* Set record locking info (blocking).  */
+#define F_GETLK64 7
+#define F_SETLK64 8
+#define F_SETLKW64 9
 
-/* File descriptor flags used with F_GETFD and F_SETFD.  */
-#define FD_CLOEXEC 1 /* Close on exec.  */
+#define FD_CLOEXEC 1
 
-// NOT SURE IF O_NONBLOCK is OK here but at least the 0x0004 flag is not used by
-// anything else...
-#define O_NONBLOCK 0x0004 /* Non-blocking I/O.  */
-// #define	O_NDELAY   O_NONBLOCK
+#define O_NONBLOCK 0x0004
 
-/* Symbolic constants for the access() function */
 #if !defined(F_OK)
-#define R_OK 4 /*  Test for read permission    */
-#define W_OK 2 /*  Test for write permission   */
-#define X_OK 1 /*  Test for execute permission */
-#define F_OK 0 /*  Test for existence of file  */
+#define R_OK 4
+#define W_OK 2
+#define X_OK 1
+#define F_OK 0
 #endif
 
-/* Functions to circumvent off_t limitations */
 int __la_seek_fstat(int fd, la_seek_stat_t *st);
 int __la_seek_stat(const char *path, la_seek_stat_t *st);
 
-/* Replacement POSIX function */
 extern int __la_fstat(int fd, struct stat *st);
 extern int __la_lstat(const char *path, struct stat *st);
 #if defined(__LA_LSEEK_NEEDED)
@@ -341,7 +306,7 @@ extern ssize_t __la_write(int fd, const void *buf, size_t nbytes);
 
 #define _stat64i32(path, st) __la_stat(path, st)
 #define _stat64(path, st) __la_stat(path, st)
-/* for status returned by la_waitpid */
+
 #define WIFEXITED(sts) ((sts & 0x100) == 0)
 #define WEXITSTATUS(sts) (sts & 0x0FF)
 
@@ -358,12 +323,10 @@ size_t wcrtomb(char *, wchar_t, mbstate_t *);
 #endif
 
 #if defined(WINAPI_FAMILY_PARTITION) && defined(NTDDI_VERSION)
-/* When both macros are available, evaluate the detailed platform check
- * in a nested #if to avoid creating complex tokens in a single
- * preprocessor expression that some toolchains or editors may reject. */
+
 #if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP) &&                      \
     (NTDDI_VERSION < NTDDI_WIN10_VB)
-/* not supported in UWP SDK before 20H1 */
+
 #define GetVolumePathNameW(f, v, c) (0)
 #endif
 #elif defined(_MSC_VER) && _MSC_VER < 1300
@@ -372,7 +335,7 @@ WINBASEAPI BOOL WINAPI GetVolumePathNameW(LPCWSTR lpszFileName,
                                           DWORD cchBufferLength);
 #endif
 #if defined(_MSC_VER) && _MSC_VER < 1300
-#if _WIN32_WINNT < 0x0500 /* windows.h not providing 0x500 API */
+#if _WIN32_WINNT < 0x0500
 typedef struct _FILE_ALLOCATED_RANGE_BUFFER {
   LARGE_INTEGER FileOffset;
   LARGE_INTEGER Length;
@@ -384,4 +347,4 @@ typedef struct _FILE_ALLOCATED_RANGE_BUFFER {
 #endif
 #endif
 
-#endif /* !LIBARCHIVE_ARCHIVE_WINDOWS_H_INCLUDED */
+#endif

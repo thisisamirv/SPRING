@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2023 Tim Kientzle
  * Copyright (c) 2011-2012 Michihiro NAKAJIMA
  * Copyright (c) 2016 Martin Matuska
@@ -37,7 +37,7 @@
 #error "archive.h must be included"
 #endif
 
-#include "archive_acl_private.h" /* For ACL parsing routines. */
+#include "archive_acl_private.h"
 
 #ifndef ARCHIVE_ACL_PRIVATE_H_INCLUDED
 #error "archive_acl_private.h must be included"
@@ -69,9 +69,6 @@
 
 #define tar_min(a, b) ((a) < (b) ? (a) : (b))
 
-/*
- * Layout of POSIX 'ustar' tar header.
- */
 struct archive_entry_header_ustar {
   char name[100];
   char mode[8];
@@ -81,9 +78,9 @@ struct archive_entry_header_ustar {
   char mtime[12];
   char checksum[8];
   char typeflag[1];
-  char linkname[100]; /* "old format" header ends here */
-  char magic[6];      /* For POSIX: "ustar\0" */
-  char version[2];    /* For POSIX: "00" */
+  char linkname[100];
+  char magic[6];
+  char version[2];
   char uname[32];
   char gname[32];
   char rdevmajor[8];
@@ -91,9 +88,6 @@ struct archive_entry_header_ustar {
   char prefix[155];
 };
 
-/*
- * Structure of GNU tar header
- */
 struct gnu_sparse {
   char offset[12];
   char numbytes[12];
@@ -109,7 +103,7 @@ struct archive_entry_header_gnutar {
   char checksum[8];
   char typeflag[1];
   char linkname[100];
-  char magic[8]; /* "ustar  \0" (note blank/blank/null at end) */
+  char magic[8];
   char uname[32];
   char gname[32];
   char rdevmajor[8];
@@ -122,15 +116,8 @@ struct archive_entry_header_gnutar {
   struct gnu_sparse sparse[4];
   char isextended[1];
   char realsize[12];
-  /*
-   * Old GNU format doesn't use POSIX 'prefix' field; they use
-   * the 'L' (longname) entry instead.
-   */
 };
 
-/*
- * Data specific to this format.
- */
 struct sparse_block {
   struct sparse_block *next;
   int64_t offset;
@@ -140,7 +127,7 @@ struct sparse_block {
 
 struct tar {
   struct archive_string entry_pathname;
-  /* For "GNU.sparse.name" and other similar path extensions. */
+
   struct archive_string entry_pathname_override;
   struct archive_string entry_uname;
   struct archive_string entry_gname;
@@ -164,7 +151,7 @@ struct tar {
   int sparse_gnu_minor;
   char sparse_gnu_attributes_seen;
   char filetype;
-  char size_fields; /* Bits defined below */
+  char size_fields;
 
   struct archive_string localname;
   struct archive_string_conv *opt_sconv;
@@ -177,7 +164,6 @@ struct tar {
   int read_concatenated_archives;
 };
 
-/* Track which size fields were present in the headers */
 #define TAR_SIZE_PAX_SIZE 1
 #define TAR_SIZE_GNU_SPARSE_REALSIZE 2
 #define TAR_SIZE_GNU_SPARSE_SIZE 4
@@ -264,20 +250,13 @@ static int tohex(int c);
 static char *url_decode(const char *, size_t);
 static int tar_flush_unconsumed(struct archive_read *, int64_t *);
 
-/* Sanity limits:  These numbers should be low enough to
- * prevent a maliciously-crafted archive from forcing us to
- * allocate extreme amounts of memory.  But of course, they
- * need to be high enough for any correct value.  These
- * will likely need some adjustment as we get more experience. */
-static const size_t guname_limit = 65536; /* Longest uname or gname: 64kiB */
-static const size_t pathname_limit = 1048576; /* Longest path name: 1MiB */
-static const size_t sparse_map_limit =
-    8 * 1048576;                                /* Longest sparse map: 8MiB */
-static const size_t xattr_limit = 16 * 1048576; /* Longest xattr: 16MiB */
-static const size_t fflags_limit = 512;         /* Longest fflags */
-static const size_t acl_limit = 131072; /* Longest textual ACL: 128kiB */
-static const int64_t entry_limit =
-    0xfffffffffffffffLL; /* 2^60 bytes = 1 ExbiByte */
+static const size_t guname_limit = 65536;
+static const size_t pathname_limit = 1048576;
+static const size_t sparse_map_limit = 8 * 1048576;
+static const size_t xattr_limit = 16 * 1048576;
+static const size_t fflags_limit = 512;
+static const size_t acl_limit = 131072;
+static const int64_t entry_limit = 0xfffffffffffffffLL;
 
 int archive_read_support_format_gnutar(struct archive *a) {
   archive_check_magic(a, ARCHIVE_READ_MAGIC, ARCHIVE_STATE_NEW,
@@ -299,7 +278,7 @@ int archive_read_support_format_tar(struct archive *_a) {
     return (ARCHIVE_FATAL);
   }
 #ifdef HAVE_COPYFILE_H
-  /* Set this by default on Mac OS. */
+
   tar->process_mac_extensions = 1;
 #endif
 
@@ -331,46 +310,23 @@ static int archive_read_format_tar_cleanup(struct archive_read *a) {
   return (ARCHIVE_OK);
 }
 
-/*
- * Validate number field
- *
- * This has to be pretty lenient in order to accommodate the enormous
- * variety of tar writers in the world:
- *  = POSIX (IEEE Std 1003.1-1988) ustar requires octal values with leading
- *    zeros and allows fields to be terminated with space or null characters
- *  = Many writers use different termination (in particular, libarchive
- *    omits terminator bytes to squeeze one or two more digits)
- *  = Many writers pad with space and omit leading zeros
- *  = GNU tar and star write base-256 values if numbers are too
- *    big to be represented in octal
- *
- *  Examples of specific tar headers that we should support:
- *  = Perl Archive::Tar terminates uid, gid, devminor and devmajor with two
- *    null bytes, pads size with spaces and other numeric fields with zeroes
- *  = plexus-archiver prior to 2.6.3 (before switching to commons-compress)
- *    may have uid and gid fields filled with spaces without any octal digits
- *    at all and pads all numeric fields with spaces
- *
- * This should tolerate all variants in use.  It will reject a field
- * where the writer just left garbage after a trailing NUL.
- */
 static int validate_number_field(const char *p_field, size_t i_size) {
   unsigned char marker = (unsigned char)p_field[0];
   if (marker == 128 || marker == 255 || marker == 0) {
-    /* Base-256 marker, there's nothing we can check. */
+
     return 1;
   } else {
-    /* Must be octal */
+
     size_t i = 0;
-    /* Skip any leading spaces */
+
     while (i < i_size && p_field[i] == ' ') {
       ++i;
     }
-    /* Skip octal digits. */
+
     while (i < i_size && p_field[i] >= '0' && p_field[i] <= '7') {
       ++i;
     }
-    /* Any remaining characters must be space or NUL padding. */
+
     while (i < i_size) {
       if (p_field[i] != ' ' && p_field[i] != 0) {
         return 0;
@@ -386,53 +342,40 @@ static int archive_read_format_tar_bid(struct archive_read *a, int best_bid) {
   const char *h;
   const struct archive_entry_header_ustar *header;
 
-  (void)best_bid; /* UNUSED */
+  (void)best_bid;
 
   bid = 0;
 
-  /* Now let's look at the actual header and see if it matches. */
   h = __archive_read_ahead(a, 512, NULL);
   if (h == NULL)
     return (-1);
 
-  /* If it's an end-of-archive mark, we can handle it. */
   if (h[0] == 0 && archive_block_is_null(h)) {
-    /*
-     * Usually, I bid the number of bits verified, but
-     * in this case, 4096 seems excessive so I picked 10 as
-     * an arbitrary but reasonable-seeming value.
-     */
+
     return (10);
   }
 
-  /* If it's not an end-of-archive mark, it must have a valid checksum.*/
   if (!checksum(a, h))
     return (0);
-  bid += 48; /* Checksum is usually 6 octal digits. */
+  bid += 48;
 
   header = (const struct archive_entry_header_ustar *)h;
 
-  /* Recognize POSIX formats. */
   if ((memcmp(header->magic, "ustar\0", 6) == 0) &&
       (memcmp(header->version, "00", 2) == 0))
     bid += 56;
 
-  /* Recognize GNU tar format. */
   if ((memcmp(header->magic, "ustar ", 6) == 0) &&
       (memcmp(header->version, " \0", 2) == 0))
     bid += 56;
 
-  /* Type flag must be null, digit or A-Z, a-z. */
   if (header->typeflag[0] != 0 &&
       !(header->typeflag[0] >= '0' && header->typeflag[0] <= '9') &&
       !(header->typeflag[0] >= 'A' && header->typeflag[0] <= 'Z') &&
       !(header->typeflag[0] >= 'a' && header->typeflag[0] <= 'z'))
     return (0);
-  bid += 2; /* 6 bits of variation in an 8-bit field leaves 2 bits. */
+  bid += 2;
 
-  /*
-   * Check format of mode/uid/gid/mtime/size/rdevmajor/rdevminor fields.
-   */
   if (validate_number_field(header->mode, sizeof(header->mode)) == 0 ||
       validate_number_field(header->uid, sizeof(header->uid)) == 0 ||
       validate_number_field(header->gid, sizeof(header->gid)) == 0 ||
@@ -455,7 +398,7 @@ static int archive_read_format_tar_options(struct archive_read *a,
 
   tar = (struct tar *)(a->format->data);
   if (strcmp(key, "compat-2x") == 0) {
-    /* Handle UTF-8 filenames as libarchive 2.x */
+
     tar->compat_2x = (val != NULL && val[0] != 0);
     tar->init_default_conversion = tar->compat_2x;
     return (ARCHIVE_OK);
@@ -480,28 +423,12 @@ static int archive_read_format_tar_options(struct archive_read *a,
     return (ARCHIVE_OK);
   }
 
-  /* Note: The "warn" return is just to inform the options
-   * supervisor that we didn't handle it.  It will generate
-   * a suitable error if no one used this option. */
   return (ARCHIVE_WARN);
 }
 
-/* utility function- this exists to centralize the logic of tracking
- * how much unconsumed data we have floating around, and to consume
- * anything outstanding since we're going to do read_aheads
- */
 static int tar_flush_unconsumed(struct archive_read *a, int64_t *unconsumed) {
   if (*unconsumed) {
-    /*
-                    void *data = (void *)__archive_read_ahead(a, *unconsumed,
-       NULL);
-                     * this block of code is to poison claimed unconsumed space,
-       ensuring
-                     * things break if it is in use still.
-                     * currently it WILL break things, so enable it only for
-       debugging this issue if (data) { memset(data, 0xff, *unconsumed);
-                    }
-    */
+
     int64_t consumed = __archive_read_consume(a, *unconsumed);
     if (consumed != *unconsumed) {
       return (ARCHIVE_FATAL);
@@ -511,29 +438,9 @@ static int tar_flush_unconsumed(struct archive_read *a, int64_t *unconsumed) {
   return (ARCHIVE_OK);
 }
 
-/*
- * The function invoked by archive_read_next_header().  This
- * just sets up a few things and then calls the internal
- * tar_read_header() function below.
- */
 static int archive_read_format_tar_read_header(struct archive_read *a,
                                                struct archive_entry *entry) {
-  /*
-   * When converting tar archives to cpio archives, it is
-   * essential that each distinct file have a distinct inode
-   * number.  To simplify this, we keep a static count here to
-   * assign fake dev/inode numbers to each tar entry.  Note that
-   * pax format archives may overwrite this with something more
-   * useful.
-   *
-   * Ideally, we would track every file read from the archive so
-   * that we could assign the same dev/ino pair to hardlinks,
-   * but the memory required to store a complete lookup table is
-   * probably not worthwhile just to support the relatively
-   * obscure tar->cpio conversion case.
-   */
-  /* TODO: Move this into `struct tar` to avoid conflicts
-   * when reading multiple archives */
+
   static int default_inode;
   static int default_dev;
   struct tar *tar;
@@ -543,10 +450,9 @@ static int archive_read_format_tar_read_header(struct archive_read *a,
   size_t l;
   int64_t unconsumed = 0;
 
-  /* Assign default device/inode values. */
-  archive_entry_set_dev(entry, 1 + default_dev); /* Don't use zero. */
-  archive_entry_set_ino(entry, ++default_inode); /* Don't use zero. */
-  /* Limit generated st_ino number to 16 bits. */
+  archive_entry_set_dev(entry, 1 + default_dev);
+  archive_entry_set_ino(entry, ++default_inode);
+
   if (default_inode >= 0xffff) {
     ++default_dev;
     default_inode = 0;
@@ -555,9 +461,8 @@ static int archive_read_format_tar_read_header(struct archive_read *a,
   tar = (struct tar *)(a->format->data);
   tar->entry_offset = 0;
   gnu_clear_sparse_list(tar);
-  tar->size_fields = 0; /* We don't have any size info yet */
+  tar->size_fields = 0;
 
-  /* Setup default string conversion. */
   tar->sconv = tar->opt_sconv;
   if (tar->sconv == NULL) {
     if (!tar->init_default_conversion) {
@@ -572,10 +477,6 @@ static int archive_read_format_tar_read_header(struct archive_read *a,
 
   tar_flush_unconsumed(a, &unconsumed);
 
-  /*
-   * "non-sparse" files are really just sparse files with
-   * a single block.
-   */
   if (tar->sparse_list == NULL) {
     if (gnu_add_sparse_entry(a, tar, 0, tar->entry_bytes_remaining) !=
         ARCHIVE_OK)
@@ -590,11 +491,7 @@ static int archive_read_format_tar_read_header(struct archive_read *a,
   }
 
   if (r == ARCHIVE_OK && archive_entry_filetype(entry) == AE_IFREG) {
-    /*
-     * "Regular" entry with trailing '/' is really
-     * directory: This is needed for certain old tar
-     * variants and even for some broken newer ones.
-     */
+
     if ((wp = archive_entry_pathname_w(entry)) != NULL) {
       l = wcslen(wp);
       if (l > 0 && wp[l - 1] == L'/') {
@@ -624,7 +521,7 @@ static int archive_read_format_tar_read_data(struct archive_read *a,
   tar = (struct tar *)(a->format->data);
 
   for (;;) {
-    /* Remove exhausted entries from sparse list. */
+
     while (tar->sparse_list != NULL && tar->sparse_list->remaining == 0) {
       p = tar->sparse_list;
       tar->sparse_list = p->next;
@@ -636,7 +533,6 @@ static int archive_read_format_tar_read_data(struct archive_read *a,
       tar->entry_bytes_unconsumed = 0;
     }
 
-    /* If we're at end of file, return EOF. */
     if (tar->sparse_list == NULL || tar->entry_bytes_remaining == 0) {
       int64_t request = tar->entry_bytes_remaining + tar->entry_padding;
 
@@ -658,8 +554,7 @@ static int archive_read_format_tar_read_data(struct archive_read *a,
     }
     if (bytes_read > tar->entry_bytes_remaining)
       bytes_read = (ssize_t)tar->entry_bytes_remaining;
-    /* Don't read more than is available in the
-     * current sparse block. */
+
     if (tar->sparse_list->remaining < bytes_read)
       bytes_read = (ssize_t)tar->sparse_list->remaining;
     *size = bytes_read;
@@ -671,7 +566,6 @@ static int archive_read_format_tar_read_data(struct archive_read *a,
 
     if (!tar->sparse_list->hole)
       return (ARCHIVE_OK);
-    /* Current is hole data and skip this. */
   }
 }
 
@@ -691,16 +585,11 @@ static int archive_read_format_tar_skip(struct archive_read *a) {
   tar->entry_bytes_unconsumed = 0;
   tar->entry_padding = 0;
 
-  /* Free the sparse list. */
   gnu_clear_sparse_list(tar);
 
   return (ARCHIVE_OK);
 }
 
-/*
- * This function resets the accumulated state while reading
- * a header.
- */
 static void tar_reset_header_state(struct tar *tar) {
   tar->pax_hdrcharset_utf8 = 1;
   tar->sparse_gnu_attributes_seen = 0;
@@ -711,59 +600,42 @@ static void tar_reset_header_state(struct tar *tar) {
   archive_string_empty(&tar->entry_linkpath);
 }
 
-/*
- * This function reads and interprets all of the headers associated
- * with a single entry.
- */
 static int tar_read_header(struct archive_read *a, struct tar *tar,
                            struct archive_entry *entry, int64_t *unconsumed) {
   ssize_t bytes;
   int err = ARCHIVE_OK, err2;
-  int eof_fatal = 0; /* EOF is okay at some points... */
+  int eof_fatal = 0;
   const char *h;
   const struct archive_entry_header_ustar *header;
   const struct archive_entry_header_gnutar *gnuheader;
 
-  /* Bitmask of what header types we've seen. */
   int32_t seen_headers = 0;
   static const int32_t seen_A_header = 1;
   static const int32_t seen_g_header = 2;
   static const int32_t seen_K_header = 4;
   static const int32_t seen_L_header = 8;
   static const int32_t seen_V_header = 16;
-  static const int32_t seen_x_header = 32; /* Also X */
+  static const int32_t seen_x_header = 32;
   static const int32_t seen_mac_metadata = 512;
 
   tar_reset_header_state(tar);
 
-  /* Ensure format is set. */
   if (a->archive.archive_format_name == NULL) {
     a->archive.archive_format = ARCHIVE_FORMAT_TAR;
     a->archive.archive_format_name = "tar";
   }
 
-  /*
-   * TODO: Write global/default pax options into
-   * 'entry' struct here before overwriting with
-   * file-specific options.
-   */
-
-  /* Loop over all the headers needed for the next entry */
   for (;;) {
 
-    /* Find the next valid header record. */
     while (1) {
       if (tar_flush_unconsumed(a, unconsumed) != ARCHIVE_OK) {
         return (ARCHIVE_FATAL);
       }
 
-      /* Read 512-byte header record */
       h = __archive_read_ahead(a, 512, &bytes);
-      if (bytes == 0) { /* EOF at a block boundary. */
+      if (bytes == 0) {
         if (eof_fatal) {
-          /* We've read a special header already;
-           * if there's no regular header, then this is
-           * a premature EOF. */
+
           archive_set_error(&a->archive, EINVAL,
                             "Damaged tar archive (end-of-archive within a "
                             "sequence of headers)");
@@ -772,7 +644,7 @@ static int tar_read_header(struct archive_read *a, struct tar *tar,
           return (ARCHIVE_EOF);
         }
       }
-      if (h == NULL) { /* Short block at EOF; this is bad. */
+      if (h == NULL) {
         archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT,
                           "Truncated tar archive"
                           " detected while reading next header");
@@ -781,15 +653,12 @@ static int tar_read_header(struct archive_read *a, struct tar *tar,
       *unconsumed += 512;
 
       if (h[0] == 0 && archive_block_is_null(h)) {
-        /* We found a NULL block which indicates end-of-archive */
 
         if (tar->read_concatenated_archives) {
-          /* We're ignoring NULL blocks, so keep going. */
+
           continue;
         }
 
-        /* Try to consume a second all-null record, as well. */
-        /* If we can't, that's okay. */
         tar_flush_unconsumed(a, unconsumed);
         h = __archive_read_ahead(a, 512, NULL);
         if (h != NULL && h[0] == 0 && archive_block_is_null(h))
@@ -799,15 +668,13 @@ static int tar_read_header(struct archive_read *a, struct tar *tar,
         return (ARCHIVE_EOF);
       }
 
-      /* This is NOT a null block, so it must be a valid header. */
       if (!checksum(a, h)) {
         if (tar_flush_unconsumed(a, unconsumed) != ARCHIVE_OK) {
           return (ARCHIVE_FATAL);
         }
         archive_set_error(&a->archive, EINVAL,
                           "Damaged tar archive (bad header checksum)");
-        /* If we've read some critical information (pax headers, etc)
-         * and _then_ see a bad header, we can't really recover. */
+
         if (eof_fatal) {
           return (ARCHIVE_FATAL);
         } else {
@@ -817,10 +684,9 @@ static int tar_read_header(struct archive_read *a, struct tar *tar,
       break;
     }
 
-    /* Determine the format variant. */
     header = (const struct archive_entry_header_ustar *)h;
     switch (header->typeflag[0]) {
-    case 'A': /* Solaris tar ACL */
+    case 'A':
       if (seen_headers & seen_A_header) {
         archive_set_error(&a->archive, ARCHIVE_ERRNO_MISC,
                           "Redundant 'A' header");
@@ -831,7 +697,7 @@ static int tar_read_header(struct archive_read *a, struct tar *tar,
       a->archive.archive_format_name = "Solaris tar";
       err2 = header_Solaris_ACL(a, tar, entry, h, unconsumed);
       break;
-    case 'g': /* POSIX-standard 'g' header. */
+    case 'g':
       if (seen_headers & seen_g_header) {
         archive_set_error(&a->archive, ARCHIVE_ERRNO_MISC,
                           "Redundant 'g' header");
@@ -842,7 +708,7 @@ static int tar_read_header(struct archive_read *a, struct tar *tar,
       a->archive.archive_format_name = "POSIX pax interchange format";
       err2 = header_pax_global(a, tar, entry, h, unconsumed);
       break;
-    case 'K': /* Long link name (GNU tar, others) */
+    case 'K':
       if (seen_headers & seen_K_header) {
         archive_set_error(&a->archive, ARCHIVE_ERRNO_MISC,
                           "Damaged archive: Redundant 'K' headers may cause "
@@ -854,7 +720,7 @@ static int tar_read_header(struct archive_read *a, struct tar *tar,
       a->archive.archive_format_name = "GNU tar format";
       err2 = header_gnu_longlink(a, tar, entry, h, unconsumed);
       break;
-    case 'L': /* Long filename (GNU tar, others) */
+    case 'L':
       if (seen_headers & seen_L_header) {
         archive_set_error(&a->archive, ARCHIVE_ERRNO_MISC,
                           "Damaged archive: Redundant 'L' headers may cause "
@@ -866,7 +732,7 @@ static int tar_read_header(struct archive_read *a, struct tar *tar,
       a->archive.archive_format_name = "GNU tar format";
       err2 = header_gnu_longname(a, tar, entry, h, unconsumed);
       break;
-    case 'V': /* GNU volume header */
+    case 'V':
       if (seen_headers & seen_V_header) {
         archive_set_error(&a->archive, ARCHIVE_ERRNO_MISC,
                           "Redundant 'V' header");
@@ -877,7 +743,7 @@ static int tar_read_header(struct archive_read *a, struct tar *tar,
       a->archive.archive_format_name = "GNU tar format";
       err2 = header_volume(a, tar, entry, h, unconsumed);
       break;
-    case 'X': /* Used by SUN tar; same as 'x'. */
+    case 'X':
       if (seen_headers & seen_x_header) {
         archive_set_error(&a->archive, ARCHIVE_ERRNO_MISC,
                           "Redundant 'X'/'x' header");
@@ -889,7 +755,7 @@ static int tar_read_header(struct archive_read *a, struct tar *tar,
           "POSIX pax interchange format (Sun variant)";
       err2 = header_pax_extension(a, tar, entry, h, unconsumed);
       break;
-    case 'x': /* POSIX-standard 'x' header. */
+    case 'x':
       if (seen_headers & seen_x_header) {
         archive_set_error(&a->archive, ARCHIVE_ERRNO_MISC,
                           "Redundant 'x' header");
@@ -900,7 +766,7 @@ static int tar_read_header(struct archive_read *a, struct tar *tar,
       a->archive.archive_format_name = "POSIX pax interchange format";
       err2 = header_pax_extension(a, tar, entry, h, unconsumed);
       break;
-    default: /* Regular header: Legacy tar, GNU tar, or ustar */
+    default:
       gnuheader = (const struct archive_entry_header_gnutar *)h;
       if (memcmp(gnuheader->magic, "ustar  \0", 8) == 0) {
         a->archive.archive_format = ARCHIVE_FORMAT_TAR_GNUTAR;
@@ -918,22 +784,11 @@ static int tar_read_header(struct archive_read *a, struct tar *tar,
         err2 = header_old_tar(a, tar, entry, h);
       }
       err = err_combine(err, err2);
-      /* We return warnings or success as-is.  Anything else is fatal. */
+
       if (err < ARCHIVE_WARN) {
         return (ARCHIVE_FATAL);
       }
-      /* Filename of the form `._filename` is an AppleDouble
-       * extension entry.  The body is the macOS metadata blob;
-       * this is followed by another entry with the actual
-       * regular file data.
-       * This design has two drawbacks:
-       * = it's brittle; you might just have a file with such a name
-       * = it duplicates any long pathname extensions
-       *
-       * TODO: This probably shouldn't be here at all.  Consider
-       * just returning the contents as a regular entry here and
-       * then dealing with it when we write data to disk.
-       */
+
       if (tar->process_mac_extensions &&
           ((seen_headers & seen_mac_metadata) == 0) &&
           is_mac_metadata_entry(entry)) {
@@ -942,25 +797,24 @@ static int tar_read_header(struct archive_read *a, struct tar *tar,
           return (ARCHIVE_FATAL);
         }
         err = err_combine(err, err2);
-        /* Note: Other headers can appear again. */
+
         seen_headers = seen_mac_metadata;
         tar_reset_header_state(tar);
         break;
       }
 
-      /* Reconcile GNU sparse attributes */
       if (tar->sparse_gnu_attributes_seen) {
-        /* Only 'S' (GNU sparse) and ustar '0' regular files can be sparse */
+
         if (tar->filetype != 'S' && tar->filetype != '0') {
           archive_set_error(&a->archive, ARCHIVE_ERRNO_MISC,
                             "Non-regular file cannot be sparse");
           return (ARCHIVE_WARN);
         } else if (tar->sparse_gnu_major == 0 && tar->sparse_gnu_minor == 0) {
-          /* Sparse map already parsed from 'x' header */
+
         } else if (tar->sparse_gnu_major == 0 && tar->sparse_gnu_minor == 1) {
-          /* Sparse map already parsed from 'x' header */
+
         } else if (tar->sparse_gnu_major == 1 && tar->sparse_gnu_minor == 0) {
-          /* Sparse map is prepended to file contents */
+
           ssize_t bytes_read;
           bytes_read = gnu_sparse_10_read(a, tar, unconsumed);
           if (bytes_read < 0)
@@ -975,45 +829,32 @@ static int tar_read_header(struct archive_read *a, struct tar *tar,
       return (err);
     }
 
-    /* We're between headers ... */
     err = err_combine(err, err2);
     if (err == ARCHIVE_FATAL)
       return (err);
 
-    /* The GNU volume header and the pax `g` global header
-     * are both allowed to be the only header in an
-     * archive.  If we've seen any other header, a
-     * following EOF is fatal. */
     if ((seen_headers & ~seen_V_header & ~seen_g_header) != 0) {
       eof_fatal = 1;
     }
   }
 }
 
-/*
- * Return true if block checksum is correct.
- */
 static int checksum(struct archive_read *a, const void *h) {
   const unsigned char *bytes;
   const struct archive_entry_header_ustar *header;
   int check, sum;
   size_t i;
 
-  (void)a; /* UNUSED */
+  (void)a;
   bytes = (const unsigned char *)h;
   header = (const struct archive_entry_header_ustar *)h;
 
-  /* Checksum field must hold an octal number */
   for (i = 0; i < sizeof(header->checksum); ++i) {
     char c = header->checksum[i];
     if (c != ' ' && c != '\0' && (c < '0' || c > '7'))
       return 0;
   }
 
-  /*
-   * Test the checksum.  Note that POSIX specifies _unsigned_
-   * bytes for this calculation.
-   */
   sum = (int)tar_atol(header->checksum, sizeof(header->checksum));
   check = 0;
   for (i = 0; i < 148; i++)
@@ -1025,11 +866,6 @@ static int checksum(struct archive_read *a, const void *h) {
   if (sum == check)
     return (1);
 
-  /*
-   * Repeat test with _signed_ bytes, just in case this archive
-   * was created by an old BSD, Solaris, or HP-UX tar with a
-   * broken checksum calculation.
-   */
   check = 0;
   for (i = 0; i < 148; i++)
     check += (signed char)bytes[i];
@@ -1041,16 +877,13 @@ static int checksum(struct archive_read *a, const void *h) {
     return (1);
 
 #if DONT_FAIL_ON_CRC_ERROR
-  /* Speed up fuzzing by pretending the checksum is always right. */
+
   return (1);
 #else
   return (0);
 #endif
 }
 
-/*
- * Return true if this block contains only nulls.
- */
 static int archive_block_is_null(const char *p) {
   unsigned i;
 
@@ -1060,9 +893,6 @@ static int archive_block_is_null(const char *p) {
   return (1);
 }
 
-/*
- * Interpret 'A' Solaris ACL header
- */
 static int header_Solaris_ACL(struct archive_read *a, struct tar *tar,
                               struct archive_entry *entry, const void *h,
                               int64_t *unconsumed) {
@@ -1082,12 +912,6 @@ static int header_Solaris_ACL(struct archive_read *a, struct tar *tar,
     return (err);
   }
 
-  /* TODO: Examine the first characters to see if this
-   * is an AIX ACL descriptor.  We'll likely never support
-   * them, but it would be polite to recognize and warn when
-   * we do see them. */
-
-  /* Leading octal number indicates ACL type and number of entries. */
   p = acl = acl_text.s;
   type = 0;
   while (*p != '\0' && p < acl + size) {
@@ -1109,11 +933,11 @@ static int header_Solaris_ACL(struct archive_read *a, struct tar *tar,
   }
   switch (type & ~0777777) {
   case 01000000:
-    /* POSIX.1e ACL */
+
     acl_type = ARCHIVE_ENTRY_ACL_TYPE_ACCESS;
     break;
   case 03000000:
-    /* NFSv4 ACL */
+
     acl_type = ARCHIVE_ENTRY_ACL_TYPE_NFS4;
     break;
   default:
@@ -1132,7 +956,6 @@ static int header_Solaris_ACL(struct archive_read *a, struct tar *tar,
     return (ARCHIVE_WARN);
   }
 
-  /* ACL text is null-terminated; find the end. */
   size -= (p - acl);
   acl = p;
 
@@ -1150,8 +973,7 @@ static int header_Solaris_ACL(struct archive_read *a, struct tar *tar,
   archive_strncpy(&(tar->localname), acl, p - acl);
   err = archive_acl_from_text_l(archive_entry_acl(entry), tar->localname.s,
                                 acl_type, tar->sconv_acl);
-  /* Workaround: Force perm_is_set() to be correct */
-  /* If this bit were stored in the ACL, this wouldn't be needed */
+
   archive_entry_set_perm(entry, archive_entry_perm(entry));
   if (err != ARCHIVE_OK) {
     if (errno == ENOMEM) {
@@ -1164,9 +986,6 @@ static int header_Solaris_ACL(struct archive_read *a, struct tar *tar,
   return (err);
 }
 
-/*
- * Interpret 'K' long linkname header.
- */
 static int header_gnu_longlink(struct archive_read *a, struct tar *tar,
                                struct archive_entry *entry, const void *h,
                                int64_t *unconsumed) {
@@ -1196,9 +1015,6 @@ static int set_conversion_failed_error(struct archive_read *a,
   return (ARCHIVE_WARN);
 }
 
-/*
- * Interpret 'L' long filename header.
- */
 static int header_gnu_longname(struct archive_read *a, struct tar *tar,
                                struct archive_entry *entry, const void *h,
                                int64_t *unconsumed) {
@@ -1216,18 +1032,15 @@ static int header_gnu_longname(struct archive_read *a, struct tar *tar,
   return (err);
 }
 
-/*
- * Interpret 'V' GNU tar volume header.
- */
 static int header_volume(struct archive_read *a, struct tar *tar,
                          struct archive_entry *entry, const void *h,
                          int64_t *unconsumed) {
   const struct archive_entry_header_ustar *header;
   int64_t size, to_consume;
 
-  (void)a;     /* UNUSED */
-  (void)tar;   /* UNUSED */
-  (void)entry; /* UNUSED */
+  (void)a;
+  (void)tar;
+  (void)entry;
 
   header = (const struct archive_entry_header_ustar *)h;
   size = tar_atol(header->size, sizeof(header->size));
@@ -1239,16 +1052,11 @@ static int header_volume(struct archive_read *a, struct tar *tar,
   return (ARCHIVE_OK);
 }
 
-/*
- * Read the next `size` bytes into the provided string.
- * Null-terminate the string.
- */
 static int read_bytes_to_string(struct archive_read *a,
                                 struct archive_string *as, size_t size,
                                 int64_t *unconsumed) {
   const void *src;
 
-  /* Fail if we can't make our buffer big enough. */
   if (archive_string_ensure(as, size + 1) == NULL) {
     archive_set_error(&a->archive, ENOMEM, "No memory");
     return (ARCHIVE_FATAL);
@@ -1258,7 +1066,6 @@ static int read_bytes_to_string(struct archive_read *a,
     return (ARCHIVE_FATAL);
   }
 
-  /* Read the body into the string. */
   src = __archive_read_ahead(a, size, NULL);
   if (src == NULL) {
     archive_set_error(&a->archive, EINVAL,
@@ -1274,9 +1081,6 @@ static int read_bytes_to_string(struct archive_read *a,
   return (ARCHIVE_OK);
 }
 
-/*
- * Read body of an archive entry into an archive_string object.
- */
 static int read_body_to_string(struct archive_read *a, struct tar *tar,
                                struct archive_string *as, const void *h,
                                int64_t *unconsumed) {
@@ -1284,7 +1088,7 @@ static int read_body_to_string(struct archive_read *a, struct tar *tar,
   const struct archive_entry_header_ustar *header;
   int r;
 
-  (void)tar; /* UNUSED */
+  (void)tar;
   header = (const struct archive_entry_header_ustar *)h;
   size = tar_atol(header->size, sizeof(header->size));
   if (size < 0 || size > entry_limit) {
@@ -1307,21 +1111,6 @@ static int read_body_to_string(struct archive_read *a, struct tar *tar,
   return (r);
 }
 
-/*
- * Parse out common header elements.
- *
- * This would be the same as header_old_tar, except that the
- * filename is handled slightly differently for old and POSIX
- * entries  (POSIX entries support a 'prefix').  This factoring
- * allows header_old_tar and header_ustar
- * to handle filenames differently, while still putting most of the
- * common parsing into one place.
- *
- * This is called _after_ ustar, GNU tar, Schily, etc, special
- * fields have already been parsed into the `tar` structure.
- * So we can make final decisions here about how to reconcile
- * size, mode, etc, information.
- */
 static int header_common(struct archive_read *a, struct tar *tar,
                          struct archive_entry *entry, const void *h) {
   const struct archive_entry_header_ustar *header;
@@ -1331,9 +1120,6 @@ static int header_common(struct archive_read *a, struct tar *tar,
 
   header = (const struct archive_entry_header_ustar *)h;
 
-  /* Parse out the numeric fields (all are octal) */
-
-  /* Split mode handling: Set filetype always, perm only if not already set */
   archive_entry_set_filetype(
       entry, (mode_t)tar_atol(header->mode, sizeof(header->mode)));
   if (!archive_entry_perm_is_set(entry)) {
@@ -1341,7 +1127,6 @@ static int header_common(struct archive_read *a, struct tar *tar,
         entry, (mode_t)tar_atol(header->mode, sizeof(header->mode)));
   }
 
-  /* Set uid, gid, mtime if not already set */
   if (!archive_entry_uid_is_set(entry)) {
     archive_entry_set_uid(entry, tar_atol(header->uid, sizeof(header->uid)));
   }
@@ -1353,23 +1138,19 @@ static int header_common(struct archive_read *a, struct tar *tar,
                             tar_atol(header->mtime, sizeof(header->mtime)), 0);
   }
 
-  /* Reconcile the size info. */
-  /* First, how big is the file on disk? */
   if ((tar->size_fields & TAR_SIZE_GNU_SPARSE_REALSIZE) != 0) {
-    /* GNU sparse format 1.0 uses `GNU.sparse.realsize`
-     * to hold the size of the file on disk. */
+
     tar->disk_size = tar->GNU_sparse_realsize;
   } else if ((tar->size_fields & TAR_SIZE_GNU_SPARSE_SIZE) != 0 &&
              (tar->sparse_gnu_major == 0)) {
-    /* GNU sparse format 0.0 and 0.1 use `GNU.sparse.size`
-     * to hold the size of the file on disk. */
+
     tar->disk_size = tar->GNU_sparse_size;
   } else if ((tar->size_fields & TAR_SIZE_SCHILY_SPARSE_REALSIZE) != 0) {
     tar->disk_size = tar->SCHILY_sparse_realsize;
   } else if ((tar->size_fields & TAR_SIZE_PAX_SIZE) != 0) {
     tar->disk_size = tar->pax_size;
   } else {
-    /* There wasn't a suitable pax header, so use the ustar info */
+
     tar->disk_size = tar_atol(header->size, sizeof(header->size));
   }
 
@@ -1385,11 +1166,9 @@ static int header_common(struct archive_read *a, struct tar *tar,
     archive_entry_set_size(entry, tar->disk_size);
   }
 
-  /* Second, how big is the data in the archive? */
   if ((tar->size_fields & TAR_SIZE_GNU_SPARSE_SIZE) != 0 &&
       (tar->sparse_gnu_major == 1)) {
-    /* GNU sparse format 1.0 uses `GNU.sparse.size`
-     * to hold the size of the data in the archive. */
+
     tar->entry_bytes_remaining = tar->GNU_sparse_size;
   } else if ((tar->size_fields & TAR_SIZE_PAX_SIZE) != 0) {
     tar->entry_bytes_remaining = tar->pax_size;
@@ -1408,15 +1187,10 @@ static int header_common(struct archive_read *a, struct tar *tar,
     return (ARCHIVE_FATAL);
   }
 
-  /* Handle the tar type flag appropriately. */
   tar->filetype = header->typeflag[0];
 
-  /*
-   * TODO: If the linkpath came from Pax extension header, then
-   * we should obey the hdrcharset_utf8 flag when converting these.
-   */
   switch (tar->filetype) {
-  case '1': /* Hard link */
+  case '1':
     archive_entry_set_link_to_hardlink(entry);
     existing_wcs_linkpath = archive_entry_hardlink_w(entry);
     existing_linkpath = archive_entry_hardlink(entry);
@@ -1435,63 +1209,28 @@ static int header_common(struct archive_read *a, struct tar *tar,
       }
       archive_string_free(&linkpath);
     }
-    /*
-     * The following may seem odd, but: Technically, tar
-     * does not store the file type for a "hard link"
-     * entry, only the fact that it is a hard link.  So, I
-     * leave the type zero normally.  But, pax interchange
-     * format allows hard links to have data, which
-     * implies that the underlying entry is a regular
-     * file.
-     */
+
     if (archive_entry_size(entry) > 0)
       archive_entry_set_filetype(entry, AE_IFREG);
 
-    /*
-     * A tricky point: Traditionally, tar readers have
-     * ignored the size field when reading hardlink
-     * entries, and some writers put non-zero sizes even
-     * though the body is empty.  POSIX blessed this
-     * convention in the 1988 standard, but broke with
-     * this tradition in 2001 by permitting hardlink
-     * entries to store valid bodies in pax interchange
-     * format, but not in ustar format.  Since there is no
-     * hard and fast way to distinguish pax interchange
-     * from earlier archives (the 'x' and 'g' entries are
-     * optional, after all), we need a heuristic.
-     */
     if (archive_entry_size(entry) == 0) {
-      /* If the size is already zero, we're done. */
+
     } else if (a->archive.archive_format ==
                ARCHIVE_FORMAT_TAR_PAX_INTERCHANGE) {
-      /* Definitely pax extended; must obey hardlink size. */
+
     } else if (a->archive.archive_format == ARCHIVE_FORMAT_TAR ||
                a->archive.archive_format == ARCHIVE_FORMAT_TAR_GNUTAR) {
-      /* Old-style or GNU tar: we must ignore the size. */
+
       archive_entry_set_size(entry, 0);
       tar->entry_bytes_remaining = 0;
     } else if (archive_read_format_tar_bid(a, 50) > 50) {
-      /*
-       * We don't know if it's pax: If the bid
-       * function sees a valid ustar header
-       * immediately following, then let's ignore
-       * the hardlink size.
-       */
+
       archive_entry_set_size(entry, 0);
       tar->entry_bytes_remaining = 0;
     }
-    /*
-     * TODO: There are still two cases I'd like to handle:
-     *   = a ustar non-pax archive with a hardlink entry at
-     *     end-of-archive.  (Look for block of nulls following?)
-     *   = a pax archive that has not seen any pax headers
-     *     and has an entry which is a hardlink entry storing
-     *     a body containing an uncompressed tar archive.
-     * The first is worth addressing; I don't see any reliable
-     * way to deal with the second possibility.
-     */
+
     break;
-  case '2': /* Symlink */
+  case '2':
     archive_entry_set_link_to_symlink(entry);
     existing_wcs_linkpath = archive_entry_symlink_w(entry);
     existing_linkpath = archive_entry_symlink(entry);
@@ -1514,79 +1253,54 @@ static int header_common(struct archive_read *a, struct tar *tar,
     archive_entry_set_size(entry, 0);
     tar->entry_bytes_remaining = 0;
     break;
-  case '3': /* Character device */
+  case '3':
     archive_entry_set_filetype(entry, AE_IFCHR);
     archive_entry_set_size(entry, 0);
     tar->entry_bytes_remaining = 0;
     break;
-  case '4': /* Block device */
+  case '4':
     archive_entry_set_filetype(entry, AE_IFBLK);
     archive_entry_set_size(entry, 0);
     tar->entry_bytes_remaining = 0;
     break;
-  case '5': /* Dir */
+  case '5':
     archive_entry_set_filetype(entry, AE_IFDIR);
     archive_entry_set_size(entry, 0);
     tar->entry_bytes_remaining = 0;
     break;
-  case '6': /* FIFO device */
+  case '6':
     archive_entry_set_filetype(entry, AE_IFIFO);
     archive_entry_set_size(entry, 0);
     tar->entry_bytes_remaining = 0;
     break;
-  case 'D': /* GNU incremental directory type */
-    /*
-     * No special handling is actually required here.
-     * It might be nice someday to preprocess the file list and
-     * provide it to the client, though.
-     */
+  case 'D':
+
     archive_entry_set_filetype(entry, AE_IFDIR);
     break;
-  case 'M': /* GNU "Multi-volume" (remainder of file from last archive)*/
-    /*
-     * As far as I can tell, this is just like a regular file
-     * entry, except that the contents should be _appended_ to
-     * the indicated file at the indicated offset.  This may
-     * require some API work to fully support.
-     */
+  case 'M':
+
     break;
-  case 'N': /* Old GNU "long filename" entry. */
-    /* The body of this entry is a script for renaming
-     * previously-extracted entries.  Ugh.  It will never
-     * be supported by libarchive. */
+  case 'N':
+
     archive_entry_set_filetype(entry, AE_IFREG);
     break;
-  case 'S': /* GNU sparse files */
-            /*
-             * Sparse files are really just regular files with
-             * sparse information in the extended area.
-             */
-            /* FALLTHROUGH */
-  case '0': /* ustar "regular" file */
-            /* FALLTHROUGH */
-  default:  /* Non-standard file types */
-    /*
-     * Per POSIX: non-recognized types should always be
-     * treated as regular files.
-     */
+  case 'S':
+
+  case '0':
+
+  default:
+
     archive_entry_set_filetype(entry, AE_IFREG);
     break;
   }
   return (err);
 }
 
-/*
- * Parse out header elements for "old-style" tar archives.
- */
 static int header_old_tar(struct archive_read *a, struct tar *tar,
                           struct archive_entry *entry, const void *h) {
   const struct archive_entry_header_ustar *header;
   int err = ARCHIVE_OK, err2;
 
-  /*
-   * Copy filename over (to ensure null termination).
-   * Skip if pathname was already set e.g. by header_gnu_longname()
-   */
   header = (const struct archive_entry_header_ustar *)h;
 
   const char *existing_pathname = archive_entry_pathname(entry);
@@ -1600,7 +1314,6 @@ static int header_old_tar(struct archive_read *a, struct tar *tar,
       return (err);
   }
 
-  /* Grab rest of common fields */
   err2 = header_common(a, tar, entry, h);
   if (err > err2)
     err = err2;
@@ -1609,28 +1322,22 @@ static int header_old_tar(struct archive_read *a, struct tar *tar,
   return (err);
 }
 
-/*
- * Is this likely an AppleDouble extension?
- */
 static int is_mac_metadata_entry(struct archive_entry *entry) {
   const char *p, *name;
   const wchar_t *wp, *wname;
 
   wname = wp = archive_entry_pathname_w(entry);
   if (wp != NULL) {
-    /* Find the last path element. */
+
     for (; *wp != L'\0'; ++wp) {
       if (wp[0] == '/' && wp[1] != L'\0')
         wname = wp + 1;
     }
-    /*
-     * If last path element starts with "._", then
-     * this is a Mac extension.
-     */
+
     if (wname[0] == L'.' && wname[1] == L'_' && wname[2] != L'\0')
       return 1;
   } else {
-    /* Find the last path element. */
+
     name = p = archive_entry_pathname(entry);
     if (p == NULL)
       return (ARCHIVE_FAILED);
@@ -1638,26 +1345,14 @@ static int is_mac_metadata_entry(struct archive_entry *entry) {
       if (p[0] == '/' && p[1] != '\0')
         name = p + 1;
     }
-    /*
-     * If last path element starts with "._", then
-     * this is a Mac extension.
-     */
+
     if (name[0] == '.' && name[1] == '_' && name[2] != '\0')
       return 1;
   }
-  /* Not a mac extension */
+
   return 0;
 }
 
-/*
- * Read a Mac AppleDouble-encoded blob of file metadata,
- * if there is one.
- *
- * TODO: In Libarchive 4, we should consider ripping this
- * out -- instead, return a file starting with `._` as
- * a regular file and let the client (or archive_write logic)
- * handle it.
- */
 static int read_mac_metadata_blob(struct archive_read *a,
                                   struct archive_entry *entry,
                                   int64_t *unconsumed) {
@@ -1665,7 +1360,6 @@ static int read_mac_metadata_blob(struct archive_read *a,
   size_t msize;
   const void *data;
 
-  /* Read the body as a Mac OS metadata blob. */
   size = archive_entry_size(entry);
   msize = (size_t)size;
   if (size < 0 || (uintmax_t)msize != (uintmax_t)size) {
@@ -1673,9 +1367,6 @@ static int read_mac_metadata_blob(struct archive_read *a,
     return (ARCHIVE_FATAL);
   }
 
-  /* TODO: Should this merely skip the overlarge entry and
-   * WARN?  Or is xattr_limit sufficiently large that we can
-   * safely assume anything larger is malicious? */
   if (size > (int64_t)xattr_limit) {
     archive_set_error(&a->archive, ARCHIVE_ERRNO_MISC,
                       "Oversized AppleDouble extension has size %llu > %llu",
@@ -1684,18 +1375,6 @@ static int read_mac_metadata_blob(struct archive_read *a,
     return (ARCHIVE_FATAL);
   }
 
-  /*
-   * TODO: Look beyond the body here to peek at the next header.
-   * If it's a regular header (not an extension header)
-   * that has the wrong name, just return the current
-   * entry as-is, without consuming the body here.
-   * That would reduce the risk of us mis-identifying
-   * an ordinary file that just happened to have
-   * a name starting with "._".
-   *
-   * Q: Is the above idea really possible?  Even
-   * when there are GNU or pax extension entries?
-   */
   if (tar_flush_unconsumed(a, unconsumed) != ARCHIVE_OK) {
     return (ARCHIVE_FATAL);
   }
@@ -1713,18 +1392,15 @@ static int read_mac_metadata_blob(struct archive_read *a,
   return (ARCHIVE_OK);
 }
 
-/*
- * Parse a file header for a pax extended archive entry.
- */
 static int header_pax_global(struct archive_read *a, struct tar *tar,
                              struct archive_entry *entry, const void *h,
                              int64_t *unconsumed) {
   const struct archive_entry_header_ustar *header;
   int64_t size, to_consume;
 
-  (void)a;     /* UNUSED */
-  (void)tar;   /* UNUSED */
-  (void)entry; /* UNUSED */
+  (void)a;
+  (void)tar;
+  (void)entry;
 
   header = (const struct archive_entry_header_ustar *)h;
   size = tar_atol(header->size, sizeof(header->size));
@@ -1738,14 +1414,6 @@ static int header_pax_global(struct archive_read *a, struct tar *tar,
   return (ARCHIVE_OK);
 }
 
-/*
- * Parse a file header for a Posix "ustar" archive entry.  This also
- * handles "pax" or "extended ustar" entries.
- *
- * In order to correctly handle pax attributes (which precede this),
- * we have to skip parsing any field for which the entry already has
- * contents.
- */
 static int header_ustar(struct archive_read *a, struct tar *tar,
                         struct archive_entry *entry, const void *h) {
   const struct archive_entry_header_ustar *header;
@@ -1754,7 +1422,6 @@ static int header_ustar(struct archive_read *a, struct tar *tar,
 
   header = (const struct archive_entry_header_ustar *)h;
 
-  /* Copy name into an internal buffer to ensure null-termination. */
   const char *existing_pathname = archive_entry_pathname(entry);
   const wchar_t *existing_wcs_pathname = archive_entry_pathname_w(entry);
   if ((existing_pathname == NULL || existing_pathname[0] == '\0') &&
@@ -1777,14 +1444,12 @@ static int header_ustar(struct archive_read *a, struct tar *tar,
     archive_string_free(&as);
   }
 
-  /* Handle rest of common fields. */
   r = header_common(a, tar, entry, h);
   if (r == ARCHIVE_FATAL)
     return (r);
   if (r < err)
     err = r;
 
-  /* Handle POSIX ustar fields. */
   const char *existing_uname = archive_entry_uname(entry);
   if (existing_uname == NULL || existing_uname[0] == '\0') {
     if (archive_entry_copy_uname_l(entry, header->uname, sizeof(header->uname),
@@ -1805,7 +1470,6 @@ static int header_ustar(struct archive_read *a, struct tar *tar,
     }
   }
 
-  /* Parse out device numbers only for char and block specials. */
   if (header->typeflag[0] == '3' || header->typeflag[0] == '4') {
     if (!archive_entry_rdev_is_set(entry)) {
       archive_entry_set_rdevmajor(
@@ -1825,26 +1489,13 @@ static int header_ustar(struct archive_read *a, struct tar *tar,
 static int header_pax_extension(struct archive_read *a, struct tar *tar,
                                 struct archive_entry *entry, const void *h,
                                 int64_t *unconsumed) {
-  /* Sanity checks: The largest `x` body I've ever heard of was
-   * a little over 4MB.  So I doubt there has ever been a
-   * well-formed archive with an `x` body over 1GiB.  Similarly,
-   * it seems plausible that no single attribute has ever been
-   * larger than 100MB.  So if we see a larger value here, it's
-   * almost certainly a sign of a corrupted/malicious archive. */
 
-  /* Maximum sane size for extension body: 1 GiB */
-  /* This cannot be raised to larger than 8GiB without
-   * exceeding the maximum size for a standard ustar
-   * entry. */
   const int64_t ext_size_limit = 1024 * 1024 * (int64_t)1024;
-  /* Maximum size for a single line/attr: 100 million characters */
-  /* This cannot be raised to more than 2GiB without exceeding
-   * a `size_t` on 32-bit platforms. */
+
   const size_t max_parsed_line_length = 99999999ULL;
-  /* Largest attribute prolog:  size + name. */
+
   const size_t max_size_name = 512;
 
-  /* Size and padding of the full extension body */
   int64_t ext_size, ext_padding;
   size_t line_length, value_length, name_length;
   ssize_t to_read, did_read;
@@ -1869,7 +1520,7 @@ static int header_pax_extension(struct archive_read *a, struct tar *tar,
 
   ext_padding = 0x1ff & (-ext_size);
   if (ext_size > ext_size_limit) {
-    /* Consume the pax extension body and return an error */
+
     if (ext_size + ext_padding !=
         __archive_read_consume(a, ext_size + ext_padding)) {
       return (ARCHIVE_FATAL);
@@ -1883,16 +1534,15 @@ static int header_pax_extension(struct archive_read *a, struct tar *tar,
     return (ARCHIVE_FATAL);
   }
 
-  /* Parse the size/name of each pax attribute in the body */
   archive_string_init(&attr_name);
   while (ext_size > 0) {
-    /* Read enough bytes to parse the size/name of the next attribute */
+
     to_read = max_size_name;
     if (to_read > ext_size) {
       to_read = ext_size;
     }
     p = __archive_read_ahead(a, to_read, &did_read);
-    if (p == NULL) { /* EOF */
+    if (p == NULL) {
       archive_set_error(&a->archive, EINVAL,
                         "Truncated tar archive"
                         " detected while reading pax attribute name");
@@ -1902,7 +1552,6 @@ static int header_pax_extension(struct archive_read *a, struct tar *tar,
       did_read = ext_size;
     }
 
-    /* Parse size of attribute */
     line_length = 0;
     attr_start = p;
     while (1) {
@@ -1944,7 +1593,6 @@ static int header_pax_extension(struct archive_read *a, struct tar *tar,
       return (ARCHIVE_WARN);
     }
 
-    /* Parse name of attribute */
     if (p >= attr_start + did_read || p >= attr_start + line_length ||
         *p == '=') {
       archive_set_error(&a->archive, ARCHIVE_ERRNO_MISC,
@@ -1967,15 +1615,13 @@ static int header_pax_extension(struct archive_read *a, struct tar *tar,
       p++;
     }
     name_length = p - name_start;
-    p++; // Skip '='
+    p++;
 
-    // Save the name before we consume it
     archive_strncpy(&attr_name, name_start, name_length);
 
     ext_size -= p - attr_start;
     value_length = line_length - (p - attr_start);
 
-    /* Consume size, name, and `=` */
     *unconsumed += p - attr_start;
     if (tar_flush_unconsumed(a, unconsumed) != ARCHIVE_OK) {
       return (ARCHIVE_FATAL);
@@ -1987,13 +1633,10 @@ static int header_pax_extension(struct archive_read *a, struct tar *tar,
       return (ARCHIVE_WARN);
     }
 
-    /* pax_attribute will consume value_length - 1 */
     r = pax_attribute(a, tar, entry, attr_name.s, archive_strlen(&attr_name),
                       value_length - 1, unconsumed);
     ext_size -= value_length - 1;
 
-    // Release the allocated attr_name (either here or before every return in
-    // this function)
     archive_string_free(&attr_name);
 
     if (r < ARCHIVE_WARN) {
@@ -2002,7 +1645,6 @@ static int header_pax_extension(struct archive_read *a, struct tar *tar,
     }
     err = err_combine(err, r);
 
-    /* Consume the `\n` that follows the pax attribute value. */
     if (tar_flush_unconsumed(a, unconsumed) != ARCHIVE_OK) {
       return (ARCHIVE_FATAL);
     }
@@ -2026,16 +1668,11 @@ static int header_pax_extension(struct archive_read *a, struct tar *tar,
   }
   *unconsumed += ext_size + ext_padding;
 
-  /*
-   * Some PAX values -- pathname, linkpath, uname, gname --
-   * can't be copied into the entry until we know the character
-   * set to use:
-   */
   if (!tar->pax_hdrcharset_utf8)
-    /* PAX specified "BINARY", so use the default charset */
+
     sconv = tar->opt_sconv;
   else {
-    /* PAX default UTF-8 */
+
     sconv = archive_string_conversion_from_charset(&(a->archive), "UTF-8", 1);
     if (sconv == NULL)
       return (ARCHIVE_FATAL);
@@ -2043,15 +1680,12 @@ static int header_pax_extension(struct archive_read *a, struct tar *tar,
       archive_string_conversion_set_opt(sconv, SCONV_SET_OPT_UTF8_LIBARCHIVE2X);
   }
 
-  /* Pathname */
   pas = NULL;
   if (archive_strlen(&(tar->entry_pathname_override)) > 0) {
-    /* Prefer GNU.sparse.name attribute if present */
-    /* GNU sparse files store a fake name under the standard
-     * "pathname" key. */
+
     pas = &(tar->entry_pathname_override);
   } else if (archive_strlen(&(tar->entry_pathname)) > 0) {
-    /* Use standard "pathname" PAX extension */
+
     pas = &(tar->entry_pathname);
   }
   if (pas != NULL) {
@@ -2060,11 +1694,11 @@ static int header_pax_extension(struct archive_read *a, struct tar *tar,
       err = set_conversion_failed_error(a, sconv, "Pathname");
       if (err == ARCHIVE_FATAL)
         return (err);
-      /* Use raw name without conversion */
+
       archive_entry_copy_pathname(entry, pas->s);
     }
   }
-  /* Uname */
+
   if (archive_strlen(&(tar->entry_uname)) > 0) {
     if (archive_entry_copy_uname_l(entry, tar->entry_uname.s,
                                    archive_strlen(&(tar->entry_uname)),
@@ -2072,11 +1706,11 @@ static int header_pax_extension(struct archive_read *a, struct tar *tar,
       err = set_conversion_failed_error(a, sconv, "Uname");
       if (err == ARCHIVE_FATAL)
         return (err);
-      /* Use raw name without conversion */
+
       archive_entry_copy_uname(entry, tar->entry_uname.s);
     }
   }
-  /* Gname */
+
   if (archive_strlen(&(tar->entry_gname)) > 0) {
     if (archive_entry_copy_gname_l(entry, tar->entry_gname.s,
                                    archive_strlen(&(tar->entry_gname)),
@@ -2084,11 +1718,11 @@ static int header_pax_extension(struct archive_read *a, struct tar *tar,
       err = set_conversion_failed_error(a, sconv, "Gname");
       if (err == ARCHIVE_FATAL)
         return (err);
-      /* Use raw name without conversion */
+
       archive_entry_copy_gname(entry, tar->entry_gname.s);
     }
   }
-  /* Linkpath */
+
   if (archive_strlen(&(tar->entry_linkpath)) > 0) {
     if (archive_entry_copy_link_l(entry, tar->entry_linkpath.s,
                                   archive_strlen(&(tar->entry_linkpath)),
@@ -2096,13 +1730,11 @@ static int header_pax_extension(struct archive_read *a, struct tar *tar,
       err = set_conversion_failed_error(a, sconv, "Linkpath");
       if (err == ARCHIVE_FATAL)
         return (err);
-      /* Use raw name without conversion */
+
       archive_entry_copy_link(entry, tar->entry_linkpath.s);
     }
   }
 
-  /* Extension may have given us a corrected `entry_bytes_remaining` for
-   * the main entry; update the padding appropriately. */
   tar->entry_padding = 0x1ff & (-tar->entry_bytes_remaining);
   return (err);
 }
@@ -2118,12 +1750,10 @@ static int pax_attribute_LIBARCHIVE_xattr(struct archive_entry *entry,
   if (name_length < 1)
     return 3;
 
-  /* URL-decode name */
   name_decoded = url_decode(name, name_length);
   if (name_decoded == NULL)
     return 2;
 
-  /* Base-64 decode value */
   value_decoded = base64_decode(value, value_length, &value_len);
   if (value_decoded == NULL) {
     free(name_decoded);
@@ -2213,8 +1843,7 @@ static int pax_attribute_SCHILY_acl(struct archive_read *a, struct tar *tar,
   r = archive_acl_from_text_nl(archive_entry_acl(entry), p, value_length, type,
                                tar->sconv_acl);
   __archive_read_consume(a, value_length);
-  /* Workaround: Force perm_is_set() to be correct */
-  /* If this bit were stored in the ACL, this wouldn't be needed */
+
   archive_entry_set_perm(entry, archive_entry_perm(entry));
   if (r != ARCHIVE_OK) {
     if (r == ARCHIVE_FATAL) {
@@ -2292,18 +1921,6 @@ static int pax_attribute_read_number(struct archive_read *a,
   return (ARCHIVE_OK);
 }
 
-/*
- * Parse a single key=value attribute.
- *
- * POSIX reserves all-lowercase keywords.  Vendor-specific extensions
- * should always have keywords of the form "VENDOR.attribute" In
- * particular, it's quite feasible to support many different vendor
- * extensions here.  I'm using "LIBARCHIVE" for extensions unique to
- * this library.
- *
- * TODO: Investigate other vendor-specific extensions and see if
- * any of them look useful.
- */
 static int pax_attribute(struct archive_read *a, struct tar *tar,
                          struct archive_entry *entry, const char *key,
                          size_t key_length, size_t value_length,
@@ -2316,31 +1933,28 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
 
   switch (key[0]) {
   case 'G':
-    /* GNU.* extensions */
+
     if (key_length > 4 && memcmp(key, "GNU.", 4) == 0) {
       key += 4;
       key_length -= 4;
 
-      /* GNU.sparse marks the existence of GNU sparse information */
       if (key_length == 6 && memcmp(key, "sparse", 6) == 0) {
         tar->sparse_gnu_attributes_seen = 1;
       }
 
-      /* GNU.sparse.* extensions */
       else if (key_length > 7 && memcmp(key, "sparse.", 7) == 0) {
         tar->sparse_gnu_attributes_seen = 1;
         key += 7;
         key_length -= 7;
 
-        /* GNU "0.0" sparse pax format. */
         if (key_length == 9 && memcmp(key, "numblocks", 9) == 0) {
-          /* GNU.sparse.numblocks */
+
           tar->sparse_offset = -1;
           tar->sparse_numbytes = -1;
           tar->sparse_gnu_major = 0;
           tar->sparse_gnu_minor = 0;
         } else if (key_length == 6 && memcmp(key, "offset", 6) == 0) {
-          /* GNU.sparse.offset */
+
           if ((err = pax_attribute_read_number(a, value_length, &t)) ==
               ARCHIVE_OK) {
             tar->sparse_offset = t;
@@ -2354,7 +1968,7 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
           }
           return (err);
         } else if (key_length == 8 && memcmp(key, "numbytes", 8) == 0) {
-          /* GNU.sparse.numbytes */
+
           if ((err = pax_attribute_read_number(a, value_length, &t)) ==
               ARCHIVE_OK) {
             tar->sparse_numbytes = t;
@@ -2368,11 +1982,7 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
           }
           return (err);
         } else if (key_length == 4 && memcmp(key, "size", 4) == 0) {
-          /* GNU.sparse.size */
-          /* This is either the size of stored entry OR the size of data on
-           * disk, depending on which GNU sparse format version is in use. Since
-           * pax attributes can be in any order, we may not actually know at
-           * this point how to interpret this. */
+
           if ((err = pax_attribute_read_number(a, value_length, &t)) ==
               ARCHIVE_OK) {
             tar->GNU_sparse_size = t;
@@ -2381,9 +1991,8 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
           return (err);
         }
 
-        /* GNU "0.1" sparse pax format. */
         else if (key_length == 3 && memcmp(key, "map", 3) == 0) {
-          /* GNU.sparse.map */
+
           tar->sparse_gnu_major = 0;
           tar->sparse_gnu_minor = 1;
           if (value_length > sparse_map_limit) {
@@ -2408,9 +2017,8 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
           return (err);
         }
 
-        /* GNU "1.0" sparse pax format */
         else if (key_length == 5 && memcmp(key, "major", 5) == 0) {
-          /* GNU.sparse.major */
+
           if ((err = pax_attribute_read_number(a, value_length, &t)) ==
                   ARCHIVE_OK &&
               t >= 0 && t <= 10) {
@@ -2418,7 +2026,7 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
           }
           return (err);
         } else if (key_length == 5 && memcmp(key, "minor", 5) == 0) {
-          /* GNU.sparse.minor */
+
           if ((err = pax_attribute_read_number(a, value_length, &t)) ==
                   ARCHIVE_OK &&
               t >= 0 && t <= 10) {
@@ -2426,13 +2034,7 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
           }
           return (err);
         } else if (key_length == 4 && memcmp(key, "name", 4) == 0) {
-          /* GNU.sparse.name */
-          /*
-           * The real filename; when storing sparse
-           * files, GNU tar puts a synthesized name into
-           * the regular 'path' attribute in an attempt
-           * to limit confusion. ;-)
-           */
+
           if (value_length > pathname_limit) {
             *unconsumed += value_length;
             err = ARCHIVE_WARN;
@@ -2442,7 +2044,7 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
           }
           return (err);
         } else if (key_length == 8 && memcmp(key, "realsize", 8) == 0) {
-          /* GNU.sparse.realsize = size of file on disk */
+
           if ((err = pax_attribute_read_number(a, value_length, &t)) ==
               ARCHIVE_OK) {
             tar->GNU_sparse_realsize = t;
@@ -2454,25 +2056,20 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
     }
     break;
   case 'L':
-    /* LIBARCHIVE extensions */
+
     if (key_length > 11 && memcmp(key, "LIBARCHIVE.", 11) == 0) {
       key_length -= 11;
       key += 11;
 
-      /* TODO: Handle arbitrary extended attributes... */
-      /*
-        if (strcmp(key, "LIBARCHIVE.xxxxxxx") == 0)
-                archive_entry_set_xxxxxx(entry, value);
-      */
       if (key_length == 12 && memcmp(key, "creationtime", 12) == 0) {
-        /* LIBARCHIVE.creationtime */
+
         if ((err = pax_attribute_read_time(a, value_length, &t, &n,
                                            unconsumed)) == ARCHIVE_OK) {
           archive_entry_set_birthtime(entry, t, n);
         }
         return (err);
       } else if (key_length == 11 && memcmp(key, "symlinktype", 11) == 0) {
-        /* LIBARCHIVE.symlinktype */
+
         if (value_length < 16) {
           p = __archive_read_ahead(a, value_length, &bytes_read);
           if (p == NULL) {
@@ -2515,7 +2112,7 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
           }
           if (pax_attribute_LIBARCHIVE_xattr(entry, key, key_length, p,
                                              value_length)) {
-            /* TODO: Unable to parse xattr */
+
             err = ARCHIVE_WARN;
           }
         }
@@ -2525,8 +2122,7 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
     }
     break;
   case 'R':
-    /* GNU tar uses RHT.security header to store SELinux xattrs
-     * SCHILY.xattr.security.selinux == RHT.security.selinux */
+
     if (key_length == 20 && memcmp(key, "RHT.security.selinux", 20) == 0) {
       if (value_length > xattr_limit) {
         archive_set_error(
@@ -2534,7 +2130,7 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
             "Ignoring unreasonably large security.selinux attribute:"
             " %llu > %llu",
             (unsigned long long)value_length, (unsigned long long)xattr_limit);
-        /* TODO: Should this be FAILED instead? */
+
         err = ARCHIVE_WARN;
       } else {
         p = __archive_read_ahead(a, value_length, &bytes_read);
@@ -2545,7 +2141,7 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
           return (ARCHIVE_FATAL);
         }
         if (pax_attribute_RHT_security_selinux(entry, p, value_length)) {
-          /* TODO: Unable to parse xattr */
+
           err = ARCHIVE_WARN;
         }
       }
@@ -2554,7 +2150,7 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
     }
     break;
   case 'S':
-    /* SCHILY.* extensions used by "star" archiver */
+
     if (key_length > 7 && memcmp(key, "SCHILY.", 7) == 0) {
       key_length -= 7;
       key += 7;
@@ -2562,7 +2158,7 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
       if (key_length == 10 && memcmp(key, "acl.access", 10) == 0) {
         err = pax_attribute_SCHILY_acl(a, tar, entry, value_length,
                                        ARCHIVE_ENTRY_ACL_TYPE_ACCESS);
-        // TODO: Mark mode as set
+
         return (err);
       } else if (key_length == 11 && memcmp(key, "acl.default", 11) == 0) {
         err = pax_attribute_SCHILY_acl(a, tar, entry, value_length,
@@ -2571,7 +2167,7 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
       } else if (key_length == 7 && memcmp(key, "acl.ace", 7) == 0) {
         err = pax_attribute_SCHILY_acl(a, tar, entry, value_length,
                                        ARCHIVE_ENTRY_ACL_TYPE_NFS4);
-        // TODO: Mark mode as set
+
         return (err);
       } else if (key_length == 8 && memcmp(key, "devmajor", 8) == 0) {
         if ((err = pax_attribute_read_number(a, value_length, &t)) ==
@@ -2589,7 +2185,7 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
         if (value_length < fflags_limit) {
           p = __archive_read_ahead(a, value_length, &bytes_read);
           if (p == NULL) {
-            /* Truncated archive */
+
             archive_set_error(&a->archive, EINVAL,
                               "Truncated archive"
                               " detected while reading SCHILY.fflags");
@@ -2598,7 +2194,7 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
           archive_entry_copy_fflags_text_len(entry, p, value_length);
           err = ARCHIVE_OK;
         } else {
-          /* Overlong fflags field */
+
           err = ARCHIVE_WARN;
         }
         __archive_read_consume(a, value_length);
@@ -2629,7 +2225,7 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
         }
         return (err);
       }
-      /* TODO: Is there a SCHILY.sparse.size similar to GNU.sparse.size ? */
+
       else if (key_length > 6 && memcmp(key, "xattr.", 6) == 0) {
         key_length -= 6;
         key += 6;
@@ -2643,7 +2239,7 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
           }
           if (pax_attribute_SCHILY_xattr(entry, key, key_length, p,
                                          value_length)) {
-            /* TODO: Unable to parse xattr */
+
             err = ARCHIVE_WARN;
           }
         } else {
@@ -2657,13 +2253,13 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
         return (err);
       }
     }
-    /* SUN.* extensions from Solaris tar */
+
     if (key_length > 4 && memcmp(key, "SUN.", 4) == 0) {
       key_length -= 4;
       key += 4;
 
       if (key_length == 9 && memcmp(key, "holesdata", 9) == 0) {
-        /* SUN.holesdata */
+
         if (value_length < sparse_map_limit) {
           p = __archive_read_ahead(a, value_length, &bytes_read);
           if (p == NULL) {
@@ -2706,9 +2302,8 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
       }
       return (err);
     } else if (key_length == 7 && memcmp(key, "charset", 7) == 0) {
-      /* TODO: Publish charset information in entry. */
+
     } else if (key_length == 7 && memcmp(key, "comment", 7) == 0) {
-      /* TODO: Publish comment in entry. */
     }
     break;
   case 'g':
@@ -2740,7 +2335,7 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
           return (ARCHIVE_FATAL);
         }
         if (value_length == 6 && memcmp(p, "BINARY", 6) == 0) {
-          /* Binary  mode. */
+
           tar->pax_hdrcharset_utf8 = 0;
           err = ARCHIVE_OK;
         } else if (value_length == 23 &&
@@ -2748,7 +2343,7 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
           tar->pax_hdrcharset_utf8 = 1;
           err = ARCHIVE_OK;
         } else {
-          /* TODO: Unrecognized character set */
+
           err = ARCHIVE_WARN;
         }
       } else {
@@ -2763,7 +2358,7 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
     }
     break;
   case 'l':
-    /* pax interchange doesn't distinguish hardlink vs. symlink. */
+
     if (key_length == 8 && memcmp(key, "linkpath", 8) == 0) {
       if (value_length > pathname_limit) {
         *unconsumed += value_length;
@@ -2797,19 +2392,18 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
     }
     break;
   case 'r':
-    /* POSIX has reserved 'realtime.*' */
+
     break;
   case 's':
-    /* POSIX has reserved 'security.*' */
-    /* Someday: if (strcmp(key, "security.acl") == 0) { ... } */
+
     if (key_length == 4 && memcmp(key, "size", 4) == 0) {
-      /* "size" is the size of the data in the entry. */
+
       if ((err = pax_attribute_read_number(a, value_length, &t)) ==
           ARCHIVE_OK) {
         tar->pax_size = t;
         tar->size_fields |= TAR_SIZE_PAX_SIZE;
       } else if (t == INT64_MAX) {
-        /* Note: pax_attr_read_number returns INT64_MAX on overflow or < 0 */
+
         tar->entry_bytes_remaining = 0;
         archive_set_error(&a->archive, ARCHIVE_ERRNO_MISC,
                           "Tar size attribute overflow");
@@ -2838,16 +2432,10 @@ static int pax_attribute(struct archive_read *a, struct tar *tar,
     break;
   }
 
-  /* Unrecognized key, just skip the entire value. */
   __archive_read_consume(a, value_length);
   return (err);
 }
 
-/*
- * Parse a decimal time value, which may include a fractional portion
- *
- * Sets ps to INT64_MIN on error.
- */
 static void pax_time(const char *p, size_t length, int64_t *ps, long *pn) {
   char digit;
   int64_t s;
@@ -2884,7 +2472,6 @@ static void pax_time(const char *p, size_t length, int64_t *ps, long *pn) {
 
   *ps = s * sign;
 
-  /* Calculate nanoseconds. */
   *pn = 0;
 
   if (length <= 0 || *p != '.')
@@ -2901,9 +2488,6 @@ static void pax_time(const char *p, size_t length, int64_t *ps, long *pn) {
   } while (l /= 10);
 }
 
-/*
- * Parse GNU tar header
- */
 static int header_gnutar(struct archive_read *a, struct tar *tar,
                          struct archive_entry *entry, const void *h,
                          int64_t *unconsumed) {
@@ -2911,13 +2495,6 @@ static int header_gnutar(struct archive_read *a, struct tar *tar,
   int64_t t;
   int err = ARCHIVE_OK;
 
-  /*
-   * GNU header is like POSIX ustar, except 'prefix' is
-   * replaced with some other fields. This also means the
-   * filename is stored as in old-style archives.
-   */
-
-  /* Copy filename over (to ensure null termination). */
   header = (const struct archive_entry_header_gnutar *)h;
   const char *existing_pathname = archive_entry_pathname(entry);
   const wchar_t *existing_wcs_pathname = archive_entry_pathname_w(entry);
@@ -2931,10 +2508,6 @@ static int header_gnutar(struct archive_read *a, struct tar *tar,
     }
   }
 
-  /* Fields common to ustar and GNU */
-  /* XXX Can the following be factored out since it's common
-   * to ustar and gnu tar?  Is it okay to move it down into
-   * header_common, perhaps?  */
   const char *existing_uname = archive_entry_uname(entry);
   if (existing_uname == NULL || existing_uname[0] == '\0') {
     if (archive_entry_copy_uname_l(entry, header->uname, sizeof(header->uname),
@@ -2955,7 +2528,6 @@ static int header_gnutar(struct archive_read *a, struct tar *tar,
     }
   }
 
-  /* Parse out device numbers only for char and block specials */
   if (header->typeflag[0] == '3' || header->typeflag[0] == '4') {
     if (!archive_entry_rdev_is_set(entry)) {
       archive_entry_set_rdevmajor(
@@ -2967,7 +2539,6 @@ static int header_gnutar(struct archive_read *a, struct tar *tar,
     archive_entry_set_rdev(entry, 0);
   }
 
-  /* Grab GNU-specific fields. */
   if (!archive_entry_atime_is_set(entry)) {
     t = tar_atol(header->atime, sizeof(header->atime));
     if (t > 0)
@@ -2980,7 +2551,7 @@ static int header_gnutar(struct archive_read *a, struct tar *tar,
   }
 
   if (header->realsize[0] != 0) {
-    /* Treat as a synonym for the pax GNU.sparse.realsize attr */
+
     tar->GNU_sparse_realsize =
         tar_atol(header->realsize, sizeof(header->realsize));
     tar->size_fields |= TAR_SIZE_GNU_SPARSE_REALSIZE;
@@ -2991,11 +2562,9 @@ static int header_gnutar(struct archive_read *a, struct tar *tar,
       return (ARCHIVE_FATAL);
   } else {
     if (header->isextended[0] != 0) {
-      /* XXX WTF? XXX */
     }
   }
 
-  /* Grab fields common to all tar variants. */
   err = header_common(a, tar, entry, h);
   if (err == ARCHIVE_FATAL)
     return (err);
@@ -3039,18 +2608,6 @@ static void gnu_clear_sparse_list(struct tar *tar) {
   }
   tar->sparse_last = NULL;
 }
-
-/*
- * GNU tar old-format sparse data.
- *
- * GNU old-format sparse data is stored in a fixed-field
- * format.  Offset/size values are 11-byte octal fields (same
- * format as 'size' field in ustart header).  These are
- * stored in the header, allocating subsequent header blocks
- * as needed.  Extending the header in this way is a pretty
- * severe POSIX violation; this design has earned GNU tar a
- * lot of criticism.
- */
 
 static int gnu_sparse_old_read(struct archive_read *a, struct tar *tar,
                                const struct archive_entry_header_gnutar *header,
@@ -3103,31 +2660,6 @@ static int gnu_sparse_old_parse(struct archive_read *a, struct tar *tar,
   return (ARCHIVE_OK);
 }
 
-/*
- * GNU tar sparse format 0.0
- *
- * Beginning with GNU tar 1.15, sparse files are stored using
- * information in the pax extended header.  The GNU tar maintainers
- * have gone through a number of variations in the process of working
- * out this scheme; fortunately, they're all numbered.
- *
- * Sparse format 0.0 uses attribute GNU.sparse.numblocks to store the
- * number of blocks, and GNU.sparse.offset/GNU.sparse.numbytes to
- * store offset/size for each block.  The repeated instances of these
- * latter fields violate the pax specification (which frowns on
- * duplicate keys), so this format was quickly replaced.
- */
-
-/*
- * GNU tar sparse format 0.1
- *
- * This version replaced the offset/numbytes attributes with
- * a single "map" attribute that stored a list of integers.  This
- * format had two problems: First, the "map" attribute could be very
- * long, which caused problems for some implementations.  More
- * importantly, the sparse data was lost when extracted by archivers
- * that didn't recognize this extension.
- */
 static int gnu_sparse_01_parse(struct archive_read *a, struct tar *tar,
                                const char *p, size_t length) {
   const char *e;
@@ -3160,29 +2692,6 @@ static int gnu_sparse_01_parse(struct archive_read *a, struct tar *tar,
   }
 }
 
-/*
- * GNU tar sparse format 1.0
- *
- * The idea: The offset/size data is stored as a series of base-10
- * ASCII numbers prepended to the file data, so that dearchivers that
- * don't support this format will extract the block map along with the
- * data and a separate post-process can restore the sparseness.
- *
- * Unfortunately, GNU tar 1.16 had a bug that added unnecessary
- * padding to the body of the file when using this format.  GNU tar
- * 1.17 corrected this bug without bumping the version number, so
- * it's not possible to support both variants.  This code supports
- * the later variant at the expense of not supporting the former.
- *
- * This variant also introduced the GNU.sparse.major/GNU.sparse.minor
- * attributes.
- */
-
-/*
- * Read the next line from the input, and parse it as a decimal
- * integer followed by '\n'.  Returns positive integer value or
- * negative on error.
- */
 static int64_t gnu_sparse_10_atol(struct archive_read *a, struct tar *tar,
                                   int64_t *remaining, int64_t *unconsumed) {
   int64_t l, limit, last_digit_limit;
@@ -3194,10 +2703,6 @@ static int64_t gnu_sparse_10_atol(struct archive_read *a, struct tar *tar,
   limit = INT64_MAX / base;
   last_digit_limit = INT64_MAX % base;
 
-  /*
-   * Skip any lines starting with '#'; GNU tar specs
-   * don't require this, but they should.
-   */
   do {
     bytes_read =
         readline(a, tar, &p, (ssize_t)tar_min(*remaining, 100), unconsumed);
@@ -3214,53 +2719,47 @@ static int64_t gnu_sparse_10_atol(struct archive_read *a, struct tar *tar,
       return (ARCHIVE_WARN);
     digit = *p - '0';
     if (l > limit || (l == limit && digit > last_digit_limit))
-      l = INT64_MAX; /* Truncate on overflow. */
+      l = INT64_MAX;
     else
       l = (l * base) + digit;
     p++;
     bytes_read--;
   }
-  /* TODO: Error message. */
+
   return (ARCHIVE_WARN);
 }
 
-/*
- * Returns length (in bytes) of the sparse data description
- * that was read.
- */
 static int64_t gnu_sparse_10_read(struct archive_read *a, struct tar *tar,
                                   int64_t *unconsumed) {
   int64_t bytes_read, entries, offset, size, to_skip, remaining;
 
-  /* Clear out the existing sparse list. */
   gnu_clear_sparse_list(tar);
 
   remaining = tar->entry_bytes_remaining;
 
-  /* Parse entries. */
   entries = gnu_sparse_10_atol(a, tar, &remaining, unconsumed);
   if (entries < 0)
     return (ARCHIVE_FATAL);
-  /* Parse the individual entries. */
+
   while (entries-- > 0) {
-    /* Parse offset/size */
+
     offset = gnu_sparse_10_atol(a, tar, &remaining, unconsumed);
     if (offset < 0)
       return (ARCHIVE_FATAL);
     size = gnu_sparse_10_atol(a, tar, &remaining, unconsumed);
     if (size < 0)
       return (ARCHIVE_FATAL);
-    /* Add a new sparse entry. */
+
     if (gnu_add_sparse_entry(a, tar, offset, size) != ARCHIVE_OK)
       return (ARCHIVE_FATAL);
   }
-  /* Skip rest of block... */
+
   if (tar_flush_unconsumed(a, unconsumed) != ARCHIVE_OK) {
     return (ARCHIVE_FATAL);
   }
   bytes_read = tar->entry_bytes_remaining - remaining;
   to_skip = 0x1ff & -bytes_read;
-  /* Fail if tar->entry_bytes_remaing would get negative */
+
   if (to_skip > remaining)
     return (ARCHIVE_FATAL);
   if (to_skip != __archive_read_consume(a, to_skip))
@@ -3268,12 +2767,6 @@ static int64_t gnu_sparse_10_read(struct archive_read *a, struct tar *tar,
   return (bytes_read + to_skip);
 }
 
-/*
- * Solaris pax extension for a sparse file. This is recorded with the
- * data and hole pairs. The way recording sparse information by Solaris'
- * pax simply indicates where data and sparse are, so the stored contents
- * consist of both data and hole.
- */
 static int pax_attribute_SUN_holesdata(struct archive_read *a, struct tar *tar,
                                        struct archive_entry *entry,
                                        const char *p, size_t length) {
@@ -3281,7 +2774,7 @@ static int pax_attribute_SUN_holesdata(struct archive_read *a, struct tar *tar,
   int64_t start, end;
   int hole = 1;
 
-  (void)entry; /* UNUSED */
+  (void)entry;
 
   end = 0;
   if (length <= 0)
@@ -3322,38 +2815,13 @@ static int pax_attribute_SUN_holesdata(struct archive_read *a, struct tar *tar,
   }
 }
 
-/*-
- * Convert text->integer.
- *
- * Traditional tar formats (including POSIX) specify base-8 for
- * all of the standard numeric fields.  This is a significant limitation
- * in practice:
- *   = file size is limited to 8GB
- *   = rdevmajor and rdevminor are limited to 21 bits
- *   = uid/gid are limited to 21 bits
- *
- * There are two workarounds for this:
- *   = pax extended headers, which use variable-length string fields
- *   = GNU tar and STAR both allow either base-8 or base-256 in
- *      most fields.  The high bit is set to indicate base-256.
- *
- * On read, this implementation supports both extensions.
- */
 static int64_t tar_atol(const char *p, size_t char_cnt) {
-  /*
-   * Technically, GNU tar considers a field to be in base-256
-   * only if the first byte is 0xff or 0x80.
-   */
+
   if (*p & 0x80)
     return (tar_atol256(p, char_cnt));
   return (tar_atol8(p, char_cnt));
 }
 
-/*
- * Note that this implementation does not (and should not!) obey
- * locale settings; you cannot simply substitute strtol here, since
- * it does obey locale.
- */
 static int64_t tar_atol_base_n(const char *p, size_t char_cnt, int base) {
   int64_t l, maxval, limit, last_digit_limit;
   int digit, sign;
@@ -3362,9 +2830,6 @@ static int64_t tar_atol_base_n(const char *p, size_t char_cnt, int base) {
   limit = INT64_MAX / base;
   last_digit_limit = INT64_MAX % base;
 
-  /* the pointer will not be dereferenced if char_cnt is zero
-   * due to the way the && operator is evaluated.
-   */
   while (char_cnt != 0 && (*p == ' ' || *p == '\t')) {
     p++;
     char_cnt--;
@@ -3386,7 +2851,7 @@ static int64_t tar_atol_base_n(const char *p, size_t char_cnt, int base) {
     digit = *p - '0';
     while (digit >= 0 && digit < base && char_cnt != 0) {
       if (l > limit || (l == limit && digit >= last_digit_limit)) {
-        return maxval; /* Truncate on overflow. */
+        return maxval;
       }
       l = (l * base) + digit;
       digit = *++p - '0';
@@ -3404,22 +2869,11 @@ static int64_t tar_atol10(const char *p, size_t char_cnt) {
   return tar_atol_base_n(p, char_cnt, 10);
 }
 
-/*
- * Parse a base-256 integer.  This is just a variable-length
- * twos-complement signed binary value in big-endian order, except
- * that the high-order bit is ignored.  The values here can be up to
- * 12 bytes, so we need to be careful about overflowing 64-bit
- * (8-byte) integers.
- *
- * This code unashamedly assumes that the local machine uses 8-bit
- * bytes and twos-complement arithmetic.
- */
 static int64_t tar_atol256(const char *_p, size_t char_cnt) {
   uint64_t l;
   const unsigned char *p = (const unsigned char *)_p;
   unsigned char c, neg;
 
-  /* Extend 7-bit 2s-comp to 8-bit 2s-comp, decide sign. */
   c = *p;
   if (c & 0x40) {
     neg = 0xff;
@@ -3431,8 +2885,6 @@ static int64_t tar_atol256(const char *_p, size_t char_cnt) {
     l = 0;
   }
 
-  /* If more than 8 bytes, check that we can ignore
-   * high-order bits without overflow. */
   while (char_cnt > sizeof(int64_t)) {
     --char_cnt;
     if (c != neg)
@@ -3440,27 +2892,19 @@ static int64_t tar_atol256(const char *_p, size_t char_cnt) {
     c = *++p;
   }
 
-  /* c is first byte that fits; if sign mismatch, return overflow */
   if ((c ^ neg) & 0x80) {
     return neg ? INT64_MIN : INT64_MAX;
   }
 
-  /* Accumulate remaining bytes. */
   while (--char_cnt > 0) {
     l = (l << 8) | c;
     c = *++p;
   }
   l = (l << 8) | c;
-  /* Return signed twos-complement value. */
+
   return (int64_t)(l);
 }
 
-/*
- * Returns length of line (including trailing newline)
- * or negative on error.  'start' argument is updated to
- * point to first character of line.  This avoids copying
- * when possible.
- */
 static ssize_t readline(struct archive_read *a, struct tar *tar,
                         const char **start, ssize_t limit,
                         int64_t *unconsumed) {
@@ -3477,9 +2921,9 @@ static ssize_t readline(struct archive_read *a, struct tar *tar,
   t = __archive_read_ahead(a, 1, &bytes_read);
   if (bytes_read <= 0 || t == NULL)
     return (ARCHIVE_FATAL);
-  s = t; /* Start of line? */
+  s = t;
   p = memchr(t, '\n', bytes_read);
-  /* If we found '\n' in the read buffer, return pointer to that. */
+
   if (p != NULL) {
     bytes_read = 1 + ((const char *)p) - s;
     if (bytes_read > limit) {
@@ -3492,7 +2936,7 @@ static ssize_t readline(struct archive_read *a, struct tar *tar,
     return (bytes_read);
   }
   *unconsumed = bytes_read;
-  /* Otherwise, we need to accumulate in a line buffer. */
+
   for (;;) {
     if (total_size + bytes_read > limit) {
       archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT,
@@ -3506,18 +2950,18 @@ static ssize_t readline(struct archive_read *a, struct tar *tar,
     memcpy(tar->line.s + total_size, t, bytes_read);
     tar_flush_unconsumed(a, unconsumed);
     total_size += bytes_read;
-    /* If we found '\n', clean up and return. */
+
     if (p != NULL) {
       *start = tar->line.s;
       return (total_size);
     }
-    /* Read some more. */
+
     t = __archive_read_ahead(a, 1, &bytes_read);
     if (bytes_read <= 0 || t == NULL)
       return (ARCHIVE_FATAL);
-    s = t; /* Start of line? */
+    s = t;
     p = memchr(t, '\n', bytes_read);
-    /* If we found '\n', trim the read. */
+
     if (p != NULL) {
       bytes_read = 1 + ((const char *)p) - s;
     }
@@ -3525,15 +2969,6 @@ static ssize_t readline(struct archive_read *a, struct tar *tar,
   }
 }
 
-/*
- * base64_decode - Base64 decode
- *
- * This accepts most variations of base-64 encoding, including:
- *    * with or without line breaks
- *    * with or without the final group padded with '=' or '_' characters
- * (The most economical Base-64 variant does not pad the last group and
- * omits line breaks; RFC1341 used for MIME requires both.)
- */
 static char *base64_decode(const char *s, size_t len, size_t *out_len) {
   static const unsigned char digits[64] = {
       'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
@@ -3545,7 +2980,6 @@ static char *base64_decode(const char *s, size_t len, size_t *out_len) {
   char *out, *d;
   const unsigned char *src = (const unsigned char *)s;
 
-  /* If the decode table is not yet initialized, prepare it. */
   if (decode_table[digits[1]] != 1) {
     unsigned i;
     memset(decode_table, 0xff, sizeof(decode_table));
@@ -3553,8 +2987,6 @@ static char *base64_decode(const char *s, size_t len, size_t *out_len) {
       decode_table[digits[i]] = i;
   }
 
-  /* Allocate enough space to hold the entire output. */
-  /* Note that we may not use all of this... */
   out = malloc(len - len / 4 + 1);
   if (out == NULL) {
     *out_len = 0;
@@ -3563,16 +2995,16 @@ static char *base64_decode(const char *s, size_t len, size_t *out_len) {
   d = out;
 
   while (len > 0) {
-    /* Collect the next group of (up to) four characters. */
+
     int v = 0;
     int group_size = 0;
     while (group_size < 4 && len > 0) {
-      /* '=' or '_' padding indicates final group. */
+
       if (*src == '=' || *src == '_') {
         len = 0;
         break;
       }
-      /* Skip illegal characters (including line breaks) */
+
       if (*src > 127 || *src < 32 || decode_table[*src] == 0xff) {
         len--;
         src++;
@@ -3583,20 +3015,20 @@ static char *base64_decode(const char *s, size_t len, size_t *out_len) {
       len--;
       group_size++;
     }
-    /* Align a short group properly. */
+
     v <<= 6 * (4 - group_size);
-    /* Unpack the group we just collected. */
+
     switch (group_size) {
     case 4:
       d[2] = v & 0xff;
-      /* FALLTHROUGH */
+
     case 3:
       d[1] = (v >> 8) & 0xff;
-      /* FALLTHROUGH */
+
     case 2:
       d[0] = (v >> 16) & 0xff;
       break;
-    case 1: /* this is invalid! */
+    case 1:
       break;
     }
     d += group_size * 3 / 4;
@@ -3615,18 +3047,17 @@ static char *url_decode(const char *in, size_t length) {
     return (NULL);
   for (s = in, d = out; length > 0 && *s != '\0';) {
     if (s[0] == '%' && length > 2) {
-      /* Try to convert % escape */
+
       int digit1 = tohex(s[1]);
       int digit2 = tohex(s[2]);
       if (digit1 >= 0 && digit2 >= 0) {
-        /* Looks good, consume three chars */
+
         s += 3;
         length -= 3;
-        /* Convert output */
+
         *d++ = ((digit1 << 4) | digit2);
         continue;
       }
-      /* Else fall through and treat '%' as normal char */
     }
     *d++ = *s++;
     --length;

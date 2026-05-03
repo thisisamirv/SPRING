@@ -1,12 +1,8 @@
-#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) ||             \
+﻿#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) ||             \
     defined(_M_IX86)
 #include "common_defs.h"
 #include <immintrin.h>
 
-/*
- * Default definitions of template parameters for standalone IDE parsing.
- * These are overridden when this file is included as a template.
- */
 #define CONCAT_IMPL(a, b) a##b
 #define CONCAT(a, b) CONCAT_IMPL(a, b)
 #define ADD_SUFFIX(name) CONCAT(name, SUFFIX)
@@ -36,57 +32,6 @@
     s2 %= DIVISOR;                                                             \
   } while (0)
 #endif
-
-/*
-
- * x86/adler32_template.h - template for vectorized Adler-32 implementations
- *
- * Copyright 2016 Eric Biggers
- *
- * Permission is hereby granted, free of charge, to any person
- * obtaining a copy of this software and associated documentation
- * files (the "Software"), to deal in the Software without
- * restriction, including without limitation the rights to use,
- * copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following
- * conditions:
- *
- * The above copyright notice and this permission notice shall be
- * included in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
- * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
- * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
- * OTHER DEALINGS IN THE SOFTWARE.
- */
-
-/*
- * This file is a "template" for instantiating Adler-32 functions for x86.
- * The "parameters" are:
- *
- * SUFFIX:
- *	Name suffix to append to all instantiated functions.
- * ATTRIBUTES:
- *	Target function attributes to use.  Must satisfy the dependencies of the
- *	other parameters as follows:
- *	   VL=16 && USE_VNNI=0 && USE_AVX512=0: at least sse2
- *	   VL=32 && USE_VNNI=0 && USE_AVX512=0: at least avx2
- *	   VL=32 && USE_VNNI=1 && USE_AVX512=0: at least avx2,avxvnni
- *	   VL=32 && USE_VNNI=1 && USE_AVX512=1: at least
- * avx512bw,avx512vl,avx512vnni VL=64 && USE_VNNI=1 && USE_AVX512=1: at least
- * avx512bw,avx512vnni (Other combinations are not useful and have not been
- * tested.) VL: Vector length in bytes.  Must be 16, 32, or 64. USE_VNNI: If 1,
- * use the VNNI dot product based algorithm. If 0, use the legacy SSE2 and AVX2
- * compatible algorithm. USE_AVX512: If 1, take advantage of AVX-512 features
- * such as masking.  This doesn't enable the use of 512-bit vectors; the vector
- * length is controlled by VL.  If 0, assume that the CPU might not support
- * AVX-512.
- */
 
 #if VL == 16
 #define vec_t __m128i
@@ -166,7 +111,6 @@
 #define VADD32_7X(a, b, c, d, e, f, g)                                         \
   VADD32(VADD32_3X((a), (b), (c)), VADD32_4X((d), (e), (f), (g)))
 
-/* Sum the 32-bit elements of v_s1 and add them to s1, and likewise for s2. */
 #undef reduce_to_32bits
 static inline ATTRIBUTES void
 ADD_SUFFIX(reduce_to_32bits)(vec_t v_s1, vec_t v_s2, u32 *s1_p, u32 *s2_p) {
@@ -184,13 +128,13 @@ ADD_SUFFIX(reduce_to_32bits)(vec_t v_s1, vec_t v_s2, u32 *s1_p, u32 *s2_p) {
     v_s1_256 = v_s1;
     v_s2_256 = v_s2;
 #else
-    /* Reduce 512 bits to 256 bits. */
+
     v_s1_256 = _mm256_add_epi32(_mm512_extracti64x4_epi64(v_s1, 0),
                                 _mm512_extracti64x4_epi64(v_s1, 1));
     v_s2_256 = _mm256_add_epi32(_mm512_extracti64x4_epi64(v_s2, 0),
                                 _mm512_extracti64x4_epi64(v_s2, 1));
 #endif
-    /* Reduce 256 bits to 128 bits. */
+
     v_s1_128 = _mm_add_epi32(_mm256_extracti128_si256(v_s1_256, 0),
                              _mm256_extracti128_si256(v_s1_256, 1));
     v_s2_128 = _mm_add_epi32(_mm256_extracti128_si256(v_s2_256, 0),
@@ -198,12 +142,6 @@ ADD_SUFFIX(reduce_to_32bits)(vec_t v_s1, vec_t v_s2, u32 *s1_p, u32 *s2_p) {
   }
 #endif
 
-  /*
-   * Reduce 128 bits to 32 bits.
-   *
-   * If the bytes were summed into v_s1 using psadbw + paddd, then ignore
-   * the odd-indexed elements of v_s1_128 since they are zero.
-   */
 #if USE_VNNI
   v_s1_128 = _mm_add_epi32(v_s1_128, _mm_shuffle_epi32(v_s1_128, 0x31));
 #endif
@@ -221,7 +159,7 @@ static ATTRIBUTES MAYBE_UNUSED u32 ADD_SUFFIX(adler32_x86)(u32 adler,
                                                            size_t len) {
 
 #if USE_VNNI
-  /* This contains the bytes [VL, VL-1, VL-2, ..., 1]. */
+
   static const u8 _aligned_attribute(VL) raw_mults[VL] = {
 #if VL == 64
       64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49,
@@ -234,11 +172,7 @@ static ATTRIBUTES MAYBE_UNUSED u32 ADD_SUFFIX(adler32_x86)(u32 adler,
   };
   const vec_t ones = VSET1_8(1);
 #else
-  /*
-   * This contains the 16-bit values [2*VL, 2*VL - 1, 2*VL - 2, ..., 1].
-   * For VL==32 the ordering is weird because it has to match the way that
-   * vpunpcklbw and vpunpckhbw work on 128-bit lanes separately.
-   */
+
   static const u16 _aligned_attribute(VL) raw_mults[4][VL / 2] = {
 #if VL == 16
       {32, 31, 30, 29, 28, 27, 26, 25},
@@ -263,10 +197,6 @@ static ATTRIBUTES MAYBE_UNUSED u32 ADD_SUFFIX(adler32_x86)(u32 adler,
   u32 s1 = adler & 0xFFFF;
   u32 s2 = adler >> 16;
 
-  /*
-   * If the length is large and the pointer is misaligned, align it.
-   * For smaller lengths, just take the misaligned load penalty.
-   */
   if (unlikely(len > 65536 && ((uintptr_t)p & (VL - 1)))) {
     do {
       s1 += *p++;
@@ -278,21 +208,9 @@ static ATTRIBUTES MAYBE_UNUSED u32 ADD_SUFFIX(adler32_x86)(u32 adler,
   }
 
 #if USE_VNNI
-  /*
-   * This is Adler-32 using the vpdpbusd instruction from AVX512VNNI or
-   * AVX-VNNI.  vpdpbusd multiplies the unsigned bytes of one vector by
-   * the signed bytes of another vector and adds the sums in groups of 4
-   * to the 32-bit elements of a third vector.  We use it in two ways:
-   * multiplying the data bytes by a sequence like 64,63,62,...,1 for
-   * calculating part of s2, and multiplying the data bytes by an all-ones
-   * sequence 1,1,1,...,1 for calculating s1 and part of s2.  The all-ones
-   * trick seems to be faster than the alternative of vpsadbw + vpaddd.
-   */
+
   while (len) {
-    /*
-     * Calculate the length of the next data chunk such that s1 and
-     * s2 are guaranteed to not exceed UINT32_MAX.
-     */
+
     size_t n = MIN(len, MAX_CHUNK_LEN & ~(4 * VL - 1));
     vec_t mults = VLOAD(raw_mults);
     vec_t v_s1 = zeroes;
@@ -320,11 +238,6 @@ static ATTRIBUTES MAYBE_UNUSED u32 ADD_SUFFIX(adler32_x86)(u32 adler,
         vec_t data_c = VLOADU(p + 2 * VL);
         vec_t data_d = VLOADU(p + 3 * VL);
 
-        /*
-         * Workaround for gcc bug where it generates
-         * unnecessary move instructions
-         * (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=107892)
-         */
 #if GCC_PREREQ(1, 0)
         __asm__("" : "+v"(data_a), "+v"(data_b), "+v"(data_c), "+v"(data_d));
 #endif
@@ -344,7 +257,6 @@ static ATTRIBUTES MAYBE_UNUSED u32 ADD_SUFFIX(adler32_x86)(u32 adler,
         v_s1_c = VDPBUSD(v_s1_c, data_c, ones);
         v_s1_d = VDPBUSD(v_s1_d, data_d, ones);
 
-        /* Same gcc bug workaround.  See above */
 #if GCC_PREREQ(1, 0) && !defined(ARCH_X86_32)
         __asm__(""
                 : "+v"(v_s2), "+v"(v_s2_b), "+v"(v_s2_c), "+v"(v_s2_d),
@@ -356,15 +268,6 @@ static ATTRIBUTES MAYBE_UNUSED u32 ADD_SUFFIX(adler32_x86)(u32 adler,
         n -= 4 * VL;
       } while (n >= 4 * VL);
 
-      /*
-       * Reduce into v_s1 and v_s2 as follows:
-       *
-       * v_s2 = v_s2 + v_s2_b + v_s2_c + v_s2_d +
-       *	  (4*VL)*(v_s1_sums   + v_s1_sums_b +
-       *		  v_s1_sums_c + v_s1_sums_d) +
-       *	  (3*VL)*v_s1 + (2*VL)*v_s1_b + VL*v_s1_c
-       * v_s1 = v_s1 + v_s1_b + v_s1_c + v_s1_d
-       */
       tmp0 = VADD32(v_s1, v_s1_b);
       tmp1 = VADD32(v_s1, v_s1_c);
       v_s1_sums = VADD32_4X(v_s1_sums, v_s1_sums_b, v_s1_sums_c, v_s1_sums_d);
@@ -374,7 +277,6 @@ static ATTRIBUTES MAYBE_UNUSED u32 ADD_SUFFIX(adler32_x86)(u32 adler,
                     VSLL32(tmp1, LOG2_VL), v_s2, v_s2_b, v_s2_c, v_s2_d);
     }
 
-    /* Process the last 0 <= n < 4*VL bytes of the chunk. */
     if (n >= 2 * VL) {
       const vec_t data_a = VLOADU(p + 0 * VL);
       const vec_t data_b = VLOADU(p + 1 * VL);
@@ -389,7 +291,7 @@ static ATTRIBUTES MAYBE_UNUSED u32 ADD_SUFFIX(adler32_x86)(u32 adler,
       n -= 2 * VL;
     }
     if (n) {
-      /* Process the last 0 < n < 2*VL bytes of the chunk. */
+
       vec_t data;
 
       v_s2 = VADD32(v_s2, VMULLO32(v_s1, VSET1_32(n)));
@@ -403,10 +305,7 @@ static ATTRIBUTES MAYBE_UNUSED u32 ADD_SUFFIX(adler32_x86)(u32 adler,
         n -= VL;
         mults = VADD8(mults, VSET1_8(-VL));
       }
-      /*
-       * Process the last 0 < n <= VL bytes of the chunk.
-       * Utilize a masked load if it's available.
-       */
+
 #if USE_AVX512
       data = VMASKZ_LOADU((mask_t)-1 >> (VL - n), p);
 #else
@@ -422,38 +321,10 @@ static ATTRIBUTES MAYBE_UNUSED u32 ADD_SUFFIX(adler32_x86)(u32 adler,
     s1 %= DIVISOR;
     s2 %= DIVISOR;
   }
-#else /* USE_VNNI */
-  /*
-   * This is Adler-32 for SSE2 and AVX2.
-   *
-   * To horizontally sum bytes, use psadbw + paddd, where one of the
-   * arguments to psadbw is all-zeroes.
-   *
-   * For the s2 contribution from (2*VL - i)*data[i] for each of the 2*VL
-   * bytes of each iteration of the inner loop, use punpck{l,h}bw + paddw
-   * to sum, for each i across iterations, byte i into a corresponding
-   * 16-bit counter in v_byte_sums_*.  After the inner loop, use pmaddwd
-   * to multiply each counter by (2*VL - i), then add the products to s2.
-   *
-   * An alternative implementation would use pmaddubsw and pmaddwd in the
-   * inner loop to do (2*VL - i)*data[i] directly and add the products in
-   * groups of 4 to 32-bit counters.  However, on average that approach
-   * seems to be slower than the current approach which delays the
-   * multiplications.  Also, pmaddubsw requires SSSE3; the current
-   * approach keeps the implementation aligned between SSE2 and AVX2.
-   *
-   * The inner loop processes 2*VL bytes per iteration.  Increasing this
-   * to 4*VL doesn't seem to be helpful here.
-   */
+#else
+
   while (len) {
-    /*
-     * Calculate the length of the next data chunk such that s1 and
-     * s2 are guaranteed to not exceed UINT32_MAX, and every
-     * v_byte_sums_* counter is guaranteed to not exceed INT16_MAX.
-     * It's INT16_MAX, not UINT16_MAX, because v_byte_sums_* are
-     * used with pmaddwd which does signed multiplication.  In the
-     * SSE2 case this limits chunks to 4096 bytes instead of 5536.
-     */
+
     size_t n = MIN(len, MIN(2 * VL * (INT16_MAX / UINT8_MAX), MAX_CHUNK_LEN) &
                             ~(2 * VL - 1));
     len -= n;
@@ -480,11 +351,7 @@ static ATTRIBUTES MAYBE_UNUSED u32 ADD_SUFFIX(adler32_x86)(u32 adler,
         v_byte_sums_d = VADD16(v_byte_sums_d, VUNPACKHI8(data_b, zeroes));
         v_s1 =
             VADD32(v_s1, VADD32(VSAD8(data_a, zeroes), VSAD8(data_b, zeroes)));
-        /*
-         * Workaround for gcc bug where it generates
-         * unnecessary move instructions
-         * (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=107892)
-         */
+
 #if GCC_PREREQ(1, 0)
         __asm__(""
                 : "+x"(v_s1), "+x"(v_s1_sums), "+x"(v_byte_sums_a),
@@ -495,24 +362,16 @@ static ATTRIBUTES MAYBE_UNUSED u32 ADD_SUFFIX(adler32_x86)(u32 adler,
         n -= 2 * VL;
       } while (n >= 2 * VL);
 
-      /*
-       * Calculate v_s2 as (2*VL)*v_s1_sums +
-       * [2*VL, 2*VL - 1, 2*VL - 2, ..., 1] * v_byte_sums.
-       * Then update s1 and s2 from v_s1 and v_s2.
-       */
       v_s2 = VADD32_5X(
           VSLL32(v_s1_sums, LOG2_VL + 1), VMADD16(v_byte_sums_a, mults_a),
           VMADD16(v_byte_sums_b, mults_b), VMADD16(v_byte_sums_c, mults_c),
           VMADD16(v_byte_sums_d, mults_d));
       reduce_to_32bits(v_s1, v_s2, &s1, &s2);
     }
-    /*
-     * Process the last 0 <= n < 2*VL bytes of the chunk using
-     * scalar instructions and reduce s1 and s2 mod DIVISOR.
-     */
+
     ADLER32_CHUNK(s1, s2, p, n);
   }
-#endif /* !USE_VNNI */
+#endif
   return (s2 << 16) | s1;
 }
 
@@ -545,4 +404,4 @@ static ATTRIBUTES MAYBE_UNUSED u32 ADD_SUFFIX(adler32_x86)(u32 adler,
 #undef CONCAT_IMPL
 #undef CONCAT
 #undef ADD_SUFFIX
-#endif /* __x86_64__ || __i386__ || _M_X64 || _M_IX86 */
+#endif

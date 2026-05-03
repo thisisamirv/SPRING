@@ -1,7 +1,4 @@
-/*-----------------------------------------------------------*/
-/* Block Sorting, Lossless Data Compression Library.         */
-/* Lempel Ziv Prediction                                     */
-/*-----------------------------------------------------------*/
+﻿
 
 /*--
 
@@ -1482,7 +1479,3 @@ int bsc_lzp_decompress(const unsigned char *input, unsigned char *output, int n,
 
   return (result == LIBBSC_NO_ERROR) ? dataSize : result;
 }
-
-/*-----------------------------------------------------------*/
-/* End                                               lzp.cpp */
-/*-----------------------------------------------------------*/

@@ -1,12 +1,11 @@
-#pragma once
+﻿#pragma once
 
 #include <string>
 
 namespace rapidgzip {
 enum class [[nodiscard]] Error {
   NONE = 0x00,
-  /* No error, there simply is no data at all for e.g. reading the gzip header,
-   * which might indicate a valid end of file. */
+
   END_OF_FILE = 0x01,
 
   EOF_ZERO_STRING = 0x10,

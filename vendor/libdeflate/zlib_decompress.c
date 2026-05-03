@@ -1,4 +1,4 @@
-/*
+﻿/*
  * zlib_decompress.c - decompress with a zlib wrapper
  *
  * Copyright 2016 Eric Biggers
@@ -42,27 +42,21 @@ LIBDEFLATEAPI enum libdeflate_result libdeflate_zlib_decompress_ex(
   if (in_nbytes < ZLIB_MIN_OVERHEAD)
     return LIBDEFLATE_BAD_DATA;
 
-  /* 2 byte header: CMF and FLG  */
   hdr = get_unaligned_be16(in_next);
   in_next += 2;
 
-  /* FCHECK */
   if ((hdr % 31) != 0)
     return LIBDEFLATE_BAD_DATA;
 
-  /* CM */
   if (((hdr >> 8) & 0xF) != ZLIB_CM_DEFLATE)
     return LIBDEFLATE_BAD_DATA;
 
-  /* CINFO */
   if ((hdr >> 12) > ZLIB_CINFO_32K_WINDOW)
     return LIBDEFLATE_BAD_DATA;
 
-  /* FDICT */
   if ((hdr >> 5) & 1)
     return LIBDEFLATE_BAD_DATA;
 
-  /* Compressed data  */
   result = libdeflate_deflate_decompress_ex(
       d, in_next, in_end - ZLIB_FOOTER_SIZE - in_next, out, out_nbytes_avail,
       &actual_in_nbytes, actual_out_nbytes_ret);
@@ -76,7 +70,6 @@ LIBDEFLATEAPI enum libdeflate_result libdeflate_zlib_decompress_ex(
 
   in_next += actual_in_nbytes;
 
-  /* ADLER32  */
   if (libdeflate_adler32(1, out, actual_out_nbytes) !=
       get_unaligned_be32(in_next))
     return LIBDEFLATE_BAD_DATA;

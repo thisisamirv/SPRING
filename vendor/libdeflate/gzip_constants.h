@@ -1,6 +1,4 @@
-/*
- * gzip_constants.h - constants for the gzip wrapper format
- */
+﻿
 
 #ifndef LIB_GZIP_CONSTANTS_H
 #define LIB_GZIP_CONSTANTS_H
@@ -42,4 +40,4 @@
 #define GZIP_OS_RISCOS 13
 #define GZIP_OS_UNKNOWN 255
 
-#endif /* LIB_GZIP_CONSTANTS_H */
+#endif

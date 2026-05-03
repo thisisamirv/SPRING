@@ -1,4 +1,4 @@
-# cmake-format: off
+﻿# cmake-format: off
 # Copyright (c) 2025, Intel Corporation
 #
 # Redistribution and use in source and binary forms, with or without
@@ -24,17 +24,13 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # cmake-format: on
-
-# CRC module CMake configuration
 set(CRC_BASE_SOURCES
     crc/crc_base.c
     crc/crc64_base.c
 )
-
 set(CRC_BASE_ALIASES_SOURCES
     crc/crc_base_aliases.c
 )
-
 set(CRC_X86_64_SOURCES
     crc/crc16_t10dif_01.asm
     crc/crc16_t10dif_by4.asm
@@ -71,7 +67,6 @@ set(CRC_X86_64_SOURCES
     crc/crc32_gzip_refl_by8_02.asm
     crc/crc32_gzip_refl_by16_10.asm
 )
-
 set(CRC_AARCH64_SOURCES
     crc/aarch64/crc_multibinary_arm.S
     crc/aarch64/crc_aarch64_dispatcher.c
@@ -97,29 +92,20 @@ set(CRC_AARCH64_SOURCES
     crc/aarch64/crc32_mix_neoverse_n1.S
     crc/aarch64/crc32c_mix_neoverse_n1.S
 )
-
-# Build source list based on architecture
 set(CRC_SOURCES ${CRC_BASE_SOURCES})
-
 if(CPU_X86_64)
     if(DEFINED USE_NASM AND USE_NASM)
         list(APPEND CRC_SOURCES ${CRC_X86_64_SOURCES})
     else()
-        # NASM not available on this platform/toolchain: use portable C aliases
         list(APPEND CRC_SOURCES ${CRC_BASE_ALIASES_SOURCES})
     endif()
 elseif(CPU_AARCH64)
     list(APPEND CRC_SOURCES ${CRC_AARCH64_SOURCES})
 elseif(CPU_PPC64LE OR CPU_RISCV64 OR CPU_UNDEFINED)
-    # These architectures use base aliases
     list(APPEND CRC_SOURCES ${CRC_BASE_ALIASES_SOURCES})
 endif()
-
-# Headers exported by CRC module
 set(CRC_HEADERS
     include/crc.h
     include/crc64.h
 )
-
-# Add to main extern headers list
 list(APPEND EXTERN_HEADERS ${CRC_HEADERS})

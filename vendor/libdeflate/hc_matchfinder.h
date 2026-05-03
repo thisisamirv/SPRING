@@ -1,4 +1,4 @@
-/*
+﻿/*
  * hc_matchfinder.h - Lempel-Ziv matchfinding with a hash table of linked lists
  *
  * Copyright 2016 Eric Biggers
@@ -119,19 +119,13 @@
 
 struct MATCHFINDER_ALIGNED hc_matchfinder {
 
-  /* The hash table for finding length 3 matches  */
   mf_pos_t hash3_tab[1UL << HC_MATCHFINDER_HASH3_ORDER];
 
-  /* The hash table which contains the first nodes of the linked lists for
-   * finding length 4+ matches  */
   mf_pos_t hash4_tab[1UL << HC_MATCHFINDER_HASH4_ORDER];
 
-  /* The "next node" references for the linked lists.  The "next node" of
-   * the node for the sequence with position 'pos' is 'next_tab[pos]'.  */
   mf_pos_t next_tab[MATCHFINDER_WINDOW_SIZE];
 };
 
-/* Prepare the matchfinder for a new input buffer.  */
 static forceinline void hc_matchfinder_init(struct hc_matchfinder *mf) {
   STATIC_ASSERT(HC_MATCHFINDER_TOTAL_HASH_SIZE % MATCHFINDER_SIZE_ALIGNMENT ==
                 0);
@@ -145,37 +139,6 @@ static forceinline void hc_matchfinder_slide_window(struct hc_matchfinder *mf) {
   matchfinder_rebase((mf_pos_t *)mf, sizeof(*mf));
 }
 
-/*
- * Find the longest match longer than 'best_len' bytes.
- *
- * @mf
- *	The matchfinder structure.
- * @in_base_p
- *	Location of a pointer which points to the place in the input data the
- *	matchfinder currently stores positions relative to.  This may be updated
- *	by this function.
- * @in_next
- *	Pointer to the next position in the input buffer, i.e. the sequence
- *	being matched against.
- * @best_len
- *	Require a match longer than this length.
- * @max_len
- *	The maximum permissible match length at this position.
- * @nice_len
- *	Stop searching if a match of at least this length is found.
- *	Must be <= @max_len.
- * @max_search_depth
- *	Limit on the number of potential matches to consider.  Must be >= 1.
- * @next_hashes
- *	The precomputed hash codes for the sequence beginning at @in_next.
- *	These will be used and then updated with the precomputed hashcodes for
- *	the sequence beginning at @in_next + 1.
- * @offset_ret
- *	If a match is found, its offset is returned in this location.
- *
- * Return the length of the match found, or 'best_len' if no match longer than
- * 'best_len' was found.
- */
 static forceinline u32 hc_matchfinder_longest_match(
     struct hc_matchfinder *const mf, const u8 **const in_base_p,
     const u8 *const in_next, u32 best_len, const u32 max_len,
@@ -202,36 +165,27 @@ static forceinline u32 hc_matchfinder_longest_match(
   in_base = *in_base_p;
   cutoff = cur_pos - MATCHFINDER_WINDOW_SIZE;
 
-  if (unlikely(max_len < 5)) /* can we read 4 bytes from 'in_next + 1'? */
+  if (unlikely(max_len < 5))
     goto out;
 
-  /* Get the precomputed hash codes.  */
   hash3 = next_hashes[0];
   hash4 = next_hashes[1];
 
-  /* From the hash buckets, get the first node of each linked list.  */
   cur_node3 = mf->hash3_tab[hash3];
   cur_node4 = mf->hash4_tab[hash4];
 
-  /* Update for length 3 matches.  This replaces the singleton node in the
-   * 'hash3' bucket with the node for the current sequence.  */
   mf->hash3_tab[hash3] = cur_pos;
 
-  /* Update for length 4 matches.  This prepends the node for the current
-   * sequence to the linked list in the 'hash4' bucket.  */
   mf->hash4_tab[hash4] = cur_pos;
   mf->next_tab[cur_pos] = cur_node4;
 
-  /* Compute the next hash codes.  */
   next_hashseq = get_unaligned_le32(in_next + 1);
   next_hashes[0] = lz_hash(next_hashseq & 0xFFFFFF, HC_MATCHFINDER_HASH3_ORDER);
   next_hashes[1] = lz_hash(next_hashseq, HC_MATCHFINDER_HASH4_ORDER);
   prefetchw(&mf->hash3_tab[next_hashes[0]]);
   prefetchw(&mf->hash4_tab[next_hashes[1]]);
 
-  if (best_len < 4) { /* No match of length >= 4 found yet?  */
-
-    /* Check for a length 3 match if needed.  */
+  if (best_len < 4) {
 
     if (cur_node3 <= cutoff)
       goto out;
@@ -246,25 +200,21 @@ static forceinline u32 hc_matchfinder_longest_match(
       }
     }
 
-    /* Check for a length 4 match.  */
-
     if (cur_node4 <= cutoff)
       goto out;
 
     for (;;) {
-      /* No length 4 match found yet.  Check the first 4 bytes.  */
+
       matchptr = &in_base[cur_node4];
 
       if (load_u32_unaligned(matchptr) == seq4)
         break;
 
-      /* The first 4 bytes did not match.  Keep trying.  */
       cur_node4 = mf->next_tab[cur_node4 & (MATCHFINDER_WINDOW_SIZE - 1)];
       if (cur_node4 <= cutoff || !--depth_remaining)
         goto out;
     }
 
-    /* Found a match of length >= 4.  Extend it to its full length.  */
     best_matchptr = matchptr;
     best_len = lz_extend(in_next, best_matchptr, 4, max_len);
     if (best_len >= nice_len)
@@ -277,17 +227,10 @@ static forceinline u32 hc_matchfinder_longest_match(
       goto out;
   }
 
-  /* Check for matches of length >= 5.  */
-
   for (;;) {
     for (;;) {
       matchptr = &in_base[cur_node4];
 
-      /* Already found a length 4 match.  Try for a longer
-       * match; start by checking either the last 4 bytes and
-       * the first 4 bytes, or the last byte.  (The last byte,
-       * the one which would extend the match length by 1, is
-       * the most important.)  */
 #if UNALIGNED_ACCESS_IS_FAST
       if ((load_u32_unaligned(matchptr + best_len - 3) ==
            load_u32_unaligned(in_next + best_len - 3)) &&
@@ -297,7 +240,6 @@ static forceinline u32 hc_matchfinder_longest_match(
 #endif
         break;
 
-      /* Continue to the next node in the list.  */
       cur_node4 = mf->next_tab[cur_node4 & (MATCHFINDER_WINDOW_SIZE - 1)];
       if (cur_node4 <= cutoff || !--depth_remaining)
         goto out;
@@ -310,14 +252,13 @@ static forceinline u32 hc_matchfinder_longest_match(
 #endif
     len = lz_extend(in_next, matchptr, len, max_len);
     if (len > best_len) {
-      /* This is the new longest match.  */
+
       best_len = len;
       best_matchptr = matchptr;
       if (best_len >= nice_len)
         goto out;
     }
 
-    /* Continue to the next node in the list.  */
     cur_node4 = mf->next_tab[cur_node4 & (MATCHFINDER_WINDOW_SIZE - 1)];
     if (cur_node4 <= cutoff || !--depth_remaining)
       goto out;
@@ -327,26 +268,6 @@ out:
   return best_len;
 }
 
-/*
- * Advance the matchfinder, but don't search for matches.
- *
- * @mf
- *	The matchfinder structure.
- * @in_base_p
- *	Location of a pointer which points to the place in the input data the
- *	matchfinder currently stores positions relative to.  This may be updated
- *	by this function.
- * @in_next
- *	Pointer to the next position in the input buffer.
- * @in_end
- *	Pointer to the end of the input buffer.
- * @count
- *	The number of bytes to advance.  Must be > 0.
- * @next_hashes
- *	The precomputed hash codes for the sequence beginning at @in_next.
- *	These will be used and then updated with the precomputed hashcodes for
- *	the sequence beginning at @in_next + @count.
- */
 static forceinline void
 hc_matchfinder_skip_bytes(struct hc_matchfinder *const mf,
                           const u8 **const in_base_p, const u8 *in_next,
@@ -385,4 +306,4 @@ hc_matchfinder_skip_bytes(struct hc_matchfinder *const mf,
   next_hashes[1] = hash4;
 }
 
-#endif /* LIB_HC_MATCHFINDER_H */
+#endif

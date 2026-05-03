@@ -1,7 +1,4 @@
-/*-----------------------------------------------------------*/
-/* Block Sorting, Lossless Data Compression Library.         */
-/* Quantized Local Frequency Coding functions                */
-/*-----------------------------------------------------------*/
+﻿
 
 /*--
 
@@ -2940,7 +2937,3 @@ int bsc_qlfc_fast_decode_block(const unsigned char *input,
 }
 
 #endif
-
-/*-----------------------------------------------------------*/
-/* End                                              qlfc.cpp */
-/*-----------------------------------------------------------*/

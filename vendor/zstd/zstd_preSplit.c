@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  * All rights reserved.
  *
@@ -9,11 +9,11 @@
  */
 
 #include "zstd_preSplit.h"
-#include "compiler.h"      /* ZSTD_ALIGNOF */
-#include "mem.h"           /* S64 */
-#include "zstd_deps.h"     /* ZSTD_memset */
-#include "zstd_internal.h" /* ZSTD_STATIC_ASSERT */
-#include "hist.h"                    /* HIST_add */
+#include "compiler.h"
+#include "hist.h"
+#include "mem.h"
+#include "zstd_deps.h"
+#include "zstd_internal.h"
 
 #define BLOCKSIZE_MIN 3500
 #define THRESHOLD_PENALTY_RATE 16
@@ -26,9 +26,6 @@
 #define HASHMASK (HASHTABLESIZE - 1)
 #define KNUTH 0x9e3779b9
 
-/* for hashLog > 8, hash 2 bytes.
- * for hashLog == 8, just take the byte, no hashing.
- * The speed of this method relies on compile-time constant propagation */
 FORCE_INLINE_TEMPLATE unsigned hash2(const void *p, unsigned hashLog) {
   assert(hashLog >= 8);
   if (hashLog == 8)
@@ -102,9 +99,6 @@ static U64 fpDistance(const Fingerprint *fp1, const Fingerprint *fp2,
   return distance;
 }
 
-/* Compare newEvents with pastEvents
- * return 1 when considered "too different"
- */
 static int compareFingerprints(const Fingerprint *ref, const Fingerprint *newfp,
                                int penalty, unsigned hashLog) {
   assert(ref->nbEvents > 0);
@@ -183,15 +177,6 @@ static size_t ZSTD_splitBlock_byChunks(const void *blockStart, size_t blockSize,
   (void)removeEvents;
 }
 
-/* ZSTD_splitBlock_fromBorders(): very fast strategy :
- * compare fingerprint from beginning and end of the block,
- * derive from their difference if it's preferable to split in the middle,
- * repeat the process a second time, for finer grained decision.
- * 3 times did not brought improvements, so I stopped at 2.
- * Benefits are good enough for a cheap heuristic.
- * More accurate splitting saves more, but speed impact is also more
- * perceptible. For better accuracy, use more elaborate variant *_byChunks.
- */
 static size_t ZSTD_splitBlock_fromBorders(const void *blockStart,
                                           size_t blockSize, void *workspace,
                                           size_t wkspSize) {
@@ -235,7 +220,7 @@ size_t ZSTD_splitBlock(const void *blockStart, size_t blockSize, int level,
   if (level == 0)
     return ZSTD_splitBlock_fromBorders(blockStart, blockSize, workspace,
                                        wkspSize);
-  /* level >= 1*/
+
   return ZSTD_splitBlock_byChunks(blockStart, blockSize, level - 1, workspace,
                                   wkspSize);
 }

@@ -1,4 +1,4 @@
-# cmake-format: off
+﻿# cmake-format: off
 # Copyright (c) 2025, Intel Corporation
 #
 # Redistribution and use in source and binary forms, with or without
@@ -26,24 +26,14 @@
 # cmake-format: on
 cmake_minimum_required(VERSION 3.12)
 cmake_policy(VERSION 3.12)
-
 if(POLICY CMP194)
     cmake_policy(SET CMP194 NEW)
 endif()
-
-
 project(ISA-L
     VERSION 2.31.0
     DESCRIPTION "Intel's ISA-L (Intelligent Storage Acceleration Library)"
     LANGUAGES C
 )
-
-# Enable NASM for x86_64 builds when available. If NASM is not found,
-# fall back to C/base alias implementations so Windows/MSVC builds can proceed.
-# NASM availability is provided by the top-level CMakeLists.txt via
-# the `SPRING_HAVE_NASM` (BOOL) and `SPRING_NASM_EXECUTABLE` (FILEPATH)
-# variables. This avoids vendor-level detection that can conflict with
-# toolchain selection on Windows.
 if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "AMD64")
     if(DEFINED SPRING_HAVE_NASM AND SPRING_HAVE_NASM)
         if(DEFINED SPRING_NASM_EXECUTABLE AND SPRING_NASM_EXECUTABLE)
@@ -55,13 +45,9 @@ if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "
         set(USE_NASM OFF)
     endif()
 endif()
-
-# Set default build type
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
-
-# Detect processor architecture
 if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "AMD64")
     set(CPU_X86_64 ON)
     set(ARCH_DEF "x86_64")
@@ -77,10 +63,7 @@ elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "riscv64")
 else()
     set(CPU_UNDEFINED ON)
 endif()
-
-# Compiler and assembler setup
 if(CPU_X86_64)
-    # Configure NASM flags only if NASM support is enabled/available.
     if(DEFINED USE_NASM AND USE_NASM)
         if(WIN32)
             set(CMAKE_ASM_NASM_FLAGS "-f win64 -DWIN32")
@@ -90,45 +73,25 @@ if(CPU_X86_64)
         set(CMAKE_ASM_NASM_INCLUDES "-I ${CMAKE_CURRENT_SOURCE_DIR}/include/")
     endif()
 elseif(CPU_AARCH64 OR CPU_RISCV64)
-    # Use C compiler for assembly on ARM and RISC-V
     set(ASM_FILTER "${CMAKE_C_COMPILER} -D__ASSEMBLY__")
 endif()
-
-# Set include directories
 set(ISAL_INCLUDE_DIRS
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
-
-# Initialize EXTERN_HEADERS list
 set(EXTERN_HEADERS)
-
-# Compiler flags
 if(ARCH_DEF)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D${ARCH_DEF}")
 endif()
-
 if(CPU_AARCH64 OR CPU_RISCV64)
     set(CMAKE_ASM_FLAGS "${CMAKE_C_FLAGS} -D__ASSEMBLY__")
 endif()
-
-# Library version (semantic versioning)
 set(LIBISAL_VERSION_MAJOR 2)
 set(LIBISAL_VERSION_MINOR 31)
 set(LIBISAL_VERSION_PATCH 0)
-
-# Include CMake modules for each library component
-#include(cmake/erasure_code.cmake)
-#include(cmake/raid.cmake)
 include(cmake/crc.cmake)
 include(cmake/igzip.cmake)
-#include(cmake/mem.cmake)
-
-# Create the main ISA-L library
-# Build type option
 option(ISAL_BUILD_SHARED_LIBS "Build shared libraries" ON)
 set(BUILD_SHARED_LIBS ${ISAL_BUILD_SHARED_LIBS})
-
-# Create the main ISA-L library
 add_library(isal
     ${ERASURE_CODE_SOURCES}
     ${RAID_SOURCES}
@@ -136,17 +99,12 @@ add_library(isal
     ${IGZIP_SOURCES}
     ${MEM_SOURCES}
 )
-
-# Set library properties
 set_target_properties(isal PROPERTIES
     VERSION ${LIBISAL_VERSION_MAJOR}.${LIBISAL_VERSION_MINOR}.${LIBISAL_VERSION_PATCH}
     SOVERSION ${LIBISAL_VERSION_MAJOR}
     PUBLIC_HEADER "${EXTERN_HEADERS}"
 )
-
-# Configure include directories for NASM assembly files
 if(CPU_X86_64 AND USE_NASM)
-    # Filter assembly files by module and set appropriate include directories
     foreach(source IN LISTS ERASURE_CODE_SOURCES RAID_SOURCES CRC_SOURCES IGZIP_SOURCES MEM_SOURCES)
         if(source MATCHES "\\.asm$")
             get_filename_component(source_dir ${source} DIRECTORY)
@@ -155,15 +113,11 @@ if(CPU_X86_64 AND USE_NASM)
         endif()
     endforeach()
 endif()
-
-# Include directories
 target_include_directories(isal
     PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<INSTALL_INTERFACE:include>
 )
-
-# Generate isa-l.h header
 set(ISAL_HEADER "${CMAKE_BINARY_DIR}/isa-l.h")
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/isa-l.h.in ${ISAL_HEADER} @ONLY)

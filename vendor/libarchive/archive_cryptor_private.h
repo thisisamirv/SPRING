@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2014 Michihiro NAKAJIMA
  * All rights reserved.
  *
@@ -31,15 +31,7 @@
 #ifndef __LIBARCHIVE_BUILD
 #error This header is only to be used internally to libarchive.
 #endif
-/*
- * On systems that do not support any recognized crypto libraries,
- * the archive_cryptor.c file will normally define no usable symbols.
- *
- * But some compilers and linkers choke on empty object files, so
- * define a public symbol that will always exist.  This could
- * be removed someday if this file gains another always-present
- * symbol definition.
- */
+
 int __libarchive_cryptor_build_hack(void);
 
 #ifdef __APPLE__
@@ -69,7 +61,6 @@ typedef struct {
 #include <bcrypt.h>
 #define ARCHIVE_CRYPTOR_USE_CNG 1
 
-/* Common in other bcrypt implementations, but missing from VS2008. */
 #ifndef BCRYPT_SUCCESS
 #define BCRYPT_SUCCESS(r) ((NTSTATUS)(r) == STATUS_SUCCESS)
 #endif
@@ -166,7 +157,6 @@ typedef int archive_crypto_ctx;
 
 #endif
 
-/* defines */
 #define archive_pbkdf2_sha1(pw, pw_len, salt, salt_len, rounds, dk, dk_len)    \
   __archive_cryptor.pbkdf2sha1(pw, pw_len, salt, salt_len, rounds, dk, dk_len)
 
@@ -184,17 +174,14 @@ typedef int archive_crypto_ctx;
 #define archive_encrypto_aes_ctr_release(ctx)                                  \
   __archive_cryptor.encrypto_aes_ctr_release(ctx)
 
-/* Stub return value if no encryption support exists. */
 #define CRYPTOR_STUB_FUNCTION -2
 
-/* Minimal interface to cryptographic functionality for internal use in
- * libarchive */
 struct archive_cryptor {
-  /* PKCS5 PBKDF2 HMAC-SHA1 */
+
   int (*pbkdf2sha1)(const char *pw, size_t pw_len, const uint8_t *salt,
                     size_t salt_len, unsigned rounds, uint8_t *derived_key,
                     size_t derived_key_len);
-  /* AES CTR mode(little endian version) */
+
   int (*decrypto_aes_ctr_init)(archive_crypto_ctx *, const uint8_t *, size_t);
   int (*decrypto_aes_ctr_update)(archive_crypto_ctx *, const uint8_t *, size_t,
                                  uint8_t *, size_t *);

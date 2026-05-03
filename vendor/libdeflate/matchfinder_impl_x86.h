@@ -1,4 +1,4 @@
-/*
+﻿/*
  * x86/matchfinder_impl.h - x86 implementations of matchfinder functions
  *
  * Copyright 2016 Eric Biggers
@@ -28,8 +28,8 @@
 #ifndef LIB_X86_MATCHFINDER_IMPL_H
 #define LIB_X86_MATCHFINDER_IMPL_H
 
-#include "matchfinder_defs.h"
 #include "cpu_features_x86.h"
+#include "matchfinder_defs.h"
 
 #ifdef __AVX2__
 static forceinline void matchfinder_init_avx2(mf_pos_t *data, size_t size) {
@@ -60,7 +60,7 @@ static forceinline void matchfinder_rebase_avx2(mf_pos_t *data, size_t size) {
   STATIC_ASSERT(sizeof(mf_pos_t) == 2);
 
   do {
-    /* PADDSW: Add Packed Signed Integers With Signed Saturation  */
+
     p[0] = _mm256_adds_epi16(p[0], v);
     p[1] = _mm256_adds_epi16(p[1], v);
     p[2] = _mm256_adds_epi16(p[2], v);
@@ -100,7 +100,7 @@ static forceinline void matchfinder_rebase_sse2(mf_pos_t *data, size_t size) {
   STATIC_ASSERT(sizeof(mf_pos_t) == 2);
 
   do {
-    /* PADDSW: Add Packed Signed Integers With Signed Saturation  */
+
     p[0] = _mm_adds_epi16(p[0], v);
     p[1] = _mm_adds_epi16(p[1], v);
     p[2] = _mm_adds_epi16(p[2], v);
@@ -110,6 +110,6 @@ static forceinline void matchfinder_rebase_sse2(mf_pos_t *data, size_t size) {
   } while (size != 0);
 }
 #define matchfinder_rebase matchfinder_rebase_sse2
-#endif /* HAVE_SSE2_NATIVE */
+#endif
 
-#endif /* LIB_X86_MATCHFINDER_IMPL_H */
+#endif

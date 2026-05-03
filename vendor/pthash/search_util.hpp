@@ -1,4 +1,4 @@
-// Utility functions and logging for build search
+﻿
 #ifndef PTHASH_BUILDERS_SEARCH_UTIL_HPP
 #define PTHASH_BUILDERS_SEARCH_UTIL_HPP
 
@@ -6,9 +6,9 @@
 #include "hasher.hpp"
 #include <array>
 #include <chrono>
-#include <iomanip> // for std::setprecision
+#include <iomanip>
 #include <iostream>
-#include <sstream> // for std::stringbuf
+#include <sstream>
 
 namespace pthash {
 
@@ -84,4 +84,4 @@ private:
 
 } // namespace pthash
 
-#endif // PTHASH_BUILDERS_SEARCH_UTIL_HPP
+#endif

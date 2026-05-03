@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2010 Tim Kientzle
  * Copyright (c) 2009-2012 Michihiro NAKAJIMA
  * All rights reserved.
@@ -89,7 +89,6 @@ int archive_write_add_filter_lzip(struct archive *a) {
   return (ARCHIVE_FATAL);
 }
 #else
-/* Don't compile this if we don't have liblzma. */
 
 struct private_data {
   int compression_level;
@@ -101,7 +100,7 @@ struct private_data {
   unsigned char *compressed;
   size_t compressed_buffer_size;
   int64_t total_out;
-  /* the CRC32 value of uncompressed data for lzip */
+
   uint32_t crc32;
 };
 
@@ -145,9 +144,6 @@ static int common_setup(struct archive_write_filter *f) {
   return (ARCHIVE_OK);
 }
 
-/*
- * Add an xz compression filter to this write handle.
- */
 int archive_write_add_filter_xz(struct archive *_a) {
   struct archive_write_filter *f;
   int r;
@@ -163,9 +159,6 @@ int archive_write_add_filter_xz(struct archive *_a) {
   return (r);
 }
 
-/* LZMA is handled identically, we just need a different compression
- * code set.  (The liblzma setup looks at the code to determine
- * the one place that XZ and LZMA require different handling.) */
 int archive_write_add_filter_lzma(struct archive *_a) {
   struct archive_write_filter *f;
   int r;
@@ -222,11 +215,10 @@ static int archive_compressor_xz_init_stream(struct archive_write_filter *f,
                                 LZMA_CHECK_CRC64);
   } else if (f->code == ARCHIVE_FILTER_LZMA) {
     ret = lzma_alone_encoder(&(data->stream), &data->lzma_opt);
-  } else { /* ARCHIVE_FILTER_LZIP */
+  } else {
     int dict_size = data->lzma_opt.dict_size;
     int ds, log2dic, wedges;
 
-    /* Calculate a coded dictionary size */
     if (dict_size < (1 << 12) || dict_size > (1 << 29)) {
       archive_set_error(f->archive, ARCHIVE_ERRNO_MISC,
                         "Unacceptable dictionary size for lzip: %d", dict_size);
@@ -244,12 +236,12 @@ static int archive_compressor_xz_init_stream(struct archive_write_filter *f,
     ds = ((wedges << 5) & 0xe0) | (log2dic & 0x1f);
 
     data->crc32 = 0;
-    /* Make a header */
+
     data->compressed[0] = 0x4C;
     data->compressed[1] = 0x5A;
     data->compressed[2] = 0x49;
     data->compressed[3] = 0x50;
-    data->compressed[4] = 1; /* Version */
+    data->compressed[4] = 1;
     data->compressed[5] = (unsigned char)ds;
     data->stream.next_out += 6;
     data->stream.avail_out -= 6;
@@ -274,9 +266,6 @@ static int archive_compressor_xz_init_stream(struct archive_write_filter *f,
   return (ARCHIVE_FATAL);
 }
 
-/*
- * Setup callback.
- */
 static int archive_compressor_xz_open(struct archive_write_filter *f) {
   struct private_data *data = f->data;
   int ret;
@@ -284,8 +273,7 @@ static int archive_compressor_xz_open(struct archive_write_filter *f) {
   if (data->compressed == NULL) {
     size_t bs = 65536, bpb;
     if (f->archive->magic == ARCHIVE_WRITE_MAGIC) {
-      /* Buffer size should be a multiple number of the bytes
-       * per block for performance. */
+
       bpb = archive_write_get_bytes_per_block(f->archive);
       if (bpb > bs)
         bs = bpb;
@@ -303,7 +291,6 @@ static int archive_compressor_xz_open(struct archive_write_filter *f) {
 
   f->write = archive_compressor_xz_write;
 
-  /* Initialize compression library. */
   if (f->code == ARCHIVE_FILTER_LZIP) {
     const struct option_value *val = &option_values[data->compression_level];
 
@@ -320,7 +307,7 @@ static int archive_compressor_xz_open(struct archive_write_filter *f) {
     data->lzma_opt.depth = 0;
     data->lzmafilters[0].id = LZMA_FILTER_LZMA1;
     data->lzmafilters[0].options = &data->lzma_opt;
-    data->lzmafilters[1].id = LZMA_VLI_UNKNOWN; /* Terminate */
+    data->lzmafilters[1].id = LZMA_VLI_UNKNOWN;
   } else {
     if (lzma_lzma_preset(&data->lzma_opt, data->compression_level)) {
       archive_set_error(f->archive, ARCHIVE_ERRNO_MISC,
@@ -328,7 +315,7 @@ static int archive_compressor_xz_open(struct archive_write_filter *f) {
     }
     data->lzmafilters[0].id = LZMA_FILTER_LZMA2;
     data->lzmafilters[0].options = &data->lzma_opt;
-    data->lzmafilters[1].id = LZMA_VLI_UNKNOWN; /* Terminate */
+    data->lzmafilters[1].id = LZMA_VLI_UNKNOWN;
   }
   ret = archive_compressor_xz_init_stream(f, data);
   if (ret == LZMA_OK) {
@@ -338,9 +325,6 @@ static int archive_compressor_xz_open(struct archive_write_filter *f) {
   return (ARCHIVE_FATAL);
 }
 
-/*
- * Set write options.
- */
 static int archive_compressor_xz_options(struct archive_write_filter *f,
                                          const char *key, const char *value) {
   struct private_data *data = (struct private_data *)f->data;
@@ -374,26 +358,18 @@ static int archive_compressor_xz_options(struct archive_write_filter *f,
     return (ARCHIVE_OK);
   }
 
-  /* Note: The "warn" return is just to inform the options
-   * supervisor that we didn't handle it.  It will generate
-   * a suitable error if no one used this option. */
   return (ARCHIVE_WARN);
 }
 
-/*
- * Write data to the compressed stream.
- */
 static int archive_compressor_xz_write(struct archive_write_filter *f,
                                        const void *buff, size_t length) {
   struct private_data *data = (struct private_data *)f->data;
   int ret;
 
-  /* Update statistics */
   data->total_in += length;
   if (f->code == ARCHIVE_FILTER_LZIP)
     data->crc32 = lzma_crc32(buff, length, data->crc32);
 
-  /* Compress input data to output buffer */
   data->stream.next_in = buff;
   data->stream.avail_in = length;
   if ((ret = drive_compressor(f, data, 0)) != ARCHIVE_OK)
@@ -402,9 +378,6 @@ static int archive_compressor_xz_write(struct archive_write_filter *f,
   return (ARCHIVE_OK);
 }
 
-/*
- * Finish the compression...
- */
 static int archive_compressor_xz_close(struct archive_write_filter *f) {
   struct private_data *data = (struct private_data *)f->data;
   int ret;
@@ -434,13 +407,6 @@ static int archive_compressor_xz_free(struct archive_write_filter *f) {
   return (ARCHIVE_OK);
 }
 
-/*
- * Utility function to push input data through compressor,
- * writing full output blocks as necessary.
- *
- * Note that this handles both the regular write case (finishing ==
- * false) and the end-of-archive case (finishing == true).
- */
 static int drive_compressor(struct archive_write_filter *f,
                             struct private_data *data, int finishing) {
   int ret;
@@ -456,7 +422,6 @@ static int drive_compressor(struct archive_write_filter *f,
       data->stream.avail_out = data->compressed_buffer_size;
     }
 
-    /* If there's nothing to do, we're done. */
     if (!finishing && data->stream.avail_in == 0)
       return (ARCHIVE_OK);
 
@@ -464,15 +429,13 @@ static int drive_compressor(struct archive_write_filter *f,
 
     switch (ret) {
     case LZMA_OK:
-      /* In non-finishing case, check if compressor
-       * consumed everything */
+
       if (!finishing && data->stream.avail_in == 0)
         return (ARCHIVE_OK);
-      /* In finishing case, this return always means
-       * there's more work */
+
       break;
     case LZMA_STREAM_END:
-      /* This return can only occur in finishing case. */
+
       if (finishing)
         return (ARCHIVE_OK);
       archive_set_error(f->archive, ARCHIVE_ERRNO_MISC,
@@ -487,7 +450,7 @@ static int drive_compressor(struct archive_write_filter *f,
                       (1024 * 1024)));
       return (ARCHIVE_FATAL);
     default:
-      /* Any other return value indicates an error. */
+
       archive_set_error(f->archive, ARCHIVE_ERRNO_MISC,
                         "lzma compression failed:"
                         " lzma_code() call returned status %d",
@@ -497,4 +460,4 @@ static int drive_compressor(struct archive_write_filter *f,
   }
 }
 
-#endif /* HAVE_LZMA_H */
+#endif

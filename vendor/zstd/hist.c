@@ -1,4 +1,4 @@
-/* ******************************************************************
+﻿/* ******************************************************************
  * hist : Histogram functions
  * part of Finite State Entropy project
  * Copyright (c) Meta Platforms, Inc. and affiliates.
@@ -13,10 +13,9 @@
  * You may select, at your option, one of the above-listed licenses.
  ****************************************************************** */
 
-/* --- dependencies --- */
 #include "hist.h"
-#include "error_private.h" /* ERROR */
-#include "mem.h"           /* U32, BYTE, etc. */
+#include "error_private.h"
+#include "mem.h"
 
 #if defined(ZSTD_ARCH_ARM_SVE2)
 #define HIST_FAST_THRESHOLD 500
@@ -24,12 +23,8 @@
 #define HIST_FAST_THRESHOLD 1500
 #endif
 
-/* --- Error management --- */
 unsigned HIST_isError(size_t code) { return ERR_isError(code); }
 
-/*-**************************************************************
- *  Histogram functions
- ****************************************************************/
 void HIST_add(unsigned *count, const void *src, size_t srcSize) {
   const BYTE *ip = (const BYTE *)src;
   const BYTE *const end = ip + srcSize;
@@ -100,8 +95,7 @@ static svuint16_t HIST_count_6_sve2(const BYTE *const src, size_t size,
 
   size_t i = 0;
   while (i < size) {
-    /* We can only accumulate 15 (15 * 16 <= 255) iterations of histogram
-     * in 8-bit accumulators! */
+
     const size_t size240 = min_size(i + 240, size);
 
     svbool_t pred = svwhilelt_b8_u64(i, size);
@@ -211,8 +205,7 @@ static size_t HIST_count_sve2(unsigned *count, unsigned *maxSymbolValuePtr,
 
     size_t i = 0;
     while (i < sourceSize) {
-      /* We can only accumulate 15 (15 * 16 <= 255) iterations of
-       * histogram in 8-bit accumulators! */
+
       const size_t size240 = min_size(i + 240, sourceSize);
 
       svbool_t pred = svwhilelt_b8_u64(i, sourceSize);
@@ -248,10 +241,6 @@ static size_t HIST_count_sve2(unsigned *count, unsigned *maxSymbolValuePtr,
       return ERROR(maxSymbolValue_tooSmall);
     *maxSymbolValuePtr = maxSymbolValue;
 
-    /* If the buffer size is not divisible by 16, the last elements of the final
-     * vector register read will be zeros, and these elements must be subtracted
-     * from the histogram.
-     */
     hh0 = svsub_n_u16_m(svptrue_pat_b32(SV_VL1), hh0, -sourceSize & 15);
 
     svst1_u32(svwhilelt_b32_u64(0, maxCount), count + 0, svshllb_n_u32(hh0, 0));
@@ -326,15 +315,6 @@ static size_t HIST_count_sve2(unsigned *count, unsigned *maxSymbolValuePtr,
 }
 #endif
 
-/* HIST_count_parallel_wksp() :
- * store histogram into 4 intermediate tables, recombined at the end.
- * this design makes better use of OoO cpus,
- * and is noticeably faster when some values are heavily repeated.
- * But it needs some additional workspace for intermediate tables.
- * `workSpace` must be a U32 table of size >= HIST_WKSP_SIZE_U32.
- * @return : largest histogram frequency,
- *           or an error code (notably when histogram's alphabet is larger than
- * *maxSymbolValuePtr) */
 static UNUSED_ATTR size_t HIST_count_parallel_wksp(
     unsigned *count, unsigned *maxSymbolValuePtr, const void *source,
     size_t sourceSize, HIST_checkInput_e check, U32 *const workSpace) {
@@ -347,7 +327,6 @@ static UNUSED_ATTR size_t HIST_count_parallel_wksp(
   U32 *const Counting3 = Counting2 + 256;
   U32 *const Counting4 = Counting3 + 256;
 
-  /* safety checks */
   assert(*maxSymbolValuePtr <= 255);
   if (!sourceSize) {
     ZSTD_memset(count, 0, countSize);
@@ -356,7 +335,6 @@ static UNUSED_ATTR size_t HIST_count_parallel_wksp(
   }
   ZSTD_memset(workSpace, 0, 4 * 256 * sizeof(unsigned));
 
-  /* by stripes of 16 bytes */
   {
     U32 cached = MEM_read32(ip);
     ip += 4;
@@ -393,7 +371,6 @@ static UNUSED_ATTR size_t HIST_count_parallel_wksp(
     ip -= 4;
   }
 
-  /* finish last symbols */
   while (ip < iend)
     Counting1[*ip++]++;
 
@@ -413,21 +390,15 @@ static UNUSED_ATTR size_t HIST_count_parallel_wksp(
     if (check && maxSymbolValue > *maxSymbolValuePtr)
       return ERROR(maxSymbolValue_tooSmall);
     *maxSymbolValuePtr = maxSymbolValue;
-    ZSTD_memmove(count, Counting1,
-                 countSize); /* in case count & Counting1 are overlapping */
+    ZSTD_memmove(count, Counting1, countSize);
   }
   return (size_t)max;
 }
 
-/* HIST_countFast_wksp() :
- * Same as HIST_countFast(), but using an externally provided scratch buffer.
- * `workSpace` is a writable buffer which must be 4-bytes aligned,
- * `workSpaceSize` must be >= HIST_WKSP_SIZE
- */
 size_t HIST_countFast_wksp(unsigned *count, unsigned *maxSymbolValuePtr,
                            const void *source, size_t sourceSize,
                            void *workSpace, size_t workSpaceSize) {
-  if (sourceSize < HIST_FAST_THRESHOLD) /* heuristic threshold */
+  if (sourceSize < HIST_FAST_THRESHOLD)
     return HIST_count_simple(count, maxSymbolValuePtr, source, sourceSize);
 #if defined(ZSTD_ARCH_ARM_SVE2)
   (void)workSpace;
@@ -436,7 +407,7 @@ size_t HIST_countFast_wksp(unsigned *count, unsigned *maxSymbolValuePtr,
                          trustInput);
 #else
   if ((size_t)workSpace & 3)
-    return ERROR(GENERIC); /* must be aligned on 4-bytes boundaries */
+    return ERROR(GENERIC);
   if (workSpaceSize < HIST_WKSP_SIZE)
     return ERROR(workSpace_tooSmall);
   return HIST_count_parallel_wksp(count, maxSymbolValuePtr, source, sourceSize,
@@ -444,9 +415,6 @@ size_t HIST_countFast_wksp(unsigned *count, unsigned *maxSymbolValuePtr,
 #endif
 }
 
-/* HIST_count_wksp() :
- * Same as HIST_count(), but using an externally provided scratch buffer.
- * `workSpace` size must be table of >= HIST_WKSP_SIZE_U32 unsigned */
 size_t HIST_count_wksp(unsigned *count, unsigned *maxSymbolValuePtr,
                        const void *source, size_t sourceSize, void *workSpace,
                        size_t workSpaceSize) {
@@ -456,7 +424,7 @@ size_t HIST_count_wksp(unsigned *count, unsigned *maxSymbolValuePtr,
                            checkMaxSymbolValue);
 #else
   if ((size_t)workSpace & 3)
-    return ERROR(GENERIC); /* must be aligned on 4-bytes boundaries */
+    return ERROR(GENERIC);
   if (workSpaceSize < HIST_WKSP_SIZE)
     return ERROR(workSpace_tooSmall);
   if (*maxSymbolValuePtr < 255)
@@ -470,8 +438,7 @@ size_t HIST_count_wksp(unsigned *count, unsigned *maxSymbolValuePtr,
 }
 
 #ifndef ZSTD_NO_UNUSED_FUNCTIONS
-/* fast variant (unsafe : won't check if src contains values beyond count[]
- * limit) */
+
 size_t HIST_countFast(unsigned *count, unsigned *maxSymbolValuePtr,
                       const void *source, size_t sourceSize) {
   unsigned tmpCounters[HIST_WKSP_SIZE_U32];

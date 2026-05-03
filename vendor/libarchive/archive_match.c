@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2007 Tim Kientzle
  * Copyright (c) 2012 Michihiro NAKAJIMA
  * All rights reserved.
@@ -100,7 +100,7 @@ struct entry_list {
 };
 
 struct id_array {
-  size_t size; /* Allocated size */
+  size_t size;
   size_t count;
   int64_t *ids;
 };
@@ -112,21 +112,13 @@ struct id_array {
 struct archive_match {
   struct archive archive;
 
-  /* exclusion/inclusion set flag. */
   int setflag;
 
-  /* Recursively include directory content? */
   int recursive_include;
 
-  /*
-   * Matching filename patterns.
-   */
   struct match_list exclusions;
   struct match_list inclusions;
 
-  /*
-   * Matching time stamps.
-   */
   time_t now;
   int newer_mtime_filter;
   time_t newer_mtime_sec;
@@ -140,15 +132,10 @@ struct archive_match {
   int older_ctime_filter;
   time_t older_ctime_sec;
   long older_ctime_nsec;
-  /*
-   * Matching time stamps with its filename.
-   */
+
   struct archive_rb_tree exclusion_tree;
   struct entry_list exclusion_entry_list;
 
-  /*
-   * Matching file owners.
-   */
   struct id_array inclusion_uids;
   struct id_array inclusion_gids;
   struct match_list inclusion_unames;
@@ -219,22 +206,12 @@ static const struct archive_rb_tree_ops rb_ops = {
 #endif
 };
 
-/*
- * The matching logic here needs to be re-thought.  I started out to
- * try to mimic gtar's matching logic, but it's not entirely
- * consistent.  In particular 'tar -t' and 'tar -x' interpret patterns
- * on the command line as anchored, but --exclude doesn't.
- */
-
 static int error_nomem(struct archive_match *a) {
   archive_set_error(&(a->archive), ENOMEM, "No memory");
   a->archive.state = ARCHIVE_STATE_FATAL;
   return (ARCHIVE_FATAL);
 }
 
-/*
- * Create an ARCHIVE_MATCH object.
- */
 struct archive *archive_match_new(void) {
   struct archive_match *a;
 
@@ -254,9 +231,6 @@ struct archive *archive_match_new(void) {
   return (&(a->archive));
 }
 
-/*
- * Free an ARCHIVE_MATCH object.
- */
 int archive_match_free(struct archive *_a) {
   struct archive_match *a;
 
@@ -277,13 +251,6 @@ int archive_match_free(struct archive *_a) {
   return (ARCHIVE_OK);
 }
 
-/*
- * Convenience function to perform all exclusion tests.
- *
- * Returns 1 if archive entry is excluded.
- * Returns 0 if archive entry is not excluded.
- * Returns <0 if something error happened.
- */
 int archive_match_excluded(struct archive *_a, struct archive_entry *entry) {
   struct archive_match *a;
   int r;
@@ -318,10 +285,6 @@ int archive_match_excluded(struct archive *_a, struct archive_entry *entry) {
     r = owner_excluded(a, entry);
   return (r);
 }
-
-/*
- * Utility functions to manage exclusion/inclusion patterns
- */
 
 int archive_match_exclude_pattern(struct archive *_a, const char *pattern) {
   struct archive_match *a;
@@ -441,13 +404,6 @@ int archive_match_include_pattern_from_file_w(struct archive *_a,
   return add_pattern_from_file(a, &(a->inclusions), 0, pathname, nullSeparator);
 }
 
-/*
- * Test functions for pathname patterns.
- *
- * Returns 1 if archive entry is excluded.
- * Returns 0 if archive entry is not excluded.
- * Returns <0 if something error happened.
- */
 int archive_match_path_excluded(struct archive *_a,
                                 struct archive_entry *entry) {
   struct archive_match *a;
@@ -461,8 +417,6 @@ int archive_match_path_excluded(struct archive *_a,
     return (ARCHIVE_FAILED);
   }
 
-  /* If we don't have exclusion/inclusion pattern set at all,
-   * the entry is always not excluded. */
   if ((a->setflag & PATTERN_IS_SET) == 0)
     return (0);
 #if defined(_WIN32) && !defined(__CYGWIN__)
@@ -472,16 +426,6 @@ int archive_match_path_excluded(struct archive *_a,
 #endif
 }
 
-/*
- * When recursive inclusion of directory content is enabled,
- * an inclusion pattern that matches a directory will also
- * include everything beneath that directory. Enabled by default.
- *
- * For compatibility with GNU tar, exclusion patterns always
- * match if a subset of the full patch matches (i.e., they are
- * are not rooted at the beginning of the path) and thus there
- * is no corresponding non-recursive exclusion mode.
- */
 int archive_match_set_inclusion_recursion(struct archive *_a, int enabled) {
   struct archive_match *a;
 
@@ -492,9 +436,6 @@ int archive_match_set_inclusion_recursion(struct archive *_a, int enabled) {
   return (ARCHIVE_OK);
 }
 
-/*
- * Utility functions to get statistic information for inclusion patterns.
- */
 int archive_match_path_unmatched_inclusions(struct archive *_a) {
   struct archive_match *a;
 
@@ -537,9 +478,6 @@ int archive_match_path_unmatched_inclusions_next_w(struct archive *_a,
   return (r);
 }
 
-/*
- * Add inclusion/exclusion patterns.
- */
 static int add_pattern_mbs(struct archive_match *a, struct match_list *list,
                            const char *pattern) {
   struct match *match;
@@ -548,7 +486,7 @@ static int add_pattern_mbs(struct archive_match *a, struct match_list *list,
   match = calloc(1, sizeof(*match));
   if (match == NULL)
     return (error_nomem(a));
-  /* Both "foo/" and "foo" should match "foo/bar". */
+
   len = strlen(pattern);
   if (len && pattern[len - 1] == '/')
     --len;
@@ -566,7 +504,7 @@ static int add_pattern_wcs(struct archive_match *a, struct match_list *list,
   match = calloc(1, sizeof(*match));
   if (match == NULL)
     return (error_nomem(a));
-  /* Both "foo/" and "foo" should match "foo/bar". */
+
   len = wcslen(pattern);
   if (len && pattern[len - 1] == L'/')
     --len;
@@ -648,16 +586,15 @@ static int add_pattern_from_file(struct archive_match *a,
       }
       if (!found_separator) {
         archive_strncat(&as, s, length);
-        /* Read next data block. */
+
         break;
       }
       b++;
       size -= length + 1;
       archive_strncat(&as, s, length);
 
-      /* If the line is not empty, add the pattern. */
       if (archive_strlen(&as) > 0) {
-        /* Add pattern. */
+
         r = add_pattern_mbs(a, mlist, as.s);
         if (r != ARCHIVE_OK) {
           archive_read_free(ar);
@@ -669,7 +606,6 @@ static int add_pattern_from_file(struct archive_match *a,
     }
   }
 
-  /* If an error occurred, report it immediately. */
   if (r < ARCHIVE_OK) {
     archive_copy_error(&(a->archive), ar);
     archive_read_free(ar);
@@ -677,9 +613,8 @@ static int add_pattern_from_file(struct archive_match *a,
     return (r);
   }
 
-  /* If the line is not empty, add the pattern. */
   if (r == ARCHIVE_EOF && archive_strlen(&as) > 0) {
-    /* Add pattern. */
+
     r = add_pattern_mbs(a, mlist, as.s);
     if (r != ARCHIVE_OK) {
       archive_read_free(ar);
@@ -692,9 +627,6 @@ static int add_pattern_from_file(struct archive_match *a,
   return (ARCHIVE_OK);
 }
 
-/*
- * Test if pathname is excluded by inclusion/exclusion patterns.
- */
 static int path_excluded(struct archive_match *a, int mbs,
                          const void *pathname) {
   struct match *match;
@@ -704,11 +636,6 @@ static int path_excluded(struct archive_match *a, int mbs,
   if (a == NULL)
     return (0);
 
-  /* Mark off any unmatched inclusions. */
-  /* In particular, if a filename does appear in the archive and
-   * is explicitly included and excluded, then we don't report
-   * it as missing even though we don't extract it.
-   */
   matched = NULL;
   for (match = a->inclusions.first; match != NULL; match = match->next) {
     if (!match->matched &&
@@ -721,21 +648,17 @@ static int path_excluded(struct archive_match *a, int mbs,
     }
   }
 
-  /* Exclusions take priority. */
   for (match = a->exclusions.first; match != NULL; match = match->next) {
     r = match_path_exclusion(a, match, mbs, pathname);
     if (r)
       return (r);
   }
 
-  /* It's not excluded and we found an inclusion above, so it's
-   * included. */
   if (matched != NULL)
     return (0);
 
-  /* We didn't find an unmatched inclusion, check the remaining ones. */
   for (match = a->inclusions.first; match != NULL; match = match->next) {
-    /* We looked at previously-unmatched inclusions already. */
+
     if (match->matched &&
         (r = match_path_inclusion(a, match, mbs, pathname)) != 0) {
       if (r < 0)
@@ -744,19 +667,12 @@ static int path_excluded(struct archive_match *a, int mbs,
     }
   }
 
-  /* If there were inclusions, default is to exclude. */
   if (a->inclusions.first != NULL)
     return (1);
 
-  /* No explicit inclusions, default is to match. */
   return (0);
 }
 
-/*
- * This is a little odd, but it matches the default behavior of
- * gtar.  In particular, 'a*b' will match 'foo/a1111/222b/bar'
- *
- */
 static int match_path_exclusion(struct archive_match *a, struct match *m,
                                 int mbs, const void *pn) {
   int flag = PATHMATCH_NO_ANCHOR_START | PATHMATCH_NO_ANCHOR_END;
@@ -778,13 +694,9 @@ static int match_path_exclusion(struct archive_match *a, struct match *m,
   return (0);
 }
 
-/*
- * Again, mimic gtar:  inclusions are always anchored (have to match
- * the beginning of the path) even though exclusions are not anchored.
- */
 static int match_path_inclusion(struct archive_match *a, struct match *m,
                                 int mbs, const void *pn) {
-  /* Recursive operation requires only a prefix match. */
+
   int flag = a->recursive_include ? PATHMATCH_NO_ANCHOR_END : 0;
   int r;
 
@@ -866,7 +778,7 @@ static int match_list_unmatched_inclusions_next(struct archive_match *a,
     }
     list->unmatched_next = m->next;
     if (list->unmatched_next == NULL)
-      /* To return EOF next time. */
+
       list->unmatched_eof = 1;
     return (ARCHIVE_OK);
   }
@@ -874,9 +786,6 @@ static int match_list_unmatched_inclusions_next(struct archive_match *a,
   return (ARCHIVE_EOF);
 }
 
-/*
- * Utility functions to manage inclusion timestamps.
- */
 int archive_match_include_time(struct archive *_a, int flag, time_t sec,
                                long nsec) {
   int r;
@@ -949,13 +858,6 @@ int archive_match_exclude_entry(struct archive *_a, int flag,
   return (add_entry(a, flag, entry));
 }
 
-/*
- * Test function for time stamps.
- *
- * Returns 1 if archive entry is excluded.
- * Returns 0 if archive entry is not excluded.
- * Returns <0 if something error happened.
- */
 int archive_match_time_excluded(struct archive *_a,
                                 struct archive_entry *entry) {
   struct archive_match *a;
@@ -969,8 +871,6 @@ int archive_match_time_excluded(struct archive *_a,
     return (ARCHIVE_FAILED);
   }
 
-  /* If we don't have inclusion time set at all, the entry is always
-   * not excluded. */
   if ((a->setflag & TIME_IS_SET) == 0)
     return (0);
   return (time_excluded(a, entry));
@@ -979,7 +879,6 @@ int archive_match_time_excluded(struct archive *_a,
 static int validate_time_flag(struct archive *_a, int flag, const char *_fn) {
   archive_check_magic(_a, ARCHIVE_MATCH_MAGIC, ARCHIVE_STATE_NEW, _fn);
 
-  /* Check a type of time. */
   if (flag & ((~(ARCHIVE_MATCH_MTIME | ARCHIVE_MATCH_CTIME)) & 0xff00)) {
     archive_set_error(_a, EINVAL, "Invalid time flag");
     return (ARCHIVE_FAILED);
@@ -989,7 +888,6 @@ static int validate_time_flag(struct archive *_a, int flag, const char *_fn) {
     return (ARCHIVE_FAILED);
   }
 
-  /* Check a type of comparison. */
   if (flag &
       ((~(ARCHIVE_MATCH_NEWER | ARCHIVE_MATCH_OLDER | ARCHIVE_MATCH_EQUAL)) &
        0x00ff)) {
@@ -1099,7 +997,7 @@ static int set_timefilter_find_data(struct archive_match *a, int timetype,
 
 static int set_timefilter_pathname_mbs(struct archive_match *a, int timetype,
                                        const char *path) {
-  /* NOTE: stat() on Windows cannot handle nano seconds. */
+
   HANDLE h;
   WIN32_FIND_DATAA d;
 
@@ -1138,7 +1036,7 @@ static int set_timefilter_pathname_wcs(struct archive_match *a, int timetype,
                                   &d.ftCreationTime);
 }
 
-#else  /* _WIN32 && !__CYGWIN__ */
+#else
 
 static int set_timefilter_stat(struct archive_match *a, int timetype,
                                struct stat *st) {
@@ -1183,7 +1081,6 @@ static int set_timefilter_pathname_wcs(struct archive_match *a, int timetype,
     return (ARCHIVE_FAILED);
   }
 
-  /* Convert WCS filename to MBS filename. */
   archive_string_init(&as);
   if (archive_string_append_from_wcs(&as, path, wcslen(path)) < 0) {
     archive_string_free(&as);
@@ -1198,11 +1095,8 @@ static int set_timefilter_pathname_wcs(struct archive_match *a, int timetype,
 
   return (r);
 }
-#endif /* _WIN32 && !__CYGWIN__ */
+#endif
 
-/*
- * Call back functions for archive_rb.
- */
 #if !defined(_WIN32) || defined(__CYGWIN__)
 static int cmp_node_mbs(const struct archive_rb_node *n1,
                         const struct archive_rb_node *n2) {
@@ -1312,17 +1206,9 @@ static int add_entry(struct archive_match *a, int flag,
   if (!r) {
     struct match_file *f2;
 
-    /* Get the duplicated file. */
     f2 = (struct match_file *)__archive_rb_tree_find_node(&(a->exclusion_tree),
                                                           pathname);
 
-    /*
-     * We always overwrite comparison condition.
-     * If you do not want to overwrite it, you should not
-     * call archive_match_exclude_entry(). We cannot know
-     * what behavior you really expect since overwriting
-     * condition might be different with the flag.
-     */
     if (f2 != NULL) {
       f2->flag = f->flag;
       f2->mtime_sec = f->mtime_sec;
@@ -1330,7 +1216,7 @@ static int add_entry(struct archive_match *a, int flag,
       f2->ctime_sec = f->ctime_sec;
       f2->ctime_nsec = f->ctime_nsec;
     }
-    /* Release the duplicated file. */
+
     archive_mstring_clean(&(f->pathname));
     free(f);
     return (ARCHIVE_OK);
@@ -1340,86 +1226,79 @@ static int add_entry(struct archive_match *a, int flag,
   return (ARCHIVE_OK);
 }
 
-/*
- * Test if entry is excluded by its timestamp.
- */
 static int time_excluded(struct archive_match *a, struct archive_entry *entry) {
   struct match_file *f;
   const void *pathname;
   time_t sec;
   long nsec;
 
-  /*
-   * If this file/dir is excluded by a time comparison, skip it.
-   */
   if (a->newer_ctime_filter) {
-    /* If ctime is not set, use mtime instead. */
+
     if (archive_entry_ctime_is_set(entry))
       sec = archive_entry_ctime(entry);
     else
       sec = archive_entry_mtime(entry);
     if (sec < a->newer_ctime_sec)
-      return (1); /* Too old, skip it. */
+      return (1);
     if (sec == a->newer_ctime_sec) {
       if (archive_entry_ctime_is_set(entry))
         nsec = archive_entry_ctime_nsec(entry);
       else
         nsec = archive_entry_mtime_nsec(entry);
       if (nsec < a->newer_ctime_nsec)
-        return (1); /* Too old, skip it. */
+        return (1);
       if (nsec == a->newer_ctime_nsec &&
           (a->newer_ctime_filter & ARCHIVE_MATCH_EQUAL) == 0)
-        return (1); /* Equal, skip it. */
+        return (1);
     }
   }
   if (a->older_ctime_filter) {
-    /* If ctime is not set, use mtime instead. */
+
     if (archive_entry_ctime_is_set(entry))
       sec = archive_entry_ctime(entry);
     else
       sec = archive_entry_mtime(entry);
     if (sec > a->older_ctime_sec)
-      return (1); /* Too new, skip it. */
+      return (1);
     if (sec == a->older_ctime_sec) {
       if (archive_entry_ctime_is_set(entry))
         nsec = archive_entry_ctime_nsec(entry);
       else
         nsec = archive_entry_mtime_nsec(entry);
       if (nsec > a->older_ctime_nsec)
-        return (1); /* Too new, skip it. */
+        return (1);
       if (nsec == a->older_ctime_nsec &&
           (a->older_ctime_filter & ARCHIVE_MATCH_EQUAL) == 0)
-        return (1); /* Equal, skip it. */
+        return (1);
     }
   }
   if (a->newer_mtime_filter) {
     sec = archive_entry_mtime(entry);
     if (sec < a->newer_mtime_sec)
-      return (1); /* Too old, skip it. */
+      return (1);
     if (sec == a->newer_mtime_sec) {
       nsec = archive_entry_mtime_nsec(entry);
       if (nsec < a->newer_mtime_nsec)
-        return (1); /* Too old, skip it. */
+        return (1);
       if (nsec == a->newer_mtime_nsec &&
           (a->newer_mtime_filter & ARCHIVE_MATCH_EQUAL) == 0)
-        return (1); /* Equal, skip it. */
+        return (1);
     }
   }
   if (a->older_mtime_filter) {
     sec = archive_entry_mtime(entry);
     if (sec > a->older_mtime_sec)
-      return (1); /* Too new, skip it. */
+      return (1);
     nsec = archive_entry_mtime_nsec(entry);
     if (sec == a->older_mtime_sec) {
       if (nsec > a->older_mtime_nsec)
-        return (1); /* Too new, skip it. */
+        return (1);
       if (nsec == a->older_mtime_nsec &&
           (a->older_mtime_filter & ARCHIVE_MATCH_EQUAL) == 0)
-        return (1); /* Equal, skip it. */
+        return (1);
     }
   }
 
-  /* If there is no exclusion list, include the file. */
   if (a->exclusion_entry_list.first == NULL)
     return (0);
 
@@ -1433,7 +1312,7 @@ static int time_excluded(struct archive_match *a, struct archive_entry *entry) {
 
   f = (struct match_file *)__archive_rb_tree_find_node(&(a->exclusion_tree),
                                                        pathname);
-  /* If the file wasn't rejected, include it. */
+
   if (f == NULL)
     return (0);
 
@@ -1479,10 +1358,6 @@ static int time_excluded(struct archive_match *a, struct archive_entry *entry) {
   }
   return (0);
 }
-
-/*
- * Utility functions to manage inclusion owners
- */
 
 int archive_match_include_uid(struct archive *_a, la_int64_t uid) {
   struct archive_match *a;
@@ -1538,13 +1413,6 @@ int archive_match_include_gname_w(struct archive *_a, const wchar_t *gname) {
   return (add_owner_name(a, &(a->inclusion_gnames), 0, gname));
 }
 
-/*
- * Test function for owner(uid, gid, uname, gname).
- *
- * Returns 1 if archive entry is excluded.
- * Returns 0 if archive entry is not excluded.
- * Returns <0 if something error happened.
- */
 int archive_match_owner_excluded(struct archive *_a,
                                  struct archive_entry *entry) {
   struct archive_match *a;
@@ -1558,8 +1426,6 @@ int archive_match_owner_excluded(struct archive *_a,
     return (ARCHIVE_FAILED);
   }
 
-  /* If we don't have inclusion id set at all, the entry is always
-   * not excluded. */
   if ((a->setflag & ID_IS_SET) == 0)
     return (0);
   return (owner_excluded(a, entry));
@@ -1582,13 +1448,11 @@ static int add_owner_id(struct archive_match *a, struct id_array *ids,
     ids->ids = (int64_t *)p;
   }
 
-  /* Find an insert point. */
   for (i = 0; i < ids->count; i++) {
     if (ids->ids[i] >= id)
       break;
   }
 
-  /* Add owner id. */
   if (i == ids->count)
     ids->ids[ids->count++] = id;
   else if (ids->ids[i] != id) {
@@ -1674,9 +1538,6 @@ static int match_owner_name_wcs(struct archive_match *a,
 }
 #endif
 
-/*
- * Test if entry is excluded by uid, gid, uname or gname.
- */
 static int owner_excluded(struct archive_match *a,
                           struct archive_entry *entry) {
   int r;

@@ -1,4 +1,4 @@
-#include "encode_df.h"
+﻿#include "encode_df.h"
 #include "huff_codes.h"
 #include "huffman.h"
 #include "igzip_level_buf_structs.h"
@@ -30,12 +30,10 @@ static inline void update_state(struct isal_zstream *stream, uint8_t *start_in,
   stream->internal_state.block_end = stream->total_in;
   stream->avail_in = end_in - next_in;
 
-    level_buf->icf_buf_next = next_out;
-    /* Store available output in bytes to match other code paths that treat
-      `icf_buf_avail_out` as a byte count. `end_out - next_out` yields a
-      count of `struct deflate_icf` elements, so multiply by sizeof. */
-    level_buf->icf_buf_avail_out = (end_out - next_out) *
-                        sizeof(struct deflate_icf);
+  level_buf->icf_buf_next = next_out;
+
+  level_buf->icf_buf_avail_out =
+      (end_out - next_out) * sizeof(struct deflate_icf);
 }
 
 void isal_deflate_icf_body_hash_hist_base(struct isal_zstream *stream) {
@@ -64,11 +62,10 @@ void isal_deflate_icf_body_hash_hist_base(struct isal_zstream *stream) {
   next_in = start_in;
 
   start_out = ((struct level_buf *)stream->level_buf)->icf_buf_next;
-  /* `icf_buf_avail_out` is stored as a byte count; add it to the byte
-     pointer and cast back to element pointer to avoid sizeof double-scaling */
+
   end_out = (struct deflate_icf *)((uint8_t *)start_out +
-                                    ((struct level_buf *)stream->level_buf)
-                                        ->icf_buf_avail_out);
+                                   ((struct level_buf *)stream->level_buf)
+                                       ->icf_buf_avail_out);
   next_out = start_out;
 
   while (next_in + ISAL_LOOK_AHEAD < end_in) {
@@ -85,7 +82,6 @@ void isal_deflate_icf_body_hash_hist_base(struct isal_zstream *stream) {
     dist = (next_in - file_start - last_seen[hash]) & 0xFFFF;
     last_seen[hash] = (uint64_t)(next_in - file_start);
 
-    /* The -1 are to handle the case when dist = 0 */
     if (dist - 1 < hist_size) {
       assert(dist != 0);
 
@@ -157,8 +153,8 @@ void isal_deflate_icf_finish_hash_hist_base(struct isal_zstream *stream) {
 
   start_out = ((struct level_buf *)stream->level_buf)->icf_buf_next;
   end_out = (struct deflate_icf *)((uint8_t *)start_out +
-                                    ((struct level_buf *)stream->level_buf)
-                                        ->icf_buf_avail_out);
+                                   ((struct level_buf *)stream->level_buf)
+                                       ->icf_buf_avail_out);
   next_out = start_out;
 
   if (stream->avail_in == 0) {
@@ -180,8 +176,7 @@ void isal_deflate_icf_finish_hash_hist_base(struct isal_zstream *stream) {
     dist = (next_in - file_start - last_seen[hash]) & 0xFFFF;
     last_seen[hash] = (uint64_t)(next_in - file_start);
 
-    if (dist - 1 <
-        hist_size) { /* The -1 are to handle the case when dist = 0 */
+    if (dist - 1 < hist_size) {
       match_length = compare258(next_in - dist, next_in, end_in - next_in);
 
       if (match_length >= SHORTEST_MATCH) {
@@ -268,7 +263,7 @@ void isal_deflate_icf_finish_hash_map_base(struct isal_zstream *stream) {
 
   start_out = level_buf->icf_buf_next;
   end_out = (struct deflate_icf *)((uint8_t *)start_out +
-                                    level_buf->icf_buf_avail_out);
+                                   level_buf->icf_buf_avail_out);
   next_out = start_out;
 
   if (stream->avail_in == 0) {
@@ -290,8 +285,7 @@ void isal_deflate_icf_finish_hash_map_base(struct isal_zstream *stream) {
     dist = (next_in - file_start - last_seen[hash]) & 0xFFFF;
     last_seen[hash] = (uint64_t)(next_in - file_start);
 
-    if (dist - 1 <
-        hist_size) { /* The -1 are to handle the case when dist = 0 */
+    if (dist - 1 < hist_size) {
       match_length = compare258(next_in - dist, next_in, end_in - next_in);
 
       if (match_length >= SHORTEST_MATCH) {

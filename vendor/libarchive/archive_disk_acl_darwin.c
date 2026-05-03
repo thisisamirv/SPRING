@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2017 Martin Matuska
  * All rights reserved.
  *
@@ -44,7 +44,7 @@
 #include <sys/types.h>
 #endif
 #ifdef HAVE_SYS_ACL_H
-#define _ACL_PRIVATE /* For debugging */
+#define _ACL_PRIVATE
 #include <sys/acl.h>
 #endif
 
@@ -54,8 +54,8 @@
 #include "archive_write_disk_private.h"
 
 typedef struct {
-  const int a_perm; /* Libarchive permission or flag */
-  const int p_perm; /* Platform permission or flag */
+  const int a_perm;
+  const int p_perm;
 } acl_perm_map_t;
 
 static const acl_perm_map_t acl_nfs4_perm_map[] = {
@@ -150,7 +150,6 @@ static void add_trivial_nfs4_acl(struct archive_entry *entry) {
 
   mode = archive_entry_mode(entry);
 
-  /* Permissions for everyone@ */
   if (mode & 0004)
     tacl_entry[5].permset |= rperm;
   if (mode & 0002)
@@ -158,7 +157,6 @@ static void add_trivial_nfs4_acl(struct archive_entry *entry) {
   if (mode & 0001)
     tacl_entry[5].permset |= eperm;
 
-  /* Permissions for group@ */
   if (mode & 0040)
     tacl_entry[4].permset |= rperm;
   else if (mode & 0004)
@@ -172,7 +170,6 @@ static void add_trivial_nfs4_acl(struct archive_entry *entry) {
   else if (mode & 0001)
     tacl_entry[2].permset |= eperm;
 
-  /* Permissions for owner@ */
   if (mode & 0400) {
     tacl_entry[3].permset |= rperm;
     if (!(mode & 0040) && (mode & 0004))
@@ -238,23 +235,16 @@ static int translate_acl(struct archive_read_disk *a,
       r = translate_guid(&a->archive, acl_entry, &ae_id, &ae_tag, &ae_name);
       break;
     default:
-      /* Skip types that libarchive can't support. */
+
       s = acl_get_entry(acl, ACL_NEXT_ENTRY, &acl_entry);
       continue;
     }
 
-    /* Skip if translate_guid() above failed */
     if (r != 0) {
       s = acl_get_entry(acl, ACL_NEXT_ENTRY, &acl_entry);
       continue;
     }
 
-    /*
-     * Libarchive stores "flag" (NFSv4 inheritance bits)
-     * in the ae_perm bitmap.
-     *
-     * acl_get_flagset_np() fails with non-NFSv4 ACLs
-     */
     if (acl_get_flagset_np(acl_entry, &acl_flagset) != 0) {
       archive_set_error(&a->archive, errno,
                         "Failed to get flagset from a NFSv4 ACL entry");
@@ -277,10 +267,7 @@ static int translate_acl(struct archive_read_disk *a,
     }
 
     for (i = 0; i < acl_nfs4_perm_map_size; ++i) {
-      /*
-       * acl_get_perm() is spelled differently on different
-       * platforms; see above.
-       */
+
       r = acl_get_perm_np(acl_permset, acl_nfs4_perm_map[i].p_perm);
       if (r == -1) {
         archive_set_error(&a->archive, errno,
@@ -292,7 +279,7 @@ static int translate_acl(struct archive_read_disk *a,
     }
 
 #if !HAVE_DECL_ACL_SYNCHRONIZE
-    /* On Mac OS X without ACL_SYNCHRONIZE assume it is set */
+
     ae_perm |= ARCHIVE_ENTRY_ACL_SYNCHRONIZE;
 #endif
 
@@ -340,11 +327,7 @@ static int set_acl(struct archive *a, int fd, const char *name,
   while (archive_acl_next(a, abstract_acl, ae_requested_type, &ae_type,
                           &ae_permset, &ae_tag, &ae_id,
                           &ae_name) == ARCHIVE_OK) {
-    /*
-     * Mac OS doesn't support NFSv4 ACLs for
-     * owner@, group@ and everyone@.
-     * We skip any of these ACLs found.
-     */
+
     if (ae_tag == ARCHIVE_ENTRY_ACL_USER_OBJ ||
         ae_tag == ARCHIVE_ENTRY_ACL_GROUP_OBJ ||
         ae_tag == ARCHIVE_ENTRY_ACL_EVERYONE)
@@ -364,7 +347,7 @@ static int set_acl(struct archive *a, int fd, const char *name,
       acl_set_tag_type(acl_entry, ACL_EXTENDED_DENY);
       break;
     default:
-      /* We don't support any other types on MacOS */
+
       continue;
     }
 
@@ -410,9 +393,6 @@ static int set_acl(struct archive *a, int fd, const char *name,
       }
     }
 
-    /*
-     * acl_get_flagset_np() fails with non-NFSv4 ACLs
-     */
     if (acl_get_flagset_np(acl_entry, &acl_flagset) != 0) {
       archive_set_error(a, errno,
                         "Failed to get flagset from an NFSv4 ACL entry");
@@ -444,7 +424,7 @@ static int set_acl(struct archive *a, int fd, const char *name,
       ret = ARCHIVE_OK;
     else {
       if (errno == EOPNOTSUPP) {
-        /* Filesystem doesn't support ACLs */
+
         ret = ARCHIVE_OK;
       } else {
         archive_set_error(a, errno, "Failed to set acl on fd: %s", tname);
@@ -453,7 +433,7 @@ static int set_acl(struct archive *a, int fd, const char *name,
     }
   } else if (acl_set_link_np(name, ACL_TYPE_EXTENDED, acl) != 0) {
     if (errno == EOPNOTSUPP) {
-      /* Filesystem doesn't support ACLs */
+
       ret = ARCHIVE_OK;
     } else {
       archive_set_error(a, errno, "Failed to set acl: %s", tname);
@@ -499,12 +479,6 @@ int archive_read_disk_entry_setup_acls(struct archive_read_disk *a,
       archive_set_error(&a->archive, errno, "Couldn't translate NFSv4 ACLs");
     }
 
-    /*
-     * Because Mac OS doesn't support owner@, group@ and everyone@
-     * ACLs we need to add NFSv4 ACLs mirroring the file mode to
-     * the archive entry. Otherwise extraction on non-Mac platforms
-     * would lead to an invalid file mode.
-     */
     if ((archive_entry_acl_types(entry) & ARCHIVE_ENTRY_ACL_TYPE_NFS4) != 0)
       add_trivial_nfs4_acl(entry);
 
@@ -518,7 +492,7 @@ int archive_write_disk_set_acls(struct archive *a, int fd, const char *name,
                                 __LA_MODE_T mode) {
   int ret = ARCHIVE_OK;
 
-  (void)mode; /* UNUSED */
+  (void)mode;
 
   if ((archive_acl_types(abstract_acl) & ARCHIVE_ENTRY_ACL_TYPE_NFS4) != 0) {
     ret =
@@ -526,4 +500,4 @@ int archive_write_disk_set_acls(struct archive *a, int fd, const char *name,
   }
   return (ret);
 }
-#endif /* ARCHIVE_ACL_DARWIN */
+#endif

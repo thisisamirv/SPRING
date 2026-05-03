@@ -1,4 +1,4 @@
-/*
+﻿/*
  * xxHash - Extremely Fast Hash algorithm
  * Development source file for `xxh3`
  * Copyright (C) 2019-2021 Yann Collet
@@ -32,24 +32,6 @@
  *   - xxHash homepage: https://www.xxhash.com
  *   - xxHash source repository: https://github.com/Cyan4973/xxHash
  */
-
-/*
- * Note: This file used to host the source code of XXH3_* variants.
- * during the development period.
- * The source code is now properly integrated within xxhash.h.
- *
- * xxh3.h is no longer useful,
- * but it is still provided for compatibility with source code
- * which used to include it directly.
- *
- * Programs are now highly discouraged to include xxh3.h.
- * Include `xxhash.h` instead, which is the officially supported interface.
- *
- * In the future, xxh3.h will start to generate warnings, then errors,
- * then it will be removed from source package and from include directory.
- */
-
-/* Simulate the same impact as including the old xxh3.h source file */
 
 #define XXH_INLINE_ALL
 #include "xxhash.h"

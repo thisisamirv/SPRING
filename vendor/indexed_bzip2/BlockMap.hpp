@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <algorithm>
 #include <cassert>
@@ -13,16 +13,7 @@
 #include <common.hpp>
 
 namespace rapidgzip {
-/**
- * Should get block offsets and decoded sizes and will do conversions between
- * decoded and encoded offsets!
- *
- * The idea is that at first any forward seeking should be done using read calls
- * and the read call will push all block information to the BlockMap.
- *
- * This class expects @ref push to be called with monotonically increasing
- * arguments.
- */
+
 class BlockMap {
 public:
   struct BlockInfo {
@@ -46,7 +37,6 @@ public:
     };
 
   public:
-    /** Each block in the stream will be given an increasing index number. */
     size_t blockIndex{0};
     size_t encodedOffsetInBits{0};
     size_t encodedSizeInBits{0};
@@ -54,17 +44,11 @@ public:
     size_t decodedSizeInBytes{0};
   };
 
-  using BlockOffsets =
-      std::vector<std::pair</* encoded offset in bits */ size_t,
-                            /* decoded offset in bytes */ size_t>>;
+  using BlockOffsets = std::vector<std::pair<size_t, size_t>>;
 
 public:
   BlockMap() = default;
 
-  /**
-   * @return decoded offset in bytes, i.e., the sum of all previously decoded
-   * block data.
-   */
   size_t push(size_t encodedBlockOffset, size_t encodedSize,
               size_t decodedSize) {
     const std::scoped_lock lock(m_mutex);
@@ -81,7 +65,6 @@ public:
           m_blockToDataOffsets.back().second + m_lastBlockDecodedSize;
     }
 
-    /* If successive value or empty, then simply append */
     if (decodedOffset) {
       m_blockToDataOffsets.emplace_back(encodedBlockOffset, *decodedOffset);
       if (decodedSize == 0) {
@@ -92,9 +75,6 @@ public:
       return *decodedOffset;
     }
 
-    /* Generally, block inserted offsets should always be increasing!
-     * But do ignore duplicates after confirming that there is no data
-     * inconsistency. */
     const auto match = std::lower_bound(
         m_blockToDataOffsets.begin(), m_blockToDataOffsets.end(),
         std::make_pair(encodedBlockOffset, 0),
@@ -117,21 +97,12 @@ public:
           "Got duplicate block offset with inconsistent size!");
     }
 
-    /* Quietly ignore duplicate insertions. Note that match->first ==
-     * encodedBlockOffset. */
     return match->second;
   }
 
-  /**
-   * Returns the block containing the given data offset. May return a block
-   * which does not contain the given offset. In that case it will be the last
-   * block.
-   */
   [[nodiscard]] BlockInfo findDataOffset(size_t dataOffset) const {
     const std::scoped_lock lock(m_mutex);
 
-    /* find offset from map (key and values should be sorted in ascending order,
-     * so we can bisect!) */
     const auto blockOffset = std::lower_bound(
         m_blockToDataOffsets.rbegin(), m_blockToDataOffsets.rend(),
         std::make_pair(0, dataOffset),
@@ -155,8 +126,6 @@ public:
   getEncodedOffset(size_t encodedOffsetInBits) const {
     const std::scoped_lock lock(m_mutex);
 
-    /* find offset from map (key and values should be sorted in ascending order,
-     * so we can bisect!) */
     const auto blockOffset = std::lower_bound(
         m_blockToDataOffsets.rbegin(), m_blockToDataOffsets.rend(),
         std::make_pair(encodedOffsetInBits, 0),
@@ -172,10 +141,6 @@ public:
     return get(blockOffset);
   }
 
-  /**
-   * Returns number of non-EOS blocks. This is necessary to have a number in
-   * sync with BlockFinder, which does not find EOS blocks!
-   */
   [[nodiscard]] size_t dataBlockCount() const {
     const std::scoped_lock lock(m_mutex);
     return m_blockToDataOffsets.size() - m_eosBlocks.size();
@@ -188,8 +153,6 @@ public:
       return;
     }
 
-    /* Add last empty block if it does not already exist in order to imply the
-     * size of the last real block. */
     if (m_blockToDataOffsets.empty()) {
       assert(m_lastBlockEncodedSize == 0);
       assert(m_lastBlockDecodedSize == 0);
@@ -221,17 +184,16 @@ public:
     m_lastBlockEncodedSize = 0;
     m_lastBlockDecodedSize = 0;
 
-    /* Find EOS blocks in map. */
     m_eosBlocks.clear();
     for (auto it = m_blockToDataOffsets.begin(),
               nit = std::next(m_blockToDataOffsets.begin());
          nit != m_blockToDataOffsets.end(); ++it, ++nit) {
-      /* Only push blocks with no data, i.e., EOS blocks. */
+
       if (it->second == nit->second) {
         m_eosBlocks.push_back(it->first);
       }
     }
-    /* Last block is assumed to be EOS. */
+
     m_eosBlocks.push_back(m_blockToDataOffsets.back().first);
 
     m_finalized = true;
@@ -272,7 +234,7 @@ private:
       result.decodedSizeInBytes = m_lastBlockDecodedSize;
       result.encodedSizeInBits = m_lastBlockEncodedSize;
     } else {
-      const auto higherBlock = std::prev(/* reverse! */ blockOffset);
+      const auto higherBlock = std::prev(blockOffset);
       if (higherBlock->second < blockOffset->second) {
         throw std::logic_error(
             "Data offsets are not monotonically increasing!");
@@ -287,15 +249,11 @@ private:
 private:
   mutable std::mutex m_mutex;
 
-  /** If complete, the last block will be of size 0 and indicate the end of
-   * stream! */
   BlockOffsets m_blockToDataOffsets;
   std::vector<size_t> m_eosBlocks;
   bool m_finalized{false};
 
-  size_t m_lastBlockEncodedSize{
-      0}; /**< Encoded block size of m_blockToDataOffsets.rbegin() */
-  size_t m_lastBlockDecodedSize{
-      0}; /**< Decoded block size of m_blockToDataOffsets.rbegin() */
+  size_t m_lastBlockEncodedSize{0};
+  size_t m_lastBlockDecodedSize{0};
 };
 } // namespace rapidgzip

@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright © 2025 ARJANEN Loïc Jean David
  * All rights reserved.
  *
@@ -32,18 +32,17 @@
 #endif
 #include <stdint.h>
 
-/* NTFS time to Unix sec/nsec. */
 void ntfs_to_unix(uint64_t ntfs, int64_t *secs, uint32_t *nsecs);
-/* DOS time to Unix sec. */
+
 int64_t dos_to_unix(uint32_t dos);
-/* Unix sec/nsec to NTFS time. */
+
 uint64_t unix_to_ntfs(int64_t secs, uint32_t nsecs);
-/* Unix sec to DOS time. */
+
 uint32_t unix_to_dos(int64_t secs);
 #if defined(_WIN32) && !defined(__CYGWIN__)
 #include <winbase.h>
 #include <windef.h>
-/* Windows FILETIME to NTFS time. */
+
 uint64_t FILETIME_to_ntfs(const FILETIME *filetime);
 #endif
-#endif /* ARCHIVE_TIME_PRIVATE_H_INCLUDED */
+#endif

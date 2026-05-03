@@ -1,4 +1,4 @@
-#include "encode_df.h"
+﻿#include "encode_df.h"
 #include "huffman.h"
 #include "igzip_level_buf_structs.h"
 #include "igzip_lib.h"
@@ -10,16 +10,9 @@ extern void set_long_icf_fg(uint8_t *, uint64_t, uint64_t,
 extern void isal_deflate_icf_body_lvl1(struct isal_zstream *);
 extern void isal_deflate_icf_body_lvl2(struct isal_zstream *);
 extern void isal_deflate_icf_body_lvl3(struct isal_zstream *);
-/*
-*************************************************************
-* Helper functions
-************************************************************
-*/
+
 static inline void write_deflate_icf(struct deflate_icf *icf, uint32_t lit_len,
                                      uint32_t lit_dist, uint32_t extra_bits) {
-  /* icf->lit_len = lit_len; */
-  /* icf->lit_dist = lit_dist; */
-  /* icf->dist_extra = extra_bits; */
 
   store_native_u32((uint8_t *)icf, lit_len | (lit_dist << LIT_LEN_BIT_COUNT) |
                                        (extra_bits << (LIT_LEN_BIT_COUNT +
@@ -68,11 +61,6 @@ void set_long_icf_fg_base(uint8_t *next_in, uint64_t processed,
   }
 }
 
-/*
-*************************************************************
-* Methods for generating one pass match lookup table
-************************************************************
-*/
 uint64_t gen_icf_map_h1_base(struct isal_zstream *stream,
                              struct deflate_icf *matches_icf_lookup,
                              uint64_t input_size) {
@@ -131,11 +119,6 @@ uint64_t gen_icf_map_h1_base(struct isal_zstream *stream,
   return next_in - stream->next_in;
 }
 
-/*
-*************************************************************
-* One pass methods for parsing provided match lookup table
-************************************************************
-*/
 static struct deflate_icf *compress_icf_map_g(struct isal_zstream *stream,
                                               struct deflate_icf *matches_next,
                                               struct deflate_icf *matches_end) {
@@ -143,11 +126,11 @@ static struct deflate_icf *compress_icf_map_g(struct isal_zstream *stream,
   uint64_t code;
   struct isal_zstate *state = &stream->internal_state;
   struct level_buf *level_buf = (struct level_buf *)stream->level_buf;
-    struct deflate_icf *matches_start = matches_next;
-    /* `icf_buf_avail_out` is a byte count; compute end pointer by adding
-     bytes to the byte pointer and casting back to element pointer. */
-    struct deflate_icf *icf_buf_end = (struct deflate_icf *)
-      ((uint8_t *)level_buf->icf_buf_next + level_buf->icf_buf_avail_out);
+  struct deflate_icf *matches_start = matches_next;
+
+  struct deflate_icf *icf_buf_end =
+      (struct deflate_icf *)((uint8_t *)level_buf->icf_buf_next +
+                             level_buf->icf_buf_avail_out);
 
   while (matches_next + 1 < matches_end &&
          level_buf->icf_buf_next + 1 < icf_buf_end) {
@@ -228,11 +211,6 @@ static struct deflate_icf *compress_icf_map_g(struct isal_zstream *stream,
   return matches_next;
 }
 
-/*
-*************************************************************
-* Compression functions combining different methods
-************************************************************
-*/
 static inline void icf_body_next_state(struct isal_zstream *stream) {
   struct level_buf *level_buf = (struct level_buf *)stream->level_buf;
   struct isal_zstate *state = &stream->internal_state;

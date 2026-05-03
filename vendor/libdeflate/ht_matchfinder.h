@@ -1,4 +1,4 @@
-/*
+﻿/*
  * ht_matchfinder.h - Lempel-Ziv matchfinding with a hash table
  *
  * Copyright 2022 Eric Biggers
@@ -51,7 +51,7 @@
 #define HT_MATCHFINDER_BUCKET_SIZE 2
 
 #define HT_MATCHFINDER_MIN_MATCH_LEN 4
-/* Minimum value of max_len for ht_matchfinder_longest_match() */
+
 #define HT_MATCHFINDER_REQUIRED_NBYTES 5
 
 struct MATCHFINDER_ALIGNED ht_matchfinder {
@@ -69,7 +69,6 @@ static forceinline void ht_matchfinder_slide_window(struct ht_matchfinder *mf) {
   matchfinder_rebase((mf_pos_t *)mf, sizeof(*mf));
 }
 
-/* Note: max_len must be >= HT_MATCHFINDER_REQUIRED_NBYTES */
 static forceinline u32 ht_matchfinder_longest_match(
     struct ht_matchfinder *const mf, const u8 **const in_base_p,
     const u8 *const in_next, const u32 max_len, const u32 nice_len,
@@ -91,7 +90,6 @@ static forceinline u32 ht_matchfinder_longest_match(
   int i;
 #endif
 
-  /* This is assumed throughout this function. */
   STATIC_ASSERT(HT_MATCHFINDER_MIN_MATCH_LEN == 4);
 
   if (cur_pos == MATCHFINDER_WINDOW_SIZE) {
@@ -109,7 +107,7 @@ static forceinline u32 ht_matchfinder_longest_match(
   seq = load_u32_unaligned(in_next);
   prefetchw(&mf->hash_tab[*next_hash]);
 #if HT_MATCHFINDER_BUCKET_SIZE == 1
-  /* Hand-unrolled version for BUCKET_SIZE == 1 */
+
   cur_node = mf->hash_tab[hash][0];
   mf->hash_tab[hash][0] = cur_pos;
   if (cur_node <= cutoff)
@@ -120,11 +118,7 @@ static forceinline u32 ht_matchfinder_longest_match(
     best_matchptr = matchptr;
   }
 #elif HT_MATCHFINDER_BUCKET_SIZE == 2
-  /*
-   * Hand-unrolled version for BUCKET_SIZE == 2.  The logic here also
-   * differs slightly in that it copies the first entry to the second even
-   * if nice_len is reached on the first, as this can be slightly faster.
-   */
+
   cur_node = mf->hash_tab[hash][0];
   mf->hash_tab[hash][0] = cur_pos;
   if (cur_node <= cutoff)
@@ -160,7 +154,7 @@ static forceinline u32 ht_matchfinder_longest_match(
     }
   }
 #else
-  /* Generic version for HT_MATCHFINDER_BUCKET_SIZE > 2 */
+
   to_insert = cur_pos;
   for (i = 0; i < HT_MATCHFINDER_BUCKET_SIZE; i++) {
     cur_node = mf->hash_tab[hash][i];
@@ -218,4 +212,4 @@ ht_matchfinder_skip_bytes(struct ht_matchfinder *const mf,
   *next_hash = hash;
 }
 
-#endif /* LIB_HT_MATCHFINDER_H */
+#endif

@@ -1,12 +1,9 @@
-#ifndef CRC32_H
+﻿#ifndef CRC32_H
 #define CRC32_H
-/* crc32.h -- tables for rapid CRC calculation
- * Generated automatically by crc32.c
- */
+
 #include "zconf.h"
 #include "zutil.h"
 
-/* Definitions for doing the crc four data bytes at a time. */
 #if !defined(NOBYFOUR) && defined(Z_U4)
 #define BYFOUR
 #endif
@@ -438,4 +435,4 @@ local const z_crc_t FAR crc_table[TBLS][256] = {
 #endif
     }};
 
-#endif /* CRC32_H */
+#endif

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <algorithm>
 #include <cstring>
@@ -45,9 +45,6 @@ public:
     return std::make_unique<BufferedFileReader>(m_buffer, m_maxBufferSize);
   }
 
-  /* Copying is simply not allowed because that might interfere with the file
-   * position state, use SharedFileReader! */
-
   void close() override {
     if (m_file) {
       m_file->close();
@@ -86,18 +83,15 @@ public:
       return 0;
     }
 
-    /* Read from buffer as much as possible. */
     auto nBytesRead = readFromBuffer(buffer, nMaxBytesToRead);
     if (nBytesRead >= nMaxBytesToRead) {
       return nBytesRead;
     }
 
-    /* If we cannot refill the buffer, then that was it. */
     if (!m_file) {
       return nBytesRead;
     }
 
-    /* Skip buffering step for very large reads. */
     if (nMaxBytesToRead - nBytesRead >= m_maxBufferSize) {
       const auto nBytesReadFromFile =
           m_file->read(buffer == nullptr ? buffer : buffer + nBytesRead,
@@ -118,7 +112,6 @@ public:
 
     const auto newBufferPosition = effectiveOffset(offset, origin);
 
-    /* Check if we can simply seek inside the buffer. */
     if (newBufferPosition <= m_buffer.size()) {
       m_bufferPosition = newBufferPosition;
       return tell();
@@ -131,8 +124,7 @@ public:
 
     m_originalBufferOffset =
         m_file->seek(static_cast<long long int>(tell()) + offset, SEEK_SET);
-    /* Clear buffer AFTER calling tell(), or else the position will be
-     * different! */
+
     m_bufferPosition = 0;
     m_buffer.clear();
 

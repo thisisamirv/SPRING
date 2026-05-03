@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2007 Tim Kientzle
  * Copyright (c) 2010-2011 Michihiro NAKAJIMA
  * All rights reserved.
@@ -40,10 +40,6 @@
 #include "archive_entry.h"
 #include "archive_entry_private.h"
 
-/*
- * sparse handling
- */
-
 void archive_entry_sparse_clear(struct archive_entry *entry) {
   struct ae_sparse *sp;
 
@@ -60,29 +56,28 @@ void archive_entry_sparse_add_entry(struct archive_entry *entry,
   struct ae_sparse *sp;
 
   if (offset < 0 || length < 0)
-    /* Invalid value */
+
     return;
   if (offset > INT64_MAX - length ||
       offset + length > archive_entry_size(entry))
-    /* A value of "length" parameter is too large. */
+
     return;
   if ((sp = entry->sparse_tail) != NULL) {
     if (sp->offset + sp->length > offset)
-      /* Invalid value. */
+
       return;
     if (sp->offset + sp->length == offset) {
       if (sp->offset + sp->length + length < 0)
-        /* A value of "length" parameter is
-         * too large. */
+
         return;
-      /* Expand existing sparse block size. */
+
       sp->length += length;
       return;
     }
   }
 
   if ((sp = malloc(sizeof(*sp))) == NULL)
-    /* XXX Error XXX */
+
     return;
 
   sp->offset = offset;
@@ -92,16 +87,13 @@ void archive_entry_sparse_add_entry(struct archive_entry *entry,
   if (entry->sparse_head == NULL)
     entry->sparse_head = entry->sparse_tail = sp;
   else {
-    /* Add a new sparse block to the tail of list. */
+
     if (entry->sparse_tail != NULL)
       entry->sparse_tail->next = sp;
     entry->sparse_tail = sp;
   }
 }
 
-/*
- * returns number of the sparse entries
- */
 int archive_entry_sparse_count(struct archive_entry *entry) {
   struct ae_sparse *sp;
   int count = 0;
@@ -109,11 +101,6 @@ int archive_entry_sparse_count(struct archive_entry *entry) {
   for (sp = entry->sparse_head; sp != NULL; sp = sp->next)
     count++;
 
-  /*
-   * Sanity check if this entry is exactly sparse.
-   * If amount of sparse blocks is just one and it indicates the whole
-   * file data, we should remove it and return zero.
-   */
   if (count == 1) {
     sp = entry->sparse_head;
     if (sp->offset == 0 && sp->length >= archive_entry_size(entry)) {
@@ -146,7 +133,3 @@ int archive_entry_sparse_next(struct archive_entry *entry, la_int64_t *offset,
     return (ARCHIVE_WARN);
   }
 }
-
-/*
- * end of sparse handling
- */

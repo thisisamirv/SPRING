@@ -1,7 +1,11 @@
-#pragma once
+﻿#pragma once
 
+#include <BlockFetcher.hpp>
+#include <BlockMap.hpp>
+#include <FasterVector.hpp>
 #include <atomic>
 #include <chrono>
+#include <common.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -15,17 +19,10 @@
 #include <utility>
 #include <vector>
 
-#include <zlib.h>
-
-#include <BlockFetcher.hpp>
-#include <BlockMap.hpp>
-#include <FasterVector.hpp>
-#include <common.hpp>
-
 #include "ChunkData.hpp"
 #include "GzipBlockFinder.hpp"
-#include "WindowMap.hpp"
 #include "GzipChunk.hpp"
+#include "WindowMap.hpp"
 
 namespace rapidgzip {
 template <typename T_FetchingStrategy, typename T_ChunkData = ChunkData>
@@ -40,12 +37,10 @@ public:
   using SharedDecompressedWindow = std::shared_ptr<const FasterVector<uint8_t>>;
   using WindowView = VectorView<uint8_t>;
   using BlockFinder = typename BaseType::BlockFinder;
-  using PostProcessingFutures =
-      std::map</* block offset */ size_t, std::future<void>>;
+  using PostProcessingFutures = std::map<size_t, std::future<void>>;
   using UniqueSharedFileReader = std::unique_ptr<SharedFileReader>;
-  using ProcessChunk =
-      std::function<void(const std::shared_ptr<const ChunkData> & /* chunk */,
-                         FasterVector<uint8_t> /* lastWindow */)>;
+  using ProcessChunk = std::function<void(
+      const std::shared_ptr<const ChunkData> &, FasterVector<uint8_t>)>;
 
   static constexpr bool REPLACE_MARKERS_IN_PARALLEL = true;
 
@@ -61,8 +56,6 @@ public:
     }
 
   public:
-    /** Using C++20, we would be able to use std::atomic<double> instead of the
-     * mutex! Same for other tracking. */
     mutable std::mutex mutex;
     uint64_t preemptiveStopCount{0};
     double queuePostProcessingDuration{0};
@@ -629,16 +622,7 @@ private:
       if (!chunkData->footers.empty() &&
           (chunkData->footers.back().blockBoundary.decodedOffset ==
            chunkData->decodedSizeInBytes)) {
-        /* Assuming / requiring that back-references cannot cross footer
-         * thresholds, we can emplace an empty window into the window map if the
-         * chunk end coincides with a footer. Note that this single special case
-         * is sufficient for BGZF files to never produce a non-empty window
-         * because:
-         *  1. BGZF chunks are never split during decompression. Else, the
-         * windows at split boundaries would also have to be checked whether
-         * they coincide with a footer.
-         *  2. Chunks always end on a footer or rather after the next gzip
-         * header. */
+
         m_windowMap->emplaceShared(windowOffset,
                                    std::make_shared<WindowMap::Window>());
       } else {
@@ -658,14 +642,6 @@ private:
         .first;
   }
 
-  /**
-   * First, tries to look up the given block offset by its partition offset and
-   * then by its real offset.
-   *
-   * @param blockOffset The real block offset, not a guessed one, i.e., also no
-   * partition offset! This is important because this offset is stored in the
-   * returned ChunkData as the real one.
-   */
   [[nodiscard]] std::shared_ptr<ChunkData> getBlock(const size_t blockOffset,
                                                     const size_t blockIndex) {
     const auto getPartitionOffsetFromOffset = [this](auto offset) {
@@ -680,28 +656,8 @@ private:
                                   getPartitionOffsetFromOffset);
       }
     } catch (const NoBlockInRange &) {
-      /* Trying to get the next block based on the partition offset is only a
-       * performance optimization. It should succeed most of the time for good
-       * performance but is not required to and also might sometimes not, e.g.,
-       * when the deflate block finder failed to find any valid block inside the
-       * partition, e.g., because it only contains fixed Huffman blocks. */
     }
 
-    /* If we got a chunk matching the partition offset but the chunk does not
-     * match the actual desired offset, then give a warning. No error, because
-     * below we simply request the actual offset directly in that case. This
-     * warning will also appear when a chunk has preemptively quit
-     * decompressing, e.g., because the compression ratio was too large. In that
-     * case, requests for the offset where the chunk has stopped, will return
-     * the partition offset of the previous chunk and therefore will return a
-     * mismatching chunk. Suppress this relative benign case.
-     * @todo Get rid of the partition offset altogether and "simply" look in the
-     * chunk cache for ones where matchesEncodedOffset returns true. Note that
-     * this has problems when the chunk to test for has not yet found a viable
-     * start position. Therefore, it requires some locking and in the worst-case
-     *       waiting or if we don't wait, it might result in the same chunk
-     * being decompressed twice, once as a prefetch starting from a guessed
-     * position and once as an on-demand fetch given the exact position. */
     if (BaseType::statisticsEnabled()) {
       if (chunkData && !chunkData->matchesEncodedOffset(blockOffset) &&
           (partitionOffset != blockOffset) &&
@@ -725,14 +681,10 @@ private:
       }
     }
 
-    /* If we got no block or one with the wrong data, then try again with the
-     * real offset, not the speculatively prefetched one. */
     if (!chunkData || (!chunkData->matchesEncodedOffset(blockOffset) &&
                        (partitionOffset != blockOffset))) {
       try {
-        /* This call given the exact block offset must always yield the correct
-         * data and should be equivalent to directly call @ref decodeBlock with
-         * that offset. */
+
         chunkData = BaseType::get(blockOffset, blockIndex,
                                   getPartitionOffsetFromOffset);
       } catch (const gzip::BitReader::EndOfFileReached &exception) {
@@ -752,10 +704,7 @@ private:
     }
 
     if (!chunkData->matchesEncodedOffset(blockOffset)) {
-      /* This error should be equivalent to trying to start to decode from the
-       * requested blockOffset and failing to do so. It should only happen when
-       * a previous decodeBlock call did not stop on a deflate block boundary.
-       */
+
       std::stringstream message;
       message << "Got wrong block to searched offset! Looked for "
               << blockOffset
@@ -773,16 +722,9 @@ private:
     return chunkData;
   }
 
-  /**
-   * This is called in a threaded context! All member accesses must be
-   * thread-safe or locked!
-   */
   [[nodiscard]] ChunkData decodeBlock(size_t blockOffset,
                                       size_t nextBlockOffset) const override {
-    /* The decoded size of the block is only for optimization purposes.
-     * Therefore, we do not have to take care of the correct ordering between
-     * BlockMap accesses and modifications (the BlockMap is still thread-safe).
-     */
+
     const auto blockInfo = m_blockMap->getEncodedOffset(blockOffset);
 
     ChunkConfiguration chunkDataConfiguration;
@@ -793,41 +735,24 @@ private:
     chunkDataConfiguration.fileType = m_blockFinder->fileType();
     chunkDataConfiguration.splitChunkSize = m_blockFinder->spacingInBits() / 8U;
 
-    /* If we are a BGZF file and we have not imported an index, then we can
-     * assume the window to be empty because we should only get offsets at gzip
-     * stream starts. If we have imported an index, then the block finder will
-     * be finalized, and it might be possible that offsets were chosen in the
-     * middle of gzip streams, which would require windows. */
     auto sharedWindow = m_windowMap->get(blockOffset);
     if (!sharedWindow && m_isBgzfFile && !m_blockFinder->finalized()) {
       sharedWindow = std::make_shared<WindowMap::Window>();
     }
 
-    return decodeBlock(m_sharedFileReader->clone(), blockOffset,
-                       /* untilOffset */
-                       (blockInfo ? blockInfo->encodedOffsetInBits +
-                                        blockInfo->encodedSizeInBits
-                                  : nextBlockOffset),
-                       std::move(sharedWindow),
-                       /* decodedSize */
-                           blockInfo ? blockInfo->decodedSizeInBytes
-                                     : std::optional<size_t>{},
-                       m_cancelThreads, chunkDataConfiguration,
-                       /* untilOffsetIsExact */ m_isBgzfFile || blockInfo);
+    return decodeBlock(
+        m_sharedFileReader->clone(), blockOffset,
+
+        (blockInfo
+             ? blockInfo->encodedOffsetInBits + blockInfo->encodedSizeInBits
+             : nextBlockOffset),
+        std::move(sharedWindow),
+
+        blockInfo ? blockInfo->decodedSizeInBytes : std::optional<size_t>{},
+        m_cancelThreads, chunkDataConfiguration, m_isBgzfFile || blockInfo);
   }
 
 public:
-  /**
-   * This is a static method with mostly non-ref/pointer arguments in order to
-   * be thread-safe!
-   *
-   * @param untilOffset Decode to excluding at least this compressed offset. It
-   * can be the offset of the next deflate block or next gzip stream but it can
-   * also be the starting guess for the block finder to find the next deflate
-   * block or gzip stream.
-   * @param initialWindow Required to resume decoding. Can be empty if, e.g.,
-   * the blockOffset is at the gzip stream start.
-   */
   [[nodiscard]] static ChunkData
   decodeBlock(UniqueFileReader &&sharedFileReader, size_t const blockOffset,
               size_t const untilOffset, SharedWindow initialWindow,
@@ -846,8 +771,6 @@ private:
 
   std::atomic<bool> m_cancelThreads{false};
 
-  /* Variables required by decodeBlock and which therefore should be either
-   * const or locked. */
   const UniqueSharedFileReader m_sharedFileReader;
   std::shared_ptr<BlockFinder> const m_blockFinder;
   std::shared_ptr<BlockMap> const m_blockMap;
@@ -858,16 +781,9 @@ private:
   mutable std::mutex m_chunkConfigurationMutex;
   ChunkConfiguration m_chunkConfiguration;
 
-  /* This is the highest found block inside BlockFinder we ever processed and
-   * put into the BlockMap. After the BlockMap has been finalized, this isn't
-   * needed anymore. */
   size_t m_nextUnprocessedBlockIndex{0};
 
-  /* This is necessary when blocks have been split in order to find and reuse
-   * cached unsplit chunks. */
-  std::unordered_map</* block offset */ size_t,
-                     /* block offset of unsplit "parent" chunk */ size_t>
-      m_unsplitBlocks;
+  std::unordered_map<size_t, size_t> m_unsplitBlocks;
 
   PostProcessingFutures m_markersBeingReplaced;
 

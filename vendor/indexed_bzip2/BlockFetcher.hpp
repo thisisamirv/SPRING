@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <algorithm>
 #include <atomic>
@@ -23,23 +23,18 @@
 #include <common.hpp>
 
 #ifdef WITH_PYTHON_SUPPORT
-#include <ScopedGIL.hpp> // For unlocking the GIL in case the block fetch code uses PythonFileReader
+#include <ScopedGIL.hpp>
 #endif
 
 namespace rapidgzip {
-/**
- * Manages block data access. Calls to members are not thread-safe!
- * Requested blocks are cached and accesses may trigger prefetches,
- * which will be fetched in parallel using a thread pool.
- */
+
 template <typename T_BlockFinder, typename T_BlockData,
           typename FetchingStrategy>
 class BlockFetcher {
 public:
   using BlockFinder = T_BlockFinder;
   using BlockData = T_BlockData;
-  using BlockCache =
-      Cache</** block offset in bits */ size_t, std::shared_ptr<BlockData>>;
+  using BlockCache = Cache<size_t, std::shared_ptr<BlockData>>;
 
   static_assert(std::is_base_of_v<BlockFinderInterface, BlockFinder>,
                 "Block finder must derive from the abstract interface.");
@@ -72,8 +67,7 @@ public:
               ? duration(*decodeBlockStartTime, *decodeBlockEndTime)
               : 0.0;
       const auto optimalDecodeDuration = decodeBlockTotalTime / parallelization;
-      /* The pool efficiency only makes sense when the thread pool is smaller or
-       * equal the CPU cores. */
+
       const auto poolEfficiency = optimalDecodeDuration / decodeDuration;
 
       std::stringstream out;
@@ -137,8 +131,7 @@ public:
       ++gets;
 
       if (!lastAccessedBlock) {
-        lastAccessedBlock =
-            blockindex; // effectively counts the first access as sequential
+        lastAccessedBlock = blockindex;
       }
 
       if (blockindex > *lastAccessedBlock + 1) {
@@ -188,12 +181,10 @@ protected:
                               ? std::max<size_t>(1U, availableCores())
                               : parallelization),
         m_blockFinder(std::move(blockFinder)),
-        m_cache(std::max(size_t(16), m_parallelization)), m_prefetchCache(
-                                                              2 *
-                                                              m_parallelization /* Only m_parallelization would lead to lot of cache pollution! */),
+        m_cache(std::max(size_t(16), m_parallelization)),
+        m_prefetchCache(2 * m_parallelization),
         m_failedPrefetchCache(m_prefetchCache.capacity()),
-        /* If parallelization is 1, then do not start any thread even if the
-           main thread is not doing much work. */
+
         m_threadPool(m_parallelization == 1 ? 0 : m_parallelization) {
     if (!m_blockFinder) {
       throw std::invalid_argument("BlockFinder must be valid!");
@@ -204,7 +195,7 @@ protected:
 public:
   virtual ~BlockFetcher() {
     if (m_showProfileOnDestruction) {
-      /* Clear caches while updating the unused entries statistic. */
+
       m_cache.shrinkTo(0);
       m_prefetchCache.shrinkTo(0);
       std::cerr << (ThreadSafeOutput()
@@ -216,9 +207,6 @@ public:
 
   [[nodiscard]] bool statisticsEnabled() const { return m_statisticsEnabled; }
 
-  /**
-   * @note Only will work if m_statisticsEnabled is true.
-   */
   void setShowProfileOnDestruction(bool showProfileOnDestruction) {
     m_showProfileOnDestruction = showProfileOnDestruction;
   }
@@ -228,21 +216,6 @@ public:
            m_cache.test(blockOffset) || m_prefetchCache.test(blockOffset);
   }
 
-  /**
-   * Fetches, prefetches, caches, and returns result.
-   * @param dataBlockIndex Only used to determine which block indexes to
-   * prefetch. If not specified, will query BlockFinder for the block offset.
-   * This started as a performance optimization, to avoid unnecessary
-   * BlockFinder lookups but when looking up the partition offset, it might be
-   * necessary or else the BlockFinder::find call might throw because it can't
-   * find the given offset.
-   * @param getPartitionOffsetFromOffset Returns the partition offset to a given
-   * blockOffset. This is used to look up existence of blocks in the cache to
-   * avoid duplicate prefetches (one for the partition offset and another one
-   * for the real offset).
-   * @return BlockData to requested blockOffset. Undefined what happens for an
-   * invalid blockOffset as input.
-   */
   [[nodiscard]] std::shared_ptr<BlockData>
   get(const size_t blockOffset,
       const std::optional<size_t> dataBlockIndex = std::nullopt,
@@ -250,19 +223,10 @@ public:
     [[maybe_unused]] const auto tGetStart = now();
 
 #ifdef WITH_PYTHON_SUPPORT
-    /* The GIL needs to be unlocked for the worker threads to not wait
-     * infinitely when calling methods on a given Python file object. In theory,
-     * it suffices to call this unlock here to avoid deadlocks because it is the
-     * only method that waits for results from the worker threads. But, it might
-     * be more efficient to unlock the GIL outside to avoid many unlock/lock
-     * cycles and to leave it unlocked for longer so as to not hinder the worker
-     * threads. */
+
     const ScopedGILUnlock unlockedGIL;
 #endif
 
-    /* Not using capture bindings here because C++ is too dumb to capture those,
-     * yet.
-     * @see https://stackoverflow.com/a/46115028/2191065 */
     auto resultFromCaches = getFromCaches(blockOffset);
     auto &cachedResult = resultFromCaches.first;
     auto &queuedResult = resultFromCaches.second;
@@ -275,7 +239,6 @@ public:
       m_statistics.recordBlockIndexGet(validDataBlockIndex);
     }
 
-    /* Start requested calculation if necessary. */
     if (!cachedResult.has_value() && !queuedResult.valid()) {
       queuedResult = submitOnDemandTask(blockOffset, nextBlockOffset);
     }
@@ -290,23 +253,11 @@ public:
               (queuedResult.wait_for(0s) == std::future_status::ready));
     };
 
-    /* The prefetch below only is called when the result future times out. When
-     * all futures are ready, this prefetch call would only be called when
-     * trying to access the next non-prefetched block. This would introduce a
-     * large latency, which is not necessary. This call here is necessary to
-     * avoid that. This prefetch results in pipelined behavior, i.e., the next
-     * block will be prefetched, when the earliest block can get removed from
-     * the cache, e.g., during sequential access! However, prefetchNewBlocks is
-     * very expensive for some reason, therefore only call it when the accessed
-     * block index actually has changed. This yields orders of magnitudes
-     * speedups when ParallelGzipReader::read is called with nBytesToRead < 32
-     * KiB. */
     if (!lastFetchedIndex ||
         (lastFetchedIndex.value() != validDataBlockIndex)) {
       prefetchNewBlocks(getPartitionOffsetFromOffset, resultIsReady);
     }
 
-    /* Return result */
     if (cachedResult.has_value()) {
       assert(!queuedResult.valid());
       if (m_statisticsEnabled) {
@@ -318,8 +269,7 @@ public:
 
     [[maybe_unused]] const auto tFutureGetStart = now();
     using namespace std::chrono_literals;
-    /* At ~4 MiB compressed blocks and ~200 MB/s compressed bandwidth for
-     * base64, one block might take ~20ms. */
+
     while (queuedResult.wait_for(1ms) == std::future_status::timeout) {
       prefetchNewBlocks(getPartitionOffsetFromOffset, resultIsReady);
     }
@@ -369,26 +319,17 @@ private:
     return m_failedPrefetchCache.test(blockOffset);
   }
 
-  /**
-   * @return either a shared_ptr from the caches or a future from the prefetch
-   * queue. The prefetch future is taken from the queue, i.e., it should not be
-   * discarded. Either reinsert it into the queue or wait for the result and
-   * insert it into a cache.
-   */
   [[nodiscard]] std::pair<std::optional<std::shared_ptr<BlockData>>,
                           std::future<BlockData>>
   getFromCaches(const size_t blockOffset) {
-    /* In case of a late prefetch, this might return an unfinished future. */
+
     auto resultFuture = takeFromPrefetchQueue(blockOffset);
 
-    /* Access cache before data might get evicted!
-     * Access cache after prefetch queue to avoid incrementing the cache misses
-     * counter. */
     std::optional<std::shared_ptr<BlockData>> result;
     if (!resultFuture.valid()) {
       result = m_cache.get(blockOffset);
       if (!result) {
-        /* On prefetch cache hit, move the value into the normal cache. */
+
         result = m_prefetchCache.get(blockOffset);
         if (result) {
           m_prefetchCache.evict(blockOffset);
@@ -402,7 +343,7 @@ private:
 
   [[nodiscard]] std::future<BlockData>
   takeFromPrefetchQueue(size_t blockOffset) {
-    /* Check whether the desired offset is prefetched. */
+
     std::future<BlockData> resultFuture;
     const auto match = m_prefetching.find(blockOffset);
 
@@ -419,7 +360,6 @@ private:
     return resultFuture;
   }
 
-  /* Check for ready prefetches and move them to cache. */
   void processReadyPrefetches() {
     using namespace std::chrono_literals;
 
@@ -435,12 +375,9 @@ private:
               prefetchedBlockOffset,
               std::make_shared<BlockData>(std::move(result)));
         } catch (...) {
-          /* Prefetching failed, ignore result and error. If the error was a
-           * real one, then it will will be rethrown when the task is requested
-           * directly and run directly. */
+
           const std::scoped_lock lock(m_failedPrefetchCacheMutex);
-          m_failedPrefetchCache.insert(prefetchedBlockOffset,
-                                       /* value does not matter */ true);
+          m_failedPrefetchCache.insert(prefetchedBlockOffset, true);
         }
         it = m_prefetching.erase(it);
       } else {
@@ -449,21 +386,13 @@ private:
     }
   }
 
-  /**
-   * Fills m_prefetching up with a maximum of m_parallelization-1 new tasks
-   * predicted based on the given last accessed block index(es).
-   * @param stopPrefetching The prefetcher might wait a bit on the block finder
-   * but when stopPrefetching returns true it will stop that and return before
-   * having completely filled the prefetch queue.
-   */
   void prefetchNewBlocks(const GetPartitionOffset &getPartitionOffsetFromOffset,
                          const std::function<bool()> &stopPrefetching) {
-    /* Make space for new asynchronous prefetches. */
+
     processReadyPrefetches();
 
     const auto threadPoolSaturated = [&]() {
-      return m_prefetching.size() + /* thread with the requested block */ 1 >=
-             m_threadPool.capacity();
+      return m_prefetching.size() + 1 >= m_threadPool.capacity();
     };
 
     if (threadPoolSaturated()) {
@@ -475,10 +404,8 @@ private:
 
     std::vector<size_t> blockOffsetsToPrefetch(blockIndexesToPrefetch.size());
     for (auto blockIndexToPrefetch : blockIndexesToPrefetch) {
-      /* If we don't find the offset in the timeout of 0, then we very likely
-       * also don't have it cached yet. */
-      const auto [blockOffset, _] =
-          m_blockFinder->get(blockIndexToPrefetch, /* timeout */ 0);
+
+      const auto [blockOffset, _] = m_blockFinder->get(blockIndexToPrefetch, 0);
       if (!blockOffset) {
         continue;
       }
@@ -492,8 +419,6 @@ private:
       }
     }
 
-    /* Touch all blocks to be prefetched to avoid evicting them while doing the
-     * prefetching of other blocks! */
     for (auto offset = blockOffsetsToPrefetch.rbegin();
          offset != blockOffsetsToPrefetch.rend(); ++offset) {
       m_prefetchCache.touch(*offset);
@@ -510,9 +435,6 @@ private:
         continue;
       }
 
-      /* If the block with the requested index has not been found yet and if we
-       * have to wait on the requested result future anyway, then wait a
-       * non-zero amount of time on the BlockFinder! */
       using GetReturnCode = BlockFinderInterface::GetReturnCode;
       std::optional<size_t> prefetchBlockOffset;
       auto prefetchGetReturnCode = GetReturnCode::FAILURE;
@@ -537,8 +459,6 @@ private:
         }
       }
 
-      /* Do not prefetch already cached/prefetched blocks or block indexes which
-       * are not yet in the block map. */
       if (!prefetchBlockOffset.has_value() ||
           (prefetchGetReturnCode == GetReturnCode::FAILURE) ||
           !nextPrefetchBlockOffset.has_value() ||
@@ -550,9 +470,6 @@ private:
         continue;
       }
 
-      /* Avoid cache pollution by stopping prefetching when we would evict
-       * usable results. Note that we have to also account for
-       * m_prefetching.size() evictions before our eviction of interest! */
       if (const auto offsetToBeEvicted =
               m_prefetchCache.nextNthEviction(m_prefetching.size() + 1);
           offsetToBeEvicted.has_value()) {
@@ -567,7 +484,7 @@ private:
            nextOffset = *nextPrefetchBlockOffset]() {
             return decodeAndMeasureBlock(offset, nextOffset);
           },
-          /* priority */ 0);
+          0);
       const auto [_, wasInserted] = m_prefetching.emplace(
           *prefetchBlockOffset, std::move(prefetchedFuture));
       if (!wasInserted) {
@@ -576,11 +493,6 @@ private:
       }
     }
 
-    /* Note that only m_parallelization-1 blocks will be prefetched. Meaning
-     * that even with the unconditionally submitted requested block, the thread
-     * pool should never contain more than m_parallelization tasks! All tasks
-     * submitted to the thread pool, should either exist in m_prefetching or
-     * only temporary inside 'resultFuture' in the 'read' method. */
     if (m_threadPool.unprocessedTasksCount(0) > m_parallelization) {
       throw std::logic_error("The thread pool should not have more tasks than "
                              "there are prefetching futures!");
@@ -600,7 +512,7 @@ private:
                                ? *nextBlockOffset
                                : std::numeric_limits<size_t>::max());
         },
-        /* priority */ 0);
+        0);
     assert(resultFuture.valid());
     return resultFuture;
   }
@@ -609,17 +521,13 @@ protected:
   [[nodiscard]] virtual BlockData decodeBlock(size_t blockOffset,
                                               size_t nextBlockOffset) const = 0;
 
-  /**
-   * This must be called before variables that are used by @ref decodeBlock are
-   * destructed, i.e., it must be called in the inheriting class.
-   */
   void stopThreadPool() { m_threadPool.stop(); }
 
   template <class T_Functor,
             std::enable_if_t<std::is_invocable_v<T_Functor>, void> * = nullptr>
   std::future<decltype(std::declval<T_Functor>()())>
   submitTaskWithHighPriority(T_Functor task) {
-    return m_threadPool.submit(std::move(task), /* priority */ -1);
+    return m_threadPool.submit(std::move(task), -1);
   }
 
   [[nodiscard]] const auto &cache() const noexcept { return m_cache; }
@@ -666,24 +574,14 @@ protected:
   bool m_showProfileOnDestruction{false};
 
 private:
-  /**
-   * The block finder is used to prefetch blocks among others.
-   * But, in general, it only returns unconfirmed guesses for block offsets (at
-   * first)! Confirmed block offsets are written to the BlockMap but adding that
-   * in here seems a bit overkill and would need further logic to get the next
-   * blocks given a specific one. Therefore, the idea is to update and confirm
-   * the blocks inside the block finder, which would invalidate the block
-   * indexes! In order for that, to not lead to problems, the block finder
-   * should only be used by the managing thread not by the worker threads!
-   */
   const std::shared_ptr<BlockFinder> m_blockFinder;
 
   BlockCache m_cache;
   BlockCache m_prefetchCache;
-  Cache</* block offset in bits */ size_t, bool> m_failedPrefetchCache;
+  Cache<size_t, bool> m_failedPrefetchCache;
   mutable std::mutex m_failedPrefetchCacheMutex;
 
-  std::map</* block offset */ size_t, std::future<BlockData>> m_prefetching;
+  std::map<size_t, std::future<BlockData>> m_prefetching;
   ThreadPool m_threadPool;
 };
 } // namespace rapidgzip

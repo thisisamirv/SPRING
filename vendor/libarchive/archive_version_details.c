@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2009-2012,2014 Michihiro NAKAJIMA
  * Copyright (c) 2003-2007 Tim Kientzle
  * All rights reserved.
@@ -114,7 +114,7 @@ static void archive_regex_version(struct archive_string *str) {
   archive_strcat(str, " libpcre2/");
   archive_strcat(str, archive_libpcre2_version());
 #else
-  (void)str; /* UNUSED */
+  (void)str;
 #endif
 }
 
@@ -129,7 +129,7 @@ static void archive_xml_version(struct archive_string *str) {
   archive_strcat(str, " expat/");
   archive_strcat(str, archive_libexpat_version());
 #else
-  (void)str; /* UNUSED */
+  (void)str;
 #endif
 }
 
@@ -175,8 +175,8 @@ static void archive_crypto_version(struct archive_string *str) {
   archive_strcat(str, " WinCrypt/");
   archive_strcat(str, archive_wincrypt_version());
 #endif
-  // Just in case
-  (void)str; /* UNUSED */
+
+  (void)str;
 }
 
 const char *archive_version_details(void) {

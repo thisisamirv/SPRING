@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2007 Tim Kientzle
  * All rights reserved.
  *
@@ -39,17 +39,14 @@
 #include <limits.h>
 #endif
 #ifdef HAVE_LINUX_FS_H
-#include <linux/fs.h> /* for Linux file flags */
+#include <linux/fs.h>
 #endif
-/*
- * Some Linux distributions have both linux/ext2_fs.h and ext2fs/ext2_fs.h.
- * As the include guards don't agree, the order of include is important.
- */
+
 #ifdef HAVE_LINUX_EXT2_FS_H
-#include <linux/ext2_fs.h> /* for Linux file flags */
+#include <linux/ext2_fs.h>
 #endif
 #if defined(HAVE_EXT2FS_EXT2_FS_H) && !defined(__CYGWIN__)
-#include <ext2fs/ext2_fs.h> /* for Linux file flags */
+#include <ext2fs/ext2_fs.h>
 #endif
 #include <stddef.h>
 #ifdef HAVE_STDLIB_H
@@ -74,10 +71,6 @@
 #endif
 #include "archive_entry_private.h"
 #include "archive_private.h"
-
-/*
- * extended attribute handling
- */
 
 void archive_entry_xattr_clear(struct archive_entry *entry) {
   struct ae_xattr *xp;
@@ -114,9 +107,6 @@ void archive_entry_xattr_add_entry(struct archive_entry *entry,
   entry->xattr_head = xp;
 }
 
-/*
- * returns number of the extended attribute entries
- */
 int archive_entry_xattr_count(struct archive_entry *entry) {
   struct ae_xattr *xp;
   int count = 0;
@@ -150,7 +140,3 @@ int archive_entry_xattr_next(struct archive_entry *entry, const char **name,
     return (ARCHIVE_WARN);
   }
 }
-
-/*
- * end of xattr handling
- */

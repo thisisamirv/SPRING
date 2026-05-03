@@ -1,4 +1,4 @@
-#ifndef PTHASH_EXTERNAL_BITS_COMPACT_VECTOR_HPP
+﻿#ifndef PTHASH_EXTERNAL_BITS_COMPACT_VECTOR_HPP
 #define PTHASH_EXTERNAL_BITS_COMPACT_VECTOR_HPP
 
 #include <cmath>
@@ -10,8 +10,7 @@
 
 namespace bits {
 
-struct compact_vector //
-{
+struct compact_vector {
   template <typename Vec> struct enumerator {
     using iterator_category = std::random_access_iterator_tag;
 
@@ -21,8 +20,7 @@ struct compact_vector //
 
     enumerator(Vec const *vec, uint64_t i)
         : m_i(i), m_cur_val(0), m_cur_block((i * vec->m_width) >> 6),
-          m_cur_shift((i * vec->m_width) & 63), m_vec(vec) //
-    {
+          m_cur_shift((i * vec->m_width) & 63), m_vec(vec) {
       if (i >= m_vec->size())
         return;
       read();
@@ -90,9 +88,6 @@ struct compact_vector //
 
     builder(uint64_t n, uint64_t w) : builder() { resize(n, w); }
 
-    /*
-        Resize the container to hold n values, each of width w.
-    */
     void resize(uint64_t n, uint64_t w) {
       m_size = n;
       m_width = w;
@@ -101,7 +96,7 @@ struct compact_vector //
       m_cur_block = 0;
       m_cur_shift = 0;
       m_data.resize(
-          /* use 1 word more for safe access() */
+
           essentials::words_for(m_size * m_width) + 1, 0);
     }
 
@@ -114,13 +109,10 @@ struct compact_vector //
       if (m_width == 0)
         throw std::runtime_error("width must be > 0");
       for (uint64_t i = 0; i != n; ++i, ++begin) {
-        set(i, *begin); // can just do push_back(*begin);
+        set(i, *begin);
       }
     }
 
-    /*
-        Set value v at position i.
-    */
     void set(uint64_t i, uint64_t v) {
       assert(m_width != 0);
       assert(i < m_size);
@@ -172,8 +164,7 @@ struct compact_vector //
       m_mask = -(m_width == 64) | ((uint64_t(1) << m_width) - 1);
 
       for (uint64_t i = 0, pos = 0; i < m_size; ++i, pos += old_width) {
-        // Note: this loop could be optimized,
-        // because we access consecutive elements
+
         uint64_t block = pos >> 6;
         uint64_t shift = pos & 63;
         uint64_t old_elem =
@@ -188,8 +179,7 @@ struct compact_vector //
       m_data.resize(essentials::words_for(m_size * m_width) + 1, 0);
     }
 
-    friend struct enumerator<builder>; // to let enumerator access private
-                                       // members
+    friend struct enumerator<builder>;
 
     typedef enumerator<builder> iterator;
     [[nodiscard]] iterator get_iterator_at(uint64_t pos) const {
@@ -315,4 +305,4 @@ private:
 
 } // namespace bits
 
-#endif // PTHASH_EXTERNAL_BITS_COMPACT_VECTOR_HPP
+#endif

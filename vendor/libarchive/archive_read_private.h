@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2007 Tim Kientzle
  * All rights reserved.
  *
@@ -46,61 +46,40 @@ struct archive_read_filter_bidder;
 struct archive_read_filter;
 
 struct archive_read_filter_bidder_vtable {
-  /* Taste the upstream filter to see if we handle this. */
+
   int (*bid)(struct archive_read_filter_bidder *, struct archive_read_filter *);
-  /* Initialize a newly-created filter. */
+
   int (*init)(struct archive_read_filter *);
-  /* Release the bidder's configuration data. */
+
   void (*free)(struct archive_read_filter_bidder *);
 };
 
-/*
- * How bidding works for filters:
- *   * The bid manager initializes the client-provided reader as the
- *     first filter.
- *   * It invokes the bidder for each registered filter with the
- *     current head filter.
- *   * The bidders can use archive_read_filter_ahead() to peek ahead
- *     at the incoming data to compose their bids.
- *   * The bid manager creates a new filter structure for the winning
- *     bidder and gives the winning bidder a chance to initialize it.
- *   * The new filter becomes the new top filter and we repeat the
- *     process.
- * This ends only when no bidder provides a non-zero bid.  Then
- * we perform a similar dance with the registered format handlers.
- */
 struct archive_read_filter_bidder {
-  /* Configuration data for the bidder. */
+
   void *data;
-  /* Name of the filter */
+
   const char *name;
   const struct archive_read_filter_bidder_vtable *vtable;
 };
 
 struct archive_read_filter_vtable {
-  /* Return next block. */
+
   ssize_t (*read)(struct archive_read_filter *, const void **);
-  /* Close (just this filter) and free(self). */
+
   int (*close)(struct archive_read_filter *self);
-  /* Read any header metadata if available. */
+
   int (*read_header)(struct archive_read_filter *self,
                      struct archive_entry *entry);
 };
 
-/*
- * This structure is allocated within the archive_read core
- * and initialized by archive_read and the init() method of the
- * corresponding bidder above.
- */
 struct archive_read_filter {
   int64_t position;
-  /* Essentially all filters will need these values, so
-   * just declare them here. */
-  struct archive_read_filter_bidder *bidder; /* My bidder. */
-  struct archive_read_filter *upstream;      /* Who I read from. */
-  struct archive_read *archive;              /* Associated archive. */
+
+  struct archive_read_filter_bidder *bidder;
+  struct archive_read_filter *upstream;
+  struct archive_read *archive;
   const struct archive_read_filter_vtable *vtable;
-  /* My private data. */
+
   void *data;
 
   const char *name;
@@ -108,12 +87,11 @@ struct archive_read_filter {
   int can_skip;
   int can_seek;
 
-  /* Used by reblocking logic. */
   char *buffer;
   size_t buffer_size;
-  char *next;              /* Current read location. */
-  size_t avail;            /* Bytes in my buffer. */
-  const void *client_buff; /* Client buffer information. */
+  char *next;
+  size_t avail;
+  const void *client_buff;
   size_t client_total;
   const char *client_next;
   size_t client_avail;
@@ -122,14 +100,6 @@ struct archive_read_filter {
   char fatal;
 };
 
-/*
- * The client looks a lot like a filter, so we just wrap it here.
- *
- * TODO: Make archive_read_filter and archive_read_client identical so
- * that users of the library can easily register their own
- * transformation filters.  This will probably break the API/ABI and
- * so should be deferred at least until libarchive 3.0.
- */
 struct archive_read_data_node {
   int64_t begin_position;
   int64_t total_size;
@@ -153,9 +123,8 @@ struct archive_read_passphrase {
 };
 
 struct archive_read_extract {
-  struct archive *ad; /* archive_write_disk object */
+  struct archive *ad;
 
-  /* Progress function invoked during extract. */
   void (*extract_progress)(void *);
   void *extract_progress_user_data;
 };
@@ -165,37 +134,22 @@ struct archive_read {
 
   struct archive_entry *entry;
 
-  /* Dev/ino of the archive being read/written. */
   int skip_file_set;
   int64_t skip_file_dev;
   int64_t skip_file_ino;
 
-  /* Callbacks to open/read/write/close client archive streams. */
   struct archive_read_client client;
 
-  /* Registered filter bidders. */
   struct archive_read_filter_bidder bidders[16];
 
-  /* Last filter in chain */
   struct archive_read_filter *filter;
 
-  /* Whether to bypass filter bidding process */
   int bypass_filter_bidding;
 
-  /* File offset of beginning of most recently-read header. */
   int64_t header_position;
 
-  /* Nodes and offsets of compressed data block */
   unsigned int data_start_node;
   unsigned int data_end_node;
-
-  /*
-   * Format detection is mostly the same as compression
-   * detection, with one significant difference: The bidders
-   * use the read_ahead calls above to examine the stream rather
-   * than having the supervisor hand them a block of data to
-   * examine.
-   */
 
   struct archive_format_descriptor {
     void *data;
@@ -210,17 +164,11 @@ struct archive_read {
     int (*format_capabilties)(struct archive_read *);
     int (*has_encrypted_entries)(struct archive_read *);
   } formats[16];
-  struct archive_format_descriptor *format; /* Active format. */
+  struct archive_format_descriptor *format;
 
-  /*
-   * Various information needed by archive_extract.
-   */
   struct archive_read_extract *extract;
   int (*cleanup_archive_extract)(struct archive_read *);
 
-  /*
-   * Decryption passphrase.
-   */
   struct {
     struct archive_read_passphrase *first;
     struct archive_read_passphrase **last;
@@ -258,9 +206,6 @@ int __archive_read_program(struct archive_read_filter *, const char *);
 void __archive_read_free_filters(struct archive_read *);
 struct archive_read_extract *__archive_read_get_extract(struct archive_read *);
 
-/*
- * Get a decryption passphrase.
- */
 void __archive_read_reset_passphrase(struct archive_read *a);
 const char *__archive_read_next_passphrase(struct archive_read *a);
 #endif

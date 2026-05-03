@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2007 Tim Kientzle
  * Copyright (c) 2011-2012 Michihiro NAKAJIMA
  * All rights reserved.
@@ -86,9 +86,6 @@ struct ustar {
   int init_default_conversion;
 };
 
-/*
- * Define structure of POSIX 'ustar' tar header.
- */
 #define USTAR_name_offset 0
 #define USTAR_name_size 100
 #define USTAR_mode_offset 100
@@ -131,56 +128,60 @@ struct ustar {
 #define USTAR_padding_offset 500
 #define USTAR_padding_size 12
 
-/*
- * A filled-in copy of the header for initialization.
- */
 static const char template_header[] = {
-    /* name: 100 bytes */
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    /* Mode, space-null termination: 8 bytes */
-    '0', '0', '0', '0', '0', '0', ' ', '\0',
-    /* uid, space-null termination: 8 bytes */
-    '0', '0', '0', '0', '0', '0', ' ', '\0',
-    /* gid, space-null termination: 8 bytes */
-    '0', '0', '0', '0', '0', '0', ' ', '\0',
-    /* size, space termination: 12 bytes */
-    '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', ' ',
-    /* mtime, space termination: 12 bytes */
-    '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', ' ',
-    /* Initial checksum value: 8 spaces */
-    ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ',
-    /* Typeflag: 1 byte */
-    '0', /* '0' = regular file */
-    /* Linkname: 100 bytes */
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    /* Magic: 6 bytes, Version: 2 bytes */
+
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0, 0, 0,
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0, 0, 0,
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0, 0, 0,
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0, 0, 0,
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0, 0, 0,
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0,
+
+    '0', '0', '0', '0', '0', '0',  ' ', '\0',
+
+    '0', '0', '0', '0', '0', '0',  ' ', '\0',
+
+    '0', '0', '0', '0', '0', '0',  ' ', '\0',
+
+    '0', '0', '0', '0', '0', '0',  '0', '0',  '0', '0', '0', ' ',
+
+    '0', '0', '0', '0', '0', '0',  '0', '0',  '0', '0', '0', ' ',
+
+    ' ', ' ', ' ', ' ', ' ', ' ',  ' ', ' ',
+
+    '0',
+
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0, 0, 0,
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0, 0, 0,
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0, 0, 0,
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0, 0, 0,
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0, 0, 0,
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0,
+
     'u', 's', 't', 'a', 'r', '\0', '0', '0',
-    /* Uname: 32 bytes */
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0,
-    /* Gname: 32 bytes */
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0,
-    /* rdevmajor + space/null padding: 8 bytes */
-    '0', '0', '0', '0', '0', '0', ' ', '\0',
-    /* rdevminor + space/null padding: 8 bytes */
-    '0', '0', '0', '0', '0', '0', ' ', '\0',
-    /* Prefix: 155 bytes */
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0,
-    /* Padding: 12 bytes */
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0, 0, 0,
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0,
+
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0, 0, 0,
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0,
+
+    '0', '0', '0', '0', '0', '0',  ' ', '\0',
+
+    '0', '0', '0', '0', '0', '0',  ' ', '\0',
+
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0, 0, 0,
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0, 0, 0,
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0, 0, 0,
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0, 0, 0,
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0, 0, 0,
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0, 0, 0,
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0, 0, 0,
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0, 0, 0,
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0,   0, 0, 0, 0, 0,
+    0,   0,
+
+    0,   0,   0,   0,   0,   0,    0,   0,    0,   0,   0,   0};
 
 static ssize_t archive_write_ustar_data(struct archive_write *a,
                                         const void *buff, size_t s);
@@ -195,9 +196,6 @@ static int format_256(int64_t, char *, int);
 static int format_number(int64_t, char *, int size, int max, int strict);
 static int format_octal(int64_t, char *, int);
 
-/*
- * Set output format to 'ustar' format.
- */
 int archive_write_set_format_ustar(struct archive *_a) {
   struct archive_write *a = (struct archive_write *)_a;
   struct ustar *ustar;
@@ -205,11 +203,9 @@ int archive_write_set_format_ustar(struct archive *_a) {
   archive_check_magic(_a, ARCHIVE_WRITE_MAGIC, ARCHIVE_STATE_NEW,
                       "archive_write_set_format_ustar");
 
-  /* If someone else was already registered, unregister them. */
   if (a->format_free != NULL)
     (a->format_free)(a);
 
-  /* Basic internal sanity test. */
   if (sizeof(template_header) != 512) {
     archive_set_error(&a->archive, ARCHIVE_ERRNO_MISC,
                       "Internal: template_header wrong size: %zu should be 512",
@@ -256,9 +252,6 @@ static int archive_write_ustar_options(struct archive_write *a, const char *key,
     return (ret);
   }
 
-  /* Note: The "warn" return is just to inform the options
-   * supervisor that we didn't handle it.  It will generate
-   * a suitable error if no one used this option. */
   return (ARCHIVE_WARN);
 }
 
@@ -272,7 +265,6 @@ static int archive_write_ustar_header(struct archive_write *a,
 
   ustar = (struct ustar *)a->format_data;
 
-  /* Setup default string conversion. */
   if (ustar->opt_sconv == NULL) {
     if (!ustar->init_default_conversion) {
       ustar->sconv_default =
@@ -283,7 +275,6 @@ static int archive_write_ustar_header(struct archive_write *a,
   } else
     sconv = ustar->opt_sconv;
 
-  /* Sanity check. */
   if (archive_entry_pathname(entry) == NULL
 #if defined(_WIN32) && !defined(__CYGWIN__)
       && archive_entry_pathname_w(entry) == NULL
@@ -294,7 +285,6 @@ static int archive_write_ustar_header(struct archive_write *a,
     return (ARCHIVE_FAILED);
   }
 
-  /* Only regular files (not hardlinks) have data. */
   if (archive_entry_hardlink(entry) != NULL ||
       archive_entry_symlink(entry) != NULL ||
       archive_entry_filetype(entry) != AE_IFREG)
@@ -303,10 +293,7 @@ static int archive_write_ustar_header(struct archive_write *a,
   if (AE_IFDIR == archive_entry_filetype(entry)) {
     const char *p;
     size_t path_length;
-    /*
-     * Ensure a trailing '/'.  Modify the entry so
-     * the client sees the change.
-     */
+
 #if defined(_WIN32) && !defined(__CYGWIN__)
     const wchar_t *wp;
 
@@ -321,7 +308,7 @@ static int archive_write_ustar_header(struct archive_write *a,
         archive_wstring_free(&ws);
         return (ARCHIVE_FATAL);
       }
-      /* Should we keep '\' ? */
+
       if (wp[path_length - 1] == L'\\')
         path_length--;
       archive_wstrncpy(&ws, wp, path_length);
@@ -332,11 +319,7 @@ static int archive_write_ustar_header(struct archive_write *a,
     } else
 #endif
       p = archive_entry_pathname(entry);
-    /*
-     * On Windows, this is a backup operation just in
-     * case getting WCS failed. On POSIX, this is a
-     * normal operation.
-     */
+
     if (p != NULL && p[0] != '\0' && p[strlen(p) - 1] != '/') {
       struct archive_string as;
 
@@ -348,10 +331,7 @@ static int archive_write_ustar_header(struct archive_write *a,
         return (ARCHIVE_FATAL);
       }
 #if defined(_WIN32) && !defined(__CYGWIN__)
-      /* NOTE: This might break the pathname
-       * if the current code page is CP932 and
-       * the pathname includes a character '\'
-       * as a part of its multibyte pathname. */
+
       if (p[strlen(p) - 1] == '\\')
         path_length--;
       else
@@ -364,8 +344,7 @@ static int archive_write_ustar_header(struct archive_write *a,
   }
 
 #if defined(_WIN32) && !defined(__CYGWIN__)
-  /* Make sure the path separators in pathname, hardlink and symlink
-   * are all slash '/', not the Windows path separator '\'. */
+
   entry_main = __la_win_entry_in_posix_pathseparator(entry);
   if (entry_main == NULL) {
     archive_set_error(&a->archive, ENOMEM, "Can't allocate ustar data");
@@ -397,16 +376,6 @@ static int archive_write_ustar_header(struct archive_write *a,
   return (ret);
 }
 
-/*
- * Format a basic 512-byte "ustar" header.
- *
- * Returns -1 if format failed (due to field overflow).
- * Note that this always formats as much of the header as possible.
- * If "strict" is set to zero, it will extend numeric fields as
- * necessary (overwriting terminators or using base-256 extensions).
- *
- * This is exported so that other 'tar' formats can use it.
- */
 int __archive_write_format_header_ustar(struct archive_write *a, char h[512],
                                         struct archive_entry *entry,
                                         int tartype, int strict,
@@ -419,18 +388,9 @@ int __archive_write_format_header_ustar(struct archive_write *a, char h[512],
 
   ret = 0;
   mytartype = -1;
-  /*
-   * The "template header" already includes the "ustar"
-   * signature, various end-of-field markers and other required
-   * elements.
-   */
+
   memcpy(h, &template_header, 512);
 
-  /*
-   * Because the block is already null-filled, and strings
-   * are allowed to exactly fill their destination (without null),
-   * I use memcpy(dest, src, strlen()) here a lot to copy strings.
-   */
   r = archive_entry_pathname_l(entry, &pp, &copy_length, sconv);
   if (r != 0) {
     const char *p_mbs;
@@ -441,14 +401,13 @@ int __archive_write_format_header_ustar(struct archive_write *a, char h[512],
     }
     p_mbs = archive_entry_pathname(entry);
     if (p_mbs) {
-      /* We have a wrongly-encoded MBS pathname.
-       * Warn and use it.  */
+
       archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT,
                         "Can't translate pathname '%s' to %s", p_mbs,
                         archive_string_conversion_charset_name(sconv));
       ret = ARCHIVE_WARN;
     } else {
-      /* We have no MBS pathname.  Fail.  */
+
       archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT,
                         "Can't translate pathname to %s",
                         archive_string_conversion_charset_name(sconv));
@@ -458,35 +417,26 @@ int __archive_write_format_header_ustar(struct archive_write *a, char h[512],
   if (copy_length <= USTAR_name_size)
     memcpy(h + USTAR_name_offset, pp, copy_length);
   else {
-    /* Store in two pieces, splitting at a '/'. */
+
     p = strchr(pp + copy_length - USTAR_name_size - 1, '/');
-    /*
-     * Look for the next '/' if we chose the first character
-     * as the separator.  (ustar format doesn't permit
-     * an empty prefix.)
-     */
+
     if (p == pp)
       p = strchr(p + 1, '/');
-    /* Fail if the name won't fit. */
+
     if (!p) {
-      /* No separator. */
+
       archive_set_error(&a->archive, ENAMETOOLONG, "Pathname too long");
       ret = ARCHIVE_FAILED;
     } else if (p[1] == '\0') {
-      /*
-       * The only feasible separator is a final '/';
-       * this would result in a non-empty prefix and
-       * an empty name, which POSIX doesn't
-       * explicitly forbid, but it just feels wrong.
-       */
+
       archive_set_error(&a->archive, ENAMETOOLONG, "Pathname too long");
       ret = ARCHIVE_FAILED;
     } else if (p > pp + USTAR_prefix_size) {
-      /* Prefix is too long. */
+
       archive_set_error(&a->archive, ENAMETOOLONG, "Pathname too long");
       ret = ARCHIVE_FAILED;
     } else {
-      /* Copy prefix and remainder to appropriate places */
+
       memcpy(h + USTAR_prefix_offset, pp, p - pp);
       memcpy(h + USTAR_name_offset, p + 1, pp + copy_length - p - 1);
     }
@@ -645,7 +595,7 @@ int __archive_write_format_header_ustar(struct archive_write *a, char h[512],
     case AE_IFIFO:
       h[USTAR_typeflag_offset] = '6';
       break;
-    default: /* AE_IFSOCK and unknown */
+    default:
       __archive_write_entry_filetype_unsupported(&a->archive, entry, "ustar");
       ret = ARCHIVE_FAILED;
     }
@@ -654,31 +604,20 @@ int __archive_write_format_header_ustar(struct archive_write *a, char h[512],
   checksum = 0;
   for (i = 0; i < 512; i++)
     checksum += 255 & (unsigned int)h[i];
-  h[USTAR_checksum_offset + 6] = '\0'; /* Can't be pre-set in the template. */
-  /* h[USTAR_checksum_offset + 7] = ' '; */ /* This is pre-set in the template.
-                                             */
+  h[USTAR_checksum_offset + 6] = '\0';
+
   format_octal(checksum, h + USTAR_checksum_offset, 6);
   return (ret);
 }
 
-/*
- * Format a number into a field, with some intelligence.
- */
 static int format_number(int64_t v, char *p, int s, int maxsize, int strict) {
   int64_t limit;
 
   limit = ((int64_t)1 << (s * 3));
 
-  /* "Strict" only permits octal values with proper termination. */
   if (strict)
     return (format_octal(v, p, s));
 
-  /*
-   * In non-strict mode, we allow the number to overwrite one or
-   * more bytes of the field termination.  Even old tar
-   * implementations should be able to handle this with no
-   * problem.
-   */
   if (v >= 0) {
     while (s <= maxsize) {
       if (v < limit)
@@ -688,39 +627,31 @@ static int format_number(int64_t v, char *p, int s, int maxsize, int strict) {
     }
   }
 
-  /* Base-256 can handle any number, positive or negative. */
   return (format_256(v, p, maxsize));
 }
 
-/*
- * Format a number into the specified field using base-256.
- */
 static int format_256(int64_t v, char *p, int s) {
   p += s;
   while (s-- > 0) {
     *--p = (char)(v & 0xff);
     v >>= 8;
   }
-  *p |= 0x80; /* Set the base-256 marker bit. */
+  *p |= 0x80;
   return (0);
 }
 
-/*
- * Format a number into the specified field.
- */
 static int format_octal(int64_t v, char *p, int s) {
   int len;
 
   len = s;
 
-  /* Octal values can't be negative, so use 0. */
   if (v < 0) {
     while (len-- > 0)
       *p++ = '0';
     return (-1);
   }
 
-  p += s; /* Start at the end and work backwards. */
+  p += s;
   while (s-- > 0) {
     *--p = (char)('0' + (v & 7));
     v >>= 3;
@@ -729,7 +660,6 @@ static int format_octal(int64_t v, char *p, int s) {
   if (v == 0)
     return (0);
 
-  /* If it overflowed, fill field with max value. */
   while (len-- > 0)
     *p++ = '7';
 

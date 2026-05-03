@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <array>
 #include <cstdint>
@@ -10,44 +10,31 @@
 #include <definitions.hpp>
 
 namespace rapidgzip::deflate {
-/**
- * This version uses a lookup table (LUT) to avoid repetitive loops over
- * BitReader::read<1>() to speed things up a lot. This started as a copy of @ref
- * HuffmanCodingReversedBitsCached, however:
- * - It limits the LUT to a fixed size instead of caching everything up to
- * MAX_CODE_LENGTH because that would be too large for bzip2, for which
- * MAX_CODE_LENGTH is 20 instead of 16 for gzip.
- */
+
 template <uint8_t LUT_BITS_COUNT>
 class HuffmanCodingShortBitsMultiCached
     : public HuffmanCodingSymbolsPerLength<uint16_t, MAX_CODE_LENGTH, uint16_t,
                                            MAX_LITERAL_HUFFMAN_CODE_COUNT,
-                                           /* CHECK_OPTIMALITY */ true> {
+                                           true> {
 public:
   using Symbol = uint16_t;
   using HuffmanCode = uint16_t;
   using BaseType =
       HuffmanCodingSymbolsPerLength<HuffmanCode, MAX_CODE_LENGTH, Symbol,
-                                    MAX_LITERAL_HUFFMAN_CODE_COUNT,
-                                    /* CHECK_OPTIMALITY */ true>;
+                                    MAX_LITERAL_HUFFMAN_CODE_COUNT, true>;
   using BitCount = typename BaseType::BitCount;
   using CodeLengthFrequencies = typename BaseType::CodeLengthFrequencies;
 
   struct CacheEntry {
     bool needToReadDistanceBits : 1;
-    uint8_t bitsToSkip
-        : 6; // ceil(log2 2*MAX_CODE_LENGTH(20)) = 6 bits would suffice
+    uint8_t bitsToSkip : 6;
     uint8_t symbolCount : 2;
-    /**
-     * Contains one 8-9-bit symbol in the lower bits and one 8-9 bit symbol in
-     * the higher bits only if the first symbol is an 8-bit literal.
-     */
+
     uint32_t symbols : 18;
   };
   static_assert(sizeof(CacheEntry) == 4);
 
-  using Symbols =
-      std::pair</* packed symbols */ uint32_t, /* symbol count */ uint32_t>;
+  using Symbols = std::pair<uint32_t, uint32_t>;
 
   static constexpr size_t DISTANCE_OFFSET = 254U;
 
@@ -62,15 +49,12 @@ public:
     m_lutBitsCount = std::min(LUT_BITS_COUNT, this->m_maxCodeLength);
     m_bitsToReadAtOnce = std::max(LUT_BITS_COUNT, this->m_minCodeLength);
 
-    /* Initialize the cache. */
     if (m_needsToBeZeroed) {
-      // Works constexpr
+
       for (size_t symbol = 0; symbol < m_codeCache.size(); ++symbol) {
         m_codeCache[symbol].bitsToSkip = 0;
       }
     }
-
-    /* Compute Huffman values. */
 
     struct HuffmanEntry {
       HuffmanCode reversedCode{0};
@@ -88,10 +72,7 @@ public:
     auto codeValues = this->m_minimumCodeValuesPerLevel;
     for (size_t symbol = 0; symbol < codeLengths.size(); ++symbol) {
       const auto length = codeLengths[symbol];
-      /* Note that the preemptive continue for large lengths is not a bug even
-       * if we do not increment codeValues because all symbols of the same
-       * length will either be filtered or not, so that the missing increment
-       * does not matter because that code is either always used or never. */
+
       if ((length == 0) || (length > m_lutBitsCount)) {
         continue;
       }
@@ -102,8 +83,6 @@ public:
       entry.reversedCode =
           reverseBits(codeValues[length - this->m_minCodeLength]++, length);
     }
-
-    /* Fill up cache. */
 
     for (size_t i = 0; i < huffmanTableSize; ++i) {
       const auto &huffmanEntry = huffmanTable[i];
@@ -141,9 +120,7 @@ public:
                   : cacheEntry.symbols,
               cacheEntry.symbolCount};
     } catch (const typename BitReader::EndOfFileReached &) {
-      /* Should only happen at the end of the file and probably not even there
-       * because the bzip2 footer (EOS block) should be longer than the peek
-       * length. */
+
       const auto result = BaseType::decode(bitReader);
       if (result) {
         return {readLength(*result, bitReader), 1};
@@ -186,7 +163,7 @@ private:
     if (symbol <= 256) {
       return symbol;
     }
-    /* Basically the same as ( 1 << 8U ) | getLengthMinus3 */
+
     return getLength(symbol, bitReader) + DISTANCE_OFFSET;
   }
 
@@ -234,7 +211,7 @@ private:
       insertIntoCache(reversedCode, cacheEntry);
     } else if (symbol < 285U) {
       const auto lengthCode = static_cast<uint8_t>(symbol - 261U);
-      const auto extraBitCount = lengthCode / 4; /* <= 5 */
+      const auto extraBitCount = lengthCode / 4;
       if (codeLength + extraBitCount <= m_lutBitsCount) {
         cacheEntry.needToReadDistanceBits = false;
         cacheEntry.bitsToSkip = codeLength + extraBitCount;

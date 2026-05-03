@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <atomic>
 #include <chrono>
@@ -8,9 +8,7 @@ namespace rapidgzip {
 class AtomicMutex {
 public:
   void lock() {
-    /* Wait until we successfully have set the flag ourselves.
-     * Test with relaxed memory order first to improve speed because the
-     * modifying exchange has to lock the cache line. */
+
     while (m_flag.load(std::memory_order_relaxed) ||
            m_flag.exchange(true, std::memory_order_acquire)) {
       using namespace std::chrono_literals;

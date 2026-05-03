@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <array>
 #include <cassert>
@@ -10,10 +10,7 @@
 #include <definitions.hpp>
 
 namespace rapidgzip {
-/**
- * Same as HuffmanCodingReversedBitsCached but the lengths are stored
- * separately, requiring an additional lookup into a much smaller lookup table.
- */
+
 template <typename HuffmanCode, uint8_t MAX_CODE_LENGTH, typename Symbol,
           size_t MAX_SYMBOL_COUNT>
 class HuffmanCodingReversedBitsCachedSeparateLengths
@@ -39,7 +36,7 @@ public:
     }
 
     if (m_needsToBeZeroed) {
-      // Works constexpr
+
       for (size_t symbol = 0; symbol < (1ULL << this->m_maxCodeLength);
            ++symbol) {
         m_codeCache[symbol] = 0;
@@ -84,9 +81,7 @@ public:
       assert(value < m_codeCache.size());
       auto symbol = m_codeCache[(int)value];
       if (symbol == 0) {
-        /* This might happen for non-optimal Huffman trees out of which all
-         * except the case of a single symbol with bit length 1 are forbidden!
-         */
+
         return std::nullopt;
       }
 
@@ -95,8 +90,7 @@ public:
       bitReader.seekAfterPeek(length);
       return symbol - 1;
     } catch (const gzip::BitReader::EndOfFileReached &) {
-      /* Should only happen at the end of the file and probably not even there
-       * because the gzip footer should be longer than the peek length. */
+
       return BaseType::decode(bitReader);
     }
   }

@@ -1,7 +1,4 @@
-/*-----------------------------------------------------------*/
-/* Block Sorting, Lossless Data Compression Library.         */
-/* Block Sorting Compressor                                  */
-/*-----------------------------------------------------------*/
+﻿
 
 /*--
 
@@ -72,8 +69,4 @@ void BSC_str_array_decompress(const char *infile, std::string *str_array_param,
 } // namespace bsc
 } // namespace spring
 
-#endif // SPRING_LIBBSC_BSC_H_
-
-/*-----------------------------------------------------------*/
-/* End                                               bsc.cpp */
-/*-----------------------------------------------------------*/
+#endif

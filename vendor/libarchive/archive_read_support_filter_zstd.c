@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2009-2011 Sean Purcell
  * All rights reserved.
  *
@@ -64,21 +64,14 @@ struct private_data {
   unsigned char *out_block;
   size_t out_block_size;
   int64_t total_out;
-  char in_frame; /* True = in the middle of a zstd frame. */
-  char eof;      /* True = found end of compressed data. */
+  char in_frame;
+  char eof;
 };
 
-/* Zstd Filter. */
 static ssize_t zstd_filter_read(struct archive_read_filter *, const void **);
 static int zstd_filter_close(struct archive_read_filter *);
 #endif
 
-/*
- * Note that we can detect zstd compressed files even if we can't decompress
- * them.  (In fact, we like detecting them because we can give better error
- * messages.)  So the bid framework here gets compiled even if no zstd library
- * is available.
- */
 static int zstd_bidder_bid(struct archive_read_filter_bidder *,
                            struct archive_read_filter *);
 static int zstd_bidder_init(struct archive_read_filter *);
@@ -104,33 +97,22 @@ int archive_read_support_filter_zstd(struct archive *_a) {
 #endif
 }
 
-/*
- * Test whether we can handle this data.
- */
 static int zstd_bidder_bid(struct archive_read_filter_bidder *self,
                            struct archive_read_filter *filter) {
   const unsigned char *buffer;
   ssize_t avail;
 
-  // Zstandard skippable frames contain a 4 byte magic number followed by
-  // a 4 byte frame data size, then that number of bytes of data. Regular
-  // frames contain a 4 byte magic number followed by a 2-14 byte frame
-  // header, some data, and a 3 byte end marker.
   ssize_t min_zstd_frame_size = 8;
 
   ssize_t offset_in_buffer = 0;
   ssize_t max_lookahead = 64 * 1024;
 
-  // Zstd regular frame magic number.
   uint32_t zstd_magic = 0xFD2FB528U;
 
-  // Note: Zstd and LZ4 skippable frame magic numbers are identical.
-  // To differentiate these two, we need to look for a non-skippable
-  // frame.
   uint32_t zstd_magic_skippable_start = 0x184D2A50;
   uint32_t zstd_magic_skippable_mask = 0xFFFFFFF0;
 
-  (void)self; // UNUSED
+  (void)self;
 
   buffer = __archive_read_filter_ahead(filter, min_zstd_frame_size, &avail);
   if (buffer == NULL)
@@ -141,9 +123,8 @@ static int zstd_bidder_bid(struct archive_read_filter_bidder *self,
   while ((magic_number & zstd_magic_skippable_mask) ==
          zstd_magic_skippable_start) {
 
-    offset_in_buffer += 4; // Skip over the magic number
+    offset_in_buffer += 4;
 
-    // Ensure that we can read another 4 bytes.
     if (offset_in_buffer + 4 > avail) {
       buffer =
           __archive_read_filter_ahead(filter, offset_in_buffer + 4, &avail);
@@ -153,10 +134,8 @@ static int zstd_bidder_bid(struct archive_read_filter_bidder *self,
 
     uint32_t frame_data_size = archive_le32dec(buffer + offset_in_buffer);
 
-    // Skip over the 4 frame data size bytes, plus the value stored there.
     offset_in_buffer += 4 + frame_data_size;
 
-    // There should be at least one more frame if this is zstd data.
     if (offset_in_buffer + min_zstd_frame_size > avail) {
       if (offset_in_buffer + min_zstd_frame_size > max_lookahead)
         return (0);
@@ -170,9 +149,6 @@ static int zstd_bidder_bid(struct archive_read_filter_bidder *self,
     magic_number = archive_le32dec(buffer + offset_in_buffer);
   }
 
-  // We have skipped over any skippable frames. Either a regular zstd frame
-  // follows, or this isn't zstd data.
-
   if (magic_number == zstd_magic)
     return (offset_in_buffer + 4);
 
@@ -181,18 +157,11 @@ static int zstd_bidder_bid(struct archive_read_filter_bidder *self,
 
 #if !(HAVE_ZSTD_H && HAVE_LIBZSTD)
 
-/*
- * If we don't have the library on this system, we can't do the
- * decompression directly.  We can, however, try to run "zstd -d"
- * in case that's available.
- */
 static int zstd_bidder_init(struct archive_read_filter *self) {
   int r;
 
   r = __archive_read_program(self, "zstd -d -qq");
-  /* Note: We set the format here even if __archive_read_program()
-   * above fails.  We do, after all, know what the format is
-   * even if we weren't able to read it. */
+
   self->code = ARCHIVE_FILTER_ZSTD;
   self->name = "zstd";
   return (r);
@@ -205,9 +174,6 @@ static const struct archive_read_filter_vtable zstd_reader_vtable = {
     .close = zstd_filter_close,
 };
 
-/*
- * Initialize the filter object
- */
 static int zstd_bidder_init(struct archive_read_filter *self) {
   struct private_data *state;
   size_t out_block_size = ZSTD_DStreamOutSize();
@@ -224,7 +190,7 @@ static int zstd_bidder_init(struct archive_read_filter *self) {
   if (state == NULL || out_block == NULL || dstream == NULL) {
     free(out_block);
     free(state);
-    ZSTD_freeDStream(dstream); /* supports free on NULL */
+    ZSTD_freeDStream(dstream);
     archive_set_error(&self->archive->archive, ENOMEM,
                       "Can't allocate data for zstd decompression");
     return (ARCHIVE_FATAL);
@@ -256,7 +222,6 @@ static ssize_t zstd_filter_read(struct archive_read_filter *self,
 
   out = (ZSTD_outBuffer){state->out_block, state->out_block_size, 0};
 
-  /* Try to fill the output buffer. */
   while (out.pos < out.size && !state->eof) {
     if (!state->in_frame) {
       ret = ZSTD_initDStream(state->dstream);
@@ -273,7 +238,7 @@ static ssize_t zstd_filter_read(struct archive_read_filter *self,
     }
     if (in.src == NULL && avail_in == 0) {
       if (!state->in_frame) {
-        /* end of stream */
+
         state->eof = 1;
         break;
       } else {
@@ -295,10 +260,8 @@ static ssize_t zstd_filter_read(struct archive_read_filter *self,
         return (ARCHIVE_FATAL);
       }
 
-      /* Decompressor made some progress */
       __archive_read_filter_consume(self->upstream, in.pos);
 
-      /* ret guaranteed to be > 0 if frame isn't done yet */
       state->in_frame = (ret != 0);
     }
   }
@@ -312,9 +275,6 @@ static ssize_t zstd_filter_read(struct archive_read_filter *self,
   return (decompressed);
 }
 
-/*
- * Clean up the decompressor.
- */
 static int zstd_filter_close(struct archive_read_filter *self) {
   struct private_data *state;
 
@@ -327,4 +287,4 @@ static int zstd_filter_close(struct archive_read_filter *self) {
   return (ARCHIVE_OK);
 }
 
-#endif /* HAVE_ZLIB_H && HAVE_LIBZSTD */
+#endif

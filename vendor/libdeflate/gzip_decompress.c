@@ -1,4 +1,4 @@
-/*
+﻿/*
  * gzip_decompress.c - decompress with a gzip wrapper
  *
  * Copyright 2016 Eric Biggers
@@ -42,27 +42,25 @@ LIBDEFLATEAPI enum libdeflate_result libdeflate_gzip_decompress_ex(
   if (in_nbytes < GZIP_MIN_OVERHEAD)
     return LIBDEFLATE_BAD_DATA;
 
-  /* ID1 */
   if (*in_next++ != GZIP_ID1)
     return LIBDEFLATE_BAD_DATA;
-  /* ID2 */
+
   if (*in_next++ != GZIP_ID2)
     return LIBDEFLATE_BAD_DATA;
-  /* CM */
+
   if (*in_next++ != GZIP_CM_DEFLATE)
     return LIBDEFLATE_BAD_DATA;
   flg = *in_next++;
-  /* MTIME */
+
   in_next += 4;
-  /* XFL */
+
   in_next += 1;
-  /* OS */
+
   in_next += 1;
 
   if (flg & GZIP_FRESERVED)
     return LIBDEFLATE_BAD_DATA;
 
-  /* Extra field */
   if (flg & GZIP_FEXTRA) {
     u16 xlen = get_unaligned_le16(in_next);
     in_next += 2;
@@ -73,7 +71,6 @@ LIBDEFLATEAPI enum libdeflate_result libdeflate_gzip_decompress_ex(
     in_next += xlen;
   }
 
-  /* Original file name (zero terminated) */
   if (flg & GZIP_FNAME) {
     while (*in_next++ != 0 && in_next != in_end)
       ;
@@ -81,7 +78,6 @@ LIBDEFLATEAPI enum libdeflate_result libdeflate_gzip_decompress_ex(
       return LIBDEFLATE_BAD_DATA;
   }
 
-  /* File comment (zero terminated) */
   if (flg & GZIP_FCOMMENT) {
     while (*in_next++ != 0 && in_next != in_end)
       ;
@@ -89,14 +85,12 @@ LIBDEFLATEAPI enum libdeflate_result libdeflate_gzip_decompress_ex(
       return LIBDEFLATE_BAD_DATA;
   }
 
-  /* CRC16 for gzip header */
   if (flg & GZIP_FHCRC) {
     in_next += 2;
     if (in_end - in_next < GZIP_FOOTER_SIZE)
       return LIBDEFLATE_BAD_DATA;
   }
 
-  /* Compressed data  */
   result = libdeflate_deflate_decompress_ex(
       d, in_next, in_end - GZIP_FOOTER_SIZE - in_next, out, out_nbytes_avail,
       &actual_in_nbytes, actual_out_nbytes_ret);
@@ -110,13 +104,11 @@ LIBDEFLATEAPI enum libdeflate_result libdeflate_gzip_decompress_ex(
 
   in_next += actual_in_nbytes;
 
-  /* CRC32 */
   if (libdeflate_crc32(0, out, actual_out_nbytes) !=
       get_unaligned_le32(in_next))
     return LIBDEFLATE_BAD_DATA;
   in_next += 4;
 
-  /* ISIZE */
   if ((u32)actual_out_nbytes != get_unaligned_le32(in_next))
     return LIBDEFLATE_BAD_DATA;
   in_next += 4;

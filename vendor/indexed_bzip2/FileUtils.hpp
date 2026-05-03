@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <cassert>
 #include <cstdio>
@@ -22,9 +22,9 @@
 #define NOMINMAX
 #include <Windows.h>
 
-#include <fcntl.h> // _O_BINARY
-#include <io.h>    // _setmode
-#include <stdio.h> // stdout
+#include <fcntl.h>
+#include <io.h>
+#include <stdio.h>
 #else
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -32,32 +32,18 @@
 
 #include <errno.h>
 #include <fcntl.h>
-#include <limits.h> // IOV_MAX
+#include <limits.h>
 #include <sys/stat.h>
 #if defined(__linux__) || defined(__APPLE__)
 #include <sys/uio.h>
 #endif
 #include <unistd.h>
 
-// #if not defined( HAVE_VMSPLICE ) and defined( __linux__ ) and defined(
-// F_GETPIPE_SZ )
-//     #define HAVE_VMSPLICE
-// #endif
-
 #if not defined(HAVE_IOVEC) and defined(__linux__)
 #define HAVE_IOVEC
 #endif
 #endif
 
-/**
- * Disable vmsplice because it STILL has bugs. In this case it seems to happen
- * because rapidgzip quits before everything has been read. This seems to cause
- * a free and possible reuse of the memory section during the shutdown process
- * and causes invalid output. I guess the only real way to get this to work is
- * as stated below with a custom mmap allocator + vmsplice gift. Too bad,
- * because it gave quite some performance, but it's no use when the results are
- * wrong. https://github.com/mxmlnkn/rapidgzip/issues/39
- */
 #undef HAVE_VMSPLICE
 
 #if defined(HAVE_VMSPLICE)
@@ -74,13 +60,7 @@ namespace rapidgzip {
   return _isatty(_fileno(stdin)) == 0;
 }
 
-[[nodiscard]] inline bool stdoutIsDevNull() {
-  /**
-   * @todo Figure this out on Windows in a reasonable readable manner:
-   * @see https://stackoverflow.com/a/21070689/2191065
-   */
-  return false;
-}
+[[nodiscard]] inline bool stdoutIsDevNull() { return false; }
 
 #else
 
@@ -90,8 +70,7 @@ namespace rapidgzip {
   struct stat devNull{};
   struct stat stdOut{};
   return (fstat(STDOUT_FILENO, &stdOut) == 0) &&
-         (stat("/dev/null", &devNull) == 0) &&
-         S_ISCHR(stdOut.st_mode) && // NOLINT
+         (stat("/dev/null", &devNull) == 0) && S_ISCHR(stdOut.st_mode) &&
          (devNull.st_dev == stdOut.st_dev) && (devNull.st_ino == stdOut.st_ino);
 }
 #endif
@@ -141,8 +120,7 @@ inline size_t filePosition(std::FILE *file) {
   }
 
 #if defined(_MSC_VER)
-  /* On Windows, std::ftell STILL (2025!) cannot handle files > 4 GiB because
-   * 'long int' is 32-bit! */
+
   const auto offset = _ftelli64(file);
 #else
   const auto offset = std::ftell(file);
@@ -159,8 +137,7 @@ inline void fileSeek(std::FILE *file, long long int offset, int origin) {
   }
 
 #if defined(_MSC_VER)
-  /* On Windows, std::fseek STILL (2025!) cannot handle files > 4 GiB because
-   * 'long int' is 32-bit! */
+
   const auto returnCode = _fseeki64(file, offset, origin);
 #else
   if (offset >
@@ -220,7 +197,7 @@ struct unique_file_descriptor {
 private:
   int m_fd{-1};
 };
-#endif // ifndef _MSC_VER
+#endif
 
 using unique_file_ptr =
     std::unique_ptr<std::FILE, std::function<void(std::FILE *)>>;
@@ -228,7 +205,7 @@ using unique_file_ptr =
 inline unique_file_ptr make_unique_file_ptr(std::FILE *file) {
   return {file, [](auto *ownedFile) {
             if (ownedFile != nullptr) {
-              std::fclose(ownedFile); // NOLINT
+              std::fclose(ownedFile);
             }
           }};
 }
@@ -239,7 +216,7 @@ inline unique_file_ptr make_unique_file_ptr(char const *const filePath,
       (std::strlen(filePath) == 0)) {
     return {};
   }
-  return make_unique_file_ptr(std::fopen(filePath, mode)); // NOLINT
+  return make_unique_file_ptr(std::fopen(filePath, mode));
 }
 
 inline unique_file_ptr make_unique_file_ptr(int fileDescriptor,
@@ -280,8 +257,6 @@ inline unique_file_ptr throwingOpen(int fileDescriptor, const char *mode) {
   return file;
 }
 
-/** dup is not strong enough to be able to independently seek in the old and the
- * dup'ed fd! */
 [[nodiscard]] inline std::string fdFilePath(int fileDescriptor) {
   std::stringstream filename;
   filename << "/dev/fd/" << fileDescriptor;
@@ -302,9 +277,6 @@ template <typename Container = std::vector<char>>
   return contents;
 }
 
-/* Missing std::filesystem::path support in wheels.
- * https://opensource.apple.com/source/xnu/xnu-2050.7.9/EXTERNAL_HEADERS/AvailabilityMacros.h.auto.html
- */
 #if !defined(__APPLE_CC__) ||                                                  \
     (defined(MAC_OS_X_VERSION_MIN_REQUIRED) &&                                 \
      MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_15)
@@ -344,7 +316,7 @@ template <typename Container = std::vector<char>>
 
 inline size_t fileSize(const int fileDescriptor) {
 #if defined(_MSC_VER)
-  /* On Windows, fstat STILL (2025!) cannot handle files > 4 GiB! */
+
   struct _stat64 fileStats{};
   const auto result = _fstat64(fileDescriptor, &fileStats);
 #else
@@ -363,83 +335,19 @@ inline size_t fileSize(const int fileDescriptor) {
 
 #if defined(HAVE_VMSPLICE)
 
-/**
- * Short overview of syscalls that optimize copies by instead copying full page
- * pointers into the pipe buffers inside the kernel:
- * - splice: <fd (pipe or not)> <-> <pipe>
- * - vmsplice: memory -> <pipe>
- * - mmap: <fd> -> memory
- * - sendfile: <fd that supports mmap> -> <fd (before Linux 2.6.33 (2010-02-24)
- * it had to be a socket fd)>
- *
- * I think the underlying problem with wrong output data for small chunk sizes
- * is that vmsplice is not as "synchronous" as I thought it to be:
- *
- * https://lwn.net/Articles/181169/
- *
- *  - Determining whether it is safe to write to a vmspliced buffer is
- *    suggested to be done implicitly by splicing more than the maximum
- *    number of pages that can be inserted into the pipe buffer.
- *    That number was supposed to be queryable with fcntl F_GETPSZ.
- *    -> This is probably why I didn't notice problems with larger chunk
- *       sizes.
- *  - Even that might not be safe enough when there are multiple pipe
- *    buffers.
- *
- * https://stackoverflow.com/questions/70515745/how-do-i-use-vmsplice-to-correctly-output-to-a-pipe
- * https://codegolf.stackexchange.com/questions/215216/high-throughput-fizz-buzz/239848#239848
- *
- *  - the safest way to use vmsplice seems to be mmap -> vmplice with
- *    SPLICE_F_GIFT -> munmap. munmap can be called directly after the
- *    return from vmplice and this works in a similar way to aio_write
- *    but actually a lot faster.
- *
- * I think using std::vector with vmsplice is NOT safe when it is
- * destructed too soon! The problem here is that the memory is probably not
- * returned to the system, which would be fine, but is actually reused by
- * the c/C++ standard library's implementation of malloc/free/new/delete:
- *
- * https://stackoverflow.com/a/1119334
- *
- *  - In many malloc/free implementations, free does normally not return
- *    the memory to the operating system (or at least only in rare cases).
- *    [...] Free will put the memory block in its own free block list.
- *    Normally it also tries to meld together adjacent blocks in the
- *    address space.
- *
- * https://mazzo.li/posts/fast-pipes.html
- * https://github.com/bitonic/pipes-speed-test.git
- *
- *  - Set pipe size and double buffer. (Similar to the lwn article
- *    but instead of querying the pipe size, it is set.)
- *  - fcntl(STDOUT_FILENO, F_SETPIPE_SZ, options.pipe_size);
- *
- * I think I will have to implement a container with a custom allocator
- * that uses mmap and munmap to get back my vmsplice speeds :/(.
- * Or maybe try setting the pipe buffer size to some forced value and
- * then only free the last data after pipe size more has been written.
- *
- * @return 0 if successful and errno if it could not be spliced from the
- * beginning, e.g., because the file descriptor is not a pipe or because the
- * file descriptor triggered a SIGPIPE.
- */
 [[nodiscard]] inline int
 writeAllSpliceUnsafe([[maybe_unused]] const int outputFileDescriptor,
                      [[maybe_unused]] const void *const dataToWrite,
                      [[maybe_unused]] const size_t dataToWriteSize) {
   ::iovec dataToSplice{};
-  /* The const_cast should be safe because vmsplice should not modify the input
-   * data. */
+
   dataToSplice.iov_base =
       const_cast<void *>(reinterpret_cast<const void *>(dataToWrite));
   dataToSplice.iov_len = dataToWriteSize;
   while (dataToSplice.iov_len > 0) {
-    /* Note: On a broken pipe signal (EPIPE), the C++ CLI will directly exit and
-     * will not resume on the following line while with the Python wrapper, it
-     * will resume!
-     * @see https://stackoverflow.com/a/18963142/2191065 */
+
     const auto nBytesWritten =
-        ::vmsplice(outputFileDescriptor, &dataToSplice, 1, /* flags */ 0);
+        ::vmsplice(outputFileDescriptor, &dataToSplice, 1, 0);
     if (nBytesWritten < 0) {
       return errno;
     }
@@ -456,8 +364,8 @@ writeAllSpliceUnsafe([[maybe_unused]] const int outputFileDescriptor,
   for (size_t i = 0; i < dataToWrite.size();) {
     const auto segmentCount =
         std::min(static_cast<size_t>(IOV_MAX), dataToWrite.size() - i);
-    auto nBytesWritten = ::vmsplice(outputFileDescriptor, &dataToWrite[i],
-                                    segmentCount, /* flags */ 0);
+    auto nBytesWritten =
+        ::vmsplice(outputFileDescriptor, &dataToWrite[i], segmentCount, 0);
 
     if (nBytesWritten < 0) {
       if (i == 0) {
@@ -470,15 +378,12 @@ writeAllSpliceUnsafe([[maybe_unused]] const int outputFileDescriptor,
       throw std::runtime_error(std::move(message).str());
     }
 
-    /* Skip over buffers that were written fully. */
     for (; (i < dataToWrite.size()) &&
            (dataToWrite[i].iov_len <= static_cast<size_t>(nBytesWritten));
          ++i) {
       nBytesWritten -= dataToWrite[i].iov_len;
     }
 
-    /* Write out last partially written buffer if necessary so that we can
-     * resume full vectorized writing from the next iovec buffer. */
     if ((i < dataToWrite.size()) && (nBytesWritten > 0)) {
       const auto &iovBuffer = dataToWrite[i];
 
@@ -499,13 +404,6 @@ writeAllSpliceUnsafe([[maybe_unused]] const int outputFileDescriptor,
   return 0;
 }
 
-/**
- * Keeps shared pointers to spliced objects until an amount of bytes equal to
- * the pipe buffer size has been spliced into the pipe. It implements a
- * singleton-like (singleton per file descriptor) interface as a performance
- * optimization. Without a global ledger, the effectively held back objects
- * would be overestimated by the number of actual ledgers.
- */
 class SpliceVault {
 public:
   using VaultLock = std::unique_lock<AtomicMutex>;
@@ -519,8 +417,7 @@ public:
     const std::scoped_lock lock{mutex};
     auto vault = vaults.find(fileDescriptor);
     if (vault == vaults.end()) {
-      /* try_emplace cannot be used because the SpliceVault constructor is
-       * private. */
+
       vault = vaults
                   .emplace(fileDescriptor, std::unique_ptr<SpliceVault>(
                                                new SpliceVault(fileDescriptor)))
@@ -529,12 +426,6 @@ public:
     return std::make_pair(vault->second.get(), vault->second->lock());
   }
 
-  /**
-   * @param dataToWrite A pointer to the start of the data to write. This
-   * pointer should be part of @p splicedData!
-   * @param splicedData This owning shared pointer will be stored until enough
-   * other data has been spliced into the pipe.
-   */
   template <typename T>
   [[nodiscard]] int splice(const void *const dataToWrite,
                            size_t const dataToWriteSize,
@@ -553,9 +444,6 @@ public:
     return 0;
   }
 
-  /**
-   * Overload that works for iovec structures directly.
-   */
   template <typename T>
   [[nodiscard]] int splice(const std::vector<::iovec> &buffersToWrite,
                            const std::shared_ptr<T> &splicedData) {
@@ -582,8 +470,7 @@ private:
   void account(const std::shared_ptr<T> &splicedData,
                size_t const dataToWriteSize) {
     m_totalSplicedBytes += dataToWriteSize;
-    /* Append written size to last shared pointer if it is the same one or add a
-     * new data set. */
+
     if (!m_splicedData.empty() &&
         (std::get<1>(m_splicedData.back()) == splicedData.get())) {
       std::get<2>(m_splicedData.back()) += dataToWriteSize;
@@ -592,9 +479,6 @@ private:
                                  dataToWriteSize);
     }
 
-    /* Never fully clear the shared pointers even if the size of the last is
-     * larger than the pipe buffer because part of that last large chunk will
-     * still be in the pipe buffer! */
     while (!m_splicedData.empty() &&
            (m_totalSplicedBytes - std::get<2>(m_splicedData.front()) >=
             static_cast<size_t>(m_pipeBufferSize))) {
@@ -611,34 +495,17 @@ private:
 
 private:
   const int m_fileDescriptor;
-  /** We are assuming here that the pipe buffer size does not change to avoid
-   * frequent calls to fcntl. */
+
   const int m_pipeBufferSize;
 
-  /**
-   * Contains shared_ptr to extend lifetime and amount of bytes that have been
-   * spliced to determine when the shared_ptr can be removed from this list.
-   */
-  std::deque<
-      std::tuple</* packed RAII resource */ std::any,
-                 /* raw pointer of RAII resource for comparison */ const void *,
-                 /* spliced bytes */ size_t>>
-      m_splicedData;
-  /**
-   * This data is redundant but helps to avoid O(N) recalculation of this value
-   * from @ref m_splicedData.
-   */
+  std::deque<std::tuple<std::any, const void *, size_t>> m_splicedData;
+
   size_t m_totalSplicedBytes{0};
 
   AtomicMutex m_mutex;
 };
-#endif // HAVE_VMSPLICE
+#endif
 
-/**
- * Posix write is not guaranteed to write everything and in fact was encountered
- * to not write more than 0x7ffff000 (2'147'479'552) B. To avoid this, it has to
- * be looped over.
- */
 [[nodiscard]] inline int writeAllToFd(const int outputFileDescriptor,
                                       const void *const dataToWrite,
                                       const uint64_t dataToWriteSize) {
@@ -671,8 +538,7 @@ inline void pwriteAllToFd(const int outputFileDescriptor,
         reinterpret_cast<const uint8_t *>(dataToWrite) + nTotalWritten;
     const auto nBytesWritten =
         ::pwrite(outputFileDescriptor, currentBufferPosition,
-                 dataToWriteSize - nTotalWritten,
-                 fileOffset + nTotalWritten); // NOLINT
+                 dataToWriteSize - nTotalWritten, fileOffset + nTotalWritten);
     if (nBytesWritten <= 0) {
       std::stringstream message;
       message << "Unable to write all data to the given file descriptor. Wrote "
@@ -692,21 +558,18 @@ writeAllToFdVector(const int outputFileDescriptor,
     const auto segmentCount =
         std::min(static_cast<size_t>(IOV_MAX), dataToWrite.size() - i);
     auto nBytesWritten =
-        ::writev(outputFileDescriptor, &dataToWrite[i], segmentCount); // NOLINT
+        ::writev(outputFileDescriptor, &dataToWrite[i], segmentCount);
 
     if (nBytesWritten < 0) {
       return errno;
     }
 
-    /* Skip over buffers that were written fully. */
     for (; (i < dataToWrite.size()) &&
            (dataToWrite[i].iov_len <= static_cast<size_t>(nBytesWritten));
          ++i) {
-      nBytesWritten -= dataToWrite[i].iov_len; // NOLINT
+      nBytesWritten -= dataToWrite[i].iov_len;
     }
 
-    /* Write out last partially written buffer if necessary so that we can
-     * resume full vectorized writing from the next iovec buffer. */
     if ((i < dataToWrite.size()) && (nBytesWritten > 0)) {
       const auto &iovBuffer = dataToWrite[i];
 
@@ -726,7 +589,7 @@ writeAllToFdVector(const int outputFileDescriptor,
 
   return 0;
 }
-#endif // HAVE_IOVEC
+#endif
 
 [[nodiscard]] inline int writeAll(const int outputFileDescriptor,
                                   void *const outputBuffer,
@@ -750,10 +613,6 @@ writeAllToFdVector(const int outputFileDescriptor,
   return 0;
 }
 
-/**
- * Wrapper to open either stdout, a given existing file without truncation for
- * better performance, or a new file.
- */
 class OutputFile {
 public:
   explicit OutputFile(const std::string &filePath)
@@ -771,14 +630,9 @@ public:
         try {
           m_oldOutputFileSize = fileSize(filePath);
         } catch (const std::filesystem::filesystem_error &) {
-          /* This happens, e.g., when trying to write to /dev/null. */
         }
-        /* Opening an existing file and overwriting its data can be much slower
-         * because posix_fallocate can be relatively slow compared to the
-         * decoding speed and memory bandwidth! Note that std::fopen would open
-         * a file with O_TRUNC, deallocating all its contents before it has to
-         * be reallocated. */
-        m_fileDescriptor = ::open(filePath.c_str(), O_WRONLY); // NOLINT
+
+        m_fileDescriptor = ::open(filePath.c_str(), O_WRONLY);
         m_ownedFd = unique_file_descriptor(m_fileDescriptor);
       }
 #endif
@@ -795,11 +649,10 @@ public:
     }
   }
 
-  void truncate(size_t size) // NOLINT
-  {
+  void truncate(size_t size) {
 #ifndef _MSC_VER
     if ((m_fileDescriptor != -1) && (size < m_oldOutputFileSize)) {
-      if (::ftruncate(m_fileDescriptor, size) == -1) { // NOLINT
+      if (::ftruncate(m_fileDescriptor, size) == -1) {
         std::cerr << "[Error] Failed to truncate file because of: "
                   << strerror(errno) << " (" << errno << ")\n";
       }
@@ -816,24 +669,16 @@ public:
 private:
   const bool m_writingToStdout;
 
-  int m_fileDescriptor{-1}; // Use this for file access.
+  int m_fileDescriptor{-1};
 
 #ifndef _MSC_VER
-  /** This is used to decide whether to truncate the file to a smaller
-   * (decompressed) size before closing. */
+
   [[maybe_unused]] size_t m_oldOutputFileSize{0};
 #endif
 
-  /**
-   * These should not be used. They are only for automatic closing!
-   * Two of them because a file may either be opened from an existing file
-   * without truncation, which does not fit into unique_file_ptr, or it might be
-   * newly created.
-   */
   unique_file_ptr m_outputFile;
 #ifndef _MSC_VER
-  unique_file_descriptor
-      m_ownedFd; // This should not be used, it is only for automatic closing!
+  unique_file_descriptor m_ownedFd;
 #endif
 };
 [[maybe_unused]] inline void clangd_unused_fix_FileUtils() {

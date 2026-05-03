@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2017 Martin Matuska
  * All rights reserved.
  *
@@ -23,8 +23,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/* !!ONLY FOR USE INTERNALLY TO LIBARCHIVE!! */
-
 #ifndef ARCHIVE_PLATFORM_ACL_H_INCLUDED
 #define ARCHIVE_PLATFORM_ACL_H_INCLUDED
 
@@ -36,9 +34,6 @@
 #endif
 #endif
 
-/*
- * Determine what ACL types are supported
- */
 #if ARCHIVE_ACL_FREEBSD || ARCHIVE_ACL_SUNOS || ARCHIVE_ACL_LIBACL
 #define ARCHIVE_ACL_POSIX1E 1
 #endif
@@ -52,4 +47,4 @@
 #define ARCHIVE_ACL_SUPPORT 1
 #endif
 
-#endif /* !ARCHIVE_PLATFORM_ACL_H_INCLUDED */
+#endif

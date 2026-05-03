@@ -1,4 +1,4 @@
-#include "qvz/qv_compressor.h"
+﻿#include "qvz/qv_compressor.h"
 #include "qvz/codebook.h"
 #include "qvz/lines.h"
 #include <cstdint>
@@ -6,10 +6,6 @@
 namespace spring {
 namespace qvz {
 
-/**
- * Compress a sequence of quality scores including dealing with organization by
- * cluster
- */
 void start_qv_quantization(struct quality_file_t *info) {
 
   uint32_t s = 0, idx = 0;
@@ -24,7 +20,6 @@ void start_qv_quantization(struct quality_file_t *info) {
   char *line;
   symbol_t data;
 
-  // Start compressing the file
   block_idx = 0;
   line_idx = 0;
   while (line_idx < info->blocks[block_idx].count) {
@@ -34,10 +29,9 @@ void start_qv_quantization(struct quality_file_t *info) {
     if (cur_readlen > 0) {
       cluster_id = 0;
       qlist = info->clusters->clusters[cluster_id].qlist;
-      // Select first column's codebook with no left context
+
       q = choose_quantizer(qlist, &info->well, 0, 0, &idx);
 
-      // Quantize, compress and calculate error simultaneously
       data = line[0] - 33;
       qv = q->q[(uint8_t)data];
 

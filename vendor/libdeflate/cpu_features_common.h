@@ -1,4 +1,4 @@
-/*
+﻿/*
  * cpu_features_common.h - code shared by all lib/$arch/cpu_features.c
  *
  * Copyright 2020 Eric Biggers
@@ -29,7 +29,7 @@
 #define LIB_CPU_FEATURES_COMMON_H
 
 #if defined(TEST_SUPPORT__DO_NOT_USE) && !defined(FREESTANDING)
-/* for strdup() and strtok_r() */
+
 #undef _ANSI_SOURCE
 #ifndef __APPLE__
 #undef _GNU_SOURCE
@@ -48,7 +48,7 @@ struct cpu_feature {
 };
 
 #if defined(TEST_SUPPORT__DO_NOT_USE) && !defined(FREESTANDING)
-/* Disable any features that are listed in $LIBDEFLATE_DISABLE_CPU_FEATURES. */
+
 static inline void
 disable_cpu_features_for_testing(u32 *features,
                                  const struct cpu_feature *feature_table,
@@ -81,11 +81,11 @@ disable_cpu_features_for_testing(u32 *features,
   }
   free(strbuf);
 }
-#else  /* TEST_SUPPORT__DO_NOT_USE */
+#else
 static inline void
 disable_cpu_features_for_testing(u32 *features,
                                  const struct cpu_feature *feature_table,
                                  size_t feature_table_length) {}
-#endif /* !TEST_SUPPORT__DO_NOT_USE */
+#endif
 
-#endif /* LIB_CPU_FEATURES_COMMON_H */
+#endif

@@ -1,22 +1,11 @@
-add_definitions(-DHAVE_CONFIG_H)
-
-############################################
-#
-# How to build libarchive
-#
-############################################
-
+﻿add_definitions(-DHAVE_CONFIG_H)
 if(ANDROID)
     include_directories(${PROJECT_SOURCE_DIR}/contrib/android/include)
 endif()
-
-# Public headers
 set(include_HEADERS
     archive.h
     archive_entry.h
 )
-
-# Sources and private headers
 set(libarchive_SOURCES
     archive_acl.c
     archive_acl_private.h
@@ -95,19 +84,16 @@ set(libarchive_SOURCES
     archive_xxhash.h
     xxhash.c
 )
-
 if(WIN32 AND NOT CYGWIN)
     list(APPEND libarchive_SOURCES archive_entry_copy_bhfi.c)
     list(APPEND libarchive_SOURCES archive_windows.c)
     list(APPEND libarchive_SOURCES archive_windows.h)
     list(APPEND libarchive_SOURCES archive_write_disk_windows.c)
 endif(WIN32 AND NOT CYGWIN)
-
 if(ARCHIVE_BLAKE2)
     list(APPEND libarchive_SOURCES archive_blake2sp_ref.c)
     list(APPEND libarchive_SOURCES archive_blake2s_ref.c)
 endif(ARCHIVE_BLAKE2)
-
 if(ARCHIVE_ACL_DARWIN)
     list(APPEND libarchive_SOURCES archive_disk_acl_darwin.c)
 elseif(ARCHIVE_ACL_FREEBSD)
@@ -117,9 +103,6 @@ elseif(ARCHIVE_ACL_LIBACL)
 elseif(ARCHIVE_ACL_SUNOS)
     list(APPEND libarchive_SOURCES archive_disk_acl_sunos.c)
 endif()
-
-
-# Libarchive is a shared library
 add_library(archive_static STATIC ${libarchive_SOURCES} ${include_HEADERS})
 target_include_directories(archive_static PUBLIC .)
 target_link_libraries(archive_static ${ADDITIONAL_LIBS})
@@ -128,9 +111,7 @@ set_target_properties(archive_static PROPERTIES COMPILE_DEFINITIONS
 if(WIN32 AND MSVC AND MSVC_USE_STATIC_CRT)
     set_property(TARGET archive_static PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif(WIN32 AND MSVC AND MSVC_USE_STATIC_CRT)
-# On Posix systems, libarchive.so and libarchive.a can co-exist.
 set_target_properties(archive_static PROPERTIES OUTPUT_NAME archive)
-
 if(CMAKE_C_COMPILER_ID MATCHES "GNU")
     if(CMAKE_C_COMPILER_ID MATCHES "GNU")
         target_compile_options(archive_static PRIVATE -Wno-discarded-qualifiers -Wno-stringop-overflow)

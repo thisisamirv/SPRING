@@ -1,14 +1,10 @@
-#pragma once
+﻿#pragma once
 
 #include <thread>
 #include <utility>
 
 namespace rapidgzip {
-/**
- * Similar to the planned C++20 std::jthread, this class joins in the
- * destructor. Additionally, it ensures that all threads created with this
- * interface correctly initialize rpmalloc!
- */
+
 class JoiningThread {
 public:
   template <class Function, class... Args>

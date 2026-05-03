@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2011 Michihiro NAKAJIMA
  * All rights reserved.
  *
@@ -34,17 +34,6 @@
 
 struct archive_entry;
 struct archive_string_conv;
-
-/*
- * Utility functions to set and get entry attributes by translating
- * character-set. These are designed for use in format readers and writers.
- *
- * The return code and interface of these are quite different from other
- * functions for archive_entry defined in archive_entry.h.
- * Common return code are:
- *   Return 0 if the string conversion succeeded.
- *   Return -1 if the string conversion failed.
- */
 
 #define archive_entry_gname_l _archive_entry_gname_l
 int _archive_entry_gname_l(struct archive_entry *, const char **, size_t *,
@@ -90,4 +79,4 @@ int _archive_entry_copy_symlink_l(struct archive_entry *, const char *, size_t,
 int _archive_entry_copy_uname_l(struct archive_entry *, const char *, size_t,
                                 struct archive_string_conv *);
 
-#endif /* !ARCHIVE_ENTRY_LOCALE_H_INCLUDED */
+#endif

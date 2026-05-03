@@ -1,7 +1,4 @@
-/*-----------------------------------------------------------*/
-/* Block Sorting, Lossless Data Compression Library.         */
-/* Interface to Burrows Wheeler Transform                    */
-/*-----------------------------------------------------------*/
+﻿
 
 /*--
 
@@ -37,36 +34,11 @@ See also the bsc and libbsc web site:
 extern "C" {
 #endif
 
-/**
- * You should call this function before you call any of the other functions in
- * bwt.
- * @param features       - the set of additional features.
- * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
- */
 int bsc_bwt_init(int features);
 
-/**
- * Constructs the burrows wheeler transformed string of a given string.
- * @param T              - the input/output string of n chars.
- * @param n              - the length of the given string.
- * @param num_indexes    - the length of secondary indexes array, can be NULL.
- * @param indexes        - the secondary indexes array, can be NULL.
- * @param features       - the set of additional features.
- * @return the primary index if no error occurred, error code otherwise.
- */
 int bsc_bwt_encode(unsigned char *T, int n, unsigned char *num_indexes,
                    int *indexes, int features);
 
-/**
- * Reconstructs the original string from burrows wheeler transformed string.
- * @param T              - the input/output string of n chars.
- * @param n              - the length of the given string.
- * @param index          - the primary index.
- * @param num_indexes    - the length of secondary indexes array, can be 0.
- * @param indexes        - the secondary indexes array, can be NULL.
- * @param features       - the set of additional features.
- * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
- */
 int bsc_bwt_decode(unsigned char *T, int n, int index,
                    unsigned char num_indexes, int *indexes, int features);
 
@@ -75,7 +47,3 @@ int bsc_bwt_decode(unsigned char *T, int n, int index,
 #endif
 
 #endif
-
-/*-----------------------------------------------------------*/
-/* End                                                 bwt.h */
-/*-----------------------------------------------------------*/

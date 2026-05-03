@@ -1,7 +1,7 @@
-#pragma once
+﻿#pragma once
 
 #include <algorithm>
-#include <cstdio> // fread
+#include <cstdio>
 #include <filesystem>
 #include <stdexcept>
 #include <string>
@@ -11,12 +11,12 @@
 
 #ifdef _MSC_VER
 #include <fcntl.h>
-#include <io.h>    // _setmode
-#include <stdio.h> // stdin
+#include <io.h>
+#include <stdio.h>
 #endif
 
-#include <FileUtils.hpp> // unique_file_ptr, throwingOpen
-#include <common.hpp>    // unistd, S_ISFIFO, fstat, ...
+#include <FileUtils.hpp>
+#include <common.hpp>
 
 #include "FileReader.hpp"
 
@@ -37,17 +37,13 @@ public:
   explicit StandardFileReader(const std::filesystem::path &filePath)
       : StandardFileReader(filePath.string()) {}
 
-  /* Add this to avoid ambiguity for const char*, which would otherwise be the
-   * case with only std::string and std::filesystem::path constructors. */
   explicit StandardFileReader(const char *filePath)
       : StandardFileReader(std::string(filePath)) {}
 #endif
 
   explicit StandardFileReader(int fileDescriptor)
-      : /* Use dup here so that the following fclose will not close the original
-         * file descriptor, which probably is still in use by the caller! Note
-         * that dup will not guarantee independent file positions though, so
-         * restore the previous position after closing. */
+      :
+
         m_file(throwingOpen(dup(fileDescriptor), "rb")),
         m_fileDescriptor(::fileno(fp())),
         m_filePath(fdFilePath(m_fileDescriptor)),
@@ -64,16 +60,11 @@ public:
                                 "should not be modified by multiple owners!");
   }
 
-  /* Copying is simply not allowed because that might interfere with the file
-   * position state, use SharedFileReader! */
-
   void close() override {
     if (!m_file) {
       return;
     }
 
-    /* Try to restore the file position the file had before it was given to us.
-     */
     if (m_seekable) {
       std::fsetpos(m_file.get(), &m_initialPosition);
     }
@@ -108,16 +99,6 @@ public:
       return 0;
     }
 
-    /**
-     * @see https://pubs.opengroup.org/onlinepubs/009696899/functions/fseek.html
-     * > The fseek() function shall allow the file-position indicator to be set
-     * beyond the end of existing > data in the file. If data is later written
-     * at this point, subsequent reads of data in the gap shall > return bytes
-     * with the value 0 until data is actually written into the gap. Because of
-     * this, it is not possible to simply use std::fseek. Because then, we would
-     * not be able to infer whether we read past the end nor how many bytes we
-     * would have been able to read if the buffer was valid!
-     */
     size_t nBytesRead = 0;
     if (buffer == nullptr) {
       if (seekable()) {
@@ -129,8 +110,7 @@ public:
         std::array<char, 16_Ki> tmpBuffer{};
         while (nBytesRead < nMaxBytesToRead) {
           const auto nBytesReadPerCall =
-              std::fread(tmpBuffer.data(), /* element size */ 1,
-                         tmpBuffer.size(), m_file.get());
+              std::fread(tmpBuffer.data(), 1, tmpBuffer.size(), m_file.get());
           if (nBytesReadPerCall == 0) {
             break;
           }
@@ -138,26 +118,16 @@ public:
         }
       }
     } else {
-      nBytesRead = std::fread(buffer, /* element size */ 1, nMaxBytesToRead,
-                              m_file.get());
+      nBytesRead = std::fread(buffer, 1, nMaxBytesToRead, m_file.get());
     }
 
     if (nBytesRead == 0) {
 #if 1
-      /* fread returning 0 might traditionally be a valid case if the file
-       * position was after the last byte. EOF is only set after reading after
-       * the end not when the file position is at the end. */
+
       m_lastReadSuccessful = false;
       return 0;
 #else
-      /* I had some very weird issues of fread returning 0 bytes read even
-       * thought ftell was 0 and no EOF bit nor fail bit was set. After that
-       * read no error was set but the EOF bit. It makes not sense to me. It
-       * almost looks like ftell is broken and the actual position was not moved
-       * from the file end. The problem disappeared after trimming down the seek
-       * method to basically directly call std::fseek instead of manually
-       * transforming the offset and doing some preemptive returns, so maybe it
-       * was that. */
+
       std::stringstream message;
       message << "[StandardFileReader] Read call failed (" << nBytesRead
               << " B read)!\n"
@@ -192,8 +162,7 @@ public:
     if (origin == SEEK_SET) {
       m_currentPosition = static_cast<size_t>(std::max(0LL, offset));
     } else {
-      /* Note that the file must be seekable at this point, meaning std::ftell
-       * will work! */
+
       m_currentPosition = filePosition(m_file.get());
     }
 
@@ -217,9 +186,6 @@ private:
   void init() {
     std::fgetpos(fp(), &m_initialPosition);
 
-    /* On macOS opening special files like /dev/fd/3 might result in the file
-     * position not being 0 in the case it has been seeked or read from
-     * somewhere else! */
     if (m_seekable) {
       StandardFileReader::seek(0, SEEK_SET);
     }
@@ -247,7 +213,7 @@ protected:
   const bool m_seekable;
   const size_t m_fileSizeBytes;
 
-  size_t m_currentPosition{0}; /**< Only necessary for unseekable files. */
+  size_t m_currentPosition{0};
   bool m_lastReadSuccessful{true};
 };
 

@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2010 Tim Kientzle
  * All rights reserved.
  *
@@ -28,10 +28,7 @@
 
 #ifndef __LIBARCHIVE_BUILD
 #ifndef __LIBARCHIVE_TEST
-/* Allow parsing in analysis environments that don't define the libarchive
- * build/test macros. Prefer the system <sys/types.h> if available to get
- * `ssize_t`/`mode_t` and related typedefs; real builds defining
- * __LIBARCHIVE_BUILD/__LIBARCHIVE_TEST are unaffected. */
+
 #if __has_include(<sys/types.h>)
 #include <sys/types.h>
 #endif
@@ -40,7 +37,7 @@
 
 #include <stdarg.h>
 #ifdef HAVE_STDLIB_H
-#include <stdlib.h> /* required for wchar_t on some systems */
+#include <stdlib.h>
 #endif
 #ifdef HAVE_STRING_H
 #include <string.h>
@@ -51,28 +48,20 @@
 
 #include "archive.h"
 
-/*
- * Basic resizable/reusable string support similar to Java's "StringBuffer."
- *
- * Unlike sbuf(9), the buffers here are fully reusable and track the
- * length throughout.
- */
-
 struct archive_string {
-  char *s;              /* Pointer to the storage */
-  size_t length;        /* Length of 's' in characters */
-  size_t buffer_length; /* Length of malloc-ed storage in bytes. */
+  char *s;
+  size_t length;
+  size_t buffer_length;
 };
 
 struct archive_wstring {
-  wchar_t *s;           /* Pointer to the storage */
-  size_t length;        /* Length of 's' in characters */
-  size_t buffer_length; /* Length of malloc-ed storage in bytes. */
+  wchar_t *s;
+  size_t length;
+  size_t buffer_length;
 };
 
 struct archive_string_conv;
 
-/* Initialize an archive_string object on the stack or elsewhere. */
 #define archive_string_init(a)                                                 \
   do {                                                                         \
     (a)->s = NULL;                                                             \
@@ -80,38 +69,27 @@ struct archive_string_conv;
     (a)->buffer_length = 0;                                                    \
   } while (0)
 
-/* Append a C char to an archive_string, resizing as necessary. */
 struct archive_string *archive_strappend_char(struct archive_string *, char);
 
-/* Ditto for a wchar_t and an archive_wstring. */
 struct archive_wstring *archive_wstrappend_wchar(struct archive_wstring *,
                                                  wchar_t);
 
-/* Append a raw array to an archive_string, resizing as necessary */
 struct archive_string *archive_array_append(struct archive_string *,
                                             const char *, size_t);
 
-/* Convert a Unicode string to current locale and append the result. */
-/* Returns -1 if conversion fails. */
 int archive_string_append_from_wcs(struct archive_string *, const wchar_t *,
                                    size_t);
 
-/* Create a string conversion object.
- * Return NULL and set a error message if the conversion is not supported
- * on the platform. */
 struct archive_string_conv *
 archive_string_conversion_to_charset(struct archive *, const char *, int);
 struct archive_string_conv *
 archive_string_conversion_from_charset(struct archive *, const char *, int);
-/* Create the default string conversion object for reading/writing an archive.
- * Return NULL if the conversion is unneeded.
- * Note: On non Windows platform this always returns NULL.
- */
+
 struct archive_string_conv *
 archive_string_default_conversion_for_read(struct archive *);
 struct archive_string_conv *
 archive_string_default_conversion_for_write(struct archive *);
-/* Dispose of a string conversion object. */
+
 void archive_string_conversion_free(struct archive *);
 const char *
 archive_string_conversion_charset_name(struct archive_string_conv *);
@@ -120,49 +98,35 @@ void archive_string_conversion_set_opt(struct archive_string_conv *, int);
 #define SCONV_SET_OPT_NORMALIZATION_C 2
 #define SCONV_SET_OPT_NORMALIZATION_D 4
 
-/* Copy one archive_string to another in locale conversion.
- * Return -1 if conversion fails. */
 int archive_strncpy_l(struct archive_string *, const void *, size_t,
                       struct archive_string_conv *);
 
-/* Copy one archive_string to another in locale conversion.
- * Return -1 if conversion fails. */
 int archive_strncat_l(struct archive_string *, const void *, size_t,
                       struct archive_string_conv *);
 
-/* Copy one archive_string to another */
 #define archive_string_copy(dest, src)                                         \
   ((dest)->length = 0, archive_string_concat((dest), (src)))
 #define archive_wstring_copy(dest, src)                                        \
   ((dest)->length = 0, archive_wstring_concat((dest), (src)))
 
-/* Concatenate one archive_string to another */
 void archive_string_concat(struct archive_string *dest,
                            struct archive_string *src);
 void archive_wstring_concat(struct archive_wstring *dest,
                             struct archive_wstring *src);
 
-/* Ensure that the underlying buffer is at least as large as the request. */
 struct archive_string *archive_string_ensure(struct archive_string *, size_t);
 struct archive_wstring *archive_wstring_ensure(struct archive_wstring *,
                                                size_t);
 
-/* Append C string, which may lack trailing \0. */
-/* The source is declared void * here because this gets used with
- * "signed char *", "unsigned char *" and "char *" arguments.
- * Declaring it "char *" as with some of the other functions just
- * leads to a lot of extra casts. */
 struct archive_string *archive_strncat(struct archive_string *, const void *,
                                        size_t);
 struct archive_wstring *archive_wstrncat(struct archive_wstring *,
                                          const wchar_t *, size_t);
 
-/* Append a C string to an archive_string, resizing as necessary. */
 struct archive_string *archive_strcat(struct archive_string *, const void *);
 struct archive_wstring *archive_wstrcat(struct archive_wstring *,
                                         const wchar_t *);
 
-/* Copy a C string to an archive_string, resizing as necessary. */
 #define archive_strcpy(as, p)                                                  \
   archive_strncpy((as), (p), ((p) == NULL ? 0 : strlen(p)))
 #define archive_wstrcpy(as, p)                                                 \
@@ -170,53 +134,35 @@ struct archive_wstring *archive_wstrcat(struct archive_wstring *,
 #define archive_strcpy_l(as, p, lo)                                            \
   archive_strncpy_l((as), (p), ((p) == NULL ? 0 : strlen(p)), (lo))
 
-/* Copy a C string to an archive_string with limit, resizing as necessary. */
 #define archive_strncpy(as, p, l)                                              \
   ((as)->length = 0, archive_strncat((as), (p), (l)))
 #define archive_wstrncpy(as, p, l)                                             \
   ((as)->length = 0, archive_wstrncat((as), (p), (l)))
 
-/* Return length of string. */
 #define archive_strlen(a) ((a)->length)
 
-/* Set string length to zero. */
 #define archive_string_empty(a) ((a)->length = 0)
 #define archive_wstring_empty(a) ((a)->length = 0)
 
-/* Release any allocated storage resources. */
 void archive_string_free(struct archive_string *);
 void archive_wstring_free(struct archive_wstring *);
 
-/* Like 'vsprintf', but resizes the underlying string as necessary. */
-/* Note: This only implements a small subset of standard printf functionality.
- */
 void archive_string_vsprintf(struct archive_string *, const char *, va_list)
     __LA_PRINTF(2, 0);
 void archive_string_sprintf(struct archive_string *, const char *, ...)
     __LA_PRINTF(2, 3);
 
-/* Equivalent to dirname(3) */
 struct archive_string *archive_string_dirname(struct archive_string *);
 
-/* Translates from MBS to Unicode. */
-/* Returns non-zero if conversion failed in any way. */
 int archive_wstring_append_from_mbs(struct archive_wstring *dest, const char *,
                                     size_t);
 
-/* A "multistring" can hold Unicode, UTF8, or MBS versions of
- * the string.  If you set and read the same version, no translation
- * is done.  If you set and read different versions, the library
- * will attempt to transparently convert.
- */
 struct archive_mstring {
   struct archive_string aes_mbs;
   struct archive_string aes_utf8;
   struct archive_wstring aes_wcs;
   struct archive_string aes_mbs_in_locale;
-  /* Bitmap of which of the above are valid.  Because we're lazy
-   * about malloc-ing and reusing the underlying storage, we
-   * can't rely on NULL pointers to indicate whether a string
-   * has been set. */
+
   int aes_set;
 #define AES_SET_MBS 1
 #define AES_SET_UTF8 2

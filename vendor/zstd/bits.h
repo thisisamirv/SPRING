@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  * All rights reserved.
  *
@@ -34,7 +34,7 @@ MEM_STATIC unsigned ZSTD_countTrailingZeros32(U32 val) {
     _BitScanForward(&r, val);
     return (unsigned)r;
   } else {
-    __assume(0); /* Should not reach this code path */
+    __assume(0);
   }
 #endif
 #elif defined(__GNUC__) && (__GNUC__ >= 4)
@@ -72,7 +72,7 @@ MEM_STATIC unsigned ZSTD_countLeadingZeros32(U32 val) {
     _BitScanReverse(&r, val);
     return (unsigned)(31 - r);
   } else {
-    __assume(0); /* Should not reach this code path */
+    __assume(0);
   }
 #endif
 #elif defined(__GNUC__) && (__GNUC__ >= 4)
@@ -95,7 +95,7 @@ MEM_STATIC unsigned ZSTD_countTrailingZeros64(U64 val) {
     _BitScanForward64(&r, val);
     return (unsigned)r;
   } else {
-    __assume(0); /* Should not reach this code path */
+    __assume(0);
   }
 #endif
 #elif defined(__GNUC__) && (__GNUC__ >= 4) && defined(__LP64__)
@@ -126,7 +126,7 @@ MEM_STATIC unsigned ZSTD_countLeadingZeros64(U64 val) {
     _BitScanReverse64(&r, val);
     return (unsigned)(63 - r);
   } else {
-    __assume(0); /* Should not reach this code path */
+    __assume(0);
   }
 #endif
 #elif defined(__GNUC__) && (__GNUC__ >= 4)
@@ -153,7 +153,7 @@ MEM_STATIC unsigned ZSTD_NbCommonBytes(size_t val) {
     } else {
       return ZSTD_countTrailingZeros32((U32)val) >> 3;
     }
-  } else { /* Big Endian CPU */
+  } else {
     if (MEM_64bits()) {
       return ZSTD_countLeadingZeros64((U64)val) >> 3;
     } else {
@@ -162,36 +162,30 @@ MEM_STATIC unsigned ZSTD_NbCommonBytes(size_t val) {
   }
 }
 
-MEM_STATIC unsigned
-ZSTD_highbit32(U32 val) /* compress, dictBuilder, decodeCorpus */
-{
+MEM_STATIC unsigned ZSTD_highbit32(U32 val) {
   assert(val != 0);
   return 31 - ZSTD_countLeadingZeros32(val);
 }
 
-/* ZSTD_rotateRight_*():
- * Rotates a bitfield to the right by "count" bits.
- * https://en.wikipedia.org/w/index.php?title=Circular_shift&oldid=991635599#Implementing_circular_shifts
- */
 MEM_STATIC
 U64 ZSTD_rotateRight_U64(U64 const value, U32 count) {
   assert(count < 64);
-  count &= 0x3F; /* for fickle pattern recognition */
+  count &= 0x3F;
   return (value >> count) | (U64)(value << ((0U - count) & 0x3F));
 }
 
 MEM_STATIC
 U32 ZSTD_rotateRight_U32(U32 const value, U32 count) {
   assert(count < 32);
-  count &= 0x1F; /* for fickle pattern recognition */
+  count &= 0x1F;
   return (value >> count) | (U32)(value << ((0U - count) & 0x1F));
 }
 
 MEM_STATIC
 U16 ZSTD_rotateRight_U16(U16 const value, U32 count) {
   assert(count < 16);
-  count &= 0x0F; /* for fickle pattern recognition */
+  count &= 0x0F;
   return (value >> count) | (U16)(value << ((0U - count) & 0x0F));
 }
 
-#endif /* ZSTD_BITS_H */
+#endif

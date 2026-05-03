@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <algorithm>
 #include <atomic>
@@ -19,101 +19,12 @@
 #include "FileReader.hpp"
 
 namespace rapidgzip {
-/**
- * This FileReader implementation acts like a buffered file reader with infinite
- * buffer. This file reader will only read sequentially from the given input
- * file reader. It buffers all the sequentially read data and enables seeking
- * inside that buffer. It can therefore be used to make non-seekable file
- * readers seekable.
- *
- * In order to reduce memory consumption it also offers an interface to unload
- * everything before a given offset. Seeking back before that offset will throw
- * an exception!
- *
- * This class is not thread-safe. It should be wrapped inside SharedFileReader
- * to make it so.
- */
+
 class SinglePassFileReader final : public FileReader {
 public:
   static constexpr size_t CHUNK_SIZE = 4_Mi;
 
 private:
-  /**
-   * m rapidgzip && src/tools/rapidgzip -P 24 -d -o /dev/null <( cat
-   * 4GiB-base64.gz )
-   * @verbatim
-   * input  m_maxReusableChunkCount  Chunk           Bandwidth        Non-reused
-   * chunks cat         0                  FasterVector    1125 1133 1139   778
-   * fcat         0                  FasterVector    1505 1578 1566   778
-   *  cat         0                  std::vector     1385 1384 1374   778
-   * fcat         0                  std::vector     1987 1994 1990   778
-   *
-   *  cat         1                  FasterVector    1329 1345 1346   461 451
-   * 453 fcat         1                  FasterVector    2019 1996 1993   504
-   * 476 484 cat         1                  std::vector     1491 1466 1458   470
-   * 463 455 fcat         1                  std::vector     2155 2208 2269 495
-   * 500 484
-   *
-   *  cat         2                  FasterVector    1424 1396 1425
-   * fcat         2                  FasterVector    2021 2119 2055   355 342
-   * 358 cat         2                  std::vector     1511 1512 1486 fcat 2
-   * std::vector     2250 2311 2199
-   *
-   *  cat         8                  FasterVector    1619 1583 1626
-   * fcat         8                  FasterVector    2585 2505 2484    83  96
-   * 106 cat         8                  std::vector     1598 1574 1574 fcat 8
-   * std::vector     2361 2329 2354
-   *
-   * fcat        12                  FasterVector    2617 2605 2601    37  47 55
-   * fcat        16                  FasterVector    2616 2660 2645    28  27 28
-   * fcat        24                  FasterVector    2628 2682 2708    16  20 17
-   * fcat        32                  FasterVector    2623 2635 2619    11  11 13
-   * fcat        40                  FasterVector    2661 2554 2667     0   0 1
-   * fcat        47                  FasterVector    2686 2623 2615     0   0 0
-   * fcat        48                  FasterVector    2628 2686 2623     0   0 0
-   *
-   *  cat        64                  FasterVector    1702 1687 1660     0
-   * fcat        64                  FasterVector    2687 2647 2618     0
-   *  cat        64                  std::vector     1580 1567 1567     0
-   * fcat        64                  std::vector     2344 2275 2314     0
-   * @endverbatim
-   *
-   * Observations:
-   * - std::vector is up to 20% faster than rpmalloc when there is none or few
-   * chunks being reused
-   * - rpmalloc is 10% faster than std::vector if all chunks are reused. I think
-   * one missing advantage for rpmalloc here is that allocations are serialized
-   * anyway, even if they are done from different threads.
-   * - Up to 40 chunks were observed to be unused at the same time. The maximum
-   * limit is probably higher.
-   *   - The worst case should be when everything has been prefetched at the
-   * same time, as is the case at the start. Then, all chunks are processed /
-   * written out and to be released before the next prefetches allocate new new
-   * buffers.
-   *   - Beware about the difference between SinglePassFileReader chunks and
-   * ParallelGzipReader chunks.
-   *     - In the above benchmarks, both were set to 4 MiB.
-   *     - The ParallelGzipReader chunks are only tentative and depending on the
-   * deflate block size, they could become arbitrarily large in the pathological
-   * case. The pathological case is bounded and will throw an exception though.
-   *     - Normally, the chunks read up to 128 KiB after the tentative chunk
-   * end. However, the BitReader also has a buffer size (128 KiB), which needs
-   * to be added to that for the worst case.
-   *   - BlockFetcher caches up to max(16, P) chunks and prefetches up to 2 * P
-   * chunks additionally. Note that for simple sequential decompression via
-   * rapidgzip, the cache should always be sized 1.
-   *   - The main thread only releases up to the beginning of the last used
-   * chunk in order to enable full cache clearing and continuing, which would
-   * trigger the last used chunk to be computed anew. This basically deducts one
-   * from the possibly cached chunk count, which balances out with the one chunk
-   * added because of reading over the end and caching inside the BitReader.
-   *   -> The worst case approximately would result in:
-   *          ceil[ ( 2 * P + 1 ) * ParallelGzipReader::m_chunkSizeInBytes /
-   * SinglePassFileReader::CHUNK_SIZE ] chunks being released and not yet
-   * reused.
-   * - The performance benefits of chunk reuse is already saturated quite a lot
-   * below the limit for which there is no unnecessary allocation at all.
-   */
   using Chunk = FasterVector<std::byte>;
 
 public:
@@ -128,9 +39,6 @@ public:
         "Cloning file reader not allowed because the internal file position "
         "should not be modified by multiple owners!");
   }
-
-  /* Copying is simply not allowed because that might interfere with the file
-   * position state, use SharedFileReader! */
 
   void close() override {
     m_cancelReaderThread = true;
@@ -150,11 +58,7 @@ public:
     return m_underlyingFileEOF && (m_currentPosition >= m_numberOfBytesRead);
   }
 
-  [[nodiscard]] bool fail() const override {
-    /* We are a buffer. We do not have a fail state. We do not want to lock in
-     * order to query @ref m_file. */
-    return false;
-  }
+  [[nodiscard]] bool fail() const override { return false; }
 
   [[nodiscard]] int fileno() const override {
     if (m_file) {
@@ -220,9 +124,7 @@ public:
     }
     if (m_file) {
       const auto underlyingSize = m_file->size();
-      /* Unfortunately, StandardFileReader currently may simply return 0 instead
-       * of std::nullopt even for non-seekable stdin, therefore we also need to
-       * check for that! */
+
       if (underlyingSize && (m_file->seekable() || (*underlyingSize > 0))) {
         return underlyingSize;
       }
@@ -232,24 +134,15 @@ public:
 
   [[nodiscard]] size_t tell() const override { return m_currentPosition; }
 
-  void clearerr() override {
-    /* No need to do anything. We do not enter error states because everything
-     * is buffered and EOF is automatically derived from the current position
-     * and does not need to be cleared. */
-  }
+  void clearerr() override {}
 
   void releaseUpTo(const size_t untilOffset) {
     const std::scoped_lock lock(m_bufferMutex);
 
-    /* Always leave the last chunk as is. Else, interleaved calls to bufferUpTo
-     * und releaseUpTo might read the whole file while only ever leaving
-     * m_chunk.size() == 1, meaning the assumption that offset = chunk index *
-     * CHUNK_SIZE will not hold! */
     if (m_buffer.size() <= 1) {
       return;
     }
 
-    /* The untilOffset is exclusive, i.e., 0 should release nothing! */
     const auto lastChunkToRelease =
         std::min(untilOffset / CHUNK_SIZE, m_buffer.size() - 2);
     for (auto i = m_releasedChunkCount; i < lastChunkToRelease; ++i) {
@@ -290,8 +183,7 @@ private:
   }
 
   void readerThreadMain() {
-    /* The smart pointer m_file must never change while this thread runs!
-     * The FileReader object it points to might change, e.g., via clearerr. */
+
     if (!m_file) {
       return;
     }
@@ -317,35 +209,7 @@ private:
           m_reusableChunks.pop_back();
         }
       }
-      /**
-       * Fill up the last buffer chunk to CHUNK_SIZE.
-       * Beware! Resize does initialize newly added elements unnecessarily to
-       * zero! That's the reason why we avoid the clear() call when reusing a
-       * chunk.
-       * @see https://en.cppreference.com/w/cpp/container/vector/resize
-       * > 1) additional default-inserted elements are appended.
-       * https://en.cppreference.com/w/cpp/named_req/DefaultInsertable
-       * > If value-initialization is undesirable, for example, if the object is
-       * of non-class type and zeroing > out is not needed, it can be avoided by
-       * providing a custom Allocator::construct.
-       * @see https://stackoverflow.com/q/21028299
-       * Benchmarks with Score-P and manual time measurements have shown that
-       * 1/3 of the time spent in bufferUpTo is spent inside resize, while 2/3
-       * are spent inside the read call. With m_buffer.back().clear():
-       *  - Spent inside bufferUpTo (excluding read):
-       *    - min: 3e-05 ms, average: 0.0703630 ms, max: 2.02770 ms
-       *    - min: 2e-05 ms, average: 0.0713057 ms, max: 2.24966 ms
-       *    - min: 2e-05 ms, average: 0.0833472 ms, max: 1.98964 ms
-       * Without m_buffer.back().clear:
-       *  - Spent inside bufferUpTo (excluding read):
-       *    - min: 0.27420 ms, average: 0.449753 ms, max: 2.27393 ms
-       *    - min: 0.07365 ms, average: 0.447090 ms, max: 2.37177 ms
-       *    - min: 0.27882 ms, average: 0.462400 ms, max: 2.38367 ms
-       * As can be seen from this, only when we avoid clear+resize, can we reach
-       * a minimum overhead of several microseconds as opposed to almost a third
-       * of a millisecond. The maximum values occur when allocations become
-       * necessary, which also shifts the average value of course.
-       */
+
       chunk.resize(CHUNK_SIZE);
 
       size_t nBytesBuffered{0};
@@ -371,7 +235,7 @@ private:
   }
 
   [[nodiscard]] size_t getChunkIndexUnsafe(const size_t offset) const {
-    /* Find start chunk to start reading from. */
+
     const auto startChunk = offset / CHUNK_SIZE;
     if (offset < m_numberOfBytesRead) {
       if (startChunk >= m_buffer.size()) {
@@ -415,22 +279,12 @@ protected:
 
   size_t m_currentPosition{0};
 
-  /** Ensures that up to offset is buffered. Might also buffer more. May only
-   * increase. */
   std::atomic<size_t> m_bufferUntilOffset{0};
   mutable std::mutex m_bufferUntilOffsetMutex;
 
-  /** These are only modified by @ref m_readerThread. */
   std::atomic<bool> m_underlyingFileEOF{false};
   std::atomic<size_t> m_numberOfBytesRead{0};
 
-  /**
-   * This only exists to speed up subsequent @ref releaseUpTo calls to avoid
-   * having to check all chunks up to the specified position. In the future
-   * these chunks might actually be fully removed from @ref m_buffer. Then, @ref
-   * m_releasedChunkCount would become necessary to find the correct chunk in
-   * @ref m_buffer.
-   */
   size_t m_releasedChunkCount{0};
   std::deque<Chunk> m_buffer;
   mutable std::mutex m_bufferMutex;
@@ -441,33 +295,10 @@ protected:
 
   std::atomic<bool> m_cancelReaderThread{false};
 
-  /** Signaled on m_bufferUntilOffset and also m_cancelReaderThread changes. */
   std::condition_variable m_notifyReaderThread;
 
-  /** Fills m_buffer on demand. */
   std::unique_ptr<JoiningThread> m_readerThread{
       std::make_unique<JoiningThread>([this]() { readerThreadMain(); })};
 };
 
-/*
-Communication protocol between the SinglePass interface called
-from one thread (not reentrant!) and the reader thread:
-
-SinglePass                  readerThreadMain
-    |                              |
-    |---------- creates ---------->|
-    |                              |
-    |                              | wait for m_untilOffset change
-    |                              |
-    |--- increment m_untilOffset ->|
-    |                              | buffer block-wise
-    |                              |   1. unlock during reading
-    |                              |   2. lock during appending to the deque
-    |                              |   3. signal after each append
-    |                              |      so that the requester can resume ASAP
-    |                              | wait for m_untilOffset change
-    |                              |
-    |--- increment m_untilOffset ->|
-    |                              |
-*/
 } // namespace rapidgzip

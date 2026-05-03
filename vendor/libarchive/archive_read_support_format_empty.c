@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2007 Tim Kientzle
  * All rights reserved.
  *
@@ -80,8 +80,8 @@ static int archive_read_format_empty_bid(struct archive_read *a, int best_bid) {
 
 static int archive_read_format_empty_read_header(struct archive_read *a,
                                                  struct archive_entry *entry) {
-  (void)a;     /* UNUSED */
-  (void)entry; /* UNUSED */
+  (void)a;
+  (void)entry;
 
   a->archive.archive_format = ARCHIVE_FORMAT_EMPTY;
   a->archive.archive_format_name = "Empty file";
@@ -92,10 +92,10 @@ static int archive_read_format_empty_read_header(struct archive_read *a,
 static int archive_read_format_empty_read_data(struct archive_read *a,
                                                const void **buff, size_t *size,
                                                int64_t *offset) {
-  (void)a;      /* UNUSED */
-  (void)buff;   /* UNUSED */
-  (void)size;   /* UNUSED */
-  (void)offset; /* UNUSED */
+  (void)a;
+  (void)buff;
+  (void)size;
+  (void)offset;
 
   return (ARCHIVE_EOF);
 }

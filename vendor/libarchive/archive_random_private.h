@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2014 Michihiro NAKAJIMA
  * All rights reserved.
  *
@@ -32,7 +32,6 @@
 #error This header is only to be used internally to libarchive.
 #endif
 
-/* Random number generator. */
 int archive_random(void *buf, size_t nbytes);
 
-#endif /* !ARCHIVE_RANDOM_PRIVATE_H_INCLUDED */
+#endif

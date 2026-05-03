@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2017 Martin Matuska
  * All rights reserved.
  *
@@ -23,8 +23,6 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/* !!ONLY FOR USE INTERNALLY TO LIBARCHIVE!! */
-
 #ifndef ARCHIVE_PLATFORM_XATTR_H_INCLUDED
 #define ARCHIVE_PLATFORM_XATTR_H_INCLUDED
 
@@ -36,12 +34,9 @@
 #endif
 #endif
 
-/*
- * Determine if we support extended attributes
- */
 #if ARCHIVE_XATTR_LINUX || ARCHIVE_XATTR_DARWIN || ARCHIVE_XATTR_FREEBSD ||    \
     ARCHIVE_XATTR_AIX
 #define ARCHIVE_XATTR_SUPPORT 1
 #endif
 
-#endif /* !ARCHIVE_PLATFORM_XATTR_H_INCLUDED */
+#endif

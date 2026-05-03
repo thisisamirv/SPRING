@@ -1,17 +1,6 @@
-/**
- * k-means clustering implementation in C
- *
- * The approach here is parallelizable and should be migrated to a block-based
- * implementation
- * using opencl in order to run faster, or possibly just multithreaded, but I
- * have left it
- * in plain C for the time being to get it working quickly. Note that the means
- * established
- * are discrete values, rather than continuous.
- */
+﻿
 
 #include <stdlib.h>
-// #include <malloc.h>
 
 #include "qvz/cluster.h"
 #include "qvz/codebook.h"
@@ -20,22 +9,16 @@
 namespace spring {
 namespace qvz {
 
-/**
- * Allocate the memory used for the clusters based on the number wanted and
- * column config
- */
 struct cluster_list_t *alloc_cluster_list(struct quality_file_t *info) {
   uint8_t j;
   struct cluster_list_t *rtn =
       (struct cluster_list_t *)calloc(1, sizeof(struct cluster_list_t));
 
-  // Allocate array of cluster structures
   rtn->count = info->cluster_count;
   rtn->clusters =
       (struct cluster_t *)calloc(info->cluster_count, sizeof(struct cluster_t));
   rtn->distances = (double *)calloc(info->cluster_count, sizeof(double));
 
-  // Fill in each cluster
   for (j = 0; j < info->cluster_count; ++j) {
     rtn->clusters[j].id = j;
     rtn->clusters[j].count = 0;
@@ -49,9 +32,6 @@ struct cluster_list_t *alloc_cluster_list(struct quality_file_t *info) {
   return rtn;
 }
 
-/**
- * Deallocate the memory used for the clusters.
- */
 void free_cluster_list(struct cluster_list_t *clusters) {
   uint8_t j;
 

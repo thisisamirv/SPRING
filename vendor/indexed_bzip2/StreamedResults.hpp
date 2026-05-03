@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <atomic>
 #include <chrono>
@@ -15,19 +15,9 @@
 #include "BlockFinderInterface.hpp"
 
 namespace rapidgzip {
-/**
- * Stores results in the order they are pushed and also stores a flag signaling
- * that nothing will be pushed anymore. The blockfinder will push block offsets
- * and other actors, e.g., the prefetcher, may wait for and read the offsets.
- * Results will never be deleted, so you can assume the size to only grow.
- */
+
 template <typename Value> class StreamedResults {
 public:
-  /**
-   * std::vector would work as well but the reallocations during appending might
-   * slow things down. For the index access operations, a container with random
-   * access iterator, would yield better performance.
-   */
   using Values = std::deque<Value>;
 
   using GetReturnCode = BlockFinderInterface::GetReturnCode;
@@ -54,11 +44,6 @@ public:
     return m_results.size();
   }
 
-  /**
-   * @param timeoutInSeconds Use infinity or 0 to wait forever or not wait at
-   * all.
-   * @return the result at the requested position.
-   */
   [[nodiscard]] std::pair<std::optional<size_t>, GetReturnCode>
   get(size_t position,
       double timeoutInSeconds = std::numeric_limits<double>::infinity()) const {
@@ -115,8 +100,6 @@ public:
 
   [[nodiscard]] bool finalized() const { return m_finalized; }
 
-  /** @return a view to the results, which also locks access to it using RAII.
-   */
   [[nodiscard]] ResultsView results() const {
     return ResultsView(&m_results, &m_mutex);
   }

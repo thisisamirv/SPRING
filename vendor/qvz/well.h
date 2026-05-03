@@ -1,8 +1,5 @@
-#ifndef SPRING_QVZ_WELL_H_
+﻿#ifndef SPRING_QVZ_WELL_H_
 #define SPRING_QVZ_WELL_H_
-/**
- * Declarations necessary for using the WELL-1024a PRNG in other code
- */
 
 #include <stdint.h>
 

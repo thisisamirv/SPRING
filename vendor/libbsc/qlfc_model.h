@@ -1,7 +1,4 @@
-/*-----------------------------------------------------------*/
-/* Block Sorting, Lossless Data Compression Library.         */
-/* Statistical data compression model for QLFC               */
-/*-----------------------------------------------------------*/
+﻿
 
 /*--
 
@@ -362,7 +359,3 @@ void bsc_qlfc_init_model(QlfcStatisticalModel1 *model);
 void bsc_qlfc_init_model(QlfcStatisticalModel2 *model);
 
 #endif
-
-/*-----------------------------------------------------------*/
-/* End                                          qlfc_model.h */
-/*-----------------------------------------------------------*/

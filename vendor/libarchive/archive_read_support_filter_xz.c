@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2009-2011 Michihiro NAKAJIMA
  * Copyright (c) 2003-2008 Tim Kientzle and Miklos Vajna
  * All rights reserved.
@@ -70,10 +70,9 @@ struct private_data {
   unsigned char *out_block;
   size_t out_block_size;
   int64_t total_out;
-  char eof; /* True = found end of compressed data. */
+  char eof;
   char in_stream;
 
-  /* Following variables are used for lzip only. */
   char lzip_ver;
   uint32_t crc32;
   int64_t member_in;
@@ -81,26 +80,19 @@ struct private_data {
 };
 
 #if LZMA_VERSION_MAJOR >= 5
-/* Effectively disable the limiter. */
+
 #define LZMA_MEMLIMIT UINT64_MAX
 #else
-/* NOTE: This needs to check memory size which running system has. */
+
 #define LZMA_MEMLIMIT (1U << 30)
 #endif
 
-/* Combined lzip/lzma/xz filter */
 static ssize_t xz_filter_read(struct archive_read_filter *, const void **);
 static int xz_filter_close(struct archive_read_filter *);
 static int xz_lzma_bidder_init(struct archive_read_filter *);
 
 #endif
 
-/*
- * Note that we can detect xz and lzma compressed files even if we
- * can't decompress them.  (In fact, we like detecting them because we
- * can give better error messages.)  So the bid framework here gets
- * compiled even if no lzma library is available.
- */
 static int xz_bidder_bid(struct archive_read_filter_bidder *,
                          struct archive_read_filter *);
 static int xz_bidder_init(struct archive_read_filter *);
@@ -113,7 +105,7 @@ static int lzip_bidder_bid(struct archive_read_filter_bidder *,
 static int lzip_bidder_init(struct archive_read_filter *);
 
 #if ARCHIVE_VERSION_NUMBER < 4000000
-/* Deprecated; remove in libarchive 4.0 */
+
 int archive_read_support_compression_xz(struct archive *a) {
   return archive_read_support_filter_xz(a);
 }
@@ -194,41 +186,23 @@ int archive_read_support_filter_lzip(struct archive *_a) {
 #endif
 }
 
-/*
- * Test whether we can handle this data.
- */
 static int xz_bidder_bid(struct archive_read_filter_bidder *self,
                          struct archive_read_filter *filter) {
   const unsigned char *buffer;
   ssize_t avail;
 
-  (void)self; /* UNUSED */
+  (void)self;
 
   buffer = __archive_read_filter_ahead(filter, 6, &avail);
   if (buffer == NULL)
     return (0);
 
-  /*
-   * Verify Header Magic Bytes : FD 37 7A 58 5A 00
-   */
   if (memcmp(buffer, "\xFD\x37\x7A\x58\x5A\x00", 6) != 0)
     return (0);
 
   return (48);
 }
 
-/*
- * Test whether we can handle this data.
- *
- * <sigh> LZMA has a rather poor file signature.  Zeros do not
- * make good signature bytes as a rule, and the only non-zero byte
- * here is an ASCII character.  For example, an uncompressed tar
- * archive whose first file is ']' would satisfy this check.  It may
- * be necessary to exclude LZMA from compression_all() because of
- * this.  Clients of libarchive would then have to explicitly enable
- * LZMA checking instead of (or in addition to) compression_all() when
- * they have other evidence (file name, command-line option) to go on.
- */
 static int lzma_bidder_bid(struct archive_read_filter_bidder *self,
                            struct archive_read_filter *filter) {
   const unsigned char *buffer;
@@ -237,98 +211,62 @@ static int lzma_bidder_bid(struct archive_read_filter_bidder *self,
   uint64_t uncompressed_size;
   int bits_checked;
 
-  (void)self; /* UNUSED */
+  (void)self;
 
   buffer = __archive_read_filter_ahead(filter, 14, &avail);
   if (buffer == NULL)
     return (0);
 
-  /* First byte of raw LZMA stream is commonly 0x5d.
-   * The first byte is a special number, which consists of
-   * three parameters of LZMA compression, a number of literal
-   * context bits(which is from 0 to 8, default is 3), a number
-   * of literal pos bits(which is from 0 to 4, default is 0),
-   * a number of pos bits(which is from 0 to 4, default is 2).
-   * The first byte is made by
-   * (pos bits * 5 + literal pos bit) * 9 + * literal contest bit,
-   * and so the default value in this field is
-   * (2 * 5 + 0) * 9 + 3 = 0x5d.
-   * lzma of LZMA SDK has options to change those parameters.
-   * It means a range of this field is from 0 to 224. And lzma of
-   * XZ Utils with option -e records 0x5e in this field. */
-  /* NOTE: If this checking of the first byte increases false
-   * recognition, we should allow only 0x5d and 0x5e for the first
-   * byte of LZMA stream. */
   bits_checked = 0;
   if (buffer[0] > (4 * 5 + 4) * 9 + 8)
     return (0);
-  /* Most likely value in the first byte of LZMA stream. */
+
   if (buffer[0] == 0x5d || buffer[0] == 0x5e)
     bits_checked += 8;
 
-  /* Sixth through fourteenth bytes are uncompressed size,
-   * stored in little-endian order. `-1' means uncompressed
-   * size is unknown and lzma of XZ Utils always records `-1'
-   * in this field. */
   uncompressed_size = archive_le64dec(buffer + 5);
   if (uncompressed_size == (uint64_t)ARCHIVE_LITERAL_LL(-1))
     bits_checked += 64;
 
-  /* Second through fifth bytes are dictionary size, stored in
-   * little-endian order. The minimum dictionary size is
-   * 1 << 12(4KiB) which the lzma of LZMA SDK uses with option
-   * -d12 and the maximum dictionary size is 1 << 29(512MiB)
-   * which the one uses with option -d29.
-   * NOTE: A comment of LZMA SDK source code says this dictionary
-   * range is from 1 << 12 to 1 << 30. */
   dicsize = archive_le32dec(buffer + 1);
   switch (dicsize) {
-  case 0x00001000: /* lzma of LZMA SDK option -d12. */
-  case 0x00002000: /* lzma of LZMA SDK option -d13. */
-  case 0x00004000: /* lzma of LZMA SDK option -d14. */
-  case 0x00008000: /* lzma of LZMA SDK option -d15. */
-  case 0x00010000: /* lzma of XZ Utils option -0 and -1.
-                    * lzma of LZMA SDK option -d16. */
-  case 0x00020000: /* lzma of LZMA SDK option -d17. */
-  case 0x00040000: /* lzma of LZMA SDK option -d18. */
-  case 0x00080000: /* lzma of XZ Utils option -2.
-                    * lzma of LZMA SDK option -d19. */
-  case 0x00100000: /* lzma of XZ Utils option -3.
-                    * lzma of LZMA SDK option -d20. */
-  case 0x00200000: /* lzma of XZ Utils option -4.
-                    * lzma of LZMA SDK option -d21. */
-  case 0x00400000: /* lzma of XZ Utils option -5.
-                    * lzma of LZMA SDK option -d22. */
-  case 0x00800000: /* lzma of XZ Utils option -6.
-                    * lzma of LZMA SDK option -d23. */
-  case 0x01000000: /* lzma of XZ Utils option -7.
-                    * lzma of LZMA SDK option -d24. */
-  case 0x02000000: /* lzma of XZ Utils option -8.
-                    * lzma of LZMA SDK option -d25. */
-  case 0x04000000: /* lzma of XZ Utils option -9.
-                    * lzma of LZMA SDK option -d26. */
-  case 0x08000000: /* lzma of LZMA SDK option -d27. */
+  case 0x00001000:
+  case 0x00002000:
+  case 0x00004000:
+  case 0x00008000:
+  case 0x00010000:
+
+  case 0x00020000:
+  case 0x00040000:
+  case 0x00080000:
+
+  case 0x00100000:
+
+  case 0x00200000:
+
+  case 0x00400000:
+
+  case 0x00800000:
+
+  case 0x01000000:
+
+  case 0x02000000:
+
+  case 0x04000000:
+
+  case 0x08000000:
     bits_checked += 32;
     break;
   default:
-    /* If a memory usage for encoding was not enough on
-     * the platform where LZMA stream was made, lzma of
-     * XZ Utils automatically decreased the dictionary
-     * size to enough memory for encoding by 1Mi bytes
-     * (1 << 20).*/
+
     if (dicsize <= 0x03F00000 && dicsize >= 0x00300000 &&
         (dicsize & ((1 << 20) - 1)) == 0 && bits_checked == 8 + 64) {
       bits_checked += 32;
       break;
     }
-    /* Otherwise dictionary size is unlikely. But it is
-     * possible that someone makes lzma stream with
-     * liblzma/LZMA SDK in one's dictionary size. */
+
     return (0);
   }
-
-  /* TODO: The above test is still very weak.  It would be
-   * good to do better. */
 
   return (bits_checked);
 }
@@ -343,20 +281,15 @@ static int lzip_has_member(struct archive_read_filter *filter) {
   if (buffer == NULL)
     return (0);
 
-  /*
-   * Verify Header Magic Bytes : 4C 5A 49 50 (`LZIP')
-   */
   bits_checked = 0;
   if (memcmp(buffer, "LZIP", 4) != 0)
     return (0);
   bits_checked += 32;
 
-  /* A version number must be 0 or 1 */
   if (buffer[4] != 0 && buffer[4] != 1)
     return (0);
   bits_checked += 8;
 
-  /* Dictionary size. */
   log2dic = buffer[5] & 0x1f;
   if (log2dic < 12 || log2dic > 29)
     return (0);
@@ -368,15 +301,12 @@ static int lzip_has_member(struct archive_read_filter *filter) {
 static int lzip_bidder_bid(struct archive_read_filter_bidder *self,
                            struct archive_read_filter *filter) {
 
-  (void)self; /* UNUSED */
+  (void)self;
   return (lzip_has_member(filter));
 }
 
 #if HAVE_LZMA_H && HAVE_LIBLZMA
 
-/*
- * liblzma 4.999.7 and later support both lzma and xz streams.
- */
 static int xz_bidder_init(struct archive_read_filter *self) {
   self->code = ARCHIVE_FILTER_XZ;
   self->name = "xz";
@@ -395,14 +325,11 @@ static int lzip_bidder_init(struct archive_read_filter *self) {
   return (xz_lzma_bidder_init(self));
 }
 
-/*
- * Set an error code and choose an error message
- */
 static void set_error(struct archive_read_filter *self, int ret) {
 
   switch (ret) {
-  case LZMA_STREAM_END: /* Found end of stream. */
-  case LZMA_OK:         /* Decompressor made some progress. */
+  case LZMA_STREAM_END:
+  case LZMA_OK:
     break;
   case LZMA_MEM_ERROR:
     archive_set_error(&self->archive->archive, ENOMEM,
@@ -429,7 +356,7 @@ static void set_error(struct archive_read_filter *self, int ret) {
                       "Lzma library error:  No progress is possible");
     break;
   default:
-    /* Return an error. */
+
     archive_set_error(&self->archive->archive, ARCHIVE_ERRNO_MISC,
                       "Lzma decompression failed:  Unknown error");
     break;
@@ -441,9 +368,6 @@ static const struct archive_read_filter_vtable xz_lzma_reader_vtable = {
     .close = xz_filter_close,
 };
 
-/*
- * Setup the callbacks.
- */
 static int xz_lzma_bidder_init(struct archive_read_filter *self) {
   static const size_t out_block_size = 64 * 1024;
   void *out_block;
@@ -472,27 +396,21 @@ static int xz_lzma_bidder_init(struct archive_read_filter *self) {
 
   state->crc32 = 0;
   if (self->code == ARCHIVE_FILTER_LZIP) {
-    /*
-     * We have to read a lzip header and use it to initialize
-     * compression library, thus we cannot initialize the
-     * library for lzip here.
-     */
+
     state->in_stream = 0;
     return (ARCHIVE_OK);
   } else
     state->in_stream = 1;
 
-  /* Initialize compression library. */
   if (self->code == ARCHIVE_FILTER_XZ)
-    ret = lzma_stream_decoder(&(state->stream), LZMA_MEMLIMIT, /* memlimit */
-                              LZMA_CONCATENATED);
+    ret =
+        lzma_stream_decoder(&(state->stream), LZMA_MEMLIMIT, LZMA_CONCATENATED);
   else
-    ret = lzma_alone_decoder(&(state->stream), LZMA_MEMLIMIT); /* memlimit */
+    ret = lzma_alone_decoder(&(state->stream), LZMA_MEMLIMIT);
 
   if (ret == LZMA_OK)
     return (ARCHIVE_OK);
 
-  /* Library setup failed: Choose an error message and clean up. */
   set_error(self, ret);
 
   free(state->out_block);
@@ -515,15 +433,10 @@ static int lzip_init(struct archive_read_filter *self) {
   if (h == NULL)
     return (ARCHIVE_FATAL);
 
-  /* Get a version number. */
   state->lzip_ver = h[4];
 
-  /*
-   * Setup lzma property.
-   */
   props[0] = 0x5d;
 
-  /* Get dictionary size. */
   log2dic = h[5] & 0x1f;
   if (log2dic < 12 || log2dic > 29)
     return (ARCHIVE_FATAL);
@@ -532,7 +445,6 @@ static int lzip_init(struct archive_read_filter *self) {
     dicsize -= (dicsize / 16) * (h[5] >> 5);
   archive_le32enc(props + 1, dicsize);
 
-  /* Consume lzip header. */
   __archive_read_filter_consume(self->upstream, 6);
   state->member_in = 6;
 
@@ -575,8 +487,6 @@ static int lzip_tail(struct archive_read_filter *self) {
     return (ARCHIVE_FAILED);
   }
 
-  /* Check the crc32 value of the uncompressed data of the current
-   * member */
   if (state->crc32 != archive_le32dec(f)) {
 #ifndef DONT_FAIL_ON_CRC_ERROR
     archive_set_error(&self->archive->archive, ARCHIVE_ERRNO_MISC,
@@ -585,14 +495,12 @@ static int lzip_tail(struct archive_read_filter *self) {
 #endif
   }
 
-  /* Check the uncompressed size of the current member */
   if ((uint64_t)state->member_out != archive_le64dec(f + 4)) {
     archive_set_error(&self->archive->archive, ARCHIVE_ERRNO_MISC,
                       "Lzip: Uncompressed size error");
     return (ARCHIVE_FAILED);
   }
 
-  /* Check the total size of the current member */
   if (state->lzip_ver == 1 &&
       (uint64_t)state->member_in + tail != archive_le64dec(f + 12)) {
     archive_set_error(&self->archive->archive, ARCHIVE_ERRNO_MISC,
@@ -601,8 +509,6 @@ static int lzip_tail(struct archive_read_filter *self) {
   }
   __archive_read_filter_consume(self->upstream, tail);
 
-  /* If current lzip data consists of multi member, try decompressing
-   * a next member. */
   if (lzip_has_member(self->upstream) != 0) {
     state->in_stream = 0;
     state->crc32 = 0;
@@ -613,9 +519,6 @@ static int lzip_tail(struct archive_read_filter *self) {
   return (ARCHIVE_OK);
 }
 
-/*
- * Return the next block of decompressed data.
- */
 static ssize_t xz_filter_read(struct archive_read_filter *self,
                               const void **p) {
   struct private_data *state;
@@ -627,17 +530,14 @@ static ssize_t xz_filter_read(struct archive_read_filter *self,
   state = (struct private_data *)self->data;
 
 redo:
-  /* Empty our output buffer. */
+
   state->stream.next_out = state->out_block;
   state->stream.avail_out = state->out_block_size;
   member_in = state->member_in;
 
-  /* Try to fill the output buffer. */
   while (state->stream.avail_out > 0 && !state->eof) {
     if (!state->in_stream) {
-      /*
-       * Initialize liblzma for lzip
-       */
+
       ret = lzip_init(self);
       if (ret != ARCHIVE_OK)
         return (ret);
@@ -652,14 +552,13 @@ redo:
     }
     state->stream.avail_in = avail_in;
 
-    /* Decompress as much as we can in one pass. */
     ret = lzma_code(&(state->stream),
                     (state->stream.avail_in == 0) ? LZMA_FINISH : LZMA_RUN);
     switch (ret) {
-    case LZMA_STREAM_END: /* Found end of stream. */
+    case LZMA_STREAM_END:
       state->eof = 1;
-      /* FALL THROUGH */
-    case LZMA_OK: /* Decompressor made some progress. */
+
+    case LZMA_OK:
       __archive_read_filter_consume(self->upstream,
                                     avail_in - state->stream.avail_in);
       state->member_in += avail_in - state->stream.avail_in;
@@ -697,9 +596,6 @@ redo:
   return (decompressed);
 }
 
-/*
- * Clean up the decompressor.
- */
 static int xz_filter_close(struct archive_read_filter *self) {
   struct private_data *state;
 
@@ -712,20 +608,11 @@ static int xz_filter_close(struct archive_read_filter *self) {
 
 #else
 
-/*
- *
- * If we have no suitable library on this system, we can't actually do
- * the decompression.  We can, however, still detect compressed
- * archives and emit a useful message.
- *
- */
 static int lzma_bidder_init(struct archive_read_filter *self) {
   int r;
 
   r = __archive_read_program(self, "lzma -d -qq");
-  /* Note: We set the format here even if __archive_read_program()
-   * above fails.  We do, after all, know what the format is
-   * even if we weren't able to read it. */
+
   self->code = ARCHIVE_FILTER_LZMA;
   self->name = "lzma";
   return (r);
@@ -735,9 +622,7 @@ static int xz_bidder_init(struct archive_read_filter *self) {
   int r;
 
   r = __archive_read_program(self, "xz -d -qq");
-  /* Note: We set the format here even if __archive_read_program()
-   * above fails.  We do, after all, know what the format is
-   * even if we weren't able to read it. */
+
   self->code = ARCHIVE_FILTER_XZ;
   self->name = "xz";
   return (r);
@@ -747,12 +632,10 @@ static int lzip_bidder_init(struct archive_read_filter *self) {
   int r;
 
   r = __archive_read_program(self, "lzip -d -q");
-  /* Note: We set the format here even if __archive_read_program()
-   * above fails.  We do, after all, know what the format is
-   * even if we weren't able to read it. */
+
   self->code = ARCHIVE_FILTER_LZIP;
   self->name = "lzip";
   return (r);
 }
 
-#endif /* HAVE_LZMA_H */
+#endif

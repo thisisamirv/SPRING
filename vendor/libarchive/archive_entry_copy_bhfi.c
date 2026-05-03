@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2007 Tim Kientzle
  * All rights reserved.
  *
@@ -58,6 +58,5 @@ void archive_entry_copy_bhfi(struct archive_entry *entry,
   archive_entry_set_nlink(entry, bhfi->nNumberOfLinks);
   archive_entry_set_size(entry, (((int64_t)bhfi->nFileSizeHigh) << 32) +
                                     bhfi->nFileSizeLow);
-  /* archive_entry_set_mode(entry, st->st_mode); */
 }
 #endif

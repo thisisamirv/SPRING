@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <cstddef>
 #include <cstdio>
@@ -14,41 +14,20 @@ class FileReader;
 
 using UniqueFileReader = std::unique_ptr<FileReader>;
 
-/**
- * This file interface is heavily inspired by IOBase from Python because it is
- * to be used from Python. However, it strips anything related to file
- * modification resulting a read-only file object.
- * @see https://docs.python.org/3/library/io.html#class-hierarchy
- */
 class FileReader {
 public:
   FileReader() = default;
 
   virtual ~FileReader() = default;
 
-  /* Delete copy constructors and assignments for performance and to avoid
-   * slicing. */
-
   FileReader(const FileReader &) = delete;
 
   FileReader &operator=(const FileReader &) = delete;
 
-  /* Move constructors also are affected by slicing, but for performance, do not
-   * delete them to avoid defaulted move constructores in derived classes not
-   * being created! We also do not want to manually implement move constructors
-   * because it is error-prone. The only choice here is between bad and worse
-   * :(. */
-
   FileReader(FileReader &&) = default;
 
-  /* I almost never use move assignments, but move constructors occur during
-   * function calls. */
   FileReader &operator=(FileReader &&) = delete;
 
-  /**
-   * @return A std::unique_ptr to a copy of this FileReader. The copied file
-   * reader should have the same file position if possible, i.e., if not closed.
-   */
   [[nodiscard]] UniqueFileReader clone() const {
     auto fileReader = cloneRaw();
     if (!fileReader->closed() && (fileReader->tell() != tell())) {
@@ -89,12 +68,6 @@ public:
   virtual void clearerr() = 0;
 
 protected:
-  /**
-   * Derived classes only need to construct a usable copy. Ideally, the state
-   * should be the same as the original. The real @ref clone will call this and
-   * will ensure that the file position is transferred to the new object if not
-   * already done.
-   */
   [[nodiscard]] virtual UniqueFileReader cloneRaw() const {
     throw std::logic_error("Not implemented!");
   }
@@ -120,7 +93,7 @@ protected:
     }();
 
     const auto positiveOffset = static_cast<size_t>(std::max(offset, 0LL));
-    /* Streaming file readers may return nullopt until EOF has been reached. */
+
     const auto fileSize = size();
     return fileSize.has_value() ? std::min(positiveOffset, *fileSize)
                                 : positiveOffset;

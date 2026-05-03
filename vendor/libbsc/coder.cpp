@@ -1,7 +1,4 @@
-/*-----------------------------------------------------------*/
-/* Block Sorting, Lossless Data Compression Library.         */
-/* Second stage encoding functions                           */
-/*-----------------------------------------------------------*/
+﻿
 
 /*--
 
@@ -369,7 +366,3 @@ int bsc_coder_decompress(const unsigned char *input, unsigned char *output,
 
   return (result == LIBBSC_NO_ERROR) ? dataSize : result;
 }
-
-/*-----------------------------------------------------------*/
-/* End                                             coder.cpp */
-/*-----------------------------------------------------------*/

@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2007 Tim Kientzle
  * All rights reserved.
  *
@@ -149,9 +149,6 @@ static int file_open(struct archive *a, void *client_data) {
   mine = (struct write_file_data *)client_data;
   flags = O_WRONLY | O_CREAT | O_TRUNC | O_BINARY | O_CLOEXEC;
 
-  /*
-   * Open the file.
-   */
   mbs = NULL;
   wcs = NULL;
 #if defined(_WIN32) && !defined(__CYGWIN__)
@@ -201,23 +198,15 @@ static int file_open(struct archive *a, void *client_data) {
     return (ARCHIVE_FATAL);
   }
 
-  /*
-   * Set up default last block handling.
-   */
   if (archive_write_get_bytes_in_last_block(a) < 0) {
     if (S_ISCHR(st.st_mode) || S_ISBLK(st.st_mode) || S_ISFIFO(st.st_mode))
-      /* Pad last block when writing to device or FIFO. */
+
       archive_write_set_bytes_in_last_block(a, 0);
     else
-      /* Don't pad last block otherwise. */
+
       archive_write_set_bytes_in_last_block(a, 1);
   }
 
-  /*
-   * If the output file is a regular file, don't add it to
-   * itself.  If it's a device file, it's okay to add the device
-   * entry to the output archive.
-   */
   if (S_ISREG(st.st_mode))
     archive_write_set_skip_file(a, st.st_dev, st.st_ino);
 
@@ -245,7 +234,7 @@ static ssize_t file_write(struct archive *a, void *client_data,
 static int file_close(struct archive *a, void *client_data) {
   struct write_file_data *mine = (struct write_file_data *)client_data;
 
-  (void)a; /* UNUSED */
+  (void)a;
 
   if (mine == NULL)
     return (ARCHIVE_FATAL);
@@ -259,7 +248,7 @@ static int file_close(struct archive *a, void *client_data) {
 static int file_free(struct archive *a, void *client_data) {
   struct write_file_data *mine = (struct write_file_data *)client_data;
 
-  (void)a; /* UNUSED */
+  (void)a;
 
   if (mine == NULL)
     return (ARCHIVE_OK);

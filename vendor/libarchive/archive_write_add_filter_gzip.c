@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2007 Tim Kientzle
  * All rights reserved.
  *
@@ -74,8 +74,6 @@ int archive_write_set_compression_gzip(struct archive *a) {
 }
 #endif
 
-/* Don't compile this if we don't have zlib. */
-
 struct private_data {
   int compression_level;
   int timestamp;
@@ -91,10 +89,6 @@ struct private_data {
 #endif
 };
 
-/*
- * Yuck.  zlib.h is not const-correct, so I need this one bit
- * of ugly hackery to convert a const * pointer to a non-const pointer.
- */
 #define SET_NEXT_IN(st, src)                                                   \
   (st)->stream.next_in = (Bytef *)(uintptr_t)(const void *)(src)
 
@@ -110,9 +104,6 @@ static int drive_compressor(struct archive_write_filter *,
                             struct private_data *, int finishing);
 #endif
 
-/*
- * Add a gzip compression filter to this write handle.
- */
 int archive_write_add_filter_gzip(struct archive *_a) {
   struct archive_write *a = (struct archive_write *)_a;
   struct archive_write_filter *f = __archive_write_allocate_filter(_a);
@@ -165,9 +156,6 @@ static int archive_compressor_gzip_free(struct archive_write_filter *f) {
   return (ARCHIVE_OK);
 }
 
-/*
- * Set write options.
- */
 static int archive_compressor_gzip_options(struct archive_write_filter *f,
                                            const char *key, const char *value) {
   struct private_data *data = (struct private_data *)f->data;
@@ -191,16 +179,11 @@ static int archive_compressor_gzip_options(struct archive_write_filter *f,
     return (ARCHIVE_OK);
   }
 
-  /* Note: The "warn" return is just to inform the options
-   * supervisor that we didn't handle it.  It will generate
-   * a suitable error if no one used this option. */
   return (ARCHIVE_WARN);
 }
 
 #ifdef HAVE_ZLIB_H
-/*
- * Setup callback.
- */
+
 static int archive_compressor_gzip_open(struct archive_write_filter *f) {
   struct private_data *data = (struct private_data *)f->data;
   int ret = ARCHIVE_OK;
@@ -209,8 +192,7 @@ static int archive_compressor_gzip_open(struct archive_write_filter *f) {
   if (data->compressed == NULL) {
     size_t bs = 65536, bpb;
     if (f->archive->magic == ARCHIVE_WRITE_MAGIC) {
-      /* Buffer size should be a multiple number of
-       * the of bytes per block for performance. */
+
       bpb = archive_write_get_bytes_per_block(f->archive);
       if (bpb > bs)
         bs = bpb;
@@ -230,14 +212,13 @@ static int archive_compressor_gzip_open(struct archive_write_filter *f) {
   data->stream.next_out = data->compressed;
   data->stream.avail_out = (uInt)data->compressed_buffer_size;
 
-  /* Prime output buffer with a gzip header. */
-  data->compressed[0] = 0x1f; /* GZip signature bytes */
+  data->compressed[0] = 0x1f;
   data->compressed[1] = 0x8b;
-  data->compressed[2] = 0x08; /* "Deflate" compression */
-  data->compressed[3] = 0x00; /* Flags */
+  data->compressed[2] = 0x08;
+  data->compressed[3] = 0x00;
   if (data->timestamp >= 0) {
     time_t t = time(NULL);
-    data->compressed[4] = (uint8_t)(t) & 0xff; /* Timestamp */
+    data->compressed[4] = (uint8_t)(t) & 0xff;
     data->compressed[5] = (uint8_t)(t >> 8) & 0xff;
     data->compressed[6] = (uint8_t)(t >> 16) & 0xff;
     data->compressed[7] = (uint8_t)(t >> 24) & 0xff;
@@ -251,14 +232,12 @@ static int archive_compressor_gzip_open(struct archive_write_filter *f) {
   } else {
     data->compressed[8] = 0;
   }
-  data->compressed[9] = 3; /* OS=Unix */
+  data->compressed[9] = 3;
   data->stream.next_out += 10;
   data->stream.avail_out -= 10;
 
   if (data->original_filename != NULL) {
-    /* Limit "original filename" to 32k or the
-     * remaining space in the buffer, whichever is smaller.
-     */
+
     int ofn_length = strlen(data->original_filename);
     int ofn_max_length = 32768;
     int ofn_space_available = data->compressed + data->compressed_buffer_size -
@@ -281,22 +260,18 @@ static int archive_compressor_gzip_open(struct archive_write_filter *f) {
 
   f->write = archive_compressor_gzip_write;
 
-  /* Initialize compression library. */
   init_success = deflateInit2(&(data->stream), data->compression_level,
-                              Z_DEFLATED, -15 /* < 0 to suppress zlib header */,
-                              8, Z_DEFAULT_STRATEGY);
+                              Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY);
 
   if (init_success == Z_OK) {
     f->data = data;
     return (ret);
   }
 
-  /* Library setup failed: clean up. */
   archive_set_error(f->archive, ARCHIVE_ERRNO_MISC,
                     "Internal error "
                     "initializing compression library");
 
-  /* Override the error message if we know what really went wrong. */
   switch (init_success) {
   case Z_STREAM_ERROR:
     archive_set_error(f->archive, ARCHIVE_ERRNO_MISC,
@@ -317,19 +292,14 @@ static int archive_compressor_gzip_open(struct archive_write_filter *f) {
   return (ARCHIVE_FATAL);
 }
 
-/*
- * Write data to the compressed stream.
- */
 static int archive_compressor_gzip_write(struct archive_write_filter *f,
                                          const void *buff, size_t length) {
   struct private_data *data = (struct private_data *)f->data;
   int ret;
 
-  /* Update statistics */
   data->crc = crc32(data->crc, (const Bytef *)buff, (uInt)length);
   data->total_in += length;
 
-  /* Compress input data to output buffer */
   SET_NEXT_IN(data, buff);
   data->stream.avail_in = (uInt)length;
   if ((ret = drive_compressor(f, data, 0)) != ARCHIVE_OK)
@@ -338,24 +308,20 @@ static int archive_compressor_gzip_write(struct archive_write_filter *f,
   return (ARCHIVE_OK);
 }
 
-/*
- * Finish the compression...
- */
 static int archive_compressor_gzip_close(struct archive_write_filter *f) {
   unsigned char trailer[8];
   struct private_data *data = (struct private_data *)f->data;
   int ret;
 
-  /* Finish compression cycle */
   ret = drive_compressor(f, data, 1);
   if (ret == ARCHIVE_OK) {
-    /* Write the last compressed data. */
+
     ret = __archive_write_filter(f->next_filter, data->compressed,
                                  data->compressed_buffer_size -
                                      data->stream.avail_out);
   }
   if (ret == ARCHIVE_OK) {
-    /* Build and write out 8-byte trailer. */
+
     trailer[0] = (uint8_t)(data->crc) & 0xff;
     trailer[1] = (uint8_t)(data->crc >> 8) & 0xff;
     trailer[2] = (uint8_t)(data->crc >> 16) & 0xff;
@@ -378,13 +344,6 @@ static int archive_compressor_gzip_close(struct archive_write_filter *f) {
   return ret;
 }
 
-/*
- * Utility function to push input data through compressor,
- * writing full output blocks as necessary.
- *
- * Note that this handles both the regular write case (finishing ==
- * false) and the end-of-archive case (finishing == true).
- */
 static int drive_compressor(struct archive_write_filter *f,
                             struct private_data *data, int finishing) {
   int ret;
@@ -399,7 +358,6 @@ static int drive_compressor(struct archive_write_filter *f,
       data->stream.avail_out = (uInt)data->compressed_buffer_size;
     }
 
-    /* If there's nothing to do, we're done. */
     if (!finishing && data->stream.avail_in == 0)
       return (ARCHIVE_OK);
 
@@ -407,18 +365,16 @@ static int drive_compressor(struct archive_write_filter *f,
 
     switch (ret) {
     case Z_OK:
-      /* In non-finishing case, check if compressor
-       * consumed everything */
+
       if (!finishing && data->stream.avail_in == 0)
         return (ARCHIVE_OK);
-      /* In finishing case, this return always means
-       * there's more work */
+
       break;
     case Z_STREAM_END:
-      /* This return can only occur in finishing case. */
+
       return (ARCHIVE_OK);
     default:
-      /* Any other return value indicates an error. */
+
       archive_set_error(f->archive, ARCHIVE_ERRNO_MISC,
                         "GZip compression failed:"
                         " deflate() call returned status %d",
@@ -428,7 +384,7 @@ static int drive_compressor(struct archive_write_filter *f,
   }
 }
 
-#else /* HAVE_ZLIB_H */
+#else
 
 static int archive_compressor_gzip_open(struct archive_write_filter *f) {
   struct private_data *data = (struct private_data *)f->data;
@@ -438,16 +394,15 @@ static int archive_compressor_gzip_open(struct archive_write_filter *f) {
   archive_string_init(&as);
   archive_strcpy(&as, "gzip");
 
-  /* Specify compression level. */
   if (data->compression_level > 0) {
     archive_strcat(&as, " -");
     archive_strappend_char(&as, '0' + data->compression_level);
   }
   if (data->timestamp < 0)
-    /* Do not save timestamp. */
+
     archive_strcat(&as, " -n");
   else if (data->timestamp > 0)
-    /* Save timestamp. */
+
     archive_strcat(&as, " -N");
 
   f->write = archive_compressor_gzip_write;
@@ -469,4 +424,4 @@ static int archive_compressor_gzip_close(struct archive_write_filter *f) {
   return __archive_write_program_close(f, data->pdata);
 }
 
-#endif /* HAVE_ZLIB_H */
+#endif

@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2009 Tim Kientzle
  * Copyright (c) 2010-2012 Michihiro NAKAJIMA
  * Copyright (c) 2017 Martin Matuska
@@ -55,8 +55,8 @@
 #include "archive_write_disk_private.h"
 
 typedef struct {
-  const int a_perm; /* Libarchive permission or flag */
-  const int p_perm; /* Platform permission or flag */
+  const int a_perm;
+  const int p_perm;
 } acl_perm_map_t;
 
 #if ARCHIVE_ACL_LIBACL
@@ -68,7 +68,7 @@ static const acl_perm_map_t acl_posix_perm_map[] = {
 
 static const int acl_posix_perm_map_size =
     (int)(sizeof(acl_posix_perm_map) / sizeof(acl_posix_perm_map[0]));
-#endif /* ARCHIVE_ACL_LIBACL */
+#endif
 
 #if ARCHIVE_ACL_LIBRICHACL
 static const acl_perm_map_t acl_nfs4_perm_map[] = {
@@ -103,12 +103,10 @@ static const acl_perm_map_t acl_nfs4_flag_map[] = {
 
 static const int acl_nfs4_flag_map_size =
     (int)(sizeof(acl_nfs4_flag_map) / sizeof(acl_nfs4_flag_map[0]));
-#endif /* ARCHIVE_ACL_LIBRICHACL */
+#endif
 
 #if ARCHIVE_ACL_LIBACL
-/*
- * Translate POSIX.1e ACLs into libarchive internal structure
- */
+
 static int translate_acl(struct archive_read_disk *a,
                          struct archive_entry *entry, acl_t acl,
                          int default_entry_acl_type) {
@@ -167,12 +165,11 @@ static int translate_acl(struct archive_read_disk *a,
       ae_tag = ARCHIVE_ENTRY_ACL_OTHER;
       break;
     default:
-      /* Skip types that libarchive can't support. */
+
       s = acl_get_entry(acl, ACL_NEXT_ENTRY, &acl_entry);
       continue;
     }
 
-    // XXX acl_type maps to allow/deny/audit/YYYY bits
     entry_acl_type = default_entry_acl_type;
 
     if (acl_get_permset(acl_entry, &acl_permset) != 0) {
@@ -202,12 +199,10 @@ static int translate_acl(struct archive_read_disk *a,
   }
   return (ARCHIVE_OK);
 }
-#endif /* ARCHIVE_ACL_LIBACL */
+#endif
 
 #if ARCHIVE_ACL_LIBRICHACL
-/*
- * Translate RichACL into libarchive internal ACL
- */
+
 static int translate_richacl(struct archive_read_disk *a,
                              struct archive_entry *entry,
                              struct richacl *richacl) {
@@ -230,11 +225,10 @@ static int translate_richacl(struct archive_read_disk *a,
     case RICHACE_ACCESS_DENIED_ACE_TYPE:
       entry_acl_type = ARCHIVE_ENTRY_ACL_TYPE_DENY;
       break;
-    default: /* Unknown entry type, skip */
+    default:
       continue;
     }
 
-    /* Unsupported */
     if (richace->e_flags & RICHACE_UNMAPPED_WHO)
       continue;
 
@@ -249,7 +243,7 @@ static int translate_richacl(struct archive_read_disk *a,
       case RICHACE_EVERYONE_SPECIAL_ID:
         ae_tag = ARCHIVE_ENTRY_ACL_EVERYONE;
         break;
-      default: /* Unknown special ID type */
+      default:
         continue;
       }
     } else {
@@ -276,7 +270,7 @@ static int translate_richacl(struct archive_read_disk *a,
   }
   return (ARCHIVE_OK);
 }
-#endif /* ARCHIVE_ACL_LIBRICHACL */
+#endif
 
 #if ARCHIVE_ACL_LIBRICHACL
 static int _richacl_mode_to_mask(short mode) {
@@ -297,7 +291,7 @@ static void _richacl_mode_to_masks(struct richacl *richacl, __LA_MODE_T mode) {
   richacl->a_group_mask = _richacl_mode_to_mask((mode & 0070) >> 3);
   richacl->a_other_mask = _richacl_mode_to_mask(mode & 0007);
 }
-#endif /* ARCHIVE_ACL_LIBRICHACL */
+#endif
 
 #if ARCHIVE_ACL_LIBRICHACL
 static int set_richacl(struct archive *a, int fd, const char *name,
@@ -326,7 +320,7 @@ static int set_richacl(struct archive *a, int fd, const char *name,
   }
 
   if (S_ISLNK(mode)) {
-    /* Linux does not support RichACLs on symbolic links */
+
     return (ARCHIVE_OK);
   }
 
@@ -402,7 +396,6 @@ static int set_richacl(struct archive *a, int fd, const char *name,
     e++;
   }
 
-  /* Fill RichACL masks */
   _richacl_mode_to_masks(richacl, mode);
 
   if (fd >= 0) {
@@ -410,7 +403,7 @@ static int set_richacl(struct archive *a, int fd, const char *name,
       ret = ARCHIVE_OK;
     else {
       if (errno == EOPNOTSUPP) {
-        /* Filesystem doesn't support ACLs */
+
         ret = ARCHIVE_OK;
       } else {
         archive_set_error(a, errno, "Failed to set richacl on fd: %s", tname);
@@ -419,7 +412,7 @@ static int set_richacl(struct archive *a, int fd, const char *name,
     }
   } else if (richacl_set_file(name, richacl) != 0) {
     if (errno == EOPNOTSUPP) {
-      /* Filesystem doesn't support ACLs */
+
       ret = ARCHIVE_OK;
     } else {
       archive_set_error(a, errno, "Failed to set richacl: %s", tname);
@@ -430,7 +423,7 @@ exit_free:
   richacl_free(richacl);
   return (ret);
 }
-#endif /* ARCHIVE_ACL_RICHACL */
+#endif
 
 #if ARCHIVE_ACL_LIBACL
 static int set_acl(struct archive *a, int fd, const char *name,
@@ -467,7 +460,7 @@ static int set_acl(struct archive *a, int fd, const char *name,
   }
 
   if (S_ISLNK(mode)) {
-    /* Linux does not support ACLs on symbolic links */
+
     return (ARCHIVE_OK);
   }
 
@@ -549,7 +542,7 @@ static int set_acl(struct archive *a, int fd, const char *name,
       ret = ARCHIVE_OK;
     else {
       if (errno == EOPNOTSUPP) {
-        /* Filesystem doesn't support ACLs */
+
         ret = ARCHIVE_OK;
       } else {
         archive_set_error(a, errno, "Failed to set acl on fd: %s", tname);
@@ -558,7 +551,7 @@ static int set_acl(struct archive *a, int fd, const char *name,
     }
   } else if (acl_set_file(name, acl_type, acl) != 0) {
     if (errno == EOPNOTSUPP) {
-      /* Filesystem doesn't support ACLs */
+
       ret = ARCHIVE_OK;
     } else {
       archive_set_error(a, errno, "Failed to set acl: %s", tname);
@@ -569,7 +562,7 @@ exit_free:
   acl_free(acl);
   return (ret);
 }
-#endif /* ARCHIVE_ACL_LIBACL */
+#endif
 
 int archive_read_disk_entry_setup_acls(struct archive_read_disk *a,
                                        struct archive_entry *entry, int *fd) {
@@ -586,7 +579,6 @@ int archive_read_disk_entry_setup_acls(struct archive_read_disk *a,
   accpath = NULL;
   r = ARCHIVE_OK;
 
-  /* For default ACLs we need reachable accpath */
   if (*fd < 0 || S_ISDIR(archive_entry_mode(entry))) {
     accpath = archive_read_disk_entry_setup_path(a, entry, fd);
     if (accpath == NULL)
@@ -603,17 +595,15 @@ int archive_read_disk_entry_setup_acls(struct archive_read_disk *a,
 #endif
 
 #if ARCHIVE_ACL_LIBRICHACL
-  /* Try NFSv4 ACL first. */
+
   if (*fd >= 0)
     richacl = richacl_get_fd(*fd);
   else if ((!a->follow_symlinks) && (archive_entry_filetype(entry) == AE_IFLNK))
-    /* We can't get the ACL of a symlink, so we assume it can't
-       have one */
+
     richacl = NULL;
   else
     richacl = richacl_get_file(accpath);
 
-  /* Ignore "trivial" ACLs that just mirror the file mode. */
   if (richacl != NULL) {
     mode = archive_entry_mode(entry);
     if (richacl_equiv_mode(richacl, &mode) == 0) {
@@ -634,15 +624,14 @@ int archive_read_disk_entry_setup_acls(struct archive_read_disk *a,
 
     return (r);
   }
-#endif /* ARCHIVE_ACL_LIBRICHACL */
+#endif
 
 #if ARCHIVE_ACL_LIBACL
-  /* Retrieve access ACL from file. */
+
   if (*fd >= 0)
     acl = acl_get_fd(*fd);
   else if ((!a->follow_symlinks) && (archive_entry_filetype(entry) == AE_IFLNK))
-    /* We can't get the ACL of a symlink, so we assume it can't
-       have one. */
+
     acl = NULL;
   else
     acl = acl_get_file(accpath, ACL_TYPE_ACCESS);
@@ -658,7 +647,6 @@ int archive_read_disk_entry_setup_acls(struct archive_read_disk *a,
     }
   }
 
-  /* Only directories can have default ACLs. */
   if (S_ISDIR(archive_entry_mode(entry))) {
     acl = acl_get_file(accpath, ACL_TYPE_DEFAULT);
     if (acl != NULL) {
@@ -671,7 +659,7 @@ int archive_read_disk_entry_setup_acls(struct archive_read_disk *a,
       }
     }
   }
-#endif /* ARCHIVE_ACL_LIBACL */
+#endif
   return (r);
 }
 
@@ -681,7 +669,7 @@ int archive_write_disk_set_acls(struct archive *a, int fd, const char *name,
   int ret = ARCHIVE_OK;
 
 #if !ARCHIVE_ACL_LIBRICHACL
-  (void)mode; /* UNUSED */
+  (void)mode;
 #endif
 
 #if ARCHIVE_ACL_LIBRICHACL
@@ -692,7 +680,7 @@ int archive_write_disk_set_acls(struct archive *a, int fd, const char *name,
 #if ARCHIVE_ACL_LIBACL
   else
 #endif
-#endif /* ARCHIVE_ACL_LIBRICHACL */
+#endif
 #if ARCHIVE_ACL_LIBACL
       if ((archive_acl_types(abstract_acl) & ARCHIVE_ENTRY_ACL_TYPE_POSIX1E) !=
           0) {
@@ -707,7 +695,7 @@ int archive_write_disk_set_acls(struct archive *a, int fd, const char *name,
       ret = set_acl(a, fd, name, abstract_acl, mode,
                     ARCHIVE_ENTRY_ACL_TYPE_DEFAULT, "default");
   }
-#endif /* ARCHIVE_ACL_LIBACL */
+#endif
   return (ret);
 }
-#endif /* ARCHIVE_ACL_LIBACL || ARCHIVE_ACL_LIBRICHACL */
+#endif

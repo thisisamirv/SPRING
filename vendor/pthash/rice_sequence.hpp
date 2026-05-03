@@ -1,4 +1,4 @@
-#ifndef PTHASH_EXTERNAL_BITS_RICE_SEQUENCE_HPP
+﻿#ifndef PTHASH_EXTERNAL_BITS_RICE_SEQUENCE_HPP
 #define PTHASH_EXTERNAL_BITS_RICE_SEQUENCE_HPP
 
 #include "bit_vector.hpp"
@@ -71,17 +71,15 @@ private:
 
   template <typename Iterator>
   uint64_t optimal_parameter_kiely(Iterator begin, const uint64_t n) {
-    /* estimate parameter p from mean of sample */
+
     uint64_t sum = std::accumulate(begin, begin + n, uint64_t(0));
     double p = n / (static_cast<double>(sum) + n);
     const double gold = (sqrt(5.0) + 1.0) / 2.0;
-    // return uint64_t(ceil(log2(-log2(gold) / log2(1 - p))));
-    // Eq. (8) from Kiely, "Selecting the Golomb Parameter in Rice Coding",
-    // 2004.
+
     return std::max<int64_t>(0, 1 + floor(log2(log(gold - 1) / log(1 - p))));
   }
 };
 
 } // namespace bits
 
-#endif // PTHASH_EXTERNAL_BITS_RICE_SEQUENCE_HPP
+#endif

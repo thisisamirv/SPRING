@@ -1,4 +1,4 @@
-/* adler32_simd.c
+﻿/* adler32_simd.c
  *
  * (C) 1995-2013 Jean-loup Gailly and Mark Adler
  *
@@ -65,34 +65,27 @@
 
 #include "adler32_simd.h"
 
-/* Definitions from adler32.c: largest prime smaller than 65536 */
 #define BASE 65521U
-/* NMAX is the largest n such that 255n(n+1)/2 + (n+1)(BASE-1) <= 2^32-1 */
+
 #define NMAX 5552
 
 #if defined(ADLER32_SIMD_SSSE3)
 
 #include <tmmintrin.h>
 
-uint32_t ZLIB_INTERNAL adler32_simd_(/* SSSE3 */
-                                     uint32_t adler, const unsigned char *buf,
+uint32_t ZLIB_INTERNAL adler32_simd_(uint32_t adler, const unsigned char *buf,
                                      unsigned long len) {
-  /*
-   * Split Adler-32 into component sums.
-   */
+
   uint32_t s1 = adler & 0xffff;
   uint32_t s2 = adler >> 16;
 
-  /*
-   * Process the data in blocks.
-   */
   const unsigned BLOCK_SIZE = 1 << 5;
 
   unsigned long blocks = len / BLOCK_SIZE;
   len -= blocks * BLOCK_SIZE;
 
   while (blocks) {
-    unsigned n = NMAX / BLOCK_SIZE; /* The NMAX constraint. */
+    unsigned n = NMAX / BLOCK_SIZE;
     if (n > blocks)
       n = (unsigned)blocks;
     blocks -= n;
@@ -105,30 +98,17 @@ uint32_t ZLIB_INTERNAL adler32_simd_(/* SSSE3 */
         _mm_setr_epi8(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
     const __m128i ones = _mm_set_epi16(1, 1, 1, 1, 1, 1, 1, 1);
 
-    /*
-     * Process n blocks of data. At most NMAX data bytes can be
-     * processed before s2 must be reduced modulo BASE.
-     */
     __m128i v_ps = _mm_set_epi32(0, 0, 0, s1 * n);
     __m128i v_s2 = _mm_set_epi32(0, 0, 0, s2);
     __m128i v_s1 = _mm_set_epi32(0, 0, 0, 0);
 
     do {
-      /*
-       * Load 32 input bytes.
-       */
+
       const __m128i bytes1 = _mm_loadu_si128((__m128i *)(buf));
       const __m128i bytes2 = _mm_loadu_si128((__m128i *)(buf + 16));
 
-      /*
-       * Add previous block byte sum to v_ps.
-       */
       v_ps = _mm_add_epi32(v_ps, v_s1);
 
-      /*
-       * Horizontally add the bytes for s1, multiply-adds the
-       * bytes by [ 32, 31, 30, ... ] for s2.
-       */
       v_s1 = _mm_add_epi32(v_s1, _mm_sad_epu8(bytes1, zero));
       const __m128i mad1 = _mm_maddubs_epi16(bytes1, tap1);
       v_s2 = _mm_add_epi32(v_s2, _mm_madd_epi16(mad1, ones));
@@ -143,12 +123,8 @@ uint32_t ZLIB_INTERNAL adler32_simd_(/* SSSE3 */
 
     v_s2 = _mm_add_epi32(v_s2, _mm_slli_epi32(v_ps, 5));
 
-    /*
-     * Sum epi32 ints v_s1(s2) and accumulate in s1(s2).
-     */
-
-#define S23O1 _MM_SHUFFLE(2, 3, 0, 1) /* A B C D -> B A D C */
-#define S1O32 _MM_SHUFFLE(1, 0, 3, 2) /* A B C D -> C D A B */
+#define S23O1 _MM_SHUFFLE(2, 3, 0, 1)
+#define S1O32 _MM_SHUFFLE(1, 0, 3, 2)
 
     v_s1 = _mm_add_epi32(v_s1, _mm_shuffle_epi32(v_s1, S23O1));
     v_s1 = _mm_add_epi32(v_s1, _mm_shuffle_epi32(v_s1, S1O32));
@@ -163,16 +139,10 @@ uint32_t ZLIB_INTERNAL adler32_simd_(/* SSSE3 */
 #undef S23O1
 #undef S1O32
 
-    /*
-     * Reduce.
-     */
     s1 %= BASE;
     s2 %= BASE;
   }
 
-  /*
-   * Handle leftover data.
-   */
   if (len) {
     if (len >= 16) {
       s2 += (s1 += *buf++);
@@ -207,9 +177,6 @@ uint32_t ZLIB_INTERNAL adler32_simd_(/* SSSE3 */
     s2 %= BASE;
   }
 
-  /*
-   * Return the recombined sums.
-   */
   return s1 | (s2 << 16);
 }
 
@@ -217,18 +184,12 @@ uint32_t ZLIB_INTERNAL adler32_simd_(/* SSSE3 */
 
 #include <arm_neon.h>
 
-uint32_t ZLIB_INTERNAL adler32_simd_(/* NEON */
-                                     uint32_t adler, const unsigned char *buf,
+uint32_t ZLIB_INTERNAL adler32_simd_(uint32_t adler, const unsigned char *buf,
                                      unsigned long len) {
-  /*
-   * Split Adler-32 into component sums.
-   */
+
   uint32_t s1 = adler & 0xffff;
   uint32_t s2 = adler >> 16;
 
-  /*
-   * Serially compute s1 & s2, until the data is 16-byte aligned.
-   */
   if ((uintptr_t)buf & 15) {
     while ((uintptr_t)buf & 15) {
       s2 += (s1 += *buf++);
@@ -240,24 +201,17 @@ uint32_t ZLIB_INTERNAL adler32_simd_(/* NEON */
     s2 %= BASE;
   }
 
-  /*
-   * Process the data in blocks.
-   */
   const unsigned BLOCK_SIZE = 1 << 5;
 
   unsigned long blocks = len / BLOCK_SIZE;
   len -= blocks * BLOCK_SIZE;
 
   while (blocks) {
-    unsigned n = NMAX / BLOCK_SIZE; /* The NMAX constraint. */
+    unsigned n = NMAX / BLOCK_SIZE;
     if (n > blocks)
       n = blocks;
     blocks -= n;
 
-    /*
-     * Process n blocks of data. At most NMAX data bytes can be
-     * processed before s2 must be reduced modulo BASE.
-     */
     uint32x4_t v_s2 = (uint32x4_t){0, 0, 0, s1 * n};
     uint32x4_t v_s1 = (uint32x4_t){0, 0, 0, 0};
 
@@ -267,25 +221,14 @@ uint32_t ZLIB_INTERNAL adler32_simd_(/* NEON */
     uint16x8_t v_column_sum_4 = vdupq_n_u16(0);
 
     do {
-      /*
-       * Load 32 input bytes.
-       */
+
       const uint8x16_t bytes1 = vld1q_u8((uint8_t *)(buf));
       const uint8x16_t bytes2 = vld1q_u8((uint8_t *)(buf + 16));
 
-      /*
-       * Add previous block byte sum to v_s2.
-       */
       v_s2 = vaddq_u32(v_s2, v_s1);
 
-      /*
-       * Horizontally add the bytes for s1.
-       */
       v_s1 = vpadalq_u16(v_s1, vpadalq_u8(vpaddlq_u8(bytes1), bytes2));
 
-      /*
-       * Vertically add the bytes for s2.
-       */
       v_column_sum_1 = vaddw_u8(v_column_sum_1, vget_low_u8(bytes1));
       v_column_sum_2 = vaddw_u8(v_column_sum_2, vget_high_u8(bytes1));
       v_column_sum_3 = vaddw_u8(v_column_sum_3, vget_low_u8(bytes2));
@@ -297,9 +240,6 @@ uint32_t ZLIB_INTERNAL adler32_simd_(/* NEON */
 
     v_s2 = vshlq_n_u32(v_s2, 5);
 
-    /*
-     * Multiply-add bytes by [ 32, 31, 30, ... ] for s2.
-     */
     v_s2 = vmlal_u16(v_s2, vget_low_u16(v_column_sum_1),
                      (uint16x4_t){32, 31, 30, 29});
     v_s2 = vmlal_u16(v_s2, vget_high_u16(v_column_sum_1),
@@ -317,9 +257,6 @@ uint32_t ZLIB_INTERNAL adler32_simd_(/* NEON */
     v_s2 = vmlal_u16(v_s2, vget_high_u16(v_column_sum_4),
                      (uint16x4_t){4, 3, 2, 1});
 
-    /*
-     * Sum epi32 ints v_s1(s2) and accumulate in s1(s2).
-     */
     uint32x2_t sum1 = vpadd_u32(vget_low_u32(v_s1), vget_high_u32(v_s1));
     uint32x2_t sum2 = vpadd_u32(vget_low_u32(v_s2), vget_high_u32(v_s2));
     uint32x2_t s1s2 = vpadd_u32(sum1, sum2);
@@ -327,16 +264,10 @@ uint32_t ZLIB_INTERNAL adler32_simd_(/* NEON */
     s1 += vget_lane_u32(s1s2, 0);
     s2 += vget_lane_u32(s1s2, 1);
 
-    /*
-     * Reduce.
-     */
     s1 %= BASE;
     s2 %= BASE;
   }
 
-  /*
-   * Handle leftover data.
-   */
   if (len) {
     if (len >= 16) {
       s2 += (s1 += *buf++);
@@ -371,10 +302,7 @@ uint32_t ZLIB_INTERNAL adler32_simd_(/* NEON */
     s2 %= BASE;
   }
 
-  /*
-   * Return the recombined sums.
-   */
   return s1 | (s2 << 16);
 }
 
-#endif /* ADLER32_SIMD_SSSE3 */
+#endif

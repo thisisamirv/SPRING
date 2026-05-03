@@ -1,4 +1,4 @@
-/*
+﻿/*
  * x86/cpu_features.c - feature detection for x86 CPUs
  *
  * Copyright 2016 Eric Biggers
@@ -26,12 +26,10 @@
  */
 
 #include "cpu_features_x86.h"
-#include "cpu_features_common.h" /* must be included first */
+#include "cpu_features_common.h"
 
 #ifdef X86_CPU_FEATURES_KNOWN
-/* Runtime x86 CPU feature detection is supported. */
 
-/* Execute the CPUID instruction. */
 static inline void cpuid(u32 leaf, u32 subleaf, u32 *a, u32 *b, u32 *c,
                          u32 *d) {
 #ifdef _MSC_VER
@@ -49,20 +47,12 @@ static inline void cpuid(u32 leaf, u32 subleaf, u32 *a, u32 *b, u32 *c,
 #endif
 }
 
-/* Read an extended control register. */
 static inline u64 read_xcr(u32 index) {
 #ifdef _MSC_VER
   return _xgetbv(index);
 #else
   u32 d, a;
 
-  /*
-   * Execute the "xgetbv" instruction.  Old versions of binutils do not
-   * recognize this instruction, so list the raw bytes instead.
-   *
-   * This must be 'volatile' to prevent this code from being moved out
-   * from under the check for OSXSAVE.
-   */
   __asm__ volatile(".byte 0x0f, 0x01, 0xd0" : "=d"(d), "=a"(a) : "c"(index));
 
   return ((u64)d << 32) | a;
@@ -87,28 +77,13 @@ volatile u32 libdeflate_x86_cpu_features = 0;
 
 static inline bool os_supports_avx512(u64 xcr0) {
 #ifdef __APPLE__
-  /*
-   * The Darwin kernel had a bug where it could corrupt the opmask
-   * registers.  See
-   * https://community.intel.com/t5/Software-Tuning-Performance/MacOS-Darwin-kernel-bug-clobbers-AVX-512-opmask-register-state/m-p/1327259
-   * Darwin also does not initially set the XCR0 bits for AVX512, but they
-   * are set if the thread tries to use AVX512 anyway.  Thus, to safely
-   * and consistently use AVX512 on macOS we'd need to check the kernel
-   * version as well as detect AVX512 support using a macOS-specific
-   * method.  We don't bother with this, especially given Apple's
-   * transition to arm64.
-   */
+
   return false;
 #else
   return (xcr0 & 0xe6) == 0xe6;
 #endif
 }
 
-/*
- * Don't use 512-bit vectors (ZMM registers) on Intel CPUs before Rocket Lake
- * and Sapphire Rapids, due to the overly-eager downclocking which can reduce
- * the performance of workloads that use ZMM registers only occasionally.
- */
 static inline bool allow_512bit_vectors(const u32 manufacturer[3], u32 family,
                                         u32 model) {
 #ifdef TEST_SUPPORT__DO_NOT_USE
@@ -119,18 +94,17 @@ static inline bool allow_512bit_vectors(const u32 manufacturer[3], u32 family,
   if (family != 6)
     return true;
   switch (model) {
-  case 85:  /* Skylake (Server), Cascade Lake, Cooper Lake */
-  case 106: /* Ice Lake (Server) */
-  case 108: /* Ice Lake (Server) */
-  case 126: /* Ice Lake (Client) */
-  case 140: /* Tiger Lake */
-  case 141: /* Tiger Lake */
+  case 85:
+  case 106:
+  case 108:
+  case 126:
+  case 140:
+  case 141:
     return false;
   }
   return true;
 }
 
-/* Initialize libdeflate_x86_cpu_features. */
 void libdeflate_init_x86_cpu_features(void) {
   u32 max_leaf;
   u32 manufacturer[3];
@@ -139,12 +113,10 @@ void libdeflate_init_x86_cpu_features(void) {
   u64 xcr0 = 0;
   u32 features = 0;
 
-  /* EAX=0: Highest Function Parameter and Manufacturer ID */
   cpuid(0, 0, &max_leaf, &manufacturer[0], &manufacturer[2], &manufacturer[1]);
   if (max_leaf < 1)
     goto out;
 
-  /* EAX=1: Processor Info and Feature Bits */
   cpuid(1, 0, &a, &b, &c, &d);
   family = (a >> 8) & 0xf;
   model = (a >> 4) & 0xf;
@@ -154,11 +126,7 @@ void libdeflate_init_x86_cpu_features(void) {
     family += (a >> 20) & 0xff;
   if (d & (1 << 26))
     features |= X86_CPU_FEATURE_SSE2;
-  /*
-   * No known CPUs have pclmulqdq without sse4.1, so in practice code
-   * targeting pclmulqdq can use sse4.1 instructions.  But to be safe,
-   * explicitly check for both the pclmulqdq and sse4.1 bits.
-   */
+
   if ((c & (1 << 1)) && (c & (1 << 19)))
     features |= X86_CPU_FEATURE_PCLMULQDQ;
   if (c & (1 << 27))
@@ -169,7 +137,6 @@ void libdeflate_init_x86_cpu_features(void) {
   if (max_leaf < 7)
     goto out;
 
-  /* EAX=7, ECX=0: Extended Features */
   cpuid(7, 0, &a, &b, &c, &d);
   if (b & (1 << 8))
     features |= X86_CPU_FEATURE_BMI2;
@@ -190,7 +157,6 @@ void libdeflate_init_x86_cpu_features(void) {
       features |= X86_CPU_FEATURE_AVX512VNNI;
   }
 
-  /* EAX=7, ECX=1: Extended Features */
   cpuid(7, 1, &a, &b, &c, &d);
   if ((a & (1 << 4)) && ((xcr0 & 0x6) == 0x6))
     features |= X86_CPU_FEATURE_AVXVNNI;
@@ -202,4 +168,4 @@ out:
   libdeflate_x86_cpu_features = features | X86_CPU_FEATURES_KNOWN;
 }
 
-#endif /* X86_CPU_FEATURES_KNOWN */
+#endif

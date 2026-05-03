@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  * All rights reserved.
  *
@@ -11,8 +11,8 @@
 #ifndef ZSTD_DOUBLE_FAST_H
 #define ZSTD_DOUBLE_FAST_H
 
-#include "mem.h"          /* U32 */
-#include "zstd_compress_internal.h" /* ZSTD_CCtx, size_t */
+#include "mem.h"
+#include "zstd_compress_internal.h"
 
 #ifndef ZSTD_EXCLUDE_DFAST_BLOCK_COMPRESSOR
 
@@ -43,6 +43,6 @@ size_t ZSTD_compressBlock_doubleFast_extDict(ZSTD_MatchState_t *ms,
 #define ZSTD_COMPRESSBLOCK_DOUBLEFAST NULL
 #define ZSTD_COMPRESSBLOCK_DOUBLEFAST_DICTMATCHSTATE NULL
 #define ZSTD_COMPRESSBLOCK_DOUBLEFAST_EXTDICT NULL
-#endif /* ZSTD_EXCLUDE_DFAST_BLOCK_COMPRESSOR */
+#endif
 
-#endif /* ZSTD_DOUBLE_FAST_H */
+#endif

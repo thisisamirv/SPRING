@@ -1,18 +1,14 @@
-cmake_minimum_required(VERSION 3.17)
+﻿cmake_minimum_required(VERSION 3.17)
 project("Indexed BZip2/Gzip Decoder" CXX)
-
 option(LIBRAPIDARCHIVE_WITH_ISAL "Compile with ISA-L for faster decompression" ON)
 option(LIBRAPIDARCHIVE_WITH_RPMALLOC "Compile with rpmalloc for faster memory allocations" OFF)
 option(LIBRAPIDARCHIVE_USE_SYSTEM_ZLIB "Use system zlib instead of compiling from source" OFF)
-
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     set(LIBRAPIDARCHIVE_WITH_ISAL OFF)
 endif()
-
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
 endif()
-
 add_compile_options(
     "$<$<OR:$<COMPILE_LANG_AND_ID:CXX,AppleClang,Clang>,$<COMPILE_LANG_AND_ID:C,AppleClang,Clang>>:-Wall;-Wextra;-Wshadow;-Werror=return-type;-Wno-unknown-attributes>"
     "$<$<OR:$<COMPILE_LANG_AND_ID:CXX,GNU>,$<COMPILE_LANG_AND_ID:C,GNU>>:-Wall;-Wextra;-Wshadow;-Wunused;-Werror=return-type;-Wno-attributes>"
@@ -22,23 +18,16 @@ add_compile_options(
     "$<$<AND:$<COMPILE_LANG_AND_ID:CXX,Clang,GNU>,$<PLATFORM_ID:Windows>>:-Wa,-mbig-obj>"
     "$<$<COMPILE_LANG_AND_ID:CXX,MSVC>:/bigobj>"
 )
-
 if(NOT ${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm" AND NOT ${CMAKE_SYSTEM_PROCESSOR} MATCHES "aarch" AND NOT ${CMAKE_SYSTEM_PROCESSOR} MATCHES "riscv64")
     add_compile_options("$<$<COMPILE_LANG_AND_ID:CXX,Clang,GNU>:-fcf-protection=full>")
 endif()
-
 if(NOT WIN32 AND NOT ${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm" AND NOT ${CMAKE_SYSTEM_PROCESSOR} MATCHES "aarch")
     add_compile_options("$<$<COMPILE_LANG_AND_ID:CXX,Clang,GNU>:-fpie>")
     add_link_options("$<$<AND:$<COMPILE_LANG_AND_ID:CXX,Clang,GNU>,$<PLATFORM_ID:Linux>>:-Wl,-pie,-z,relro,-z,now,-z,defs>")
 endif()
-
 find_package(Threads REQUIRED)
-
-# zlib
 add_library(zlibstatic INTERFACE)
 target_link_libraries(zlibstatic INTERFACE ZLIB::ZLIB)
-
-# ISA-L
 if(LIBRAPIDARCHIVE_WITH_ISAL)
     include(FetchContent)
     fetchcontent_declare(isal_project SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/isa-l)
@@ -46,8 +35,6 @@ if(LIBRAPIDARCHIVE_WITH_ISAL)
     fetchcontent_makeavailable(isal_project)
     add_library(ISAL::isal ALIAS isal)
 endif()
-
-# filereader
 add_library(filereader INTERFACE)
 target_include_directories(filereader INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 target_sources(filereader INTERFACE
@@ -61,8 +48,6 @@ target_sources(filereader INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/StreamAdapter.hpp
 )
 target_compile_features(filereader INTERFACE cxx_std_17)
-
-# core
 add_library(core INTERFACE)
 target_include_directories(core INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 target_sources(core INTERFACE
@@ -91,8 +76,6 @@ target_sources(core INTERFACE
 )
 target_link_libraries(core INTERFACE Threads::Threads filereader)
 target_compile_features(core INTERFACE cxx_std_17)
-
-# libhuffman (src/huffman/)
 add_library(libhuffman INTERFACE)
 target_include_directories(libhuffman INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 target_sources(libhuffman INTERFACE
@@ -103,8 +86,6 @@ target_sources(libhuffman INTERFACE
 )
 target_link_libraries(libhuffman INTERFACE core)
 target_compile_features(libhuffman INTERFACE cxx_std_17)
-
-# libhuffmangzip (src/rapidgzip/huffman/)
 add_library(libhuffmangzip INTERFACE)
 add_library(rapidgzip::gzip::huffman ALIAS libhuffmangzip)
 target_include_directories(libhuffmangzip INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -121,8 +102,6 @@ target_sources(libhuffmangzip INTERFACE
 )
 target_link_libraries(libhuffmangzip INTERFACE core libhuffman)
 target_compile_features(libhuffmangzip INTERFACE cxx_std_17)
-
-# librapidgzipgzip (src/rapidgzip/gzip/)
 add_library(librapidgzipgzip INTERFACE)
 add_library(rapidgzip::gzip ALIAS librapidgzipgzip)
 target_include_directories(librapidgzipgzip INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -144,8 +123,6 @@ if(LIBRAPIDARCHIVE_WITH_ISAL)
     target_link_libraries(librapidgzipgzip INTERFACE ISAL::isal)
 endif()
 target_compile_features(librapidgzipgzip INTERFACE cxx_std_17)
-
-# libblockfinder (src/rapidgzip/blockfinder/)
 add_library(libblockfinder INTERFACE)
 add_library(rapidgzip::libblockfinder ALIAS libblockfinder)
 target_include_directories(libblockfinder INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -158,8 +135,6 @@ target_sources(libblockfinder INTERFACE
 )
 target_link_libraries(libblockfinder INTERFACE core)
 target_compile_features(libblockfinder INTERFACE cxx_std_17)
-
-# libchunkdecoding (src/rapidgzip/chunkdecoding/)
 add_library(libchunkdecoding INTERFACE)
 add_library(rapidgzip::chunkdecoding ALIAS libchunkdecoding)
 target_include_directories(libchunkdecoding INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -169,8 +144,6 @@ target_sources(libchunkdecoding INTERFACE
 )
 target_link_libraries(libchunkdecoding INTERFACE core rapidgzip::gzip rapidgzip::libblockfinder)
 target_compile_features(libchunkdecoding INTERFACE cxx_std_17)
-
-# librapidgzip (src/rapidgzip/)
 add_library(librapidgzip INTERFACE)
 add_library(rapidgzip::rapidgzip ALIAS librapidgzip)
 target_include_directories(librapidgzip INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})

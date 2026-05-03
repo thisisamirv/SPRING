@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2010 Tim Kientzle
  * All rights reserved.
  *
@@ -64,8 +64,7 @@ static int archive_set_format_option(struct archive *_a, const char *m,
 
   if (a->format_name == NULL)
     return (m == NULL) ? ARCHIVE_FAILED : ARCHIVE_WARN - 1;
-  /* If the format name didn't match, return a special code for
-   * _archive_set_option[s]. */
+
   if (m != NULL && strcmp(m, a->format_name) != 0)
     return (ARCHIVE_WARN - 1);
   if (a->format_options == NULL)
@@ -96,8 +95,7 @@ static int archive_set_filter_option(struct archive *_a, const char *m,
     if (r == ARCHIVE_OK)
       rv = ARCHIVE_OK;
   }
-  /* If the filter name didn't match, return a special code for
-   * _archive_set_option[s]. */
+
   if (rv == ARCHIVE_WARN && m != NULL)
     rv = ARCHIVE_WARN - 1;
   return (rv);

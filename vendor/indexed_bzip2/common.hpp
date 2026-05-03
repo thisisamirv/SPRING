@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <algorithm>
 #include <array>
@@ -25,19 +25,11 @@
 #include <Python.h>
 #endif
 
-/* Platform dependent stuff */
-
 #ifdef _MSC_VER
 #include <io.h>
 
-/* MSVC still has a fileno alias even though it is deprecated. Using define is
- * not a good idea because some methods are named fileno! Instead, disable the
- * deprecation warning for this and if a more recent compiler removes the alias,
- * then use: const auto fileno = _fileno; */
 #pragma warning(disable : 4996)
 
-/* Ignore warnings about [[likely]], [[unlikely]], which will only work with
- * C++20. */
 #pragma warning(disable : 5051)
 
 #include <sys/stat.h>
@@ -64,8 +56,7 @@ template <typename FileMode, typename FileType>
 #if defined(_MSC_VER)
 #define forceinline __forceinline
 #elif defined(__clang__) || defined(__GNUC__)
-/* https://stackoverflow.com/questions/38499462/how-to-tell-clang-to-stop-pretending-to-be-other-compilers
- */
+
 #define forceinline __attribute__((always_inline)) inline
 #endif
 
@@ -77,10 +68,6 @@ template <typename I1, typename I2,
   return (dividend + divisor - 1) / divisor;
 }
 
-/**
- * Absolute difference function that also works for unsigned types for which
- * std::abs(a-b) wouldn't work.
- */
 template <typename T, typename V>
 [[nodiscard]] T absDiff(const T &a, const V &b) {
   return a < b ? b - a : a - b;
@@ -94,8 +81,7 @@ template <typename U, std::enable_if_t<std::is_unsigned_v<U>> * = nullptr>
 
 template <typename U, std::enable_if_t<std::is_signed_v<U>> * = nullptr>
 [[nodiscard]] constexpr U saturatingAddition(const U a, const U b) {
-  /* Underflow or overflow should only be possible when both values have the
-   * same sign! */
+
   if ((a > 0) && (b > 0)) {
     return a > std::numeric_limits<U>::max() - b ? std::numeric_limits<U>::max()
                                                  : a + b;
@@ -174,9 +160,8 @@ template <typename S, typename T>
 [[nodiscard]] inline std::vector<std::string_view>
 split(const std::string_view toSplit, const char separator) {
   std::vector<std::string_view> result;
-  auto start = toSplit.begin(); // NOLINT(readability-qualified-auto)
-  for (auto it = toSplit.begin(); it != toSplit.end();
-       ++it) { // NOLINT(readability-qualified-auto)
+  auto start = toSplit.begin();
+  for (auto it = toSplit.begin(); it != toSplit.end(); ++it) {
     if (*it == separator) {
       result.emplace_back(toSplit.data() +
                               std::distance(toSplit.begin(), start),
@@ -200,7 +185,7 @@ split(const std::string_view toSplit, const char separator) {
 
 [[nodiscard]] inline std::string formatBytes(const uint64_t value) {
   const std::array<std::pair<std::string_view, uint64_t>, 7U> UNITS{{
-      /* 64-bit maximum is 16 EiB, so these units cover all cases. */
+
       {"EiB", 1024ULL * 1024ULL * 1024ULL * 1024ULL * 1024ULL * 1024ULL},
       {"PiB", 1024ULL * 1024ULL * 1024ULL * 1024ULL * 1024ULL},
       {"TiB", 1024ULL * 1024ULL * 1024ULL * 1024ULL},
@@ -233,9 +218,6 @@ now() noexcept {
   return std::chrono::high_resolution_clock::now();
 }
 
-/**
- * @return duration in seconds
- */
 template <typename T>
 [[nodiscard]] double duration(const T &t0, const T &t1 = now()) noexcept {
   return std::chrono::duration<double>(t1 - t0).count();
@@ -248,12 +230,6 @@ template <typename T>
           .count());
 }
 
-/**
- * Use like this:
- * @verbatim
- * std::cerr << ( ThreadSafeOutput() << "Hello" << i << "there" ).str();
- * @endverbatim
- */
 class ThreadSafeOutput {
 public:
   ThreadSafeOutput() {
@@ -298,12 +274,6 @@ inline std::ostream &operator<<(std::ostream &out,
   return "unknown future states";
 }
 
-/**
- * RAII based notify at the end of a scope, which will also be triggered e.g.
- * when throwing exceptions! std::notify_all_at_thread_exit is no alternative to
- * this because the thread does not exit because we are using a thread pool but
- * we might still want to notify someone when the packaged task throws.
- */
 class FinallyNotify {
 public:
   explicit FinallyNotify(std::condition_variable &toNotify)
@@ -384,10 +354,6 @@ template <typename Iterator,
   return result;
 }
 
-/**
- * Returns iterators to the first sequence of elements that are increasing by
- * one each.
- */
 template <typename Iterator>
 [[nodiscard]] constexpr std::pair<Iterator, Iterator> findAdjacentIf(
     const Iterator rangeBegin, const Iterator rangeEnd,
@@ -432,7 +398,6 @@ template <typename Container>
   return (value & flags) != 0;
 }
 
-// NOLINTBEGIN(cppcoreguidelines-macro-usage)
 #if defined(__GNUC__)
 #define LIKELY(x) (__builtin_expect(static_cast<bool>(x), 1))
 #define UNLIKELY(x) (__builtin_expect(static_cast<bool>(x), 0))
@@ -440,7 +405,6 @@ template <typename Container>
 #define LIKELY(x) (x)
 #define UNLIKELY(x) (x)
 #endif
-// NOLINTEND(cppcoreguidelines-macro-usage)
 
 enum class Endian {
   LITTLE,
@@ -448,12 +412,6 @@ enum class Endian {
   UNKNOWN,
 };
 
-/**
- * g++-dM -E -x c++ /dev/null | grep -i endian
- * > #define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
- * clang++ -dM -E -x c++ /dev/null | grep -i little
- * > #define __BYTE_ORDER__ __ORDER_LITTLE_ENDIAN__
- */
 constexpr Endian ENDIAN =
 #if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) &&             \
     (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
@@ -466,13 +424,6 @@ constexpr Endian ENDIAN =
 #endif
     ;
 
-/**
- * This should compile to a single load on modern compilers instead of a
- * function call. Test e.g. on godbolt.org. Note that we cannot use
- * reinterpret_cast from char* to uint64_t* because it would result in
- * unedefined behavior because of strict-aliasing rules! @see
- * https://en.cppreference.com/w/cpp/language/reinterpret_cast#Type_aliasing
- */
 template <typename T>
 [[nodiscard]] constexpr T loadUnaligned(const void *data) {
   T result{0};
@@ -514,11 +465,6 @@ inline std::ostream &operator<<(std::ostream &out,
   return out;
 }
 
-/**
- * @return Position of the nth newline character or std::string_view::npos and
- * the remaining line count. If @p lineCount is 0, always returns 0 by
- * definition.
- */
 [[nodiscard]] constexpr FindNthNewlineResult
 findNthNewline(const std::string_view &view, const uint64_t lineCount,
                const char newlineCharacter = '\n') {
@@ -554,9 +500,6 @@ operator""_Gi(unsigned long long int value) noexcept {
   return value * 1024ULL * 1024ULL * 1024ULL;
 }
 
-/**
- * @param rangeA Closed interval given by two numbers.
- */
 template <typename Pair, typename Value>
 [[nodiscard]] constexpr bool rangeContains(const Pair &range,
                                            const Value &value) noexcept {
@@ -566,23 +509,7 @@ template <typename Pair, typename Value>
 template <typename PairA, typename PairB>
 [[nodiscard]] constexpr bool rangesIntersect(const PairA &rangeA,
                                              const PairB &rangeB) noexcept {
-  /**
-   * Cases:
-   * @verbatim
-   * A     +------+
-   *       |      |
-   * B  +-+|      |
-   *    +--+      |
-   *    +----+    |
-   *    +------------+
-   *       +--+   |
-   *       |+-+   |
-   *       |+-----+
-   *       |+--------+
-   *       |      +--+
-   *       |      |
-   * @endverbatim
-   */
+
   return rangeContains(rangeA, rangeB.first) ||
          rangeContains(rangeA, rangeB.second) ||
          rangeContains(rangeB, rangeA.first) ||

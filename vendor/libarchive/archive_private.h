@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2007 Tim Kientzle
  * All rights reserved.
  *
@@ -94,25 +94,15 @@ struct archive_vtable {
 struct archive_string_conv;
 
 struct archive {
-  /*
-   * The magic/state values are used to sanity-check the
-   * client's usage.  If an API function is called at a
-   * ridiculous time, or the client passes us an invalid
-   * pointer, these values allow me to catch that.
-   */
+
   unsigned int magic;
   unsigned int state;
 
-  /*
-   * Some public API functions depend on the "real" type of the
-   * archive object.
-   */
   const struct archive_vtable *vtable;
 
   int archive_format;
   const char *archive_format_name;
 
-  /* Number of file entries processed. */
   int file_count;
 
   int archive_error_number;
@@ -120,29 +110,19 @@ struct archive {
   struct archive_string error_string;
 
   char *current_code;
-  unsigned current_codepage; /* Current ACP(ANSI CodePage). */
-  unsigned current_oemcp;    /* Current OEMCP(OEM CodePage). */
+  unsigned current_codepage;
+  unsigned current_oemcp;
   struct archive_string_conv *sconv;
 
-  /*
-   * Used by archive_read_data() to track blocks and copy
-   * data to client buffers, filling gaps with zero bytes.
-   */
   const char *read_data_block;
   int64_t read_data_offset;
   int64_t read_data_output_offset;
   size_t read_data_remaining;
 
-  /*
-   * Used by formats/filters to determine the amount of data
-   * requested from a call to archive_read_data(). This is only
-   * useful when the format/filter has seek support.
-   */
   char read_data_is_posix_read;
   size_t read_data_requested;
 };
 
-/* Check magic value and state; return(ARCHIVE_FATAL) if it isn't valid. */
 int __archive_check_magic(struct archive *, unsigned int magic,
                           unsigned int state, const char *func);
 #define archive_check_magic(a, expected_magic, allowed_states, function_name)  \

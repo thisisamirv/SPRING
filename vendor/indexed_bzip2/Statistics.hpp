@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <algorithm>
 #include <cmath>
@@ -37,11 +37,7 @@ template <typename T> struct Statistics {
   }
 
   [[nodiscard]] constexpr double variance() const noexcept {
-    /* Calculation makes use of expanded expression for the variance to avoid
-     * requiring there average beforehand: Var(x) = < (x - <x>)^2 > = <x^2> -
-     * <x>^2 Furthermore, it is the sample variance, therefore divide by one
-     * count less for the outer average because that degree of freedom has been
-     * used up for the sample average calculation. */
+
     return (sum2 / count - average() * average()) * count / (count - 1);
   }
 
@@ -73,20 +69,10 @@ template <typename T> struct Statistics {
   formatAverageWithUncertainty(bool includeBounds = false,
                                uint8_t sigmaMultiple = 1) const {
     const auto uncertainty = standardDeviation() * sigmaMultiple;
-    /* Round uncertainty and value according to DIN 1333
-     * @see
-     * https://www.tu-chemnitz.de/physik/PGP/files/Allgemeines/Rundungsregeln.pdf
-     */
 
-    /* Log10: 0.1 -> -1, 1 -> 0, 2 -> 0.301, 10 -> 1.
-     * In order to scale to a range [0,100), we have to divide by 10^magnitude.
-     */
     auto magnitude = std::floor(std::log10(uncertainty)) - 1;
     auto scaled = uncertainty / std::pow(10, magnitude);
 
-    /* Round uncertainties beginning with 1 and 2 to two significant digits and
-     * all others to only one. This could probably be integrated into the
-     * magnitude calculation but it would be less readable. */
     if (scaled >= 30) {
       magnitude += 1;
     }
@@ -96,11 +82,6 @@ template <typename T> struct Statistics {
              std::pow(10, magnitude);
     };
 
-    /**
-     * @note To be exact, we would also have to avoid trailing zeros beyond the
-     * certainty but that would require integrating unit formatting into this
-     * routine. E.g., do not write (13000 +- 1000) MB but instead (13 +- 1) GB.
-     */
     std::stringstream result;
     result << std::fixed
            << std::setprecision(static_cast<int>(std::max(-magnitude, 0.)));
@@ -118,7 +99,6 @@ template <typename T> struct Statistics {
   }
 
 public:
-  /* Note that std::numeric_limits::infinity == 0 for integers. */
   T min{std::numeric_limits<T>::max()};
   T max{std::numeric_limits<T>::lowest()};
 
@@ -146,8 +126,7 @@ public:
     }
 
     if constexpr (std::is_integral_v<T>) {
-      /* It seems almost impossible to me to fully avoid overflows here without
-       * casting to floating point. */
+
       const auto range = static_cast<double>(m_statistics.max) -
                          static_cast<double>(m_statistics.min);
       const auto usefulBinCount = static_cast<size_t>(range + 1.0);
@@ -172,8 +151,7 @@ public:
     }
 
     if constexpr (std::is_integral_v<T>) {
-      /* It seems almost impossible to me to fully avoid overflows here without
-       * casting to floating point. */
+
       const auto range = static_cast<double>(m_statistics.max) -
                          static_cast<double>(m_statistics.min);
       const auto usefulBinCount = static_cast<size_t>(range + 1.0);

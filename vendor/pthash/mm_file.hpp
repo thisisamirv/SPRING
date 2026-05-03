@@ -1,4 +1,4 @@
-#ifndef PTHASH_EXTERNAL_MM_FILE_MM_FILE_HPP
+﻿#ifndef PTHASH_EXTERNAL_MM_FILE_MM_FILE_HPP
 #define PTHASH_EXTERNAL_MM_FILE_MM_FILE_HPP
 
 #ifndef _WIN32
@@ -35,8 +35,8 @@ template <typename T> struct file {
     }
   }
 
-  file(file const &) = delete;            // non construction-copyable
-  file &operator=(file const &) = delete; // non copyable
+  file(file const &) = delete;
+  file &operator=(file const &) = delete;
 
   file(file &&other) noexcept
       : m_fd(other.m_fd), m_size(other.m_size), m_data(other.m_data) {
@@ -178,7 +178,7 @@ template <typename T> struct file_sink : public file<T> {
   file_sink(std::string const &path, size_t n) { open(path, n); }
 
   void open(std::string const &path) {
-    static const mode_t mode = 0600; // read/write
+    static const mode_t mode = 0600;
     int fd;
 #ifdef O_CLOEXEC
     fd = ::open(path.c_str(), O_RDWR | O_CLOEXEC, mode);
@@ -197,7 +197,7 @@ template <typename T> struct file_sink : public file<T> {
   }
 
   void open(std::string const &path, size_t n) {
-    static const mode_t mode = 0600; // read/write
+    static const mode_t mode = 0600;
     int fd;
 #ifdef O_CLOEXEC
     fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC | O_CLOEXEC, mode);
@@ -207,7 +207,7 @@ template <typename T> struct file_sink : public file<T> {
     base::set_fd(fd);
     base::check_fd();
     base::set_size(n * sizeof(T));
-    ftruncate(base::fd(), base::bytes()); // truncate the file at the new size
+    ftruncate(base::fd(), base::bytes());
     base::set_data(
         mmap<T *>(base::fd(), base::bytes(), PROT_READ | PROT_WRITE));
   }
@@ -215,4 +215,4 @@ template <typename T> struct file_sink : public file<T> {
 
 } // namespace mm
 
-#endif // PTHASH_EXTERNAL_MM_FILE_MM_FILE_HPP
+#endif

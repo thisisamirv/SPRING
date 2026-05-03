@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <array>
 #include <cstdint>
@@ -9,10 +9,7 @@
 #include "FasterVector.hpp"
 
 namespace rapidgzip {
-/**
- * Views are by their name read-only. This represents a read-only non-owned
- * memory chunk. Probably could be removed in favor of C++20 std::span.
- */
+
 template <typename T> class VectorView {
 public:
   using value_type = T;
@@ -39,8 +36,7 @@ public:
                   std::is_same_v<typename Container::value_type, std::byte>))>
                 * = nullptr>
   constexpr VectorView(const Container &vector) noexcept
-      : // NOLINT
-        m_data(reinterpret_cast<const T *>(vector.data())),
+      : m_data(reinterpret_cast<const T *>(vector.data())),
         m_size(vector.size()) {}
 
   constexpr VectorView(const T *data, size_t size) noexcept
@@ -83,10 +79,6 @@ private:
   size_t m_size{0};
 };
 
-/**
- * This is in basically a modifiable VectorView. The vector cannot be resized
- * but it is a simple pointer and length tuple to a read-write memory chunk.
- */
 template <typename T> class WeakVector {
 public:
   using value_type = T;
@@ -103,8 +95,7 @@ public:
   constexpr WeakVector &operator=(WeakVector &&) noexcept = default;
 
   constexpr WeakVector(std::vector<T> *vector) noexcept
-      : // NOLINT
-        m_data(vector->data()), m_size(vector->size()) {}
+      : m_data(vector->data()), m_size(vector->size()) {}
 
   constexpr WeakVector(T *data, size_t size) noexcept
       : m_data(data), m_size(size) {}

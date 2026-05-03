@@ -1,4 +1,4 @@
-#include <stdint.h>
+﻿#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <string>
@@ -11,15 +11,11 @@
 namespace spring {
 namespace qvz {
 
-/**
- *
- */
 void encode(struct qv_options_t *opts, uint32_t max_readlen, uint32_t numreads,
             std::string *quality_string_array, uint32_t *str_len_array) {
   struct quality_file_t qv_info;
   memset(&qv_info, 0, sizeof(qv_info));
 
-  // Initialize PRNG state
   for (int i = 0; i < 32; i++)
     qv_info.well.state[i] = i + 1;
   qv_info.well.n = 0;
@@ -39,7 +35,7 @@ void encode(struct qv_options_t *opts, uint32_t max_readlen, uint32_t numreads,
   qv_info.cluster_count = opts->clusters;
   qv_info.columns = max_readlen;
   qv_info.lines = numreads;
-  // from alloc_lines & alloc_blocks - we'll allocate single block
+
   qv_info.block_count = 1;
   qv_info.blocks = (struct line_block_t *)calloc(qv_info.block_count,
                                                  sizeof(struct line_block_t));
@@ -47,11 +43,9 @@ void encode(struct qv_options_t *opts, uint32_t max_readlen, uint32_t numreads,
   qv_info.blocks[0].quality_array = quality_string_array;
   qv_info.blocks[0].read_lengths = str_len_array;
 
-  // Set up clustering data structures
   qv_info.clusters = alloc_cluster_list(&qv_info);
   qv_info.opts = opts;
 
-  // Then find stats and generate codebooks for each cluster
   calculate_statistics(&qv_info);
   generate_codebooks(&qv_info);
 

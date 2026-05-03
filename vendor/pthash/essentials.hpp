@@ -1,4 +1,4 @@
-#ifndef PTHASH_EXTERNAL_BITS_ESSENTIALS_HPP
+﻿#ifndef PTHASH_EXTERNAL_BITS_ESSENTIALS_HPP
 #define PTHASH_EXTERNAL_BITS_ESSENTIALS_HPP
 
 #include <algorithm>
@@ -61,7 +61,7 @@ template <typename Range, typename OutIt> void copy(Range const &r, OutIt out) {
 #include <memory>
 
 #ifdef __GNUG__
-#include <cxxabi.h> // for name demangling
+#include <cxxabi.h>
 #endif
 
 namespace essentials {
@@ -82,7 +82,6 @@ static const uint64_t MiB = uint64_t(1) << 20;
 static const uint64_t KB = 1000;
 static const uint64_t KiB = uint64_t(1) << 10;
 
-// check if std is C++20 or higher
 template <typename T> struct is_pod {
 #if __cplusplus >= 202002L
   static constexpr bool value =
@@ -129,7 +128,7 @@ template <typename T> static inline void do_not_optimize_away(T value) {
 [[maybe_unused]] static uint64_t maxrss_in_bytes() {
   struct rusage ru;
   if (getrusage(RUSAGE_SELF, &ru) == 0) {
-    // NOTE: ru_maxrss is in kilobytes on Linux, but not on Apple...
+
 #ifdef __APPLE__
     return ru.ru_maxrss;
 #endif
@@ -148,27 +147,7 @@ template <typename T> static void save_pod(std::ostream &os, T const &val) {
   os.write(reinterpret_cast<char const *>(&val), sizeof(T));
 }
 
-/*
-    A read-only span with optional shared ownership.
-    After construction, only const access is permitted.
-
-    Three ownership models via shared_ptr's aliasing constructor:
-
-    1. Heap-owned: constructed from an rvalue contiguous range (e.g. vector) —
-       the range is heap-allocated inside a shared_ptr, and the span points
-       into its buffer.
-
-    2. Externally-owned: constructed from a raw pointer + shared_ptr owner
-       (e.g., an mmap context) — the span keeps the owner alive.
-
-    3. Un-owned: constructed from a raw pointer without owner — the caller
-       must ensure the backing memory outlives the span.
-
-    All models yield the same branch-free T const* access path.
-*/
-template <typename T>
-struct owning_span //
-{
+template <typename T> struct owning_span {
   using value_type = T;
   using size_type = size_t;
   using const_iterator = T const *;
@@ -184,8 +163,6 @@ struct owning_span //
 
   owning_span() = default;
 
-  /* Take ownership of any contiguous range (vector, array, string, ...).
-     Rvalues are moved; lvalues are copied. */
   template <typename Range, typename = has_contiguous_data<Range>>
   owning_span(Range &&r) {
     if (r.size() == 0)
@@ -196,7 +173,6 @@ struct owning_span //
     m_data = std::shared_ptr<const T[]>(std::move(p), ptr);
   }
 
-  /* View into externally-managed memory, optionally keeping owner alive. */
   owning_span(T const *data, size_t n, std::shared_ptr<const void> owner = {})
       : m_data(std::move(owner), data), m_size(n) {}
 
@@ -299,14 +275,6 @@ template <typename ClockType, typename DurationType> struct timer {
 
   void reset() { m_timings.clear(); }
 
-  // double min() const {
-  //     return *std::min_element(m_timings.begin(), m_timings.end());
-  // }
-
-  // double max() const {
-  //     return *std::max_element(m_timings.begin(), m_timings.end());
-  // }
-
   void discard_first() {
     if (runs()) {
       m_timings.erase(m_timings.begin());
@@ -363,8 +331,7 @@ struct generic_loader {
   generic_loader(std::istream &is) : m_is(&is) {}
 
   void set_mmap(uint8_t const *mmap_base, size_t mmap_size,
-                std::shared_ptr<const void> owner = {}) //
-  {
+                std::shared_ptr<const void> owner = {}) {
     m_mmap_base = mmap_base;
     m_mmap_size = mmap_size;
     m_mmap_owner = std::move(owner);
@@ -772,11 +739,7 @@ static size_t mmap(T &data_structure, char const *filename) {
   }
   close(fd);
 
-  // Create the "owner" shared_ptr with a custom deleter.
-  // This ensures munmap is called automatically when the last owning_span dies.
   std::shared_ptr<const void> mmap_owner(mmap_base, [file_size](void const *p) {
-    // std::cout << "[Deleter] Unmapping " << file_size << " bytes from " << p
-    // << "\n";
     ::munmap(const_cast<void *>(p), file_size);
   });
 
@@ -806,7 +769,6 @@ static size_t print_size(T &data_structure, Device &device) {
   return visitor.bytes();
 }
 
-/* Reference: https://semver.org */
 struct version_number {
   version_number(uint8_t x, uint8_t y, uint8_t z) : x(x), y(y), z(z) {}
 
@@ -909,4 +871,4 @@ private:
 
 } // namespace essentials
 
-#endif // PTHASH_EXTERNAL_BITS_ESSENTIALS_HPP
+#endif

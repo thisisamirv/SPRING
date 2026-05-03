@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2007 Tim Kientzle
  * All rights reserved.
  *
@@ -81,25 +81,6 @@ static int64_t lookup_gid(void *, const char *uname, int64_t);
 static int64_t lookup_uid(void *, const char *uname, int64_t);
 static void cleanup(void *);
 
-/*
- * Installs functions that use getpwnam()/getgrnam()---along with
- * a simple cache to accelerate such lookups---into the archive_write_disk
- * object.  This is in a separate file because getpwnam()/getgrnam()
- * can pull in a LOT of library code (including NIS/LDAP functions, which
- * pull in DNS resolvers, etc).  This can easily top 500kB, which makes
- * it inappropriate for some space-constrained applications.
- *
- * Applications that are size-sensitive may want to just use the
- * real default functions (defined in archive_write_disk.c) that just
- * use the uid/gid without the lookup.  Or define your own custom functions
- * if you prefer.
- *
- * TODO: Replace these hash tables with simpler move-to-front LRU
- * lists with a bounded size (128 items?).  The hash is a bit faster,
- * but has a bad pathology in which it thrashes a single bucket.  Even
- * walking a list of 128 items is a lot faster than calling
- * getpwnam()!
- */
 int archive_write_disk_set_standard_lookup(struct archive *a) {
   struct bucket *ucache = calloc(cache_size, sizeof(struct bucket));
   struct bucket *gcache = calloc(cache_size, sizeof(struct bucket));
@@ -118,20 +99,17 @@ static int64_t lookup_gid(void *private_data, const char *gname, int64_t gid) {
   struct bucket *b;
   struct bucket *gcache = (struct bucket *)private_data;
 
-  /* If no gname, just use the gid provided. */
   if (gname == NULL || *gname == '\0')
     return (gid);
 
-  /* Try to find gname in the cache. */
   h = hash(gname);
   b = &gcache[h % cache_size];
   if (b->name != NULL && b->hash == h && strcmp(gname, b->name) == 0)
     return ((gid_t)b->id);
 
-  /* Free the cache slot for a new entry. */
   free(b->name);
   b->name = strdup(gname);
-  /* Note: If strdup fails, that's okay; we just won't cache. */
+
   b->hash = h;
 #if HAVE_GRP_H
 #if HAVE_GETGRNAM_R
@@ -144,7 +122,7 @@ static int64_t lookup_gid(void *private_data, const char *gname, int64_t gid) {
     int r;
 
     for (;;) {
-      result = &grent; /* Old getgrnam_r ignores last arg. */
+      result = &grent;
       r = getgrnam_r(gname, &grent, buffer, bufsize, &result);
       if (r == 0)
         break;
@@ -161,7 +139,7 @@ static int64_t lookup_gid(void *private_data, const char *gname, int64_t gid) {
       gid = result->gr_gid;
     free(allocated);
   }
-#else  /* HAVE_GETGRNAM_R */
+#else
   {
     struct group *result;
 
@@ -169,9 +147,9 @@ static int64_t lookup_gid(void *private_data, const char *gname, int64_t gid) {
     if (result != NULL)
       gid = result->gr_gid;
   }
-#endif /* HAVE_GETGRNAM_R */
+#endif
 #elif defined(_WIN32) && !defined(__CYGWIN__)
-  /* TODO: do a gname->gid lookup for Windows. */
+
 #else
 #error No way to perform gid lookups on this platform
 #endif
@@ -185,20 +163,17 @@ static int64_t lookup_uid(void *private_data, const char *uname, int64_t uid) {
   struct bucket *b;
   struct bucket *ucache = (struct bucket *)private_data;
 
-  /* If no uname, just use the uid provided. */
   if (uname == NULL || *uname == '\0')
     return (uid);
 
-  /* Try to find uname in the cache. */
   h = hash(uname);
   b = &ucache[h % cache_size];
   if (b->name != NULL && b->hash == h && strcmp(uname, b->name) == 0)
     return ((uid_t)b->id);
 
-  /* Free the cache slot for a new entry. */
   free(b->name);
   b->name = strdup(uname);
-  /* Note: If strdup fails, that's okay; we just won't cache. */
+
   b->hash = h;
 #if HAVE_PWD_H
 #if HAVE_GETPWNAM_R
@@ -211,7 +186,7 @@ static int64_t lookup_uid(void *private_data, const char *uname, int64_t uid) {
     int r;
 
     for (;;) {
-      result = &pwent; /* Old getpwnam_r ignores last arg. */
+      result = &pwent;
       r = getpwnam_r(uname, &pwent, buffer, bufsize, &result);
       if (r == 0)
         break;
@@ -228,7 +203,7 @@ static int64_t lookup_uid(void *private_data, const char *uname, int64_t uid) {
       uid = result->pw_uid;
     free(allocated);
   }
-#else  /* HAVE_GETPWNAM_R */
+#else
   {
     struct passwd *result;
 
@@ -236,9 +211,9 @@ static int64_t lookup_uid(void *private_data, const char *uname, int64_t uid) {
     if (result != NULL)
       uid = result->pw_uid;
   }
-#endif /* HAVE_GETPWNAM_R */
+#endif
 #elif defined(_WIN32) && !defined(__CYGWIN__)
-  /* TODO: do a uname->uid lookup for Windows. */
+
 #else
 #error No way to look up uids on this platform
 #endif
@@ -257,8 +232,7 @@ static void cleanup(void *private) {
 }
 
 static unsigned int hash(const char *p) {
-  /* A 32-bit version of Peter Weinberger's (PJW) hash algorithm,
-     as used by ELF for hashing function names. */
+
   unsigned g, h = 0;
   while (*p != '\0') {
     h = (h << 4) + *p++;

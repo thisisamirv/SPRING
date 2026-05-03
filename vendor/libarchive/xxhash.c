@@ -1,4 +1,4 @@
-/*
+﻿/*
 xxHash - Fast Hash algorithm
 Copyright (C) 2012-2014, Yann Collet.
 BSD 2-Clause License (http://www.opensource.org/licenses/bsd-license.php)
@@ -40,56 +40,18 @@ You can contact the author at :
 #include <stdlib.h>
 #include <string.h>
 
-/***************************************
-** Tuning parameters
-****************************************/
-/* Unaligned memory access is automatically enabled for "common" CPU, such as
-* x86.
-** For others CPU, the compiler will be more cautious, and insert extra code to
-* ensure aligned access is respected.
-** If you know your target CPU supports unaligned memory access, you want to
-* force this option manually to improve performance.
-** You can also enable this parameter if you know your input data will always be
-* aligned (boundaries of 4, for U32).
-*/
 #if defined(__ARM_FEATURE_UNALIGNED) || defined(__i386) || defined(_M_IX86) || \
     defined(__x86_64__) || defined(_M_X64)
 #define XXH_USE_UNALIGNED_ACCESS 1
 #endif
 
-/* XXH_ACCEPT_NULL_INPUT_POINTER :
-** If the input pointer is a null pointer, xxHash default behavior is to trigger
-a memory access error, since it is a bad pointer.
-** When this option is enabled, xxHash output for null input pointers will be
-the same as a null-length input.
-** This option has a very small performance cost (only measurable on small
-inputs).
-** By default, this option is disabled. To enable it, uncomment below define :
-** #define XXH_ACCEPT_NULL_INPUT_POINTER 1
-
-** XXH_FORCE_NATIVE_FORMAT :
-** By default, xxHash library provides endian-independent Hash values, based on
-little-endian convention.
-** Results are therefore identical for little-endian and big-endian CPU.
-** This comes at a performance cost for big-endian CPU, since some swapping is
-required to emulate little-endian format.
-** Should endian-independence be of no importance for your application, you may
-set the #define below to 1.
-** It will improve speed for Big-endian CPU.
-** This option has no impact on Little_Endian CPU.
-*/
 #define XXH_FORCE_NATIVE_FORMAT 0
 
-/***************************************
-** Compiler Specific Options
-****************************************/
-/* Disable some Visual warning messages */
-#ifdef _MSC_VER /* Visual Studio */
-#pragma warning(                                                               \
-    disable : 4127) /* disable: C4127: conditional expression is constant */
+#ifdef _MSC_VER
+#pragma warning(disable : 4127)
 #endif
 
-#ifdef _MSC_VER /* Visual Studio */
+#ifdef _MSC_VER
 #define FORCE_INLINE __forceinline
 #else
 #ifdef __GNUC__
@@ -99,15 +61,11 @@ set the #define below to 1.
 #endif
 #endif
 
-/***************************************
-** Includes & Memory related functions
-****************************************/
-
 static unsigned int XXH32(const void *, unsigned int, unsigned int);
 static void *XXH32_init(unsigned int);
 static XXH_errorcode XXH32_update(void *, const void *, unsigned int);
 static unsigned int XXH32_digest(void *);
-/*static int		  XXH32_sizeofState(void);*/
+
 static XXH_errorcode XXH32_resetState(void *, unsigned int);
 #define XXH32_SIZEOFSTATE 48
 typedef struct {
@@ -116,10 +74,7 @@ typedef struct {
 } XXH32_stateSpace_t;
 static unsigned int XXH32_intermediateDigest(void *);
 
-/***************************************
-** Basic Types
-****************************************/
-#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L /* C99 */
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
 #include <stdint.h>
 typedef uint8_t BYTE;
 typedef uint16_t U16;
@@ -156,9 +111,6 @@ typedef struct _U32_S {
 #pragma pack(pop)
 #endif
 
-/****************************************
-** Compiler-specific Functions and Macros
-*****************************************/
 #define GCC_VERSION ((__GNUC__ - 0) * 100 + (__GNUC_MINOR__ - 0))
 
 #if GCC_VERSION >= 409
@@ -177,15 +129,13 @@ static inline U32 A32(const void *x)
   return (((const U32_S *)(x))->v);
 }
 
-/* Note : although _rotl exists for minGW (GCC under windows), performance seems
- * poor */
 #if defined(_MSC_VER)
 #define XXH_rotl32(x, r) _rotl(x, r)
 #else
 #define XXH_rotl32(x, r) ((x << r) | (x >> (32 - r)))
 #endif
 
-#if defined(_MSC_VER) /* Visual Studio */
+#if defined(_MSC_VER)
 #define XXH_swap32 _byteswap_ulong
 #elif GCC_VERSION >= 403
 #define XXH_swap32 __builtin_bswap32
@@ -196,37 +146,24 @@ static inline U32 XXH_swap32(U32 x) {
 }
 #endif
 
-/***************************************
-** Constants
-****************************************/
 #define PRIME32_1 2654435761U
 #define PRIME32_2 2246822519U
 #define PRIME32_3 3266489917U
 #define PRIME32_4 668265263U
 #define PRIME32_5 374761393U
 
-/***************************************
-** Architecture Macros
-****************************************/
 typedef enum { XXH_bigEndian = 0, XXH_littleEndian = 1 } XXH_endianess;
-#ifndef XXH_CPU_LITTLE_ENDIAN /* It is possible to define                      \
-                                 XXH_CPU_LITTLE_ENDIAN externally, for example \
-                                 using a compiler switch */
+#ifndef XXH_CPU_LITTLE_ENDIAN
+
 static const int one = 1;
 #define XXH_CPU_LITTLE_ENDIAN (*(const char *)(&one))
 #endif
 
-/***************************************
-** Macros
-****************************************/
 #define XXH_STATIC_ASSERT(c)                                                   \
   {                                                                            \
     enum { XXH_static_assert = 1 / (!!(c)) };                                  \
-  } /* use only *after* variable declarations */
+  }
 
-/*****************************
-** Memory reads
-******************************/
 typedef enum { XXH_aligned, XXH_unaligned } XXH_alignment;
 
 static FORCE_INLINE U32 XXH_readLE32_align(const U32 *ptr, XXH_endianess endian,
@@ -241,9 +178,6 @@ static FORCE_INLINE U32 XXH_readLE32(const U32 *ptr, XXH_endianess endian) {
   return XXH_readLE32_align(ptr, endian, XXH_unaligned);
 }
 
-/*****************************
-** Simple Hash Functions
-******************************/
 static FORCE_INLINE U32 XXH32_endian_align(const void *input, unsigned int len,
                                            U32 seed, XXH_endianess endian,
                                            XXH_alignment align) {
@@ -316,7 +250,7 @@ static FORCE_INLINE U32 XXH32_endian_align(const void *input, unsigned int len,
 
 U32 XXH32(const void *input, unsigned int len, U32 seed) {
 #if 0
-    // Simple version, good for code maintenance, but unfortunately slow for small inputs
+    
     void* state = XXH32_init(seed);
     XXH32_update(state, input, len);
     return XXH32_digest(state);
@@ -324,9 +258,7 @@ U32 XXH32(const void *input, unsigned int len, U32 seed) {
   XXH_endianess endian_detected = (XXH_endianess)XXH_CPU_LITTLE_ENDIAN;
 
 #if !defined(XXH_USE_UNALIGNED_ACCESS)
-  if ((((size_t)input) & 3) ==
-      0) /* Input is aligned, let's leverage the speed advantage */
-  {
+  if ((((size_t)input) & 3) == 0) {
     if ((endian_detected == XXH_littleEndian) || XXH_FORCE_NATIVE_FORMAT)
       return XXH32_endian_align(input, len, seed, XXH_littleEndian,
                                 XXH_aligned);
@@ -343,10 +275,6 @@ U32 XXH32(const void *input, unsigned int len, U32 seed) {
 #endif
 }
 
-/*****************************
-** Advanced Hash Functions
-******************************/
-
 struct XXH_state32_t {
   U64 total_len;
   U32 seed;
@@ -362,7 +290,7 @@ struct XXH_state32_t {
 static
 int XXH32_sizeofState(void)
 {
-    XXH_STATIC_ASSERT(XXH32_SIZEOFSTATE >= sizeof(struct XXH_state32_t));   /* A compilation error here means XXH32_SIZEOFSTATE is not large enough */
+    XXH_STATIC_ASSERT(XXH32_SIZEOFSTATE >= sizeof(struct XXH_state32_t));   
     return sizeof(struct XXH_state32_t);
 }
 #endif
@@ -400,15 +328,13 @@ static FORCE_INLINE XXH_errorcode XXH32_update_endian(void *state_in,
 
   state->total_len += len;
 
-  if (state->memsize + len < 16) /* fill in tmp buffer */
-  {
+  if (state->memsize + len < 16) {
     memcpy(state->memory + state->memsize, input, len);
     state->memsize += len;
     return XXH_OK;
   }
 
-  if (state->memsize) /* some data left from previous update */
-  {
+  if (state->memsize) {
     memcpy(state->memory + state->memsize, input, 16 - state->memsize);
     {
       const U32 *p32 = (const U32 *)state->memory;
@@ -541,9 +467,6 @@ const struct archive_xxhash __archive_xxhash = {XXH32, XXH32_init, XXH32_update,
                                                 XXH32_digest};
 #else
 
-/*
- * Define an empty version of the struct if we aren't using the LZ4 library.
- */
 const struct archive_xxhash __archive_xxhash = {NULL, NULL, NULL, NULL};
 
-#endif /* HAVE_LIBLZ4 */
+#endif

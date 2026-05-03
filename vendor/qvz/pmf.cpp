@@ -1,4 +1,4 @@
-#include <limits>
+﻿#include <limits>
 #include <stdio.h>
 #include <string.h>
 
@@ -7,11 +7,6 @@
 namespace spring {
 namespace qvz {
 
-// #define log2(a) log(a)/log(2.0)
-/**
- * Allocates the memory for an alphabet structure and fills the symbols
- * with a default list of 0 through size-1
- */
 struct alphabet_t *alloc_alphabet(uint32_t size) {
   symbol_t i;
   struct alphabet_t *rtn =
@@ -27,9 +22,6 @@ struct alphabet_t *alloc_alphabet(uint32_t size) {
   return rtn;
 }
 
-/**
- * Makes a copy of the given alphabet
- */
 struct alphabet_t *duplicate_alphabet(const struct alphabet_t *a) {
   struct alphabet_t *rtn =
       (struct alphabet_t *)calloc(1, sizeof(struct alphabet_t));
@@ -42,10 +34,6 @@ struct alphabet_t *duplicate_alphabet(const struct alphabet_t *a) {
   return rtn;
 }
 
-/**
- * Allocates a PMF structure for the given alphabet, but it does not copy the
- * alphabet
- */
 struct pmf_t *alloc_pmf(const struct alphabet_t *alphabet) {
   struct pmf_t *rtn = (struct pmf_t *)calloc(1, sizeof(struct pmf_t));
   rtn->alphabet = alphabet;
@@ -54,9 +42,6 @@ struct pmf_t *alloc_pmf(const struct alphabet_t *alphabet) {
   return rtn;
 }
 
-/**
- * Allocates an array for tracking a list of PMFs along with the underlying PMFs
- */
 struct pmf_list_t *alloc_pmf_list(uint32_t size,
                                   const struct alphabet_t *alphabet) {
   uint32_t i;
@@ -72,27 +57,18 @@ struct pmf_list_t *alloc_pmf_list(uint32_t size,
   return rtn;
 }
 
-/**
- * Frees an alphabet
- */
 void free_alphabet(struct alphabet_t *alphabet) {
   free(alphabet->symbols);
   free(alphabet->indexes);
   free(alphabet);
 }
 
-/**
- * Frees a PMF
- */
 void free_pmf(struct pmf_t *pmf) {
   free(pmf->counts);
   free(pmf->pmf);
   free(pmf);
 }
 
-/**
- * Frees a list of PMFs
- */
 void free_pmf_list(struct pmf_list_t *pmfs) {
   uint32_t i;
   for (i = 0; i < pmfs->size; ++i) {
@@ -102,9 +78,6 @@ void free_pmf_list(struct pmf_list_t *pmfs) {
   free(pmfs);
 }
 
-/**
- * Determine if a pmf is valid (if it sums to 1, within some tolerance)
- */
 uint32_t is_pmf_valid(struct pmf_t *pmf) {
   double sum = 0;
   uint32_t i;
@@ -121,20 +94,12 @@ uint32_t is_pmf_valid(struct pmf_t *pmf) {
   return 0;
 }
 
-/**
- * Gets the probability for a specific location, triggering lazy re-eval if
- * necessary
- */
 double get_probability(struct pmf_t *pmf, uint32_t idx) {
   if (!pmf->pmf_ready)
     recalculate_pmf(pmf);
   return pmf->pmf[idx];
 }
 
-/**
- * Gets the probability for a specific symbol, triggering lazy re-eval if
- * necessary
- */
 double get_symbol_probability(struct pmf_t *pmf, symbol_t symbol) {
   uint32_t idx = get_symbol_index(pmf->alphabet, symbol);
 
@@ -145,9 +110,6 @@ double get_symbol_probability(struct pmf_t *pmf, symbol_t symbol) {
   return 0.0;
 }
 
-/**
- * Calculate the entropy of this pmf in bits
- */
 double get_entropy(struct pmf_t *pmf) {
   double entropy = 0.0;
   uint32_t i = 0;
@@ -164,10 +126,6 @@ double get_entropy(struct pmf_t *pmf) {
   return entropy;
 }
 
-/**
- * Calculates the Kullbeck-Leibler Divergence between two PMFs, p and q, as
- * D(p||q)
- */
 double get_kl_divergence(struct pmf_t *p, struct pmf_t *q) {
   double d = 0.0;
   uint32_t i;
@@ -191,13 +149,6 @@ double get_kl_divergence(struct pmf_t *p, struct pmf_t *q) {
   return d;
 }
 
-/**
- * Combine two PMFs with two weight parameters to scale each before adding. This
- * operates based on the probabilities, not the counts, so it is suitable for
- * use
- * in calculating the law of total probability: p(a)p(X|Y=a) + p(b)p(X|Y=b) when
- * the empirical distributions do not contain the same number of observations
- */
 struct pmf_t *combine_pmfs(struct pmf_t *a, struct pmf_t *b, double weight_a,
                            double weight_b, struct pmf_t *result) {
   uint32_t i;
@@ -217,19 +168,11 @@ struct pmf_t *combine_pmfs(struct pmf_t *a, struct pmf_t *b, double weight_a,
   return result;
 }
 
-/**
- * When counting symbols, this handles incrementing everything for the given
- * index
- */
 void pmf_increment(struct pmf_t *pmf, uint32_t index) {
   pmf->counts[index] += 1;
   pmf->total += 1;
 }
 
-/**
- * Recalculates the PMF as a series of doubles from the empirical counts and
- * total
- */
 void recalculate_pmf(struct pmf_t *pmf) {
   uint32_t i;
   double total = (double)pmf->total;
@@ -243,23 +186,17 @@ void recalculate_pmf(struct pmf_t *pmf) {
   }
 }
 
-/**
- * Renormalizes a PMF if it is nonzero
- */
 void renormalize_pmf(struct pmf_t *pmf) {
   double total = 0;
   uint32_t i;
 
-  // PMFs still in counts form never need renormalization
   if (!pmf->pmf_ready)
     return;
 
-  // Find total
   for (i = 0; i < pmf->alphabet->size; ++i) {
     total += pmf->pmf[i];
   }
 
-  // If nonzero, scale every entry to ensure we sum to 1
   if (total > 0) {
     for (i = 0; i < pmf->alphabet->size; ++i) {
       pmf->pmf[i] = pmf->pmf[i] / total;
@@ -267,13 +204,6 @@ void renormalize_pmf(struct pmf_t *pmf) {
   }
 }
 
-/**
- * Converts a PMF that is stored as a series of doubles back to the counts
- * representation,
- * or alternatively this can be viewed as quantizing it into a fixed point
- * representation in
- * 0.m format
- */
 void pmf_to_counts(struct pmf_t *pmf, uint32_t m) {
   uint32_t i;
   double scale = ((1 << m) - 1);
@@ -285,10 +215,6 @@ void pmf_to_counts(struct pmf_t *pmf, uint32_t m) {
   }
 }
 
-/**
- * Zeros out the counts and probabilities for a PMF to let us reuse the same
- * memory allocation
- */
 void clear_pmf(struct pmf_t *pmf) {
   memset(pmf->counts, 0, pmf->alphabet->size * sizeof(uint32_t));
   memset(pmf->pmf, 0, pmf->alphabet->size * sizeof(double));
@@ -296,11 +222,6 @@ void clear_pmf(struct pmf_t *pmf) {
   pmf->total = 0;
 }
 
-/**
- * Zeros out every pmf in the given list, so we can reuse the entire pmf list
- * without
- * deallocating/reallocating memory
- */
 void clear_pmf_list(struct pmf_list_t *list) {
   uint32_t i;
   for (i = 0; i < list->size; ++i) {
@@ -308,26 +229,15 @@ void clear_pmf_list(struct pmf_list_t *list) {
   }
 }
 
-/**
- * Determines if the given alphabet contains the given symbol
- */
 uint32_t alphabet_contains(const struct alphabet_t *alphabet, symbol_t symbol) {
   return alphabet->indexes[(uint8_t)symbol] != ALPHABET_SYMBOL_NOT_FOUND ? 1
                                                                          : 0;
 }
 
-/**
- * Looks up the index of a symbol in the given alphabet, which may be useful
- * if the alphabet doesn't start at zero, has gaps, etc.
- */
 uint32_t get_symbol_index(const struct alphabet_t *alphabet, symbol_t symbol) {
   return alphabet->indexes[(uint8_t)symbol];
 }
 
-/**
- * Finds the unique set of symbols across both input alphabets and creates an
- * output alphabet
- */
 void alphabet_union(const struct alphabet_t *restrict a,
                     const struct alphabet_t *restrict b,
                     struct alphabet_t *result) {
@@ -336,7 +246,6 @@ void alphabet_union(const struct alphabet_t *restrict a,
   uint32_t j = 0;
   uint32_t k = 0;
 
-  // Combine with a merge algorithm since alphabets are required to be sorted
   while (i < a->size && j < b->size) {
     if (a->symbols[i] < b->symbols[j]) {
       sym[k] = a->symbols[i];
@@ -352,7 +261,6 @@ void alphabet_union(const struct alphabet_t *restrict a,
     k += 1;
   }
 
-  // Tail of the merge
   while (i < a->size) {
     sym[k] = a->symbols[i];
     k += 1;
@@ -364,35 +272,24 @@ void alphabet_union(const struct alphabet_t *restrict a,
     j += 1;
   }
 
-  // If we already have an output array, replace it with a new one
   if (result->symbols)
     free(result->symbols);
   result->symbols = (symbol_t *)calloc(k, sizeof(symbol_t));
 
-  // Copy over temporary data
   memcpy(result->symbols, sym, k * sizeof(symbol_t));
   result->size = k;
   alphabet_compute_index(result);
   free(sym);
 }
 
-/**
- * Computes the index table (reverse mapping of symbols in the alphabet)
- * that is used to speed up searches for symbols). This isn't a proper
- * hash table and it will consume exponential memory if symbol_t changes
- * size, so be careful
- */
 void alphabet_compute_index(struct alphabet_t *A) {
   uint32_t i;
 
   if (A->indexes)
     free(A->indexes);
 
-  // Cheating but whatever
   A->indexes = (uint32_t *)calloc(ALPHABET_INDEX_SIZE_HINT, sizeof(uint32_t));
 
-  // Fill gaps in the table with an appropriate index so we can use this for
-  // search too
   for (i = 0; i < ALPHABET_INDEX_SIZE_HINT; ++i) {
     A->indexes[i] = ALPHABET_SYMBOL_NOT_FOUND;
   }
@@ -402,9 +299,6 @@ void alphabet_compute_index(struct alphabet_t *A) {
   }
 }
 
-/**
- * Displays an alphabet as "(index): 'character' <number>" one per line
- */
 void print_alphabet(const struct alphabet_t *alphabet) {
   uint32_t i;
   for (i = 0; i < alphabet->size; ++i) {
@@ -412,9 +306,6 @@ void print_alphabet(const struct alphabet_t *alphabet) {
   }
 }
 
-/**
- * Displays a PMF
- */
 void print_pmf(struct pmf_t *pmf) {
   uint32_t i;
 

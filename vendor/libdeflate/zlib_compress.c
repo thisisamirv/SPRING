@@ -1,4 +1,4 @@
-/*
+﻿/*
  * zlib_compress.c - compress with a zlib wrapper
  *
  * Copyright 2016 Eric Biggers
@@ -26,7 +26,7 @@
  */
 
 #include "lib_common.h"
-// lib_common first
+
 #include "deflate_compress.h"
 #include "zlib_constants.h"
 
@@ -43,7 +43,6 @@ LIBDEFLATEAPI size_t libdeflate_zlib_compress(struct libdeflate_compressor *c,
   if (out_nbytes_avail <= ZLIB_MIN_OVERHEAD)
     return 0;
 
-  /* 2 byte header: CMF and FLG  */
   hdr = (ZLIB_CM_DEFLATE << 8) | (ZLIB_CINFO_32K_WINDOW << 12);
   compression_level = libdeflate_get_compression_level(c);
   if (compression_level < 2)
@@ -60,14 +59,12 @@ LIBDEFLATEAPI size_t libdeflate_zlib_compress(struct libdeflate_compressor *c,
   put_unaligned_be16(hdr, out_next);
   out_next += 2;
 
-  /* Compressed data  */
   deflate_size = libdeflate_deflate_compress(
       c, in, in_nbytes, out_next, out_nbytes_avail - ZLIB_MIN_OVERHEAD);
   if (deflate_size == 0)
     return 0;
   out_next += deflate_size;
 
-  /* ADLER32  */
   put_unaligned_be32(libdeflate_adler32(1, in, in_nbytes), out_next);
   out_next += 4;
 

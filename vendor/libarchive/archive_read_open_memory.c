@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2007 Tim Kientzle
  * All rights reserved.
  *
@@ -39,14 +39,6 @@
 #error "archive.h must be included"
 #endif
 
-/*
- * Glue to read an archive from a block of memory.
- *
- * This is mostly a huge help in building test harnesses;
- * test programs can build archives in memory and read them
- * back again without having to mess with files on disk.
- */
-
 struct read_memory_data {
   const unsigned char *start;
   const unsigned char *p;
@@ -65,11 +57,6 @@ int archive_read_open_memory(struct archive *a, const void *buff, size_t size) {
   return archive_read_open_memory2(a, buff, size, size);
 }
 
-/*
- * Don't use _open_memory2() in production code; the archive_read_open_memory()
- * version is the one you really want.  This is just here so that
- * test harnesses can exercise block operations inside the library.
- */
 int archive_read_open_memory2(struct archive *a, const void *buff, size_t size,
                               size_t read_size) {
   struct read_memory_data *mine;
@@ -91,28 +78,18 @@ int archive_read_open_memory2(struct archive *a, const void *buff, size_t size,
   return (archive_read_open1(a));
 }
 
-/*
- * There's nothing to open.
- */
 static int memory_read_open(struct archive *a, void *client_data) {
-  (void)a;           /* UNUSED */
-  (void)client_data; /* UNUSED */
+  (void)a;
+  (void)client_data;
   return (ARCHIVE_OK);
 }
 
-/*
- * This is scary simple:  Just advance a pointer.  Limiting
- * to read_size is not technically necessary, but it exercises
- * more of the internal logic when used with a small block size
- * in a test harness.  Production use should not specify a block
- * size; then this is much faster.
- */
 static ssize_t memory_read(struct archive *a, void *client_data,
                            const void **buff) {
   struct read_memory_data *mine = (struct read_memory_data *)client_data;
   ssize_t size;
 
-  (void)a; /* UNUSED */
+  (void)a;
   *buff = mine->p;
   size = mine->end - mine->p;
   if (size > mine->read_size)
@@ -121,33 +98,25 @@ static ssize_t memory_read(struct archive *a, void *client_data,
   return (size);
 }
 
-/*
- * Advancing is just as simple.  Again, this is doing more than
- * necessary in order to better exercise internal code when used
- * as a test harness.
- */
 static int64_t memory_read_skip(struct archive *a, void *client_data,
                                 int64_t skip) {
   struct read_memory_data *mine = (struct read_memory_data *)client_data;
 
-  (void)a; /* UNUSED */
+  (void)a;
   if ((int64_t)skip > (int64_t)(mine->end - mine->p))
     skip = mine->end - mine->p;
-  /* Round down to block size. */
+
   skip /= mine->read_size;
   skip *= mine->read_size;
   mine->p += skip;
   return (skip);
 }
 
-/*
- * Seeking.
- */
 static int64_t memory_read_seek(struct archive *a, void *client_data,
                                 int64_t offset, int whence) {
   struct read_memory_data *mine = (struct read_memory_data *)client_data;
 
-  (void)a; /* UNUSED */
+  (void)a;
   switch (whence) {
   case SEEK_SET:
     mine->p = mine->start + offset;
@@ -172,12 +141,9 @@ static int64_t memory_read_seek(struct archive *a, void *client_data,
   return (mine->p - mine->start);
 }
 
-/*
- * Close is just cleaning up our one small bit of data.
- */
 static int memory_read_close(struct archive *a, void *client_data) {
   struct read_memory_data *mine = (struct read_memory_data *)client_data;
-  (void)a; /* UNUSED */
+  (void)a;
   free(mine);
   return (ARCHIVE_OK);
 }

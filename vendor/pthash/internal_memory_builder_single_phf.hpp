@@ -1,9 +1,10 @@
-#ifndef PTHASH_BUILDERS_INTERNAL_MEMORY_BUILDER_SINGLE_PHF_HPP
+﻿#ifndef PTHASH_BUILDERS_INTERNAL_MEMORY_BUILDER_SINGLE_PHF_HPP
 #define PTHASH_BUILDERS_INTERNAL_MEMORY_BUILDER_SINGLE_PHF_HPP
 
-#include "search.hpp"
 #include "builders_util.hpp"
 #include "hasher.hpp"
+#include "search.hpp"
+
 
 namespace pthash {
 
@@ -17,8 +18,7 @@ struct internal_memory_builder_single_phf {
   template <typename RandomAccessIterator>
   build_timings build_from_keys(RandomAccessIterator keys,
                                 const uint64_t num_keys,
-                                build_configuration const &config) //
-  {
+                                build_configuration const &config) {
     if (config.seed == constants::invalid_seed) {
       build_configuration actual_config = config;
       for (auto attempt = 0; attempt < 10; ++attempt) {
@@ -41,8 +41,7 @@ struct internal_memory_builder_single_phf {
   template <typename RandomAccessIterator>
   build_timings build_from_hashes(RandomAccessIterator hashes,
                                   const uint64_t num_keys,
-                                  build_configuration const &config) //
-  {
+                                  build_configuration const &config) {
     assert(num_keys > 0);
     util::check_hash_collision_probability<Hasher>(num_keys);
 
@@ -116,8 +115,8 @@ struct internal_memory_builder_single_phf {
       bits::bit_vector::builder taken_bvb(m_table_size);
       uint64_t num_non_empty_buckets = buckets.num_buckets();
       pilots_wrapper_t pilots_wrapper(m_pilots);
-      search(m_num_keys, m_num_buckets, num_non_empty_buckets, //
-             config, buckets_iterator, taken_bvb, pilots_wrapper);
+      search(m_num_keys, m_num_buckets, num_non_empty_buckets, config,
+             buckets_iterator, taken_bvb, pilots_wrapper);
       taken_bvb.build(m_taken);
       if (config.minimal) {
         m_free_slots.clear();
@@ -184,17 +183,13 @@ struct internal_memory_builder_single_phf {
             ? compute_num_buckets(num_keys, config.lambda)
             : config.num_buckets;
 
-    uint64_t num_bytes_for_map =
-        num_keys * sizeof(bucket_payload_pair)         // pairs
-        + (num_keys + num_buckets) * sizeof(uint64_t); // buckets
+    uint64_t num_bytes_for_map = num_keys * sizeof(bucket_payload_pair) +
+                                 (num_keys + num_buckets) * sizeof(uint64_t);
 
     uint64_t num_bytes_for_search =
-        num_buckets * sizeof(uint64_t)   // pilots
-        + num_buckets * sizeof(uint64_t) // buckets
-        + (config.minimal ? (table_size - num_keys) * sizeof(uint64_t)
-                          : 0)        // free_slots
-        + num_keys * sizeof(uint64_t) // hashes
-        + table_size / 8;             // bitmap taken
+        num_buckets * sizeof(uint64_t) + num_buckets * sizeof(uint64_t) +
+        (config.minimal ? (table_size - num_keys) * sizeof(uint64_t) : 0) +
+        num_keys * sizeof(uint64_t) + table_size / 8;
 
     return std::max<uint64_t>(num_bytes_for_map, num_bytes_for_search);
   }
@@ -384,4 +379,4 @@ private:
 
 } // namespace pthash
 
-#endif // PTHASH_BUILDERS_INTERNAL_MEMORY_BUILDER_SINGLE_PHF_HPP
+#endif

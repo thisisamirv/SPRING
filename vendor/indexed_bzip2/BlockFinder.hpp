@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <algorithm>
 #include <atomic>
@@ -21,17 +21,7 @@
 #endif
 
 namespace rapidgzip {
-/**
- * This is a future-like wrapper around a given actual block finder, which is
- * running asynchronously. The results are not only computed in parallel but
- * also prefetched up to a certain distance to allow full utilization of
- * parallelism for the asynchronous computation. This class also acts as a
- * database (StreamedResults is the actual database) after all results have been
- * computed and can be initialized with the results to avoid recomputing them.
- *
- * @tparam RawBlockFinder Must implement a `size_t find()` method which returns
- * block offsets.
- */
+
 template <typename T_RawBlockFinder>
 class BlockFinder final : public BlockFinderInterface {
 public:
@@ -75,7 +65,6 @@ public:
 
   [[nodiscard]] size_t size() const override { return m_blockOffsets.size(); }
 
-  /** Finalizes and will only keep the first @param blockCount blocks. */
   void finalize(std::optional<size_t> blockCount = {}) {
     stopThreads();
     m_rawBlockFinder = {};
@@ -88,12 +77,6 @@ public:
 
   using BlockFinderInterface::get;
 
-  /**
-   * This call will track the requested block so that the finder loop will look
-   * up to that block. Per default, with the infinite timeout, either a result
-   * can be returned or if not it means we are finalized and the requested block
-   * is out of range!
-   */
   [[nodiscard]] std::pair<std::optional<size_t>, GetReturnCode>
   get(size_t blockNumber, double timeoutInSeconds) override {
 #ifdef WITH_PYTHON_SUPPORT
@@ -114,16 +97,12 @@ public:
     return m_blockOffsets.get(blockNumber, timeoutInSeconds);
   }
 
-  /** @return Index for the block at the requested offset. */
   [[nodiscard]] size_t find(size_t encodedBlockOffsetInBits) const override {
     const std::scoped_lock lock(m_mutex);
 
-    /* m_blockOffsets is effectively double-locked but that's the price of
-     * abstraction. */
     const auto lockedOffsets = m_blockOffsets.results();
     const auto &blockOffsets = lockedOffsets.results();
 
-    /* Find in sorted vector by bisection. */
     const auto match = std::lower_bound(
         blockOffsets.begin(), blockOffsets.end(), encodedBlockOffsetInBits);
     if ((match == blockOffsets.end()) || (*match != encodedBlockOffsetInBits)) {
@@ -135,12 +114,10 @@ public:
   }
 
   void setBlockOffsets(BlockOffsets blockOffsets) {
-    /* First we need to cancel the asynchronous block finder thread. */
+
     stopThreads();
     m_rawBlockFinder = {};
 
-    /* Setting the results also finalizes them. No locking necessary because all
-     * threads have shut down. */
     m_blockOffsets.setResults(std::move(blockOffsets));
   }
 
@@ -148,8 +125,7 @@ private:
   void blockFinderMain() {
     while (!m_cancelThread) {
       std::unique_lock lock(m_mutex);
-      /* m_blockOffsets.size() will only grow, so we don't need to be notified
-       * when it changes! */
+
       m_changed.wait(lock, [this] {
         return m_cancelThread ||
                (m_blockOffsets.size() <=
@@ -159,15 +135,8 @@ private:
         break;
       }
 
-      /**
-       * The time for this find method should be bounded and responsive enough
-       * for reacting to cancellations. During this compute intensive task, the
-       * lock should be unlocked! Or else, the getter and other functions will
-       * never be able to acquire the lock until this thread has finished
-       * reading the whole file!
-       */
-      lock.unlock(); // Unlock for a little while so that others can acquire the
-                     // lock!
+      lock.unlock();
+
       const auto blockOffset = m_rawBlockFinder->find();
       if (blockOffset == std::numeric_limits<size_t>::max()) {
         break;
@@ -181,21 +150,14 @@ private:
   }
 
 private:
-  mutable std::mutex m_mutex; /**< Only variables accessed by the asynchronous
-                                 main loop need to be locked. */
+  mutable std::mutex m_mutex;
+
   std::condition_variable m_changed;
 
   StreamedResults<size_t> m_blockOffsets;
 
   size_t m_highestRequestedBlockNumber{0};
 
-  /**
-   * Only hardware_concurrency slows down decoding! I guess because in the worst
-   * case all decoding threads finish at the same time and now the bit string
-   * finder would need to find n new blocks in the time it takes to decode one
-   * block! In general, the higher this number, the higher the longer will be
-   * the initial CPU utilization.
-   */
   const size_t m_prefetchCount = 3ULL * std::thread::hardware_concurrency();
 
   std::unique_ptr<RawBlockFinder> m_rawBlockFinder;

@@ -1,7 +1,4 @@
-/*-----------------------------------------------------------*/
-/* Block Sorting, Lossless Data Compression Library.         */
-/* Block Sorting Compressor                                  */
-/*-----------------------------------------------------------*/
+﻿
 
 /*--
 
@@ -117,7 +114,7 @@ class bsc_str_array_class {
   int segmentedBlock[256];
 
   int read_str_array(unsigned char *buf, int bsize) {
-    // put bsize bytes into buf from str_array
+
     int bytes_written = 0;
     while (true) {
       if (bytes_written == bsize)
@@ -147,7 +144,7 @@ class bsc_str_array_class {
   }
 
   void write_str_array(unsigned char *buf, int bsize) {
-    // put bsize bytes from buf into str_array
+
     int bytes_read = 0;
     while (true) {
       if (bytes_read == bsize)
@@ -164,14 +161,14 @@ class bsc_str_array_class {
 
       if (str_lengths[pos_in_str_array] - pos_in_current_str <=
           (uint32_t)(bsize - bytes_read)) {
-        // buffer has more bytes than current string can hold
+
         memcpy(&str_array[pos_in_str_array][pos_in_current_str],
                buf + bytes_read,
                str_lengths[pos_in_str_array] - pos_in_current_str);
         bytes_read += str_lengths[pos_in_str_array] - pos_in_current_str;
         pos_in_current_str = str_lengths[pos_in_str_array];
       } else {
-        // buffer has less bytes than current string can hold
+
         memcpy(&str_array[pos_in_str_array][pos_in_current_str],
                buf + bytes_read, bsize - bytes_read);
         pos_in_current_str += bsize - bytes_read;
@@ -209,8 +206,6 @@ class bsc_str_array_class {
       throw std::runtime_error("BSC error.");
     }
 
-    //    int segmentationStart = 0, segmentationEnd = 0;
-
     {
       unsigned char *buffer =
           (unsigned char *)bsc_malloc(paramBlockSize + LIBBSC_HEADER_SIZE);
@@ -224,134 +219,19 @@ class bsc_str_array_class {
       }
 
       while (true) {
-        //            BSC_FILEOFFSET  blockOffset     = 0;
+
         int dataSize = 0;
-
-        //            {
-        //                if ((feof(fInput) == 0) && (BSC_FTELL(fInput) !=
-        //                fileSize))
-        //                {
-
-        //                    blockOffset = BSC_FTELL(fInput);
-
-        // Store current position in the arrays in case it is needed later
 
         uint32_t cur_pos_in_str_array = pos_in_str_array;
         uint32_t cur_pos_in_current_str = pos_in_current_str;
         int currentBlockSize = paramBlockSize;
-        // Commenting out below block because we always disable segmentation
-        /*
-                            if (paramEnableSegmentation)
-                            {
-                                if (segmentationEnd - segmentationStart > 1)
-           currentBlockSize = segmentedBlock[segmentationStart];
-                            }
-        */
 
         dataSize = read_str_array(buffer, currentBlockSize);
-        /*
-                            dataSize = (int)fread(buffer, 1, currentBlockSize,
-           fInput);
-                            if (dataSize <= 0)
-                            {
-                                fprintf(stderr, "\nIO error on file: %s!\n",
-           argv[2]);
-                                throw std::runtime_error("BSC error.");
-                            }
-        */
-        // Commenting out below block because we always disable segmentation
-        /*
-                            if (paramEnableSegmentation)
-                            {
-                                bool bSegmentation = false;
-
-                                if (segmentationStart == segmentationEnd)
-           bSegmentation = true;
-                                if ((segmentationEnd - segmentationStart == 1)
-           && (dataSize != segmentedBlock[segmentationStart])) bSegmentation =
-           true;
-
-                                if (bSegmentation)
-                                {
-                                    segmentationStart = 0; segmentationEnd =
-           bsc_detect_segments(buffer, dataSize, segmentedBlock, 256,
-           paramFeatures());
-                                    if (segmentationEnd <= LIBBSC_NO_ERROR)
-                                    {
-                                        switch (segmentationEnd)
-                                        {
-                                            case LIBBSC_NOT_ENOUGH_MEMORY   :
-           fprintf(stderr, "\nNot enough memory! Please check README file for
-           more information.\n"); break;
-                                            default                         :
-           fprintf(stderr, "\nInternal program error, please contact the
-           author!\n");
-                                        }
-                                        throw std::runtime_error("BSC error.");
-                                    }
-                                }
-
-                                int newDataSize =
-           segmentedBlock[segmentationStart++];
-                                if (dataSize != newDataSize)
-                                {
-                                    BSC_FILEOFFSET pos = BSC_FTELL(fInput) -
-           dataSize + newDataSize;
-                                    BSC_FSEEK(fInput, pos, SEEK_SET);
-                                    dataSize = newDataSize;
-                                }
-                            }
-        */
-        //                }
-        //            }
 
         if (dataSize == 0)
           break;
 
         signed char recordSize = 1;
-        // Commenting out below block because we always disable reordering
-        /*
-                    if (paramEnableReordering)
-                    {
-                        recordSize = bsc_detect_recordsize(buffer, dataSize,
-           paramFeatures());
-                        if (recordSize < LIBBSC_NO_ERROR)
-                        {
-                            {
-                                switch (recordSize)
-                                {
-                                    case LIBBSC_NOT_ENOUGH_MEMORY   :
-           fprintf(stderr, "\nNot enough memory! Please check README file for
-           more information.\n"); break;
-                                    default                         :
-           fprintf(stderr, "\nInternal program error, please contact the
-           author!\n");
-                                }
-                                throw std::runtime_error("BSC error.");
-                            }
-                        }
-                        if (recordSize > 1)
-                        {
-                            int result = bsc_reorder_forward(buffer, dataSize,
-           recordSize, paramFeatures());
-                            if (result != LIBBSC_NO_ERROR)
-                            {
-                                {
-                                    switch (result)
-                                    {
-                                        case LIBBSC_NOT_ENOUGH_MEMORY   :
-           fprintf(stderr, "\nNot enough memory! Please check README file for
-           more information.\n"); break;
-                                        default                         :
-           fprintf(stderr, "\nInternal program error, please contact the
-           author!\n");
-                                    }
-                                    throw std::runtime_error("BSC error.");
-                                }
-                            }
-                        }
-                    }
-        */
 
         signed char sortingContexts = paramSortingContexts;
         if (paramSortingContexts == LIBBSC_CONTEXTS_AUTODETECT) {
@@ -393,12 +273,11 @@ class bsc_str_array_class {
 
             pos_in_str_array = cur_pos_in_str_array;
             pos_in_current_str = cur_pos_in_current_str;
-            //                    BSC_FILEOFFSET pos = BSC_FTELL(fInput);
+
             {
-              //                        BSC_FSEEK(fInput, blockOffset,
-              //                        SEEK_SET);
+
               if (dataSize != read_str_array(buffer, dataSize))
-              //(int)fread(buffer, 1, dataSize, fInput))
+
               {
                 fprintf(
                     stderr,
@@ -406,7 +285,6 @@ class bsc_str_array_class {
                 throw std::runtime_error("BSC error.");
               }
             }
-            //                    BSC_FSEEK(fInput, pos, SEEK_SET);
           }
 
           blockSize = bsc_store(buffer, buffer, dataSize, paramFeatures());
@@ -505,7 +383,6 @@ class bsc_str_array_class {
       unsigned char *buffer = NULL;
 
       while (true) {
-        //            BSC_FILEOFFSET  blockOffset     = 0;
 
         signed char sortingContexts = 0;
         signed char recordSize = 0;
@@ -536,8 +413,6 @@ class bsc_str_array_class {
                   "\nThis is not bsc archive or invalid compression method!\n");
               throw std::runtime_error("BSC error.");
             }
-
-            // blockOffset = (BSC_FILEOFFSET)header.blockOffset;
 
             unsigned char bscBlockHeader[LIBBSC_HEADER_SIZE];
 
@@ -655,12 +530,6 @@ class bsc_str_array_class {
         }
 
         {
-          //            if (BSC_FSEEK(fOutput, blockOffset, SEEK_SET))
-          //                {
-          //                    fprintf(stderr, "\nIO error on file: %s!\n",
-          //                    argv[3]);
-          //		    throw std::runtime_error("BSC error.");
-          //                }
 
           write_str_array(buffer, dataSize);
         }
@@ -862,16 +731,13 @@ public:
 
     return 0;
   }
-
-}; // end class bsc_class
+};
 
 void BSC_str_array_compress(const char *outfile, std::string *str_array_param,
                             const uint32_t size_str_array_param,
-                            uint32_t *str_lengths_param,
-                            const int bsize /* = BSC_BLOCK_SIZE*/) {
+                            uint32_t *str_lengths_param, const int bsize) {
   bsc_str_array_class b;
-  // from
-  // https://stackoverflow.com/questions/39883433/create-argc-argv-in-the-code
+
   std::vector<std::string> arguments = {
       "", "e", "", outfile, "-b" + std::to_string(bsize), "-p", "-e1"};
   std::vector<char *> argv;
@@ -886,8 +752,7 @@ void BSC_str_array_decompress(const char *infile, std::string *str_array_param,
                               const uint32_t size_str_array_param,
                               uint32_t *str_lengths_param) {
   bsc_str_array_class b;
-  // from
-  // https://stackoverflow.com/questions/39883433/create-argc-argv-in-the-code
+
   std::vector<std::string> arguments = {"", "d", infile, ""};
   std::vector<char *> argv;
   for (const auto &arg : arguments)
@@ -899,7 +764,3 @@ void BSC_str_array_decompress(const char *infile, std::string *str_array_param,
 
 } // namespace bsc
 } // namespace spring
-
-/*-----------------------------------------------------------*/
-/* End                                               bsc.cpp */
-/*-----------------------------------------------------------*/

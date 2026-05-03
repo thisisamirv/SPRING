@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2009-2012,2014 Michihiro NAKAJIMA
  * Copyright (c) 2003-2007 Tim Kientzle
  * All rights reserved.
@@ -43,10 +43,9 @@
 #endif
 #if defined(_WIN32) && !defined(__CYGWIN__)
 #if defined(HAVE_BCRYPT_H) && _WIN32_WINNT >= _WIN32_WINNT_VISTA
-/* don't use bcrypt when XP needs to be supported */
+
 #include <bcrypt.h>
 
-/* Common in other bcrypt implementations, but missing from VS2008. */
 #ifndef BCRYPT_SUCCESS
 #define BCRYPT_SUCCESS(r) ((NTSTATUS)(r) == STATUS_SUCCESS)
 #endif
@@ -101,7 +100,6 @@ static int __LA_LIBC_CC archive_utility_string_sort_helper(const void *,
                                                            const void *);
 #endif
 
-/* Generic initialization of 'struct archive' objects. */
 int __archive_clean(struct archive *a) {
   archive_string_conversion_free(a);
   return (ARCHIVE_OK);
@@ -135,16 +133,10 @@ const char *archive_compression_name(struct archive *a) {
   return archive_filter_name(a, 0);
 }
 
-/*
- * Return a count of the number of compressed bytes processed.
- */
 la_int64_t archive_position_compressed(struct archive *a) {
   return archive_filter_bytes(a, -1);
 }
 
-/*
- * Return a count of the number of uncompressed bytes processed.
- */
 la_int64_t archive_position_uncompressed(struct archive *a) {
   return archive_filter_bytes(a, 0);
 }
@@ -184,27 +176,16 @@ void __archive_errx(int retvalue, const char *msg) {
   size_t s;
 
   s = write(2, msg1, strlen(msg1));
-  (void)s; /* UNUSED */
+  (void)s;
   s = write(2, msg, strlen(msg));
-  (void)s; /* UNUSED */
+  (void)s;
   s = write(2, "\n", 1);
-  (void)s; /* UNUSED */
+  (void)s;
   exit(retvalue);
 }
 
-/*
- * Create a temporary file
- */
 #if defined(_WIN32) && !defined(__CYGWIN__)
 
-/*
- * Do not use Windows tmpfile() function.
- * It will make a temporary file under the root directory
- * and it'll cause permission error if a user who is
- * non-Administrator creates temporary files.
- * Also Windows version of mktemp family including _mktemp_s
- * are not secure.
- */
 static int __archive_mktempx(const char *tmpdir, wchar_t *template) {
   static const wchar_t prefix[] = L"libarchive_";
   static const wchar_t suffix[] = L"XXXXXXXXXX";
@@ -230,7 +211,7 @@ static int __archive_mktempx(const char *tmpdir, wchar_t *template) {
   archive_string_init(&temp_name);
 
   if (template == NULL) {
-    /* Get a temporary directory. */
+
     if (tmpdir == NULL) {
       size_t l;
       wchar_t *tmp;
@@ -256,7 +237,6 @@ static int __archive_mktempx(const char *tmpdir, wchar_t *template) {
         archive_wstrappend_wchar(&temp_name, L'/');
     }
 
-    /* Check if temp_name is a directory. */
     attr = GetFileAttributesW(temp_name.s);
     if (attr == (DWORD)-1) {
       if (GetLastError() != ERROR_FILE_NOT_FOUND) {
@@ -279,9 +259,6 @@ static int __archive_mktempx(const char *tmpdir, wchar_t *template) {
       goto exit_tmpfile;
     }
 
-    /*
-     * Create a temporary file.
-     */
     archive_wstrcat(&temp_name, prefix);
     archive_wstrcat(&temp_name, suffix);
     ep = temp_name.s + archive_strlen(&temp_name);
@@ -289,11 +266,11 @@ static int __archive_mktempx(const char *tmpdir, wchar_t *template) {
     template = temp_name.s;
   } else {
     xp = wcschr(template, L'X');
-    if (xp == NULL) /* No X, programming error */
+    if (xp == NULL)
       abort();
     for (ep = xp; *ep == L'X'; ep++)
       continue;
-    if (*ep) /* X followed by non X, programming error */
+    if (*ep)
       abort();
   }
 
@@ -314,11 +291,10 @@ static int __archive_mktempx(const char *tmpdir, wchar_t *template) {
   for (;;) {
     wchar_t *p;
     HANDLE h;
-#if _WIN32_WINNT >= 0x0602 /* _WIN32_WINNT_WIN8 */
+#if _WIN32_WINNT >= 0x0602
     CREATEFILE2_EXTENDED_PARAMETERS createExParams;
 #endif
 
-    /* Generate a random file name through CryptGenRandom(). */
     p = xp;
 #if defined(HAVE_BCRYPT_H) && _WIN32_WINNT >= _WIN32_WINNT_VISTA
     if (!BCRYPT_SUCCESS(BCryptGenRandom(
@@ -344,29 +320,25 @@ static int __archive_mktempx(const char *tmpdir, wchar_t *template) {
     if (template == temp_name.s) {
       attr = FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE;
     } else {
-      /* mkstemp */
+
       attr = FILE_ATTRIBUTE_NORMAL;
     }
-#if _WIN32_WINNT >= 0x0602 /* _WIN32_WINNT_WIN8 */
+#if _WIN32_WINNT >= 0x0602
     ZeroMemory(&createExParams, sizeof(createExParams));
     createExParams.dwSize = sizeof(createExParams);
     createExParams.dwFileAttributes = attr & 0xFFFF;
     createExParams.dwFileFlags = attr & 0xFFF00000;
-    h = CreateFile2(ws, GENERIC_READ | GENERIC_WRITE | DELETE,
-                    0, /* Not share */
-                    CREATE_NEW, &createExParams);
+    h = CreateFile2(ws, GENERIC_READ | GENERIC_WRITE | DELETE, 0, CREATE_NEW,
+                    &createExParams);
 #else
-    h = CreateFileW(ws, GENERIC_READ | GENERIC_WRITE | DELETE,
-                    0,                /* Not share */
-                    NULL, CREATE_NEW, /* Create a new file only */
-                    attr, NULL);
+    h = CreateFileW(ws, GENERIC_READ | GENERIC_WRITE | DELETE, 0, NULL,
+                    CREATE_NEW, attr, NULL);
 #endif
     if (h == INVALID_HANDLE_VALUE) {
-      /* The same file already exists. retry with
-       * a new filename. */
+
       if (GetLastError() == ERROR_FILE_EXISTS)
         continue;
-      /* Otherwise, fail creation temporary file. */
+
       la_dosmaperr(GetLastError());
       goto exit_tmpfile;
     }
@@ -376,7 +348,7 @@ static int __archive_mktempx(const char *tmpdir, wchar_t *template) {
       CloseHandle(h);
       goto exit_tmpfile;
     } else
-      break; /* success! */
+      break;
   }
 exit_tmpfile:
 #if defined(HAVE_BCRYPT_H) && _WIN32_WINNT >= _WIN32_WINNT_VISTA
@@ -446,10 +418,6 @@ int __archive_get_tempdir(struct archive_string *temppath) {
 
 #if defined(HAVE_MKSTEMP)
 
-/*
- * We can use mkstemp().
- */
-
 int __archive_mktemp(const char *tmpdir) {
   struct archive_string temp_name;
   int fd = -1;
@@ -487,11 +455,7 @@ int __archive_mkstemp(char *template) {
   return (fd);
 }
 
-#else /* !HAVE_MKSTEMP */
-
-/*
- * We use a private routine.
- */
+#else
 
 static int __archive_mktempx(const char *tmpdir, char *template) {
   static const char num[] = {
@@ -530,11 +494,11 @@ static int __archive_mktempx(const char *tmpdir, char *template) {
     template = temp_name.s;
   } else {
     tp = strchr(template, 'X');
-    if (tp == NULL) /* No X, programming error */
+    if (tp == NULL)
       abort();
     for (ep = tp; *ep == 'X'; ep++)
       continue;
-    if (*ep) /* X followed by non X, programming error */
+    if (*ep)
       abort();
   }
 
@@ -568,22 +532,12 @@ int __archive_mkstemp(char *template) {
   return __archive_mktempx(NULL, template);
 }
 
-#endif /* !HAVE_MKSTEMP */
-#endif /* !_WIN32 || __CYGWIN__ */
+#endif
+#endif
 
-/*
- * Set FD_CLOEXEC flag to a file descriptor if it is not set.
- * We have to set the flag if the platform does not provide O_CLOEXEC
- * or F_DUPFD_CLOEXEC flags.
- *
- * Note: This function is absolutely called after creating a new file
- * descriptor even if the platform seemingly provides O_CLOEXEC or
- * F_DUPFD_CLOEXEC macros because it is possible that the platform
- * merely declares those macros, especially Linux 2.6.18 - 2.6.24 do it.
- */
 void __archive_ensure_cloexec_flag(int fd) {
 #if defined(_WIN32) && !defined(__CYGWIN__)
-  (void)fd; /* UNUSED */
+  (void)fd;
 #else
   int flags;
 
@@ -596,9 +550,7 @@ void __archive_ensure_cloexec_flag(int fd) {
 }
 
 #if ARCHIVE_VERSION_NUMBER < 4000000
-/*
- * Utility functions to sort a group of strings using quicksort.
- */
+
 static int __LA_LIBC_CC archive_utility_string_sort_helper(const void *p1,
                                                            const void *p2) {
   const char *const *const s1 = p1;

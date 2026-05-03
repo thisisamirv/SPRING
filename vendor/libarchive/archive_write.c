@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2010 Tim Kientzle
  * All rights reserved.
  *
@@ -28,14 +28,6 @@
 #ifndef ARCHIVE_PLATFORM_H_INCLUDED
 #error "archive_platform.h must be included first"
 #endif
-
-/*
- * This file contains the "essential" portions of the write API, that
- * is, stuff that will essentially always be used by any client that
- * actually needs to write an archive.  Optional pieces have been, as
- * far as possible, separated out into separate files to reduce
- * needlessly bloating statically-linked clients.
- */
 
 #ifdef HAVE_SYS_WAIT_H
 #include <sys/wait.h>
@@ -110,9 +102,6 @@ static const struct archive_vtable archive_write_vtable = {
     .archive_write_data = _archive_write_data,
 };
 
-/*
- * Allocate, initialize and return an archive object.
- */
 struct archive *archive_write_new(void) {
   struct archive_write *a;
   unsigned char *nulls;
@@ -123,15 +112,10 @@ struct archive *archive_write_new(void) {
   a->archive.magic = ARCHIVE_WRITE_MAGIC;
   a->archive.state = ARCHIVE_STATE_NEW;
   a->archive.vtable = &archive_write_vtable;
-  /*
-   * The value 10240 here matches the traditional tar default,
-   * but is otherwise arbitrary.
-   * TODO: Set the default block size from the format selected.
-   */
-  a->bytes_per_block = 10240;
-  a->bytes_in_last_block = -1; /* Default */
 
-  /* Initialize a block of nulls for padding purposes. */
+  a->bytes_per_block = 10240;
+  a->bytes_in_last_block = -1;
+
   a->null_length = 1024;
   nulls = calloc(a->null_length, sizeof(unsigned char));
   if (nulls == NULL) {
@@ -142,40 +126,30 @@ struct archive *archive_write_new(void) {
   return (&a->archive);
 }
 
-/*
- * Set the block size.  Returns 0 if successful.
- */
 int archive_write_set_bytes_per_block(struct archive *_a, int bytes_per_block) {
   struct archive_write *a = (struct archive_write *)_a;
   archive_check_magic(&a->archive, ARCHIVE_WRITE_MAGIC, ARCHIVE_STATE_NEW,
                       "archive_write_set_bytes_per_block");
 
   if (bytes_per_block < 0) {
-    // Do nothing if the bytes_per_block is negative
+
     return 0;
   }
   a->bytes_per_block = bytes_per_block;
   return (ARCHIVE_OK);
 }
 
-/*
- * Get the current block size.
- */
 int archive_write_get_bytes_per_block(struct archive *_a) {
   struct archive_write *a = (struct archive_write *)_a;
   archive_check_magic(&a->archive, ARCHIVE_WRITE_MAGIC, ARCHIVE_STATE_ANY,
                       "archive_write_get_bytes_per_block");
   if (a->bytes_per_block < 0) {
-    // Don't return a negative value
+
     return 1;
   }
   return (a->bytes_per_block);
 }
 
-/*
- * Set the size for the last block.
- * Returns 0 if successful.
- */
 int archive_write_set_bytes_in_last_block(struct archive *_a, int bytes) {
   struct archive_write *a = (struct archive_write *)_a;
   archive_check_magic(&a->archive, ARCHIVE_WRITE_MAGIC, ARCHIVE_STATE_ANY,
@@ -184,9 +158,6 @@ int archive_write_set_bytes_in_last_block(struct archive *_a, int bytes) {
   return (ARCHIVE_OK);
 }
 
-/*
- * Return the value set above.  -1 indicates it has not been set.
- */
 int archive_write_get_bytes_in_last_block(struct archive *_a) {
   struct archive_write *a = (struct archive_write *)_a;
   archive_check_magic(&a->archive, ARCHIVE_WRITE_MAGIC, ARCHIVE_STATE_ANY,
@@ -194,10 +165,6 @@ int archive_write_get_bytes_in_last_block(struct archive *_a) {
   return (a->bytes_in_last_block);
 }
 
-/*
- * dev/ino of a file to be rejected.  Used to prevent adding
- * an archive to itself recursively.
- */
 int archive_write_set_skip_file(struct archive *_a, la_int64_t d,
                                 la_int64_t i) {
   struct archive_write *a = (struct archive_write *)_a;
@@ -209,9 +176,6 @@ int archive_write_set_skip_file(struct archive *_a, la_int64_t d,
   return (ARCHIVE_OK);
 }
 
-/*
- * Allocate and return the next filter structure.
- */
 struct archive_write_filter *
 __archive_write_allocate_filter(struct archive *_a) {
   struct archive_write *a = (struct archive_write *)_a;
@@ -232,30 +196,22 @@ __archive_write_allocate_filter(struct archive *_a) {
   return f;
 }
 
-/*
- * Write data to a particular filter.
- */
 int __archive_write_filter(struct archive_write_filter *f, const void *buff,
                            size_t length) {
   int r;
-  /* Never write to non-open filters */
+
   if (f->state != ARCHIVE_WRITE_FILTER_STATE_OPEN)
     return (ARCHIVE_FATAL);
   if (length == 0)
     return (ARCHIVE_OK);
   if (f->write == NULL)
-    /* If unset, a fatal error has already occurred, so this filter
-     * didn't open. We cannot write anything. */
+
     return (ARCHIVE_FATAL);
   r = (f->write)(f, buff, length);
   f->bytes_written += length;
   return (r);
 }
 
-/*
- * Recursive function for opening the filter chain
- * Last filter is opened first
- */
 static int __archive_write_open_filter(struct archive_write_filter *f) {
   int ret;
 
@@ -278,22 +234,16 @@ static int __archive_write_open_filter(struct archive_write_filter *f) {
   return (ret);
 }
 
-/*
- * Open all filters
- */
 static int __archive_write_filters_open(struct archive_write *a) {
   return (__archive_write_open_filter(a->filter_first));
 }
 
-/*
- * Close all filters
- */
 static int __archive_write_filters_close(struct archive_write *a) {
   struct archive_write_filter *f;
   int ret, ret1;
   ret = ARCHIVE_OK;
   for (f = a->filter_first; f != NULL; f = f->next_filter) {
-    /* Do not close filters that are not open */
+
     if (f->state == ARCHIVE_WRITE_FILTER_STATE_OPEN) {
       if (f->close != NULL) {
         ret1 = (f->close)(f);
@@ -388,12 +338,6 @@ static int archive_write_client_write(struct archive_write_filter *f,
 
   remaining = length;
 
-  /*
-   * If there is no buffer for blocking, just pass the data
-   * straight through to the client write callback.  In
-   * particular, this supports "no write delay" operation for
-   * special applications.  Just set the block size to zero.
-   */
   if (state->buffer_size == 0) {
     while (remaining > 0) {
       bytes_written =
@@ -406,10 +350,8 @@ static int archive_write_client_write(struct archive_write_filter *f,
     return (ARCHIVE_OK);
   }
 
-  /* If the copy buffer isn't empty, try to fill it. */
   if (state->avail < state->buffer_size) {
-    /* If buffer is not empty... */
-    /* ... copy data into buffer ... */
+
     to_copy =
         ((size_t)remaining > state->avail) ? state->avail : (size_t)remaining;
     memcpy(state->next, buff, to_copy);
@@ -417,7 +359,7 @@ static int archive_write_client_write(struct archive_write_filter *f,
     state->avail -= to_copy;
     buff += to_copy;
     remaining -= to_copy;
-    /* ... if it's full, write it out. */
+
     if (state->avail == 0) {
       char *p = state->buffer;
       size_t to_write = state->buffer_size;
@@ -439,7 +381,7 @@ static int archive_write_client_write(struct archive_write_filter *f,
   }
 
   while ((size_t)remaining >= state->buffer_size) {
-    /* Write out full blocks directly to client. */
+
     bytes_written = (a->client_writer)(&a->archive, a->client_data, buff,
                                        state->buffer_size);
     if (bytes_written <= 0)
@@ -449,7 +391,7 @@ static int archive_write_client_write(struct archive_write_filter *f,
   }
 
   if (remaining > 0) {
-    /* Copy last bit into copy buffer. */
+
     memcpy(state->next, buff, remaining);
     state->next += remaining;
     state->avail -= remaining;
@@ -465,14 +407,12 @@ static int archive_write_client_free(struct archive_write_filter *f) {
     (*a->client_freer)(&a->archive, a->client_data);
   a->client_data = NULL;
 
-  /* Clear passphrase. */
   if (a->passphrase != NULL) {
     memset(a->passphrase, 0, strlen(a->passphrase));
     free(a->passphrase);
     a->passphrase = NULL;
   }
 
-  /* Free state. */
   if (state != NULL) {
     free(state->buffer);
     free(state);
@@ -492,16 +432,14 @@ static int archive_write_client_close(struct archive_write_filter *f) {
   char *p;
   int ret = ARCHIVE_OK;
 
-  /* If there's pending data, pad and write the last block */
   if (state->next != state->buffer) {
     block_length = state->buffer_size - state->avail;
 
-    /* Tricky calculation to determine size of last block */
     if (a->bytes_in_last_block <= 0)
-      /* Default or Zero: pad to full block */
+
       target_block_length = a->bytes_per_block;
     else
-      /* Round to next multiple of bytes_in_last_block. */
+
       target_block_length = a->bytes_in_last_block *
                             ((block_length + a->bytes_in_last_block - 1) /
                              a->bytes_in_last_block);
@@ -532,14 +470,10 @@ static int archive_write_client_close(struct archive_write_filter *f) {
   if (a->client_closer)
     (*a->client_closer)(&a->archive, a->client_data);
 
-  /* Clear the close handler myself not to be called again. */
   f->state = ARCHIVE_WRITE_FILTER_STATE_CLOSED;
   return (ret);
 }
 
-/*
- * Open the archive using the current settings.
- */
 int archive_write_open2(struct archive *_a, void *client_data,
                         archive_open_callback *opener,
                         archive_write_callback *writer,
@@ -589,9 +523,6 @@ int archive_write_open(struct archive *_a, void *client_data,
   return archive_write_open2(_a, client_data, opener, writer, closer, NULL);
 }
 
-/*
- * Close out the archive.
- */
 static int _archive_write_close(struct archive *_a) {
   struct archive_write *a = (struct archive_write *)_a;
   int r = ARCHIVE_OK, r1 = ARCHIVE_OK;
@@ -601,23 +532,19 @@ static int _archive_write_close(struct archive *_a) {
                       "archive_write_close");
   if (a->archive.state == ARCHIVE_STATE_NEW ||
       a->archive.state == ARCHIVE_STATE_CLOSED)
-    return (ARCHIVE_OK); /* Okay to close() when not open. */
+    return (ARCHIVE_OK);
 
   archive_clear_error(&a->archive);
 
-  /* Finish the last entry if a finish callback is specified */
   if (a->archive.state == ARCHIVE_STATE_DATA && a->format_finish_entry != NULL)
     r = ((a->format_finish_entry)(a));
 
-  /* Finish off the archive. */
-  /* TODO: have format closers invoke compression close. */
   if (a->format_close != NULL) {
     r1 = (a->format_close)(a);
     if (r1 < r)
       r = r1;
   }
 
-  /* Finish the compression and close the stream. */
   r1 = __archive_write_filters_close(a);
   if (r1 < r)
     r = r1;
@@ -655,27 +582,19 @@ void __archive_write_filters_free(struct archive *_a) {
   a->filter_last = NULL;
 }
 
-/*
- * Destroy the archive structure.
- *
- * Be careful: user might just call write_new and then write_free.
- * Don't assume we actually wrote anything or performed any non-trivial
- * initialization.
- */
 static int _archive_write_free(struct archive *_a) {
   struct archive_write *a = (struct archive_write *)_a;
   int r = ARCHIVE_OK, r1;
 
   if (_a == NULL)
     return (ARCHIVE_OK);
-  /* It is okay to call free() in state FATAL. */
+
   archive_check_magic(&a->archive, ARCHIVE_WRITE_MAGIC,
                       ARCHIVE_STATE_ANY | ARCHIVE_STATE_FATAL,
                       "archive_write_free");
   if (a->archive.state != ARCHIVE_STATE_FATAL)
     r = archive_write_close(&a->archive);
 
-  /* Release format resources. */
   if (a->format_free != NULL) {
     r1 = (a->format_free)(a);
     if (r1 < r)
@@ -684,11 +603,10 @@ static int _archive_write_free(struct archive *_a) {
 
   __archive_write_filters_free(_a);
 
-  /* Release various dynamic buffers. */
   free((void *)(uintptr_t)(const void *)a->nulls);
   archive_string_free(&a->archive.error_string);
   if (a->passphrase != NULL) {
-    /* A passphrase should be cleaned. */
+
     memset(a->passphrase, 0, strlen(a->passphrase));
     free(a->passphrase);
   }
@@ -698,9 +616,6 @@ static int _archive_write_free(struct archive *_a) {
   return (r);
 }
 
-/*
- * Write the appropriate header.
- */
 static int _archive_write_header(struct archive *_a,
                                  struct archive_entry *entry) {
   struct archive_write *a = (struct archive_write *)_a;
@@ -718,7 +633,6 @@ static int _archive_write_header(struct archive *_a,
     return (ARCHIVE_FATAL);
   }
 
-  /* In particular, "retry" and "fatal" get returned immediately. */
   ret = archive_write_finish_entry(&a->archive);
   if (ret == ARCHIVE_FATAL) {
     a->archive.state = ARCHIVE_STATE_FATAL;
@@ -735,7 +649,6 @@ static int _archive_write_header(struct archive *_a,
     return (ARCHIVE_FAILED);
   }
 
-  /* Flush filters at boundary. */
   r2 = __archive_write_filters_flush(a);
   if (r2 == ARCHIVE_FAILED) {
     return (ARCHIVE_FAILED);
@@ -747,7 +660,6 @@ static int _archive_write_header(struct archive *_a,
   if (r2 < ret)
     ret = r2;
 
-  /* Format and write header. */
   r2 = ((a->format_write_header)(a, entry));
   if (r2 == ARCHIVE_FAILED) {
     return (ARCHIVE_FAILED);
@@ -779,9 +691,6 @@ static int _archive_write_finish_entry(struct archive *_a) {
   return (ret);
 }
 
-/*
- * Note that the compressor is responsible for blocking.
- */
 static ssize_t _archive_write_data(struct archive *_a, const void *buff,
                                    size_t s) {
   struct archive_write *a = (struct archive_write *)_a;
@@ -790,7 +699,7 @@ static ssize_t _archive_write_data(struct archive *_a, const void *buff,
 
   archive_check_magic(&a->archive, ARCHIVE_WRITE_MAGIC, ARCHIVE_STATE_DATA,
                       "archive_write_data");
-  /* In particular, this catches attempts to pass negative values. */
+
   if (s > max_write)
     s = max_write;
   archive_clear_error(&a->archive);

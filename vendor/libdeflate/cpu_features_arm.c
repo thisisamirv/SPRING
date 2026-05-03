@@ -1,4 +1,4 @@
-/*
+﻿/*
  * arm/cpu_features.c - feature detection for ARM CPUs
  *
  * Copyright 2018 Eric Biggers
@@ -25,33 +25,19 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-/*
- * ARM CPUs don't have a standard way for unprivileged programs to detect CPU
- * features.  But an OS-specific way can be used when available.
- */
-
 #ifdef __APPLE__
 #undef _ANSI_SOURCE
 #undef _DARWIN_C_SOURCE
-#define _DARWIN_C_SOURCE /* for sysctlbyname() */
+#define _DARWIN_C_SOURCE
 #endif
 
 #if defined(__arm__) || defined(__aarch64__)
 #include "cpu_features_arm.h"
-#include "cpu_features_common.h" /* must be included first */
+#include "cpu_features_common.h"
 
 #ifdef ARM_CPU_FEATURES_KNOWN
-/* Runtime ARM CPU feature detection is supported. */
 
 #ifdef __linux__
-/*
- * On Linux, arm32 and arm64 CPU features can be detected by reading the
- * AT_HWCAP and AT_HWCAP2 values from /proc/self/auxv.
- *
- * Ideally we'd use the C library function getauxval(), but it's not guaranteed
- * to be available: it was only added to glibc in 2.16, and in Android it was
- * added to API level 18 for arm32 and level 21 for arm64.
- */
 
 #include <errno.h>
 #include <fcntl.h>
@@ -110,26 +96,25 @@ static u32 query_arm_cpu_features(void) {
 
 #ifdef ARCH_ARM32
   STATIC_ASSERT(sizeof(long) == 4);
-  if (hwcap & (1 << 12)) /* HWCAP_NEON */
+  if (hwcap & (1 << 12))
     features |= ARM_CPU_FEATURE_NEON;
 #else
   STATIC_ASSERT(sizeof(long) == 8);
-  if (hwcap & (1 << 1)) /* HWCAP_ASIMD */
+  if (hwcap & (1 << 1))
     features |= ARM_CPU_FEATURE_NEON;
-  if (hwcap & (1 << 4)) /* HWCAP_PMULL */
+  if (hwcap & (1 << 4))
     features |= ARM_CPU_FEATURE_PMULL;
-  if (hwcap & (1 << 7)) /* HWCAP_CRC32 */
+  if (hwcap & (1 << 7))
     features |= ARM_CPU_FEATURE_CRC32;
-  if (hwcap & (1 << 17)) /* HWCAP_SHA3 */
+  if (hwcap & (1 << 17))
     features |= ARM_CPU_FEATURE_SHA3;
-  if (hwcap & (1 << 20)) /* HWCAP_ASIMDDP */
+  if (hwcap & (1 << 20))
     features |= ARM_CPU_FEATURE_DOTPROD;
 #endif
   return features;
 }
 
 #elif defined(__APPLE__)
-/* On Apple platforms, arm64 CPU features can be detected via sysctlbyname(). */
 
 #include <TargetConditionals.h>
 #include <sys/sysctl.h>
@@ -167,7 +152,7 @@ static u32 query_arm_cpu_features(void) {
 
 #include <windows.h>
 
-#ifndef PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE /* added in Windows SDK 20348 */
+#ifndef PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE
 #define PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE 43
 #endif
 
@@ -180,8 +165,6 @@ static u32 query_arm_cpu_features(void) {
     features |= ARM_CPU_FEATURE_CRC32;
   if (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE))
     features |= ARM_CPU_FEATURE_DOTPROD;
-
-  /* FIXME: detect SHA3 support too. */
 
   return features;
 }
@@ -203,15 +186,6 @@ volatile u32 libdeflate_arm_cpu_features = 0;
 void libdeflate_init_arm_cpu_features(void) {
   u32 features = query_arm_cpu_features();
 
-  /*
-   * On the Apple M1 processor, crc32 instructions max out at about 25.5
-   * GB/s in the best case of using a 3-way or greater interleaved chunked
-   * implementation, whereas a pmull-based implementation achieves 68 GB/s
-   * provided that the stride length is large enough (about 10+ vectors
-   * with eor3, or 12+ without).
-   *
-   * Assume that crc32 instructions are preferable in other cases.
-   */
 #if (defined(__APPLE__) && TARGET_OS_OSX) || defined(TEST_SUPPORT__DO_NOT_USE)
   features |= ARM_CPU_FEATURE_PREFER_PMULL;
 #endif
@@ -222,7 +196,7 @@ void libdeflate_init_arm_cpu_features(void) {
   libdeflate_arm_cpu_features = features | ARM_CPU_FEATURES_KNOWN;
 }
 
-#endif /* ARM_CPU_FEATURES_KNOWN */
-#endif /* __arm__ || __aarch64__ */
+#endif
+#endif
 
 typedef int libdeflate_arm_cpu_features_dummy;

@@ -1,4 +1,4 @@
-/**********************************************************************
+﻿/**********************************************************************
   Copyright(c) 2011-2016 Intel Corporation All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -41,7 +41,7 @@
 #else
 #include <x86intrin.h>
 #endif
-#endif //__x86_64__  || __i386__ || _M_X64 || _M_IX86
+#endif
 
 #define LIT_LEN ISAL_DEF_LIT_LEN_SYMBOLS
 #define DIST_LEN ISAL_DEF_DIST_SYMBOLS
@@ -55,7 +55,7 @@
 #define DYN_HDR_START_LEN 17
 #define MAX_HISTHEAP_SIZE LIT_LEN
 #define MAX_HUFF_TREE_DEPTH 15
-#define D IGZIP_HIST_SIZE /* Amount of history */
+#define D IGZIP_HIST_SIZE
 
 #define MAX_DEFLATE_CODE_LEN 15
 #define MAX_SAFE_LIT_CODE_LEN 13
@@ -134,18 +134,6 @@ struct hufftables_icf {
   };
 };
 
-/**
- * @brief Creates a representation of the huffman code from a histogram used to
- * decompress the intermediate compression format.
- *
- * @param bb: bitbuf structure where the header huffman code header is written
- * @param hufftables: output huffman code representation
- * @param hist: histogram used to generate huffman code
- * @param end_of_block: flag whether this is the final huffman code
- *
- * @returns Returns the length in bits of the block with histogram hist encoded
- * with the set hufftable
- */
 uint64_t create_hufftables_icf(struct BitBuf2 *bb,
                                struct hufftables_icf *hufftables,
                                struct isal_mod_hist *hist,

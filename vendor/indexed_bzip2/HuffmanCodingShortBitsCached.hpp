@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <array>
 #include <cstdint>
@@ -8,8 +8,6 @@
 #include <HuffmanCodingSymbolsPerLength.hpp>
 #include <common.hpp>
 
-/* Ensure `forceinline` is defined for parsing environments. Core defines it
- * normally, but provide a conservative fallback here to satisfy clangd. */
 #ifndef forceinline
 #if defined(_MSC_VER)
 #define forceinline __forceinline
@@ -21,14 +19,7 @@
 #endif
 
 namespace rapidgzip {
-/**
- * This version uses a lookup table (LUT) to avoid repetitive loops over
- * BitReader::read<1>() to speed things up a lot. This started as a copy of @ref
- * HuffmanCodingReversedBitsCached, however:
- * - It limits the LUT to a fixed size instead of caching everything up to
- * MAX_CODE_LENGTH because that would be too large for bzip2, for which
- * MAX_CODE_LENGTH is 20 instead of 16 for gzip.
- */
+
 template <typename HuffmanCode, uint8_t MAX_CODE_LENGTH, typename Symbol,
           size_t MAX_SYMBOL_COUNT, uint8_t LUT_BITS_COUNT, bool REVERSE_BITS,
           bool CHECK_OPTIMALITY = true>
@@ -53,9 +44,8 @@ public:
     m_lutBitsCount = std::min(LUT_BITS_COUNT, this->m_maxCodeLength);
     m_bitsToReadAtOnce = std::max(LUT_BITS_COUNT, this->m_minCodeLength);
 
-    /* Initialize the cache. */
     if (m_needsToBeZeroed) {
-      // Works constexpr
+
       for (size_t symbol = 0; symbol < m_codeCache.size(); ++symbol) {
         m_codeCache[symbol].length = 0;
       }
@@ -64,10 +54,7 @@ public:
     auto codeValues = this->m_minimumCodeValuesPerLevel;
     for (size_t symbol = 0; symbol < codeLengths.size(); ++symbol) {
       const auto length = codeLengths[symbol];
-      /* Note that the preemptive continue for large lengths is not a bug even
-       * if we do not increment codeValues because all symbols of the same
-       * length will either be filtered or not, so that the missing increment
-       * does not matter because that code is either always used or never. */
+
       if ((length == 0) || (length > m_lutBitsCount)) {
         continue;
       }
@@ -117,9 +104,7 @@ public:
       bitReader.seekAfterPeek(length);
       return symbol;
     } catch (const typename BitReader::EndOfFileReached &) {
-      /* Should only happen at the end of the file and probably not even there
-       * because the bzip2 footer (EOS block) should be longer than the peek
-       * length. */
+
       return BaseType::decode(bitReader);
     }
   }
@@ -130,10 +115,6 @@ private:
   decodeLong(BitReader &bitReader) const {
     HuffmanCode code = 0;
 
-    /** Read the first n bytes. Note that we can't call the bitReader with
-     * argument > 1 because the bit order would be inversed. @todo Reverse the
-     * Huffman codes and prepend bits instead of appending, so that this first
-     * step can be conflated and still have the correct order for comparison! */
     if constexpr (REVERSE_BITS) {
       for (BitCount i = 0; i < m_bitsToReadAtOnce; ++i) {
         code = HuffmanCode(code << 1U) | bitReader.template read<1>();
@@ -162,19 +143,12 @@ private:
 
 private:
   struct CacheEntry {
-    uint8_t length{0}; // ceil(log2 MAX_CODE_LENGTH(20)) = 5 bits would suffice
+    uint8_t length{0};
     Symbol symbol{0};
   };
   static_assert(sizeof(CacheEntry) == 2 * sizeof(Symbol),
                 "CacheEntry is larger than assumed!");
 
-  /**
-   * sizeof(CacheEntry) = 4 B for Symbol=uint16_t.
-   * Total m_codeCache sizes for varying LUT_BITS_COUNT:
-   *  - 10 bits -> 4 KiB
-   *  - 11 bits -> 8 KiB
-   *  - 12 bits -> 16 KiB
-   */
   alignas(64) std::array<CacheEntry, (1UL << LUT_BITS_COUNT)> m_codeCache{};
 
   uint8_t m_lutBitsCount{LUT_BITS_COUNT};

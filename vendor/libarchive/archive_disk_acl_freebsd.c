@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2009 Tim Kientzle
  * Copyright (c) 2010-2012 Michihiro NAKAJIMA
  * Copyright (c) 2017 Martin Matuska
@@ -43,7 +43,7 @@
 #include <sys/types.h>
 #endif
 #ifdef HAVE_SYS_ACL_H
-#define _ACL_PRIVATE /* For debugging */
+#define _ACL_PRIVATE
 #include <sys/acl.h>
 #endif
 
@@ -53,8 +53,8 @@
 #include "archive_write_disk_private.h"
 
 typedef struct {
-  const int a_perm; /* Libarchive permission or flag */
-  const int p_perm; /* Platform permission or flag */
+  const int a_perm;
+  const int p_perm;
 } acl_perm_map_t;
 
 static const acl_perm_map_t acl_posix_perm_map[] = {
@@ -104,7 +104,7 @@ static const acl_perm_map_t acl_nfs4_flag_map[] = {
 
 static const int acl_nfs4_flag_map_size =
     (int)(sizeof(acl_nfs4_flag_map) / sizeof(acl_nfs4_flag_map[0]));
-#endif /* ARCHIVE_ACL_FREEBSD_NFS4 */
+#endif
 
 static int translate_acl(struct archive_read_disk *a,
                          struct archive_entry *entry, acl_t acl,
@@ -124,9 +124,7 @@ static int translate_acl(struct archive_read_disk *a,
   const char *ae_name;
 
 #if ARCHIVE_ACL_FREEBSD_NFS4
-  // FreeBSD "brands" ACLs as POSIX.1e or NFSv4
-  // Make sure the "brand" on this ACL is consistent
-  // with the default_entry_acl_type bits provided.
+
   if (acl_get_brand_np(acl, &brand) != 0) {
     archive_set_error(&a->archive, errno, "Failed to read ACL brand");
     return (ARCHIVE_WARN);
@@ -208,19 +206,16 @@ static int translate_acl(struct archive_read_disk *a,
       break;
 #endif
     default:
-      /* Skip types that libarchive can't support. */
+
       s = acl_get_entry(acl, ACL_NEXT_ENTRY, &acl_entry);
       continue;
     }
 
-    // XXX acl_type maps to allow/deny/audit/YYYY bits
     entry_acl_type = default_entry_acl_type;
 
 #if ARCHIVE_ACL_FREEBSD_NFS4
     if (default_entry_acl_type & ARCHIVE_ENTRY_ACL_TYPE_NFS4) {
-      /*
-       * acl_get_entry_type_np() fails with non-NFSv4 ACLs
-       */
+
       if (acl_get_entry_type_np(acl_entry, &acl_type) != 0) {
         archive_set_error(&a->archive, errno,
                           "Failed "
@@ -245,12 +240,6 @@ static int translate_acl(struct archive_read_disk *a,
         return (ARCHIVE_WARN);
       }
 
-      /*
-       * Libarchive stores "flag" (NFSv4 inheritance bits)
-       * in the ae_perm bitmap.
-       *
-       * acl_get_flagset_np() fails with non-NFSv4 ACLs
-       */
       if (acl_get_flagset_np(acl_entry, &acl_flagset) != 0) {
         archive_set_error(&a->archive, errno,
                           "Failed to get flagset from a NFSv4 "
@@ -426,7 +415,7 @@ static int set_acl(struct archive *a, int fd, const char *name,
       break;
     case ARCHIVE_ENTRY_ACL_TYPE_ACCESS:
     case ARCHIVE_ENTRY_ACL_TYPE_DEFAULT:
-      // These don't translate directly into the system ACL.
+
       break;
     default:
       archive_set_error(a, ARCHIVE_ERRNO_MISC, "Unsupported ACL entry type");
@@ -475,9 +464,7 @@ static int set_acl(struct archive *a, int fd, const char *name,
 
 #if ARCHIVE_ACL_FREEBSD_NFS4
     if (ae_requested_type == ARCHIVE_ENTRY_ACL_TYPE_NFS4) {
-      /*
-       * acl_get_flagset_np() fails with non-NFSv4 ACLs
-       */
+
       if (acl_get_flagset_np(acl_entry, &acl_flagset) != 0) {
         archive_set_error(a, errno,
                           "Failed to get flagset from an NFSv4 "
@@ -508,13 +495,12 @@ static int set_acl(struct archive *a, int fd, const char *name,
 #endif
   }
 
-  /* Try restoring the ACL through 'fd' if we can. */
   if (fd >= 0) {
     if (acl_set_fd_np(fd, acl, acl_type) == 0)
       ret = ARCHIVE_OK;
     else {
       if (errno == EOPNOTSUPP) {
-        /* Filesystem doesn't support ACLs */
+
         ret = ARCHIVE_OK;
       } else {
         archive_set_error(a, errno, "Failed to set acl on fd: %s", tname);
@@ -525,15 +511,15 @@ static int set_acl(struct archive *a, int fd, const char *name,
 #if HAVE_ACL_SET_LINK_NP
   else if (acl_set_link_np(name, acl_type, acl) != 0)
 #else
-  /* FreeBSD older than 8.0 */
+
   else if (S_ISLNK(mode)) {
-    /* acl_set_file() follows symbolic links, skip */
+
     ret = ARCHIVE_OK;
   } else if (acl_set_file(name, acl_type, acl) != 0)
 #endif
   {
     if (errno == EOPNOTSUPP) {
-      /* Filesystem doesn't support ACLs */
+
       ret = ARCHIVE_OK;
     } else {
       archive_set_error(a, errno, "Failed to set acl: %s", tname);
@@ -564,7 +550,7 @@ int archive_read_disk_entry_setup_acls(struct archive_read_disk *a,
   acl = NULL;
 
 #if ARCHIVE_ACL_FREEBSD_NFS4
-  /* Try NFSv4 ACL first. */
+
   if (*fd >= 0)
     acl = acl_get_fd_np(*fd, ACL_TYPE_NFS4);
   else if (!a->follow_symlinks)
@@ -572,7 +558,6 @@ int archive_read_disk_entry_setup_acls(struct archive_read_disk *a,
   else
     acl = acl_get_file(accpath, ACL_TYPE_NFS4);
 
-  /* Ignore "trivial" ACLs that just mirror the file mode. */
   if (acl != NULL && acl_is_trivial_np(acl, &r) == 0 && r == 1) {
     acl_free(acl);
     acl = NULL;
@@ -592,7 +577,6 @@ int archive_read_disk_entry_setup_acls(struct archive_read_disk *a,
   }
 #endif
 
-  /* Retrieve access ACL from file. */
   if (*fd >= 0)
     acl = acl_get_fd_np(*fd, ACL_TYPE_ACCESS);
 #if HAVE_ACL_GET_LINK_NP
@@ -600,15 +584,14 @@ int archive_read_disk_entry_setup_acls(struct archive_read_disk *a,
     acl = acl_get_link_np(accpath, ACL_TYPE_ACCESS);
 #else
   else if ((!a->follow_symlinks) && (archive_entry_filetype(entry) == AE_IFLNK))
-    /* We can't get the ACL of a symlink, so we assume it can't
-       have one. */
+
     acl = NULL;
 #endif
   else
     acl = acl_get_file(accpath, ACL_TYPE_ACCESS);
 
 #if HAVE_ACL_IS_TRIVIAL_NP
-  /* Ignore "trivial" ACLs that just mirror the file mode. */
+
   if (acl != NULL && acl_is_trivial_np(acl, &r) == 0 && r == 1) {
     acl_free(acl);
     acl = NULL;
@@ -626,7 +609,6 @@ int archive_read_disk_entry_setup_acls(struct archive_read_disk *a,
     }
   }
 
-  /* Only directories can have default ACLs. */
   if (S_ISDIR(archive_entry_mode(entry))) {
     if (*fd >= 0)
       acl = acl_get_fd_np(*fd, ACL_TYPE_DEFAULT);
@@ -650,7 +632,7 @@ int archive_write_disk_set_acls(struct archive *a, int fd, const char *name,
                                 __LA_MODE_T mode) {
   int ret = ARCHIVE_OK;
 
-  (void)mode; /* UNUSED */
+  (void)mode;
 
   if ((archive_acl_types(abstract_acl) & ARCHIVE_ENTRY_ACL_TYPE_POSIX1E) != 0) {
     if ((archive_acl_types(abstract_acl) & ARCHIVE_ENTRY_ACL_TYPE_ACCESS) !=
@@ -664,7 +646,6 @@ int archive_write_disk_set_acls(struct archive *a, int fd, const char *name,
       ret = set_acl(a, fd, name, abstract_acl, mode,
                     ARCHIVE_ENTRY_ACL_TYPE_DEFAULT, "default");
 
-    /* Simultaneous POSIX.1e and NFSv4 is not supported */
     return (ret);
   }
 #if ARCHIVE_ACL_FREEBSD_NFS4
@@ -676,4 +657,4 @@ int archive_write_disk_set_acls(struct archive *a, int fd, const char *name,
 #endif
   return (ret);
 }
-#endif /* ARCHIVE_ACL_FREEBSD */
+#endif

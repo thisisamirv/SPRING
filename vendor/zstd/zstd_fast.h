@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  * All rights reserved.
  *
@@ -11,7 +11,7 @@
 #ifndef ZSTD_FAST_H
 #define ZSTD_FAST_H
 
-#include "mem.h" /* U32 */
+#include "mem.h"
 #include "zstd_compress_internal.h"
 
 void ZSTD_fillHashTable(ZSTD_MatchState_t *ms, void const *end,
@@ -29,4 +29,4 @@ size_t ZSTD_compressBlock_fast_extDict(ZSTD_MatchState_t *ms,
                                        U32 rep[ZSTD_REP_NUM], void const *src,
                                        size_t srcSize);
 
-#endif /* ZSTD_FAST_H */
+#endif

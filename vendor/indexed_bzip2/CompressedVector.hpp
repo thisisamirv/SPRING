@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <cstdint>
 #include <iostream>
@@ -61,10 +61,6 @@ toString(const CompressionType compressionType) {
   return "Unknown";
 }
 
-/**
- * @p compressionType May also be NONE but in order to avoid unnecessary copies,
- * it should be avoided.
- */
 template <typename Container = FasterVector<uint8_t>>
 [[nodiscard]] Container
 compress(const VectorView<typename Container::value_type> toCompress,
@@ -96,8 +92,7 @@ compress(const VectorView<typename Container::value_type> toCompress,
 
   case CompressionType::ZLIB:
     return rapidgzip::compressWithZlib<Container>(
-        toCompress, CompressionStrategy::DEFAULT, /* dictionary */ {},
-        ContainerFormat::ZLIB);
+        toCompress, CompressionStrategy::DEFAULT, {}, ContainerFormat::ZLIB);
 
   case CompressionType::NONE:
     return Container(toCompress.begin(), toCompress.end());
@@ -112,10 +107,6 @@ compress(const VectorView<typename Container::value_type> toCompress,
       ", but got: " + toString(compressionType));
 }
 
-/**
- * The methods by design are not called simply "data"/"size" to avoid it being
- * used the wrong way when replacing normal containers for this one.
- */
 template <typename Container = FasterVector<uint8_t>> class CompressedVector {
 public:
   using container_type = Container;
@@ -160,9 +151,6 @@ public:
     return m_data ? m_data->size() : 0;
   }
 
-  /**
-   * @return a non-null shared pointer to the decompressed data!
-   */
   [[nodiscard]] std::shared_ptr<const Container> decompress() const {
     if (!m_data || empty()) {
       return std::make_shared<Container>();
@@ -176,7 +164,7 @@ public:
 
     const auto decompressWithWrapper = [this](FileType fileType) {
       return std::make_shared<Container>(inflateWithWrapper<InflateWrapper>(
-          *m_data, m_decompressedSize, /* window */ {}, fileType));
+          *m_data, m_decompressedSize, {}, fileType));
     };
 
     switch (m_compressionType) {

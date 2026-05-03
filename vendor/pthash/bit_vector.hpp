@@ -1,18 +1,17 @@
-#ifndef PTHASH_EXTERNAL_BITS_BIT_VECTOR_HPP
+﻿#ifndef PTHASH_EXTERNAL_BITS_BIT_VECTOR_HPP
 #define PTHASH_EXTERNAL_BITS_BIT_VECTOR_HPP
 
 #include <cstddef>
 #include <vector>
 
-#include "essentials.hpp"
 #include "bits_util.hpp"
+#include "essentials.hpp"
+
 
 namespace bits {
 
-struct bit_vector //
-{
-  struct builder //
-  {
+struct bit_vector {
+  struct builder {
     builder() { clear(); }
 
     builder(uint64_t num_bits, bool init = 0) { resize(num_bits, init); }
@@ -31,7 +30,7 @@ struct bit_vector //
       if (num_bits) {
         m_cur_word = &m_data.back();
         if (init && (num_bits & 63)) {
-          *m_cur_word >>= 64 - (num_bits & 63); // clear padding bits
+          *m_cur_word >>= 64 - (num_bits & 63);
         }
       }
     }
@@ -79,7 +78,7 @@ struct bit_vector //
 
     void set_bits(uint64_t pos, uint64_t bits, uint64_t len) {
       assert(pos + len <= num_bits());
-      // check there are no spurious bits
+
       assert(len == 64 || (bits >> len) == 0);
       if (!len)
         return;
@@ -98,7 +97,7 @@ struct bit_vector //
     }
 
     void append_bits(uint64_t bits, uint64_t len) {
-      // check there are no spurious bits
+
       assert(len <= 64);
       assert(len == 64 || (bits >> len) == 0);
       if (!len)
@@ -134,7 +133,7 @@ struct bit_vector //
       m_num_bits = num_bits() + rhs.num_bits();
       m_data.resize(essentials::words_for<uint64_t>(m_num_bits));
 
-      if (shift == 0) { // word-aligned, easy case
+      if (shift == 0) {
         boost::range::copy(rhs.m_data, m_data.begin() + ptrdiff_t(pos));
       } else {
         uint64_t *cur_word = &m_data.front() + pos - 1;
@@ -185,14 +184,12 @@ struct bit_vector //
     }
   }
 
-  // fast and unsafe version: it retrieves at least 56 bits
   [[nodiscard]] uint64_t get_word56(uint64_t pos) const {
     const char *base_ptr = reinterpret_cast<const char *>(m_data.data());
     return *(reinterpret_cast<uint64_t const *>(base_ptr + (pos >> 3))) >>
            (pos & 7);
   }
 
-  // pad with zeros if extension further size is needed
   [[nodiscard]] uint64_t get_word64(uint64_t pos) const {
     assert(pos < num_bits());
     uint64_t block = pos >> 6;
@@ -209,22 +206,13 @@ struct bit_vector //
           m_avail(0) {}
 
     iterator(uint64_t const *data, uint64_t num_64bit_words, uint64_t pos = 0)
-        : m_data(data) //
-          ,
-          m_num_64bit_words(num_64bit_words) //
-          ,
-          m_pos(pos) //
-    {
+        : m_data(data), m_num_64bit_words(num_64bit_words), m_pos(pos) {
       skip_to(m_pos);
     }
 
     iterator(bit_vector const *bv, uint64_t pos = 0)
-        : m_data((bv->data()).data()) //
-          ,
-          m_num_64bit_words((bv->data()).size()) //
-          ,
-          m_pos(pos) //
-    {
+        : m_data((bv->data()).data()), m_num_64bit_words((bv->data()).size()),
+          m_pos(pos) {
       skip_to(m_pos);
     }
 
@@ -234,9 +222,6 @@ struct bit_vector //
       fill_buf();
     }
 
-    /*
-        Return the bit at current position.
-    */
     bool operator*() const {
       uint64_t word = m_pos >> 6;
       uint64_t pos_in_word = m_pos & 63;
@@ -246,9 +231,6 @@ struct bit_vector //
 
     void operator++() { m_pos++; }
 
-    /*
-        Return the next l bits from the current position and advance by l bits.
-    */
     uint64_t take(uint64_t l) {
       assert(l <= 64);
       if (m_avail < l)
@@ -265,20 +247,12 @@ struct bit_vector //
       return val;
     }
 
-    /*
-        Return the position, say p, of the next 1 from current position
-        and move to position p+1.
-    */
     uint64_t next() {
       skip_zeros();
       assert(position() > 0);
       return position() - 1;
     }
 
-    /*
-        Return the position of the previous 1 from position pos.
-        If the bit at position pos is already a 1, this returns pos.
-    */
     uint64_t prev(uint64_t pos) {
       uint64_t block = pos >> 6;
       uint64_t shift = 64 - (pos & 63) - 1;
@@ -293,10 +267,6 @@ struct bit_vector //
       return ret;
     }
 
-    /*
-        Skip all zeros from the current position and
-        return the number of skipped zeros.
-    */
     uint64_t skip_zeros() {
       uint64_t zeros = 0;
       while (m_buf == 0) {
@@ -321,16 +291,11 @@ struct bit_vector //
     uint64_t m_buf;
     uint64_t m_avail;
 
-    /*
-        Get 64 bits from current position.
-    */
     void fill_buf() {
       uint64_t block = m_pos >> 6;
       uint64_t shift = m_pos & 63;
       m_buf = m_data[block] >> shift;
-      if (shift &&
-          block + 1 <
-              m_num_64bit_words) { // next 64 bits span two consecutive words
+      if (shift && block + 1 < m_num_64bit_words) {
         m_buf |= m_data[block + 1] << (64 - shift);
       }
       m_avail = 64;
@@ -377,4 +342,4 @@ private:
 
 } // namespace bits
 
-#endif // PTHASH_EXTERNAL_BITS_BIT_VECTOR_HPP
+#endif

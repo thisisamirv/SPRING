@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2007 Tim Kientzle
  * All rights reserved.
  *
@@ -53,22 +53,11 @@ const struct stat *archive_entry_stat(struct archive_entry *entry) {
     entry->stat_valid = 0;
   }
 
-  /*
-   * If none of the underlying fields have been changed, we
-   * don't need to regenerate.  In theory, we could use a bitmap
-   * here to flag only those items that have changed, but the
-   * extra complexity probably isn't worth it.  It will be very
-   * rare for anyone to change just one field then request a new
-   * stat structure.
-   */
   if (entry->stat_valid)
     return (entry->stat);
 
   st = entry->stat;
-  /*
-   * Use the public interfaces to extract items, so that
-   * the appropriate conversions get invoked.
-   */
+
   st->st_atime = archive_entry_atime(entry);
 #if HAVE_STRUCT_STAT_ST_BIRTHTIME
   st->st_birthtime = archive_entry_birthtime(entry);
@@ -87,10 +76,6 @@ const struct stat *archive_entry_stat(struct archive_entry *entry) {
     st->st_size = 0;
   st->st_mode = archive_entry_mode(entry);
 
-  /*
-   * On systems that support high-res timestamps, copy that
-   * information into struct stat.
-   */
 #if HAVE_STRUCT_STAT_ST_MTIMESPEC_TV_NSEC
   st->st_atimespec.tv_nsec = archive_entry_atime_nsec(entry);
   st->st_ctimespec.tv_nsec = archive_entry_ctime_nsec(entry);
@@ -116,11 +101,6 @@ const struct stat *archive_entry_stat(struct archive_entry *entry) {
   st->st_birthtimespec.tv_nsec = archive_entry_birthtime_nsec(entry);
 #endif
 
-  /*
-   * TODO: On Linux, store 32 or 64 here depending on whether
-   * the cached stat structure is a stat32 or a stat64.  This
-   * will allow us to support both variants interchangeably.
-   */
   entry->stat_valid = 1;
 
   return (st);

@@ -1,11 +1,11 @@
-#pragma once
+﻿#pragma once
 
 #ifndef __linux__
 
 #include <thread>
 
 namespace rapidgzip {
-inline void pinThreadToLogicalCore(int /* logicalCoreId */) { /** @todo */ }
+inline void pinThreadToLogicalCore(int) {}
 
 [[nodiscard]] inline unsigned int availableCores() {
   return std::thread::hardware_concurrency();
@@ -41,8 +41,7 @@ namespace rapidgzip {
     }
     const auto cpuSetSize = CPU_ALLOC_SIZE(nCpus);
 
-    const auto result =
-        sched_getaffinity(/* calling thread */ 0, cpuSetSize, pCpuSet);
+    const auto result = sched_getaffinity(0, cpuSetSize, pCpuSet);
     CPU_FREE(pCpuSet);
 
     if ((result != 0) && (errno != EINVAL)) {
@@ -57,25 +56,14 @@ namespace rapidgzip {
   return nCpus;
 }
 
-/**
- * Pins the calling thread to the given logical core / processing unit /
- * hardware thread.
- */
 inline void pinThreadToLogicalCore(int logicalCoreId) {
-  /* @see "Handling systems with large CPU affinity masks"
-   * https://manpages.courier-mta.org/htmlman2/sched_setaffinity.2.html
-   * "If the kernel CPU affinity mask is larger than 1024, then calls of the
-   * form: sched_getaffinity(pid, sizeof(cpu_set_t), &mask); fail with the error
-   * EINVAL" -> observed on SGI-UV 2000
-   */
 
   const auto nCpusForSufficientMask = getRequiredBitMaskSize();
   auto *pCpuSet = CPU_ALLOC(nCpusForSufficientMask);
   const auto cpuSetSize = CPU_ALLOC_SIZE(nCpusForSufficientMask);
   CPU_ZERO_S(cpuSetSize, pCpuSet);
   CPU_SET_S(logicalCoreId, cpuSetSize, pCpuSet);
-  const auto result = sched_setaffinity(/* set affinity for calling thread */ 0,
-                                        cpuSetSize, pCpuSet);
+  const auto result = sched_setaffinity(0, cpuSetSize, pCpuSet);
   CPU_FREE(pCpuSet);
 
   if (result != 0) {
@@ -94,8 +82,7 @@ inline void pinThreadToLogicalCore(int logicalCoreId) {
   auto *pCpuSet = CPU_ALLOC(nCpusForSufficientMask);
   const auto cpuSetSize = CPU_ALLOC_SIZE(nCpusForSufficientMask);
   CPU_ZERO_S(cpuSetSize, pCpuSet);
-  const auto result = sched_getaffinity(/* get affinity for calling thread */ 0,
-                                        cpuSetSize, pCpuSet);
+  const auto result = sched_getaffinity(0, cpuSetSize, pCpuSet);
 
   if (result != 0) {
     std::stringstream msg;

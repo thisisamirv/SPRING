@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <algorithm>
 #include <cassert>
@@ -22,11 +22,6 @@
 
 namespace rapidgzip {
 
-/**
- * Dummy function to satisfy clangd's "unused include" check in this header-only
- * template library. These headers are strictly required for the template
- * definitions.
- */
 [[maybe_unused]] inline void clangd_unused_fix_FasterVector() {
   (void)sizeof(std::size_t);
   (void)sizeof(std::optional<int>);
@@ -42,7 +37,6 @@ namespace rapidgzip {
   (void)sizeof(std::is_convertible<int, int>);
   (void)sizeof(std::enable_if<true>);
 
-  // Reference functions to satisfy clangd
   int dummy_arr[1] = {0};
   (void)std::fill(dummy_arr, dummy_arr, 0);
   (void)std::copy(dummy_arr, dummy_arr, dummy_arr);
@@ -69,13 +63,6 @@ public:
   ~RpmallocInit() { rpmalloc_finalize(); }
 };
 
-/* It must be the very first static variable so that rpmalloc is initialized
- * before any usage of malloc when overriding operator new (when including
- * rpnew.h). And, this only works if everything is header-only because else the
- * static variable initialization order becomes undefined across different
- * compile units. That's why we avoid overriding operators new and delete and
- * simply use it as a custom allocator in the few places we know to be
- * performance-critical */
 inline static const RpmallocInit rpmallocInit{};
 
 class RpmallocThreadInit {
@@ -117,15 +104,11 @@ public:
     rpfree(allocatedPointer);
   }
 
-  /* I don't understand why this is still necessary even with is_always_equal =
-   * true_type. Defining it to true type should be necessary because the default
-   * implementation of is_always_equal == is_empty should also be true because
-   * this class does not have any members. */
-  [[nodiscard]] bool operator==(const RpmallocAllocator & /* unused */) const {
+  [[nodiscard]] bool operator==(const RpmallocAllocator &) const {
     return true;
   }
 
-  [[nodiscard]] bool operator!=(const RpmallocAllocator & /* unused */) const {
+  [[nodiscard]] bool operator!=(const RpmallocAllocator &) const {
     return false;
   }
 };
@@ -153,21 +136,6 @@ using RequireInputIterator = typename std::enable_if<
     std::is_convertible<typename std::iterator_traits<T>::iterator_category,
                         std::input_iterator_tag>::value>::type;
 
-/**
- * This was supposed to be a faster std::vector alternative that saves time by
- * not initializing its contents on resize as introduced in
- * 093805ab24c93b7150b56d16bde418e51c0dd970. However, it leads to almost double
- * the memory usage with wikidata.json (12 GB -> 16 GB) even when disabling
- * rounding to powers of 2 when reserving in @ref insert and when disabling
- * alignment and disabling the shrink_to_fit check.
- * @verbatim
- * make rapidgzip
- * /usr/bin/time -v src/tools/rapidgzip -v -P 24 --io-read-method sequential
- * --export-index "$file"{.index,} With std::vector using rpmalloc allocator:
- *     Maximum resident set size (kbytes): 11631884
- * FasterVector:
- *     Maximum resident set size (kbytes): 16360928
- */
 template <typename T> class FasterVector {
 public:
   static_assert(
@@ -210,8 +178,6 @@ public:
     return *this;
   }
 
-  /* Forbid copies because they are expensive and because they have unexpected
-   * behavior like not copying the capacity. */
   FasterVector(const FasterVector &) = delete;
   FasterVector &operator=(const FasterVector &) = delete;
 
@@ -308,8 +274,6 @@ public:
     }
     const auto positionIndex = static_cast<size_t>(positionDistance);
 
-    /* Beware that reserve may invalidate "position"! Do not reallocate when
-     * there is enough space. The same guarantee that std::vector provides! */
     if (size() + inputSize > m_capacity) {
       reserve(size_t(1U) << static_cast<size_t>(
                   std::ceil(std::log2(size() + inputSize))));
@@ -372,9 +336,9 @@ private:
         m_data = static_cast<T *>(
             rpaligned_alloc(ALIGNMENT, newCapacity * sizeof(T)));
       } else {
-        m_data = static_cast<T *>(
-            rpaligned_realloc(m_data, ALIGNMENT, newCapacity * sizeof(T),
-                              m_capacity * sizeof(T), /* flags */ 0));
+        m_data = static_cast<T *>(rpaligned_realloc(m_data, ALIGNMENT,
+                                                    newCapacity * sizeof(T),
+                                                    m_capacity * sizeof(T), 0));
       }
 #else
       if (m_data == nullptr) {
@@ -385,10 +349,8 @@ private:
       }
 #endif
 #else
-      /* > If ptr is a null pointer, the behavior is the same as calling
-       * std::malloc(new_size). */
-      m_data = static_cast<T *>(
-          std::realloc(m_data, newCapacity * sizeof(T))); // NOLINT
+
+      m_data = static_cast<T *>(std::realloc(m_data, newCapacity * sizeof(T)));
 #endif
     }
 
@@ -399,7 +361,7 @@ private:
 #ifdef LIBRAPIDARCHIVE_WITH_RPMALLOC
     rpfree(m_data);
 #else
-    std::free(m_data); // NOLINT
+    std::free(m_data);
 #endif
     m_data = nullptr;
   }

@@ -1,4 +1,4 @@
-/*
+﻿/*
  * utils.c - utility functions for libdeflate
  *
  * Copyright 2016 Eric Biggers
@@ -26,7 +26,7 @@
  */
 
 #include "lib_common.h"
-// lib_common first
+
 #include "libdeflate.h"
 
 #ifdef FREESTANDING
@@ -62,11 +62,6 @@ LIBDEFLATEAPI void libdeflate_set_memory_allocator(malloc_func_t malloc_func,
   libdeflate_default_free_func = free_func;
 }
 
-/*
- * Implementations of libc functions for freestanding library builds.
- * Normal library builds don't use these.  Not optimized yet; usually the
- * compiler expands these functions and doesn't actually call them anyway.
- */
 #ifdef FREESTANDING
 #undef memset
 void *__attribute__((weak)) memset(void *s, int c, size_t n) {
@@ -115,7 +110,7 @@ int __attribute__((weak)) memcmp(const void *s1, const void *s2, size_t n) {
   }
   return 0;
 }
-#endif /* FREESTANDING */
+#endif
 
 #ifdef LIBDEFLATE_ENABLE_ASSERTIONS
 #include <stdio.h>
@@ -125,4 +120,4 @@ NORETURN void libdeflate_assertion_failed(const char *expr, const char *file,
   fprintf(stderr, "Assertion failed: %s at %s:%d\n", expr, file, line);
   abort();
 }
-#endif /* LIBDEFLATE_ENABLE_ASSERTIONS */
+#endif

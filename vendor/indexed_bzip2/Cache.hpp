@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <algorithm>
 #include <cassert>
@@ -17,20 +17,11 @@ public:
 
   virtual void touch(Index index) = 0;
 
-  /**
-   * @return The next eviction no matter whether the cache is currently full.
-   * Only returns nothing if the cache is empty, i.e., there is nothing to
-   * evict.
-   */
   [[nodiscard]] virtual std::optional<Index> nextEviction() const = 0;
 
   [[nodiscard]] virtual std::optional<Index>
   nextNthEviction(size_t countToEmplaceHypothetically) const = 0;
 
-  /**
-   * @param indexToEvict If an index is given, that index will be removed if it
-   * exists instead of using the cache strategy.
-   */
   virtual std::optional<Index>
   evict(std::optional<Index> indexToEvict = {}) = 0;
 };
@@ -83,26 +74,14 @@ public:
   }
 
 private:
-  /* With this, inserting will be relatively fast but eviction make take longer
-   * because we have to go over all elements. */
   std::unordered_map<Index, Nonce> m_lastUsage;
 
-  /**
-   * Keep a map of values sorted by nonce, i.e., by timestamp. A multimap is not
-   * necessary because nonces should should be unique. m_sortedIndexes.begin
-   * holds the least recent index.
-   */
   std::map<Nonce, Index> m_sortedIndexes;
 
   Nonce usageNonce{0};
 };
 } // namespace CacheStrategy
 
-/**
- * @ref get and @ref insert should be sufficient for simple cache usages.
- * For advanced control, there are also @ref touch, @ref clear, @ref evict, and
- * @ref test available.
- */
 template <typename Key, typename Value,
           typename CacheStrategy = CacheStrategy::LeastRecentlyUsed<Key>>
 class Cache {
@@ -135,9 +114,6 @@ public:
       return;
     }
 
-    /* If an entry with the same key already exists, then we can simply replace
-     * it without evicting anything. Do not use try_emplace here because that
-     * could temporarily exceed the allotted capacity. */
     if (const auto existingEntry = m_cache.find(key);
         existingEntry == m_cache.end()) {
       shrinkTo(capacity() - 1);
@@ -153,8 +129,6 @@ public:
 
     m_cacheStrategy.touch(key);
   }
-
-  /* Advanced Control and Usage */
 
   void touch(const Key &key) {
     if (test(key)) {
@@ -173,10 +147,6 @@ public:
     m_cache.erase(key);
   }
 
-  /**
-   * @return The next eviction, if any is necessary, when hypothetically
-   * inserting the specified index.
-   */
   [[nodiscard]] std::optional<Key>
   nextEviction(const std::optional<Key> &key = std::nullopt) const {
     if ((m_cache.size() < capacity()) ||
@@ -212,8 +182,6 @@ public:
     }
   }
 
-  /* Analytics */
-
   [[nodiscard]] Statistics statistics() const {
     auto result = m_statistics;
     result.capacity = capacity();
@@ -240,7 +208,6 @@ private:
   size_t const m_maxCacheSize;
   std::unordered_map<Key, Value> m_cache;
 
-  /* Analytics */
   Statistics m_statistics;
   std::unordered_map<Key, size_t> m_accesses;
 };

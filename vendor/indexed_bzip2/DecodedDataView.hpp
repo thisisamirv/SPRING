@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <array>
 #include <cstdint>
@@ -6,12 +6,7 @@
 #include <VectorView.hpp>
 
 namespace rapidgzip::deflate {
-/**
- * Only one of the two will contain non-empty VectorViews depending on whether
- * marker bytes might appear.
- * @ref dataWithMarkers will be empty when @ref setInitialWindow has been
- * called.
- */
+
 struct DecodedDataView {
 public:
   [[nodiscard]] constexpr size_t size() const noexcept {

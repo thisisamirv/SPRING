@@ -1,6 +1,4 @@
-/*
- * matchfinder_common.h - common code for Lempel-Ziv matchfinding
- */
+﻿
 
 #ifndef LIB_MATCHFINDER_COMMON_H
 #define LIB_MATCHFINDER_COMMON_H
@@ -22,14 +20,6 @@
 #define MATCHFINDER_ALIGNED
 #endif
 
-/*
- * Initialize the hash table portion of the matchfinder.
- *
- * Essentially, this is an optimized memset().
- *
- * 'data' must be aligned to a MATCHFINDER_MEM_ALIGNMENT boundary, and
- * 'size' must be a multiple of MATCHFINDER_SIZE_ALIGNMENT.
- */
 #ifndef matchfinder_init
 static forceinline void matchfinder_init(mf_pos_t *data, size_t size) {
   size_t num_entries = size / sizeof(*data);
@@ -40,34 +30,13 @@ static forceinline void matchfinder_init(mf_pos_t *data, size_t size) {
 }
 #endif
 
-/*
- * Slide the matchfinder by MATCHFINDER_WINDOW_SIZE bytes.
- *
- * This must be called just after each MATCHFINDER_WINDOW_SIZE bytes have been
- * run through the matchfinder.
- *
- * This subtracts MATCHFINDER_WINDOW_SIZE bytes from each entry in the given
- * array, making the entries be relative to the current position rather than the
- * position MATCHFINDER_WINDOW_SIZE bytes prior.  To avoid integer underflows,
- * entries that would become less than -MATCHFINDER_WINDOW_SIZE stay at
- * -MATCHFINDER_WINDOW_SIZE, keeping them permanently out of bounds.
- *
- * The given array must contain all matchfinder data that is position-relative:
- * the hash table(s) as well as any hash chain or binary tree links.  Its
- * address must be aligned to a MATCHFINDER_MEM_ALIGNMENT boundary, and its size
- * must be a multiple of MATCHFINDER_SIZE_ALIGNMENT.
- */
 #ifndef matchfinder_rebase
 static forceinline void matchfinder_rebase(mf_pos_t *data, size_t size) {
   size_t num_entries = size / sizeof(*data);
   size_t i;
 
   if (MATCHFINDER_WINDOW_SIZE == 32768) {
-    /*
-     * Branchless version for 32768-byte windows.  Clear all bits if
-     * the value was already negative, then set the sign bit.  This
-     * is equivalent to subtracting 32768 with signed saturation.
-     */
+
     for (i = 0; i < num_entries; i++)
       data[i] = 0x8000 | (data[i] & ~(data[i] >> 15));
   } else {
@@ -81,21 +50,10 @@ static forceinline void matchfinder_rebase(mf_pos_t *data, size_t size) {
 }
 #endif
 
-/*
- * The hash function: given a sequence prefix held in the low-order bits of a
- * 32-bit value, multiply by a carefully-chosen large constant.  Discard any
- * bits of the product that don't fit in a 32-bit value, but take the
- * next-highest @num_bits bits of the product as the hash value, as those have
- * the most randomness.
- */
 static forceinline u32 lz_hash(u32 seq, unsigned num_bits) {
   return (u32)(seq * 0x1E35A7BD) >> (32 - num_bits);
 }
 
-/*
- * Return the number of bytes at @matchptr that match the bytes at @strptr, up
- * to a maximum of @max_len.  Initially, @start_len bytes are matched.
- */
 static forceinline u32 lz_extend(const u8 *const strptr,
                                  const u8 *const matchptr, const u32 start_len,
                                  const u32 max_len) {
@@ -141,4 +99,4 @@ word_differs:
   return len;
 }
 
-#endif /* LIB_MATCHFINDER_COMMON_H */
+#endif

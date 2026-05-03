@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2012 Tim Kientzle
  * All rights reserved.
  *
@@ -60,10 +60,7 @@ int archive_read_append_filter(struct archive *_a, int code) {
   r2 = (ARCHIVE_OK);
   switch (code) {
   case ARCHIVE_FILTER_NONE:
-    /* No filter to add, so do nothing.
-     * NOTE: An initial "NONE" type filter is always set at the end of the
-     * filter chain.
-     */
+
     r1 = (ARCHIVE_OK);
     break;
   case ARCHIVE_FILTER_GZIP:
@@ -180,7 +177,7 @@ int archive_read_append_filter_program_signature(struct archive *_a,
 
   bidder = a->bidders;
   for (i = 0; i < number_bidders; i++, bidder++) {
-    /* Program bidder name set to filter name after initialization */
+
     if (bidder->data && !bidder->name)
       break;
   }

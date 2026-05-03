@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2009-2011 Michihiro NAKAJIMA
  * Copyright (c) 2003-2007 Kees Zeelenberg
  * All rights reserved.
@@ -22,24 +22,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
-
-/*
- * A set of compatibility glue for building libarchive on Windows platforms.
- *
- * Originally created as "libarchive-nonposix.c" by Kees Zeelenberg
- * for the GnuWin32 project, trimmed significantly by Tim Kientzle.
- *
- * Much of the original file was unnecessary for libarchive, because
- * many of the features it emulated were not strictly necessary for
- * libarchive.  I hope for this to shrink further as libarchive
- * internals are gradually reworked to sit more naturally on both
- * POSIX and Windows.  Any ideas for this are greatly appreciated.
- *
- * The biggest remaining issue is the dev/ino emulation; libarchive
- * has a couple of public APIs that rely on dev/ino uniquely
- * identifying a file.  This doesn't match well with Windows.  I'm
- * considering alternative APIs.
  */
 
 #if defined(_WIN32) && !defined(__CYGWIN__)
@@ -108,7 +90,7 @@ struct ustat {
   int64_t st_mtime;
   uint32_t st_mtime_nsec;
   gid_t st_gid;
-  /* 64bits ino */
+
   int64_t st_ino;
   mode_t st_mode;
   uint32_t st_nlink;
@@ -118,23 +100,14 @@ struct ustat {
   dev_t st_rdev;
 };
 
-/* Transform 64-bits ino into 32-bits by hashing.
- * You do not forget that really unique number size is 64-bits.
- */
-#define INOSIZE (8 * sizeof(ino_t)) /* 32 */
+#define INOSIZE (8 * sizeof(ino_t))
 static __inline ino_t getino(struct ustat *ub) {
   ULARGE_INTEGER ino64;
   ino64.QuadPart = ub->st_ino;
-  /* I don't know this hashing is correct way */
+
   return ((ino_t)(ino64.LowPart ^ (ino64.LowPart >> INOSIZE)));
 }
 
-/*
- * Prepend "\\?\" to the path name and convert it to unicode to permit
- * an extended-length path for a maximum total path length of 32767
- * characters.
- * see also http://msdn.microsoft.com/en-us/library/aa365247.aspx
- */
 wchar_t *__la_win_permissive_name(const char *name) {
   wchar_t *wn;
   wchar_t *ws;
@@ -161,14 +134,10 @@ wchar_t *__la_win_permissive_name_w(const wchar_t *wname) {
   DWORD l, len, slen;
   int unc;
 
-  /* Get a full-pathname. */
   l = GetFullPathNameW(wname, 0, NULL, NULL);
   if (l == 0)
     return (NULL);
-  /* NOTE: GetFullPathNameW has a bug that if the length of the file
-   * name is just 1 then it returns incomplete buffer size. Thus, we
-   * have to add three to the size to allocate a sufficient buffer
-   * size for the full-pathname of the file name. */
+
   l += 3;
   wnp = malloc(l * sizeof(wchar_t));
   if (wnp == NULL)
@@ -177,15 +146,15 @@ wchar_t *__la_win_permissive_name_w(const wchar_t *wname) {
   wn = wnp;
 
   if (wnp[0] == L'\\' && wnp[1] == L'\\' && wnp[2] == L'?' && wnp[3] == L'\\')
-    /* We have already a permissive name. */
+
     return (wn);
 
   if (wnp[0] == L'\\' && wnp[1] == L'\\' && wnp[2] == L'.' && wnp[3] == L'\\') {
-    /* This is a device name */
+
     if (((wnp[4] >= L'a' && wnp[4] <= L'z') ||
          (wnp[4] >= L'A' && wnp[4] <= L'Z')) &&
         wnp[5] == L':' && wnp[6] == L'\\')
-      wnp[2] = L'?'; /* Not device name. */
+      wnp[2] = L'?';
     return (wn);
   }
 
@@ -193,17 +162,15 @@ wchar_t *__la_win_permissive_name_w(const wchar_t *wname) {
   if (wnp[0] == L'\\' && wnp[1] == L'\\' && wnp[2] != L'\\') {
     wchar_t *p = &wnp[2];
 
-    /* Skip server-name letters. */
     while (*p != L'\\' && *p != L'\0')
       ++p;
     if (*p == L'\\') {
       wchar_t *rp = ++p;
-      /* Skip share-name letters. */
+
       while (*p != L'\\' && *p != L'\0')
         ++p;
       if (*p == L'\\' && p != rp) {
-        /* Now, match patterns such as
-         * "\\server-name\share-name\" */
+
         wnp += 2;
         len -= 2;
         unc = 1;
@@ -217,26 +184,22 @@ wchar_t *__la_win_permissive_name_w(const wchar_t *wname) {
     free(wn);
     return (NULL);
   }
-  /* prepend "\\?\" */
+
   wcsncpy(wsp, L"\\\\?\\", 4);
   wsp += 4;
   slen -= 4;
   if (unc) {
-    /* append "UNC\" ---> "\\?\UNC\" */
+
     wcsncpy(wsp, L"UNC\\", 4);
     wsp += 4;
     slen -= 4;
   }
   wcsncpy(wsp, wnp, slen);
-  wsp[slen - 1] = L'\0'; /* Ensure null termination. */
+  wsp[slen - 1] = L'\0';
   free(wn);
   return (ws);
 }
 
-/*
- * Create a file handle.
- * This can exceed MAX_PATH limitation.
- */
 static HANDLE la_CreateFile(const char *path, DWORD dwDesiredAccess,
                             DWORD dwShareMode,
                             LPSECURITY_ATTRIBUTES lpSecurityAttributes,
@@ -244,7 +207,7 @@ static HANDLE la_CreateFile(const char *path, DWORD dwDesiredAccess,
                             DWORD dwFlagsAndAttributes, HANDLE hTemplateFile) {
   wchar_t *wpath;
   HANDLE handle;
-#if _WIN32_WINNT >= 0x0602 /* _WIN32_WINNT_WIN8 */
+#if _WIN32_WINNT >= 0x0602
   CREATEFILE2_EXTENDED_PARAMETERS createExParams;
 #endif
 
@@ -261,7 +224,7 @@ static HANDLE la_CreateFile(const char *path, DWORD dwDesiredAccess,
   wpath = __la_win_permissive_name(path);
   if (wpath == NULL)
     return INVALID_HANDLE_VALUE;
-#if _WIN32_WINNT >= 0x0602 /* _WIN32_WINNT_WIN8 */
+#if _WIN32_WINNT >= 0x0602
   ZeroMemory(&createExParams, sizeof(createExParams));
   createExParams.dwSize = sizeof(createExParams);
   createExParams.dwFileAttributes = dwFlagsAndAttributes & 0xFFFF;
@@ -271,11 +234,11 @@ static HANDLE la_CreateFile(const char *path, DWORD dwDesiredAccess,
   createExParams.hTemplateFile = hTemplateFile;
   handle = CreateFile2(wpath, dwDesiredAccess, dwShareMode,
                        dwCreationDisposition, &createExParams);
-#else  /* !WINAPI_PARTITION_DESKTOP */
+#else
   handle =
       CreateFileW(wpath, dwDesiredAccess, dwShareMode, lpSecurityAttributes,
                   dwCreationDisposition, dwFlagsAndAttributes, hTemplateFile);
-#endif /* !WINAPI_PARTITION_DESKTOP */
+#endif
   free(wpath);
   return (handle);
 }
@@ -312,7 +275,6 @@ __int64 __la_lseek(int fd, __int64 offset, int whence) {
 }
 #endif
 
-/* This can exceed MAX_PATH limitation. */
 int __la_open(const char *path, int flags, ...) {
   va_list ap;
   wchar_t *ws;
@@ -324,14 +286,10 @@ int __la_open(const char *path, int flags, ...) {
   va_end(ap);
   ws = NULL;
 
-  /* _(w)sopen_s fails if we provide any other modes */
   pmode = pmode & (_S_IREAD | _S_IWRITE);
 
   if ((flags & ~O_BINARY) == O_RDONLY) {
-    /*
-     * When we open a directory, _open function returns
-     * "Permission denied" error.
-     */
+
     attr = GetFileAttributesA(path);
 #if !defined(WINAPI_FAMILY_PARTITION) ||                                       \
     WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
@@ -362,14 +320,14 @@ int __la_open(const char *path, int flags, ...) {
         handle = CreateFileA(
             path, 0, 0, NULL, OPEN_EXISTING,
             FILE_FLAG_BACKUP_SEMANTICS | FILE_ATTRIBUTE_READONLY, NULL);
-#else  /* !WINAPI_PARTITION_DESKTOP */
+#else
       CREATEFILE2_EXTENDED_PARAMETERS createExParams;
       ZeroMemory(&createExParams, sizeof(createExParams));
       createExParams.dwSize = sizeof(createExParams);
       createExParams.dwFileAttributes = FILE_ATTRIBUTE_READONLY;
       createExParams.dwFileFlags = FILE_FLAG_BACKUP_SEMANTICS;
       handle = CreateFile2(ws, 0, 0, OPEN_EXISTING, &createExParams);
-#endif /* !WINAPI_PARTITION_DESKTOP */
+#endif
       free(ws);
       if (handle == INVALID_HANDLE_VALUE) {
         la_dosmaperr(GetLastError());
@@ -381,14 +339,13 @@ int __la_open(const char *path, int flags, ...) {
   }
   if (ws == NULL) {
 #if defined(__BORLANDC__)
-    /* Borland has no mode argument.
-       TODO: Fix mode of new file.  */
+
     r = _open(path, flags);
 #else
     _sopen_s(&r, path, flags, _SH_DENYNO, pmode);
 #endif
     if (r < 0 && errno == EACCES && (flags & O_CREAT) != 0) {
-      /* Simulate other POSIX system action to pass our test suite. */
+
       attr = GetFileAttributesA(path);
       if (attr == (DWORD)-1)
         la_dosmaperr(GetLastError());
@@ -408,7 +365,7 @@ int __la_open(const char *path, int flags, ...) {
   }
   _wsopen_s(&r, ws, flags, _SH_DENYNO, pmode);
   if (r < 0 && errno == EACCES && (flags & O_CREAT) != 0) {
-    /* Simulate other POSIX system action to pass our test suite. */
+
     attr = GetFileAttributesW(ws);
     if (attr == (DWORD)-1)
       la_dosmaperr(GetLastError());
@@ -432,14 +389,10 @@ int __la_wopen(const wchar_t *path, int flags, ...) {
   va_end(ap);
   fullpath = NULL;
 
-  /* _(w)sopen_s fails if we provide any other modes */
   pmode = pmode & (_S_IREAD | _S_IWRITE);
 
   if ((flags & ~O_BINARY) == O_RDONLY) {
-    /*
-     * When we open a directory, _open function returns
-     * "Permission denied" error.
-     */
+
     attr = GetFileAttributesW(path);
 #if !defined(WINAPI_FAMILY_PARTITION) ||                                       \
     WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
@@ -471,14 +424,14 @@ int __la_wopen(const wchar_t *path, int flags, ...) {
         handle = CreateFileW(
             path, 0, 0, NULL, OPEN_EXISTING,
             FILE_FLAG_BACKUP_SEMANTICS | FILE_ATTRIBUTE_READONLY, NULL);
-#else  /* !WINAPI_PARTITION_DESKTOP */
+#else
       CREATEFILE2_EXTENDED_PARAMETERS createExParams;
       ZeroMemory(&createExParams, sizeof(createExParams));
       createExParams.dwSize = sizeof(createExParams);
       createExParams.dwFileAttributes = FILE_ATTRIBUTE_READONLY;
       createExParams.dwFileFlags = FILE_FLAG_BACKUP_SEMANTICS;
       handle = CreateFile2(fullpath, 0, 0, OPEN_EXISTING, &createExParams);
-#endif /* !WINAPI_PARTITION_DESKTOP */
+#endif
       free(fullpath);
       if (handle == INVALID_HANDLE_VALUE) {
         la_dosmaperr(GetLastError());
@@ -490,7 +443,7 @@ int __la_wopen(const wchar_t *path, int flags, ...) {
   }
   _wsopen_s(&r, path, flags, _SH_DENYNO, pmode);
   if (r < 0 && errno == EACCES && (flags & O_CREAT) != 0) {
-    /* Simulate other POSIX system action to pass our test suite. */
+
     attr = GetFileAttributesW(path);
     if (attr == (DWORD)-1)
       la_dosmaperr(GetLastError());
@@ -516,8 +469,7 @@ ssize_t __la_read(int fd, void *buf, size_t nbytes) {
     errno = EBADF;
     return (-1);
   }
-  /* Do not pass 0 to third parameter of ReadFile(), read bytes.
-   * This will not return to application side. */
+
   if (nbytes == 0)
     return (0);
   handle = (HANDLE)_get_osfhandle(fd);
@@ -539,18 +491,6 @@ ssize_t __la_read(int fd, void *buf, size_t nbytes) {
   return ((ssize_t)bytes_read);
 }
 
-/* Stat by handle
- * Windows' stat() does not accept the path added "\\?\" especially "?"
- * character.
- * It means we cannot access the long name path longer than MAX_PATH.
- * So I've implemented a function similar to Windows' stat() to access the
- * long name path.
- * And I've added some feature.
- * 1. set st_ino by nFileIndexHigh and nFileIndexLow of
- *    BY_HANDLE_FILE_INFORMATION.
- * 2. set st_nlink by nNumberOfLinks of BY_HANDLE_FILE_INFORMATION.
- * 3. set st_dev by dwVolumeSerialNumber by BY_HANDLE_FILE_INFORMATION.
- */
 static int __hstat(HANDLE handle, struct ustat *st) {
   BY_HANDLE_FILE_INFORMATION info;
   ULARGE_INTEGER ino64;
@@ -591,7 +531,7 @@ static int __hstat(HANDLE handle, struct ustat *st) {
   case FILE_TYPE_DISK:
     break;
   default:
-    /* This ftype is undocumented type. */
+
     la_dosmaperr(GetLastError());
     return (-1);
   }
@@ -624,14 +564,13 @@ static int __hstat(HANDLE handle, struct ustat *st) {
   st->st_nlink = 1;
   st->st_dev = 0;
 #else
-  /* Getting FileIndex as i-node. We should remove a sequence which
-   * is high-16-bits of nFileIndexHigh. */
+
   ino64.HighPart = info.nFileIndexHigh & 0x0000FFFFUL;
   ino64.LowPart = info.nFileIndexLow;
   st->st_ino = ino64.QuadPart;
   st->st_nlink = info.nNumberOfLinks;
   if (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-    ++st->st_nlink; /* Add parent directory. */
+    ++st->st_nlink;
   st->st_dev = info.dwVolumeSerialNumber;
 #endif
   st->st_uid = 0;
@@ -656,11 +595,6 @@ static void copy_stat(struct stat *st, struct ustat *us) {
   st->st_rdev = us->st_rdev;
 }
 
-/*
- * TODO: Remove a use of __la_fstat and __la_stat.
- * We should use GetFileInformationByHandle in place
- * where We still use the *stat functions.
- */
 int __la_fstat(int fd, struct stat *st) {
   struct ustat u;
   int ret;
@@ -680,7 +614,6 @@ int __la_fstat(int fd, struct stat *st) {
   return (ret);
 }
 
-/* This can exceed MAX_PATH limitation. */
 int __la_stat(const char *path, struct stat *st) {
   HANDLE handle;
   struct ustat u;
@@ -756,13 +689,10 @@ int __la_seek_stat(const char *path, la_seek_stat_t *st) {
   return (ret);
 }
 
-/*
- * This waitpid is limited implementation.
- */
 pid_t __la_waitpid(HANDLE child, int *status, int option) {
   DWORD cs;
 
-  (void)option; /* UNUSED */
+  (void)option;
   do {
     if (GetExitCodeProcess(child, &cs) == 0) {
       la_dosmaperr(GetLastError());
@@ -802,9 +732,6 @@ ssize_t __la_write(int fd, const void *buf, size_t nbytes) {
   return (bytes_written);
 }
 
-/*
- * Replace the Windows path separator '\' with '/'.
- */
 static int replace_pathseparator(struct archive_wstring *ws,
                                  const wchar_t *wp) {
   wchar_t *w;
@@ -833,9 +760,9 @@ static int fix_pathseparator(struct archive_entry *entry) {
   archive_string_init(&ws);
   wp = archive_entry_pathname_w(entry);
   switch (replace_pathseparator(&ws, wp)) {
-  case 0: /* Not replaced. */
+  case 0:
     break;
-  case 1: /* Replaced. */
+  case 1:
     archive_entry_copy_pathname_w(entry, ws.s);
     break;
   default:
@@ -843,9 +770,9 @@ static int fix_pathseparator(struct archive_entry *entry) {
   }
   wp = archive_entry_hardlink_w(entry);
   switch (replace_pathseparator(&ws, wp)) {
-  case 0: /* Not replaced. */
+  case 0:
     break;
-  case 1: /* Replaced. */
+  case 1:
     archive_entry_copy_hardlink_w(entry, ws.s);
     break;
   default:
@@ -853,9 +780,9 @@ static int fix_pathseparator(struct archive_entry *entry) {
   }
   wp = archive_entry_symlink_w(entry);
   switch (replace_pathseparator(&ws, wp)) {
-  case 0: /* Not replaced. */
+  case 0:
     break;
-  case 1: /* Replaced. */
+  case 1:
     archive_entry_copy_symlink_w(entry, ws.s);
     break;
   default:
@@ -885,17 +812,14 @@ __la_win_entry_in_posix_pathseparator(struct archive_entry *entry) {
     if (wp != NULL && wcschr(wp, L'\\') != NULL)
       has_backslash = 1;
   }
-  /*
-   * If there is no backslash chars, return the original.
-   */
+
   if (!has_backslash)
     return (entry);
 
-  /* Copy entry so we can modify it as needed. */
   entry_main = archive_entry_clone(entry);
   if (entry_main == NULL)
     return (NULL);
-  /* Replace the Windows path-separator '\' with '/'. */
+
   ret = fix_pathseparator(entry_main);
   if (ret < ARCHIVE_WARN) {
     archive_entry_free(entry_main);
@@ -903,49 +827,6 @@ __la_win_entry_in_posix_pathseparator(struct archive_entry *entry) {
   }
   return (entry_main);
 }
-
-/*
- * The following function was modified from PostgreSQL sources and is
- * subject to the copyright below.
- */
-/*-------------------------------------------------------------------------
- *
- * win32error.c
- *	  Map win32 error codes to errno values
- *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
- *
- * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/port/win32error.c,v 1.4 2008/01/01 19:46:00
- * momjian Exp $
- *
- *-------------------------------------------------------------------------
- */
-/*
-PostgreSQL Database Management System
-(formerly known as Postgres, then as Postgres95)
-
-Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
-
-Portions Copyright (c) 1994, The Regents of the University of California
-
-Permission to use, copy, modify, and distribute this software and its
-documentation for any purpose, without fee, and without a written agreement
-is hereby granted, provided that the above copyright notice and this
-paragraph and the following two paragraphs appear in all copies.
-
-IN NO EVENT SHALL THE UNIVERSITY OF CALIFORNIA BE LIABLE TO ANY PARTY FOR
-DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, INCLUDING
-LOST PROFITS, ARISING OUT OF THE USE OF THIS SOFTWARE AND ITS
-DOCUMENTATION, EVEN IF THE UNIVERSITY OF CALIFORNIA HAS BEEN ADVISED OF THE
-POSSIBILITY OF SUCH DAMAGE.
-
-THE UNIVERSITY OF CALIFORNIA SPECIFICALLY DISCLAIMS ANY WARRANTIES,
-INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
-AND FITNESS FOR A PARTICULAR PURPOSE.  THE SOFTWARE PROVIDED HEREUNDER IS
-ON AN "AS IS" BASIS, AND THE UNIVERSITY OF CALIFORNIA HAS NO OBLIGATIONS TO
-PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
-*/
 
 static const struct {
   DWORD winerr;
@@ -1012,9 +893,8 @@ void __la_dosmaperr(unsigned long e) {
     }
   }
 
-  /* fprintf(stderr, "unrecognized win32 error code: %lu", e); */
   errno = EINVAL;
   return;
 }
 
-#endif /* _WIN32 && !__CYGWIN__ */
+#endif

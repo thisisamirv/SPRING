@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <charconv>
 #include <cstddef>
@@ -56,8 +56,8 @@ inline std::ostream &operator<<(std::ostream &out, const FileRange &range) {
   }
 
   static const std::vector<std::pair<std::string_view, size_t>> PREFIXES{
-      {"ki", 1ULL << 10U}, /* Strily speaking neither valid SI or IEC, but I
-                              like it for consistency with SI. */
+      {"ki", 1ULL << 10U},
+
       {"Ki", 1ULL << 10U},
       {"Mi", 1ULL << 20U},
       {"Gi", 1ULL << 30U},

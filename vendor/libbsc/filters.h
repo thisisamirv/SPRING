@@ -1,7 +1,4 @@
-/*-----------------------------------------------------------*/
-/* Block Sorting, Lossless Data Compression Library.         */
-/* Interface to data preprocessing filters                   */
-/*-----------------------------------------------------------*/
+﻿
 
 /*--
 
@@ -56,67 +53,20 @@ See also the bsc and libbsc web site:
 extern "C" {
 #endif
 
-/**
- * Autodetects segments for better compression of heterogeneous files.
- * @param input      - the input memory block of n bytes.
- * @param n          - the length of the input memory block.
- * @param segments   - the output array of segments of k elements size.
- * @param k          - the size of the output segments array.
- * @param features   - the set of additional features.
- * @return The number of segments if no error occurred, error code otherwise.
- */
 LIBBSC_API int bsc_detect_segments(const unsigned char *input, int n,
                                    int *segments, int k, int features);
 
-/**
- * Autodetects order of contexts for better compression of binary files.
- * @param input      - the input memory block of n bytes.
- * @param n          - the length of the input memory block.
- * @param features   - the set of additional features.
- * @return The detected contexts order if no error occurred, error code
- * otherwise.
- */
 LIBBSC_API int bsc_detect_contextsorder(const unsigned char *input, int n,
                                         int features);
 
-/**
- * Reverses memory block to change order of contexts.
- * @param T          - the input/output memory block of n bytes.
- * @param n          - the length of the memory block.
- * @param features   - the set of additional features.
- * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
- */
 LIBBSC_API int bsc_reverse_block(unsigned char *T, int n, int features);
 
-/**
- * Autodetects record size for better compression of multimedia files.
- * @param input      - the input memory block of n bytes.
- * @param n          - the length of the input memory block.
- * @param features   - the set of additional features.
- * @return The size of record if no error occurred, error code otherwise.
- */
 LIBBSC_API int bsc_detect_recordsize(const unsigned char *input, int n,
                                      int features);
 
-/**
- * Reorders memory block for specific size of record (Forward transform).
- * @param T          - the input/output memory block of n bytes.
- * @param n          - the length of the memory block.
- * @param recordSize - the size of record.
- * @param features   - the set of additional features.
- * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
- */
 LIBBSC_API int bsc_reorder_forward(unsigned char *T, int n, int recordSize,
                                    int features);
 
-/**
- * Reorders memory block for specific size of record (Reverse transform).
- * @param T          - the input/output memory block of n bytes.
- * @param n          - the length of the memory block.
- * @param recordSize - the size of record.
- * @param features   - the set of additional features.
- * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
- */
 LIBBSC_API int bsc_reorder_reverse(unsigned char *T, int n, int recordSize,
                                    int features);
 
@@ -125,7 +75,3 @@ LIBBSC_API int bsc_reorder_reverse(unsigned char *T, int n, int recordSize,
 #endif
 
 #endif
-
-/*-------------------------------------------------*/
-/* End                                   filters.h */
-/*-------------------------------------------------*/

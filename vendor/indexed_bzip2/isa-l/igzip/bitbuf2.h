@@ -1,4 +1,4 @@
-/**********************************************************************
+﻿/**********************************************************************
   Copyright(c) 2011-2016 Intel Corporation All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -36,9 +36,6 @@
 #define inline __inline
 #endif
 
-/* MAX_BITBUF_BIT WRITE is the maximum number of bits than can be safely written
- * by consecutive calls of write_bits. Note this assumes the bitbuf is in a
- * state that is possible at the exit of write_bits */
 #define MAX_BITBUF_BIT_WRITE 56
 
 static inline void init(struct BitBuf2 *me) {
@@ -76,7 +73,6 @@ static inline void flush_bits(struct BitBuf2 *me) {
   me->m_bits >>= bits;
 }
 
-/* Can write up to 8 bytes to output buffer */
 static inline void flush(struct BitBuf2 *me) {
   uint32_t bytes;
   if (me->m_bit_count) {
@@ -89,8 +85,7 @@ static inline void flush(struct BitBuf2 *me) {
 }
 
 static inline void check_space(struct BitBuf2 *me, uint32_t num_bits) {
-  /* Checks if bitbuf has num_bits extra space and flushes the bytes in
-   * the bitbuf if it doesn't. */
+
   if (63 - me->m_bit_count < num_bits)
     flush_bits(me);
 }
@@ -101,20 +96,18 @@ static inline void write_bits_unsafe(struct BitBuf2 *me, uint64_t code,
   me->m_bit_count += count;
 }
 
-static inline void write_bits(
-    struct BitBuf2 *me, uint64_t code,
-    uint32_t count) { /* Assumes there is space to fit code into m_bits. */
+static inline void write_bits(struct BitBuf2 *me, uint64_t code,
+                              uint32_t count) {
   me->m_bits |= code << me->m_bit_count;
   me->m_bit_count += count;
   flush_bits(me);
 }
 
-static inline void write_bits_flush(
-    struct BitBuf2 *me, uint64_t code,
-    uint32_t count) { /* Assumes there is space to fit code into m_bits. */
+static inline void write_bits_flush(struct BitBuf2 *me, uint64_t code,
+                                    uint32_t count) {
   me->m_bits |= code << me->m_bit_count;
   me->m_bit_count += count;
   flush(me);
 }
 
-#endif // BITBUF2_H
+#endif

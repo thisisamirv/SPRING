@@ -1,12 +1,6 @@
-/* inffixed.h -- table for decoding fixed codes
- * Generated automatically by makefixed().
- */
-#include "inftrees.h"
+﻿
 
-/* WARNING: this file should *not* be used by applications.
-   It is part of the implementation of this library and is
-   subject to change. Applications should only use zlib.h.
- */
+#include "inftrees.h"
 
 static const code lenfix[512] = {
     {96, 7, 0},   {0, 8, 80},   {0, 8, 16},   {20, 8, 115}, {18, 7, 31},

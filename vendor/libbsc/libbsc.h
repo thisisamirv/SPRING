@@ -1,7 +1,4 @@
-/*-----------------------------------------------------------*/
-/* Block Sorting, Lossless Data Compression Library.         */
-/* Interface to compression/decompression functions          */
-/*-----------------------------------------------------------*/
+﻿
 
 /*--
 
@@ -106,98 +103,22 @@ See also the bsc and libbsc web site:
 extern "C" {
 #endif
 
-/**
- * You should call this function (or @ref bsc_init_full) before you call any of
- * the other functions in libbsc.
- * @param features - the set of additional features.
- * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
- */
 LIBBSC_API int bsc_init(int features);
 
-/**
- * You should call this function (or @ref bsc_init) before you call any of the
- * other functions in libbsc.
- * @param features - the set of additional features.
- * @param malloc - function to use to allocate buffers
- * @param zero_malloc - function to use to allocate zero-filled buffers
- * @param free - function used to free buffers
- * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
- */
 LIBBSC_API int bsc_init_full(int features, void *(*malloc)(size_t size),
                              void *(*zero_malloc)(size_t size),
                              void (*free)(void *address));
 
-/**
- * Compress a memory block.
- * @param input                              - the input memory block of n
- * bytes.
- * @param output                             - the output memory block of n +
- * LIBBSC_HEADER_SIZE bytes.
- * @param n                                  - the length of the input memory
- * block.
- * @param lzpHashSize                        - the hash table size if LZP
- * enabled, 0 otherwise. Must be in range [0, 10..28].
- * @param lzpMinLen                          - the minimum match length if LZP
- * enabled, 0 otherwise. Must be in range [0, 4..255].
- * @param blockSorter                        - the block sorting algorithm. Must
- * be in range [ST3..ST8, BWT].
- * @param coder                              - the entropy coding algorithm.
- * Must be in range [MTF or QLFC].
- * @param features                           - the set of additional features.
- * @return the length of compressed memory block if no error occurred, error
- * code otherwise.
- */
 LIBBSC_API int bsc_compress(const unsigned char *input, unsigned char *output,
                             int n, int lzpHashSize, int lzpMinLen,
                             int blockSorter, int coder, int features);
 
-/**
- * Store a memory block.
- * @param input                              - the input memory block of n
- * bytes.
- * @param output                             - the output memory block of n +
- * LIBBSC_HEADER_SIZE bytes.
- * @param n                                  - the length of the input memory
- * block.
- * @param features                           - the set of additional features.
- * @return the length of stored memory block if no error occurred, error code
- * otherwise.
- */
 LIBBSC_API int bsc_store(const unsigned char *input, unsigned char *output,
                          int n, int features);
 
-/**
- * Determinate the sizes of input and output memory blocks for bsc_decompress
- * function.
- * @param blockHeader                        - the header of input(compressed)
- * memory block of headerSize bytes.
- * @param headerSize                         - the length of header, should be
- * at least LIBBSC_HEADER_SIZE bytes.
- * @param pBlockSize                         - the length of the input memory
- * block for bsc_decompress function.
- * @param pDataSize                          - the length of the output memory
- * block for bsc_decompress function.
- * @param features                           - the set of additional features.
- * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
- */
 LIBBSC_API int bsc_block_info(const unsigned char *blockHeader, int headerSize,
                               int *pBlockSize, int *pDataSize, int features);
 
-/**
- * Decompress a memory block.
- * Note : You should call bsc_block_info function to determinate the sizes of
- * input and output memory blocks.
- * @param input                              - the input memory block of
- * inputSize bytes.
- * @param inputSize                          - the length of the input memory
- * block.
- * @param output                             - the output memory block of
- * outputSize bytes.
- * @param outputSize                         - the length of the output memory
- * block.
- * @param features                           - the set of additional features.
- * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
- */
 LIBBSC_API int bsc_decompress(const unsigned char *input, int inputSize,
                               unsigned char *output, int outputSize,
                               int features);
@@ -207,7 +128,3 @@ LIBBSC_API int bsc_decompress(const unsigned char *input, int inputSize,
 #endif
 
 #endif
-
-/*-------------------------------------------------*/
-/* End                                    libbsc.h */
-/*-------------------------------------------------*/

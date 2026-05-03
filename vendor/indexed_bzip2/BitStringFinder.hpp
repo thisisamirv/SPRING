@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <algorithm>
 #include <cassert>
@@ -15,22 +15,14 @@
 #include <vector>
 
 #include <BitManipulation.hpp>
-#include <common.hpp>
 #include <FileReader.hpp>
+#include <common.hpp>
 
 namespace rapidgzip {
-/**
- * No matter the input, the data is read from an input buffer.
- * If a file is given, then that input buffer will be refilled when the input
- * buffer empties. It is less a file object and acts more like an iterator. It
- * offers a @ref find method returning the next match or
- * std::numeric_limits<size_t>::max() if the end was reached.
- */
+
 template <uint8_t bitStringSize> class BitStringFinder {
 public:
-  using ShiftedLUTTable =
-      std::vector<std::pair</* shifted value to compare to */ uint64_t,
-                            /* mask */ uint64_t>>;
+  using ShiftedLUTTable = std::vector<std::pair<uint64_t, uint64_t>>;
 
 public:
   BitStringFinder(BitStringFinder &&) noexcept = default;
@@ -60,10 +52,6 @@ public:
     }
   }
 
-  /** @note This overload is used for the tests but can also be useful for other
-   * things. */
-  /* False positive because of delegating constructor. */
-  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-member-init)
   BitStringFinder(const char *buffer, size_t size, uint64_t bitStringToFind)
       : BitStringFinder(UniqueFileReader(), bitStringToFind) {
     m_buffer.assign(buffer, buffer + size);
@@ -72,8 +60,7 @@ public:
   virtual ~BitStringFinder() = default;
 
   [[nodiscard]] bool seekable() const {
-    /* If m_fileReader is not set, then we are working on an in-memory buffer,
-     * which can be seeked. */
+
     return !m_fileReader || m_fileReader->seekable();
   }
 
@@ -84,10 +71,6 @@ public:
     return m_buffer.empty();
   }
 
-  /**
-   * @return the next match or std::numeric_limits<size_t>::max() if the end was
-   * reached.
-   */
   [[nodiscard]] virtual size_t find();
 
 protected:
@@ -98,49 +81,24 @@ protected:
   size_t refillBuffer();
 
 public:
-  /**
-   * @param bitString the lowest bitStringSize bits will be looked for in the
-   * buffer
-   */
   [[nodiscard]] static std::vector<size_t>
   findBitStrings(std::string_view const &buffer, uint64_t bitString);
 
 protected:
   const uint64_t m_bitStringToFind;
 
-  /**
-   * If the bit string is only one bit long, then we don't need to keep bits
-   * from the current buffer. However, for a 2 bit string, one bit might be at
-   * the end of the current and the other at the beginning of the next chunk, so
-   * we need to keep the last byte of that buffer but then mark the first 7 bits
-   * read to avoid returning duplicate offsets! For 8 bits, at worst 7 bits are
-   * in the current buffer and 1 in the next, so we need to keep 1 byte and mark
-   * 1 bit read in the new buffer. For 9 bits, keep 8 bits (1B) and mark 0 bits
-   * read. This gives the formula for the bytes to keep as: ceil( (
-   * bitStringSize - 1 ) / 8 ).
-   */
   const uint8_t m_movingBitsToKeep;
   const uint8_t m_movingBytesToKeep;
 
   std::vector<char> m_buffer;
   std::vector<size_t> m_offsetsInBuffer;
-  /**
-   * How many bits from m_buffer bits are already read. The first bit string
-   * comparison will be done after m_nTotalBytesRead * CHAR_BIT +
-   * m_bufferBitsRead >= bitStringSize
-   */
+
   size_t m_bufferBitsRead = 0;
 
   UniqueFileReader m_fileReader;
 
-  /** This is not the current size of @ref m_buffer but the number of bytes to
-   * read from @ref m_file if it is empty */
   const size_t m_fileChunksInBytes;
-  /**
-   * This value is incremented whenever the buffer is refilled. It basically
-   * acts like an overflow counter for @ref m_bufferBitsRead and is required to
-   * return the absolute bit pos.
-   */
+
   size_t m_nTotalBytesRead = 0;
 };
 
@@ -252,7 +210,6 @@ template <uint8_t bitStringSize> size_t BitStringFinder<bitStringSize>::find() {
                                            }),
                             m_offsetsInBuffer.end());
 
-    /* Sort descending so that we can pop from back successively. */
     std::sort(m_offsetsInBuffer.begin(), m_offsetsInBuffer.end(),
               [](auto a, auto b) { return a > b; });
 
@@ -276,7 +233,6 @@ size_t BitStringFinder<bitStringSize>::refillBuffer() {
     return 0;
   }
 
-  /* Read chunk of data from file into buffer. */
   size_t nBytesRead = 0;
   if (m_buffer.empty()) {
     assert(m_nTotalBytesRead == 0);
@@ -289,8 +245,6 @@ size_t BitStringFinder<bitStringSize>::refillBuffer() {
     m_nTotalBytesRead += m_buffer.size() - m_movingBytesToKeep;
     m_bufferBitsRead = m_movingBytesToKeep * CHAR_BIT - m_movingBitsToKeep;
 
-    /* On subsequent refills, keep the last bits in order to find bit strings on
-     * buffer boundaries. */
     std::memmove(m_buffer.data(),
                  m_buffer.data() + m_buffer.size() - m_movingBytesToKeep,
                  m_movingBytesToKeep);

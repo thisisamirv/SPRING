@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2007 Tim Kientzle
  * All rights reserved.
  *
@@ -21,16 +21,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
-
-/* !!ONLY FOR USE INTERNALLY TO LIBARCHIVE!! */
-
-/*
- * This header is the first thing included in any of the libarchive
- * source files.  As far as possible, platform-specific issues should
- * be dealt with here and not within individual source files.  I'm
- * actively trying to minimize #if blocks within the main source,
- * since they obfuscate the code.
  */
 
 #ifndef ARCHIVE_PLATFORM_H_INCLUDED
@@ -82,28 +72,24 @@
 #include <stdint.h>
 #include <stdlib.h>
 #if defined(__clang__)
-/* Prevent clangd/include-cleaner from removing stdlib.h: reference a symbol
- * in an unevaluated context so this has no runtime effect. */
+
 static inline void __la_mark_stdlib_used(void) { (void)sizeof(malloc(0)); }
 #endif
 #include <string.h>
 #if defined(__clang__)
-/* Prevent clangd/include-cleaner from removing string.h. */
+
 static inline void __la_mark_string_used(void) { (void)sizeof(strlen("")); }
 #endif
 #include <sys/stat.h>
 #include <sys/types.h>
 #if defined(_WIN32) && !defined(uid_t) && !defined(_UID_T_DECLARED)
-/* Ensure basic POSIX types exist on Windows (MinGW), which lacks them in
- * system headers. On POSIX platforms <sys/types.h> always provides them. */
+
 #include <stddef.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
 #if !defined(ULONG_PTR) && !defined(_WIN32)
-/* Minimal fallback for pointer-sized unsigned type when not on Windows.
- * On Windows, system headers (e.g., basetsd.h) provide ULONG_PTR with the
- * appropriate width; avoid redefining it to prevent type mismatch errors. */
+
 typedef unsigned long ULONG_PTR;
 #endif
 #if !defined(uid_t)
@@ -140,7 +126,7 @@ typedef unsigned int dev_t;
 #endif
 #include <wchar.h>
 #if defined(__clang__)
-/* Prevent clangd/include-cleaner from removing wchar.h. */
+
 static inline void __la_mark_wchar_used(void) {
   (void)sizeof(wcschr(L"", L'a'));
 }
@@ -829,28 +815,21 @@ static inline void __la_mark_wchar_used(void) {
 
 #define ARCHIVE_PLATFORM_H_INCLUDED
 
-/* archive.h and archive_entry.h require this.
- * Define `__LIBARCHIVE_BUILD` only when a real config/header is present
- * to avoid disabling parsing-time fallbacks in other headers. */
 #if defined(PLATFORM_CONFIG_H) || defined(HAVE_CONFIG_H) ||                    \
     defined(__LIBARCHIVE_CONFIG_H_INCLUDED)
 #define __LIBARCHIVE_BUILD 1
 #endif
 
 #if defined(PLATFORM_CONFIG_H)
-/* Use hand-built config.h in environments that need it. */
+
 #include PLATFORM_CONFIG_H
 #elif defined(HAVE_CONFIG_H)
-/* Most POSIX platforms use the 'configure' script to build config.h */
-// #include "config.h"
+
 #else
-/* No config.h available. Provide a minimal parse-time fallback so editors
- * and clangd can parse this header without the project configure step.
- * This block is intentionally conservative and only affects editor
- * diagnostics; real builds should provide a proper config.h. */
+
 #ifndef __LIBARCHIVE_PARSER_FALLBACK
 #define __LIBARCHIVE_PARSER_FALLBACK 1
-/* Minimal feature macros to keep downstream code happy during parsing. */
+
 #ifndef HAVE_INTTYPES_H
 #define HAVE_INTTYPES_H 1
 #endif
@@ -863,10 +842,9 @@ static inline void __la_mark_wchar_used(void) {
 #ifndef SIZEOF_LONG
 #define SIZEOF_LONG 8
 #endif
-#endif /* __LIBARCHIVE_PARSER_FALLBACK */
+#endif
 #endif
 
-/* On macOS check for some symbols based on the deployment target version.  */
 #if defined(__APPLE__)
 #undef HAVE_FUTIMENS
 #undef HAVE_UTIMENSAT
@@ -877,42 +855,24 @@ static inline void __la_mark_wchar_used(void) {
 #endif
 #endif
 
-/* For cygwin, to avoid missing LONG, ULONG, PUCHAR, ... definitions */
 #ifdef __CYGWIN__
 #include <windef.h>
 #endif
 
-/* It should be possible to get rid of this by extending the feature-test
- * macros to cover Windows API functions, probably along with non-trivial
- * refactoring of code to find structures that sit more cleanly on top of
- * either Windows or Posix APIs. */
 #if (defined(__WIN32__) || defined(_WIN32) || defined(__WIN32)) &&             \
     !defined(__CYGWIN__)
 #include "archive_windows.h"
 #if defined(LIBARCHIVE_ARCHIVE_WINDOWS_H_INCLUDED)
-/* Keep archive_windows.h from being removed by include-cleaner when it's
- * actually included. */
+
 static inline void __la_mark_archive_windows_used(void) { (void)sizeof(LONG); }
 #endif
-/* The C library on Windows specifies a calling convention for callback
- * functions and exports; when we interact with them (capture pointers,
- * call and pass function pointers) we need to match their calling
- * convention.
- * This only matters when libarchive is built with /Gr, /Gz or /Gv
- * (which change the default calling convention.) */
+
 #define __LA_LIBC_CC __cdecl
 #else
 #define la_stat(path, stref) stat(path, stref)
 #define __LA_LIBC_CC
 #endif
 
-/*
- * The config files define a lot of feature macros.  The following
- * uses those macros to select/define replacements and include key
- * headers as required.
- */
-
-/* Try to get standard C99-style integer type definitions. */
 #if HAVE_INTTYPES_H
 #include <inttypes.h>
 #endif
@@ -920,7 +880,6 @@ static inline void __la_mark_archive_windows_used(void) { (void)sizeof(LONG); }
 #include <stdint.h>
 #endif
 
-/* Borland warns about its own constants!  */
 #if defined(__BORLANDC__)
 #if HAVE_DECL_UINT64_MAX
 #undef UINT64_MAX
@@ -940,7 +899,6 @@ static inline void __la_mark_archive_windows_used(void) { (void)sizeof(LONG); }
 #endif
 #endif
 
-/* Some platforms lack the standard *_MAX definitions. */
 #if !HAVE_DECL_SIZE_MAX
 #define SIZE_MAX (~(size_t)0)
 #endif
@@ -975,7 +933,6 @@ static inline void __la_mark_archive_windows_used(void) { (void)sizeof(LONG); }
 #define INTMAX_MIN ((intmax_t)(~INTMAX_MAX))
 #endif
 
-/* Some platforms lack the standard PRIxN/PRIdN definitions. */
 #if !HAVE_INTTYPES_H || !defined(PRIx32) || !defined(PRId32)
 #ifndef PRIx32
 #if SIZEOF_INT == 4
@@ -985,7 +942,7 @@ static inline void __la_mark_archive_windows_used(void) { (void)sizeof(LONG); }
 #else
 #error No suitable 32-bit unsigned integer type found for this platform
 #endif
-#endif // PRIx32
+#endif
 #ifndef PRId32
 #if SIZEOF_INT == 4
 #define PRId32 "d"
@@ -994,20 +951,15 @@ static inline void __la_mark_archive_windows_used(void) { (void)sizeof(LONG); }
 #else
 #error No suitable 32-bit signed integer type found for this platform
 #endif
-#endif // PRId32
-#endif // !HAVE_INTTYPES_H || !defined(PRIx32) || !defined(PRId32)
+#endif
+#endif
 
-/*
- * If we can't restore metadata using a file descriptor, then
- * for compatibility's sake, close files before trying to restore metadata.
- */
 #if defined(HAVE_FCHMOD) || defined(HAVE_FUTIMES) ||                           \
     defined(HAVE_ACL_SET_FD) || defined(HAVE_ACL_SET_FD_NP) ||                 \
     defined(HAVE_FCHOWN)
 #define CAN_RESTORE_METADATA_FD
 #endif
 
-/* Set up defaults for internal error codes. */
 #ifndef ARCHIVE_ERRNO_FILE_FORMAT
 #if HAVE_EFTYPE
 #define ARCHIVE_ERRNO_FILE_FORMAT EFTYPE
@@ -1062,4 +1014,4 @@ static inline void __la_mark_archive_windows_used(void) { (void)sizeof(LONG); }
 #define __LA_PRINTF(fmtarg, firstvararg)
 #endif
 
-#endif /* !ARCHIVE_PLATFORM_H_INCLUDED */
+#endif

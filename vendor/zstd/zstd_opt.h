@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  * All rights reserved.
  *
@@ -16,7 +16,7 @@
 #if !defined(ZSTD_EXCLUDE_BTLAZY2_BLOCK_COMPRESSOR) ||                         \
     !defined(ZSTD_EXCLUDE_BTOPT_BLOCK_COMPRESSOR) ||                           \
     !defined(ZSTD_EXCLUDE_BTULTRA_BLOCK_COMPRESSOR)
-/* used in ZSTD_loadDictionaryContent() */
+
 void ZSTD_updateTree(ZSTD_MatchState_t *ms, const BYTE *ip, const BYTE *iend);
 #endif
 
@@ -57,9 +57,6 @@ size_t ZSTD_compressBlock_btultra_extDict(ZSTD_MatchState_t *ms,
                                           U32 rep[ZSTD_REP_NUM],
                                           void const *src, size_t srcSize);
 
-/* note : no btultra2 variant for extDict nor dictMatchState,
- * because btultra2 is not meant to work with dictionaries
- * and is only specific for the first block (no prefix) */
 size_t ZSTD_compressBlock_btultra2(ZSTD_MatchState_t *ms, SeqStore_t *seqStore,
                                    U32 rep[ZSTD_REP_NUM], void const *src,
                                    size_t srcSize);
@@ -76,4 +73,4 @@ size_t ZSTD_compressBlock_btultra2(ZSTD_MatchState_t *ms, SeqStore_t *seqStore,
 #define ZSTD_COMPRESSBLOCK_BTULTRA2 NULL
 #endif
 
-#endif /* ZSTD_OPT_H */
+#endif

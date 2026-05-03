@@ -1,7 +1,4 @@
-/*-----------------------------------------------------------*/
-/* Block Sorting, Lossless Data Compression Library.         */
-/* Detectors of blocksize, recordsize and contexts reorder.  */
-/*-----------------------------------------------------------*/
+﻿
 
 /*--
 
@@ -635,7 +632,3 @@ int bsc_detect_recordsize(const unsigned char *RESTRICT input, int n,
 
   return result;
 }
-
-/*-------------------------------------------------*/
-/* End                               detectors.cpp */
-/*-------------------------------------------------*/

@@ -1,4 +1,4 @@
-/*
+﻿/*
  * x86/adler32_impl.h - x86 implementations of Adler-32 checksum algorithm
  *
  * Copyright 2016 Eric Biggers
@@ -28,10 +28,6 @@
 #ifndef LIB_X86_ADLER32_IMPL_H
 #define LIB_X86_ADLER32_IMPL_H
 
-/* Indicate whether this header provides an x86 implementation. This macro
- * is defined to 1 when compiling for x86 targets and 0 otherwise. It allows
- * callers (e.g. adler32.c) to detect whether the x86 implementation is
- * available without relying on include-cleaner pragmas. */
 #ifndef ADLER32_HAS_X86_IMPL
 #if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) ||             \
     defined(_M_IX86)
@@ -84,16 +80,11 @@
 
 #include "cpu_features_x86.h"
 
-/*
- * adler32_func_t is defined in adler32.c, but we need it here for standalone
- * parsing by the IDE.
- */
 #ifndef ADLER32_FUNC_T_DEFINED
 #define ADLER32_FUNC_T_DEFINED
 typedef u32 (*adler32_func_t)(u32 adler, const u8 *p, size_t len);
 #endif
 
-/* SSE2 and AVX2 implementations.  Used on older CPUs. */
 #if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
 #define adler32_x86_sse2 adler32_x86_sse2
 #define SUFFIX _sse2
@@ -112,17 +103,6 @@ typedef u32 (*adler32_func_t)(u32 adler, const u8 *p, size_t len);
 #include "adler32_template.h"
 #endif
 
-/*
- * AVX-VNNI implementation.  This is used on CPUs that have AVX2 and AVX-VNNI
- * but don't have AVX-512, for example Intel Alder Lake.
- *
- * Unusually for a new CPU feature, gcc added support for the AVX-VNNI
- * intrinsics (in gcc 11.1) slightly before binutils added support for
- * assembling AVX-VNNI instructions (in binutils 2.36).  Distros can reasonably
- * have gcc 11 with binutils 2.35.  Because of this issue, we check for gcc 12
- * instead of gcc 11.  (libdeflate supports direct compilation without a
- * configure step, so checking the binutils version is not always an option.)
- */
 #if (GCC_PREREQ(12, 1) || CLANG_PREREQ(12, 0, 13000000) ||                     \
      MSVC_PREREQ(1930)) &&                                                     \
     !defined(LIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_AVX_VNNI)
@@ -137,13 +117,7 @@ typedef u32 (*adler32_func_t)(u32 adler, const u8 *p, size_t len);
 
 #if (GCC_PREREQ(8, 1) || CLANG_PREREQ(6, 0, 10000000) || MSVC_PREREQ(1920)) && \
     !defined(LIBDEFLATE_ASSEMBLER_DOES_NOT_SUPPORT_AVX512VNNI)
-/*
- * AVX512VNNI implementation using 256-bit vectors.  This is very similar to the
- * AVX-VNNI implementation but takes advantage of masking and more registers.
- * This is used on certain older Intel CPUs, specifically Ice Lake and Tiger
- * Lake, which support AVX512VNNI but downclock a bit too eagerly when ZMM
- * registers are used.
- */
+
 #define adler32_x86_avx512_vl256_vnni adler32_x86_avx512_vl256_vnni
 #define SUFFIX _avx512_vl256_vnni
 #define ATTRIBUTES _target_attribute("avx512bw,avx512vl,avx512vnni")
@@ -152,10 +126,6 @@ typedef u32 (*adler32_func_t)(u32 adler, const u8 *p, size_t len);
 #define USE_AVX512 1
 #include "adler32_template.h"
 
-/*
- * AVX512VNNI implementation using 512-bit vectors.  This is used on CPUs that
- * have a good AVX-512 implementation including AVX512VNNI.
- */
 #define adler32_x86_avx512_vl512_vnni adler32_x86_avx512_vl512_vnni
 #define SUFFIX _avx512_vl512_vnni
 #define ATTRIBUTES _target_attribute("avx512bw,avx512vnni")
@@ -194,6 +164,6 @@ static inline adler32_func_t arch_select_adler32_func(void) {
 }
 #define arch_select_adler32_func arch_select_adler32_func
 
-#endif /* __x86_64__ || __i386__ || _M_X64 || _M_IX86 */
+#endif
 
-#endif /* LIB_X86_ADLER32_IMPL_H */
+#endif

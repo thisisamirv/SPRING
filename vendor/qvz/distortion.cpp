@@ -1,4 +1,4 @@
-#include <math.h>
+﻿#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,9 +8,6 @@
 namespace spring {
 namespace qvz {
 
-/**
- * Allocates memory for a distortion matrix
- */
 struct distortion_t *alloc_distortion_matrix(uint8_t symbols) {
   struct distortion_t *rtn =
       (struct distortion_t *)calloc(1, sizeof(struct distortion_t));
@@ -19,17 +16,11 @@ struct distortion_t *alloc_distortion_matrix(uint8_t symbols) {
   return rtn;
 }
 
-/**
- * Deallocates memory from a distortion matrix
- */
 void free_distortion_matrix(struct distortion_t *d) {
   free(d->distortion);
   free(d);
 }
 
-/**
- * Public facing method for allocating distortion matrices
- */
 struct distortion_t *generate_distortion_matrix(uint8_t symbols, int type) {
   switch (type) {
   case DISTORTION_MANHATTAN:
@@ -48,9 +39,6 @@ struct distortion_t *generate_distortion_matrix(uint8_t symbols, int type) {
   }
 }
 
-/**
- * Generate a distortion matrix according to the Manhattan distance (L1) metric
- */
 struct distortion_t *gen_manhattan_distortion(uint8_t symbols) {
   struct distortion_t *rtn = alloc_distortion_matrix(symbols);
   rtn->type = DISTORTION_MANHATTAN;
@@ -65,9 +53,6 @@ struct distortion_t *gen_manhattan_distortion(uint8_t symbols) {
   return rtn;
 }
 
-/**
- * Generates a distortion matrix according to the MSE (L2) metric
- */
 struct distortion_t *gen_mse_distortion(uint8_t symbols) {
   struct distortion_t *rtn = alloc_distortion_matrix(symbols);
   rtn->type = DISTORTION_MSE;
@@ -83,9 +68,6 @@ struct distortion_t *gen_mse_distortion(uint8_t symbols) {
   return rtn;
 }
 
-/**
- * Generates a distortion matrix according to the lorentzian (log-L1) metric
- */
 struct distortion_t *gen_lorentzian_distortion(uint8_t symbols) {
   struct distortion_t *rtn = alloc_distortion_matrix(symbols);
   rtn->type = DISTORTION_LORENTZ;
@@ -101,11 +83,6 @@ struct distortion_t *gen_lorentzian_distortion(uint8_t symbols) {
   return rtn;
 }
 
-/**
- * Reads in a custom distortion matrix specified in the given file
- * The file format is S rows of S columns containing double valued distortions
- * separated by commas. Lines beginning with a # are ignored as comments
- */
 struct distortion_t *gen_custom_distortion(uint8_t symbols,
                                            const char *filename) {
   struct distortion_t *dist = alloc_distortion_matrix(symbols);
@@ -159,17 +136,10 @@ struct distortion_t *gen_custom_distortion(uint8_t symbols,
   return dist;
 }
 
-/**
- * Retrieve the distortion for a pair (x, y). Generally x is the true value and
- * y is the reconstructed value. Handles the matrix->linear array indexing
- */
 double get_distortion(struct distortion_t *dist, uint8_t x, uint8_t y) {
   return dist->distortion[(uint32_t)x + (uint32_t)dist->symbols * (uint32_t)y];
 }
 
-/**
- * Print a distortion matrix to stdout for debuggin
- */
 void print_distortion(struct distortion_t *dist) {
   uint8_t x, y;
 

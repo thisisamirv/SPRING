@@ -1,7 +1,4 @@
-/*-----------------------------------------------------------*/
-/* Block Sorting, Lossless Data Compression Library.         */
-/* Data preprocessing functions                              */
-/*-----------------------------------------------------------*/
+﻿
 
 /*--
 
@@ -260,7 +257,3 @@ int bsc_reorder_reverse(unsigned char *T, int n, int recordSize, int features) {
 
   return LIBBSC_NOT_ENOUGH_MEMORY;
 }
-
-/*-------------------------------------------------*/
-/* End                           preprocessing.cpp */
-/*-------------------------------------------------*/

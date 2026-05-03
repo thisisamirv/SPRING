@@ -1,4 +1,4 @@
-/* ******************************************************************
+﻿/* ******************************************************************
  * debug
  * Part of FSE library
  * Copyright (c) Meta Platforms, Inc. and affiliates.
@@ -12,18 +12,9 @@
  * You may select, at your option, one of the above-listed licenses.
  ****************************************************************** */
 
-/*
- * This module only hosts one global variable
- * which can be used to dynamically influence the verbosity of traces,
- * such as DEBUGLOG and RAWLOG
- */
-
 #include "debug.h"
 
 #if !defined(ZSTD_LINUX_KERNEL) || (DEBUGLEVEL >= 2)
-/* We only use this when DEBUGLEVEL>=2, but we get -Werror=pedantic errors if a
- * translation unit is empty. So remove this from Linux kernel builds, but
- * otherwise just leave it in.
- */
+
 int g_debuglevel = DEBUGLEVEL;
 #endif

@@ -1,7 +1,4 @@
-/*-----------------------------------------------------------*/
-/* Block Sorting, Lossless Data Compression Library.         */
-/* Interface to platform specific functions and constants    */
-/*-----------------------------------------------------------*/
+﻿
 
 /*--
 
@@ -108,7 +105,7 @@ See also the bsc and libbsc web site:
 #elif defined(__cplusplus)
 #define INLINE inline
 #else
-#define INLINE /* */
+#define INLINE
 #endif
 
 #if defined(_MSC_VER)
@@ -116,7 +113,7 @@ See also the bsc and libbsc web site:
 #elif defined(__GNUC__)
 #define NOINLINE __attribute__((noinline))
 #else
-#define NOINLINE /* */
+#define NOINLINE
 #endif
 
 #if defined(_MSC_VER)
@@ -130,7 +127,7 @@ See also the bsc and libbsc web site:
 #elif defined(_MSC_VER) || defined(__INTEL_COMPILER)
 #define RESTRICT __restrict
 #else
-#define RESTRICT /* */
+#define RESTRICT
 #endif
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -198,45 +195,16 @@ bsc_bit_scan_forward64(unsigned long long x) {
 extern "C" {
 #endif
 
-/**
- * You should call this function before you call any of the other platform
- * specific functions.
- * @param malloc      - function to use to allocate buffers
- * @param zero_malloc - function to use to allocate zero-filled buffers
- * @param free        - function used to free buffers
- * @param features    - the set of additional features.
- * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
- */
 int bsc_platform_init(int features, void *(*malloc)(size_t size),
                       void *(*zero_malloc)(size_t size),
                       void (*free)(void *address));
 
-/**
- * Allocates memory blocks.
- * @param size        - bytes to allocate.
- * @return a pointer to allocated space or NULL if there is insufficient memory
- * available.
- */
 LIBBSC_API void *bsc_malloc(size_t size);
 
-/**
- * Allocates memory blocks and initializes all its bits to zero.
- * @param size        - bytes to allocate.
- * @return a pointer to allocated space or NULL if there is insufficient memory
- * available.
- */
 LIBBSC_API void *bsc_zero_malloc(size_t size);
 
-/**
- * Deallocates or frees a memory block.
- * @param address     - previously allocated memory block to be freed.
- */
 LIBBSC_API void bsc_free(void *address);
 
-/**
- * Detects supported CPU features (Streaming SIMD Extensions).
- * @return highest supported CPU feature.
- */
 LIBBSC_API int bsc_get_cpu_features(void);
 
 #ifdef __cplusplus
@@ -244,7 +212,3 @@ LIBBSC_API int bsc_get_cpu_features(void);
 #endif
 
 #endif
-
-/*-----------------------------------------------------------*/
-/* End                                            platform.h */
-/*-----------------------------------------------------------*/

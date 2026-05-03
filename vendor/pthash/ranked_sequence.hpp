@@ -1,4 +1,4 @@
-#ifndef PTHASH_EXTERNAL_BITS_RANKED_SEQUENCE_HPP
+﻿#ifndef PTHASH_EXTERNAL_BITS_RANKED_SEQUENCE_HPP
 #define PTHASH_EXTERNAL_BITS_RANKED_SEQUENCE_HPP
 
 #include <unordered_map>
@@ -10,9 +10,8 @@ namespace bits {
 
 template <typename Iterator>
 std::pair<std::vector<uint64_t>, std::vector<uint64_t>>
-compute_ranks_and_dictionary(Iterator begin, const uint64_t n) //
-{
-  // compute frequencies
+compute_ranks_and_dictionary(Iterator begin, const uint64_t n) {
+
   std::unordered_map<uint64_t, uint64_t> distinct;
   for (auto it = begin, end = begin + n; it != end; ++it)
     distinct[*it] += 1;
@@ -25,7 +24,6 @@ compute_ranks_and_dictionary(Iterator begin, const uint64_t n) //
             [](auto const &x, auto const &y) { return x.second > y.second; });
   distinct.clear();
 
-  // assign codewords by non-increasing frequency
   std::vector<uint64_t> dict;
   dict.reserve(vec.size());
   for (uint64_t i = 0; i != vec.size(); ++i) {
@@ -82,4 +80,4 @@ private:
 
 } // namespace bits
 
-#endif // PTHASH_EXTERNAL_BITS_RANKED_SEQUENCE_HPP
+#endif

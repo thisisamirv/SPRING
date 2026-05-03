@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2012 Ondrej Holy
  * All rights reserved.
  *
@@ -44,7 +44,6 @@
 #endif
 #include "archive_private.h"
 
-/* A table that maps filter codes to functions. */
 static const struct {
   int code;
   int (*setter)(struct archive *);

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <array>
 #include <cstdint>
@@ -6,15 +6,13 @@
 
 #include <Error.hpp>
 #include <VectorView.hpp>
-#include <common.hpp>                // forceinline
-#include <definitions.hpp> // BitReader
+#include <common.hpp>
+#include <definitions.hpp>
 
 #include <igzip_lib.h>
 
 namespace rapidgzip {
-/**
- * A wrapper around the Huffman decoder for distance codes from ISA-l
- */
+
 class HuffmanCodingDistanceISAL {
 public:
   static constexpr auto DIST_LEN = ISAL_DEF_DIST_SYMBOLS;
@@ -24,10 +22,9 @@ public:
 public:
   [[nodiscard]] Error
   initializeFromLengths(const VectorView<uint8_t> &codeLengths) {
-    std::array<huff_code, LIT_LEN_ELEMS /* 514 */> dist_huff{};
+    std::array<huff_code, LIT_LEN_ELEMS> dist_huff{};
     std::array<uint16_t, 16> dist_count{};
 
-    /* Decode the lit/len and dist huffman codes using the code huffman code */
     for (size_t i = 0; i < codeLengths.size(); ++i) {
       const auto symbol = codeLengths[i];
 
@@ -35,20 +32,14 @@ public:
       write_huff_code(&dist_huff[i], 0, symbol);
     }
 
-    // std::cerr << "set_codes\n";
     if (set_codes(dist_huff.data(), LIT_LEN, dist_count.data()) !=
         ISAL_DECOMP_OK) {
       m_error = Error::INVALID_HUFFMAN_CODE;
       return m_error;
     }
 
-    // std::cerr << "make_inflate_huff_code_dist\n";
-
-    /* max_dist may also be derived from state->hist_bits for when the ISA-L API
-     * user configures a smaller window size than 32 KiB. */
     make_inflate_huff_code_dist(&m_huffmanCode, dist_huff.data(), DIST_LEN,
-                                dist_count.data(),
-                                /* max_dist */ DIST_LEN);
+                                dist_count.data(), DIST_LEN);
 
     m_error = Error::NONE;
     return Error::NONE;
@@ -63,8 +54,6 @@ private:
   }
 
 public:
-  /* Decodes the next symbol symbol in in_buffer using the huff code defined by
-   * huff_code  and returns the value in next_lits and sym_count */
   [[nodiscard]] forceinline std::optional<uint16_t>
   decode(gzip::BitReader &bitReader) const {
     static constexpr auto SMALL_SHORT_SYM_LEN = 9U;
@@ -78,23 +67,16 @@ public:
     static constexpr auto DIST_SYM_LEN = 5U;
     static constexpr auto DIST_SYM_MASK = ((1U << DIST_SYM_LEN) - 1U);
 
-    auto next_bits = bitReader.peek<ISAL_DECODE_SHORT_BITS /* 10 */>();
+    auto next_bits = bitReader.peek<ISAL_DECODE_SHORT_BITS>();
 
-    /* next_sym is a possible symbol decoded from next_bits. If bit 15 is 0,
-     * next_code is a symbol. Bits 9:0 represent the symbol, and bits 14:10
-     * represent the length of that symbol's huffman code. If next_sym is not
-     * a symbol, it provides a hint of where the large symbols containing
-     * this code are located. Note the hint is at largest the location the
-     * first actual symbol in the long code list.*/
     uint32_t next_sym = m_huffmanCode.short_code_lookup[next_bits];
     uint32_t bit_count{0};
     if (LIKELY((next_sym & SMALL_FLAG_BIT) == 0)) [[likely]] {
-      /* Return symbol found if next_code is a complete huffman code
-       * and shift in buffer over by the length of the next_code */
+
       bit_count = next_sym >> SMALL_SHORT_CODE_LEN_OFFSET;
       bitReader.seekAfterPeek(bit_count);
     } else {
-      /* If a symbol is not found, do a lookup in the long code list. */
+
       next_bits = bitReader.peek((next_sym - SMALL_FLAG_BIT) >>
                                  SMALL_SHORT_CODE_LEN_OFFSET);
       next_sym =

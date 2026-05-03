@@ -1,4 +1,4 @@
-#ifndef PTHASH_UTILS_DENSE_ENCODERS_HPP
+﻿#ifndef PTHASH_UTILS_DENSE_ENCODERS_HPP
 #define PTHASH_UTILS_DENSE_ENCODERS_HPP
 
 #include <cassert>
@@ -13,11 +13,8 @@ struct dense_encoder {};
 
 template <typename Encoder> struct dense_mono : dense_encoder {
   template <typename Iterator>
-  void encode(Iterator begin,                //
-              const uint64_t num_partitions, //
-              const uint64_t num_buckets_per_partition,
-              const uint64_t /*num_threads*/) //
-  {
+  void encode(Iterator begin, const uint64_t num_partitions,
+              const uint64_t num_buckets_per_partition, const uint64_t) {
     m_num_partitions = num_partitions;
     m_encoder.encode(begin, num_partitions * num_buckets_per_partition);
   }
@@ -55,11 +52,9 @@ private:
 
 template <typename Encoder> struct dense_interleaved : dense_encoder {
   template <typename Iterator>
-  void encode(Iterator begin,                //
-              const uint64_t num_partitions, //
+  void encode(Iterator begin, const uint64_t num_partitions,
               const uint64_t num_buckets_per_partition,
-              const uint64_t num_threads) //
-  {
+              const uint64_t num_threads) {
     std::vector<Encoder> encoders;
     encoders.resize(num_buckets_per_partition);
     if (num_threads == 1) {
@@ -104,7 +99,7 @@ template <typename Encoder> struct dense_interleaved : dense_encoder {
   }
 
   [[nodiscard]] uint64_t num_bits() const {
-    uint64_t sum = 8 * sizeof(uint64_t); // for span' size
+    uint64_t sum = 8 * sizeof(uint64_t);
     for (auto const &e : m_encoders)
       sum += e.num_bits();
     return sum;
@@ -138,4 +133,4 @@ typedef dense_interleaved<rice> R_int;
 
 } // namespace pthash
 
-#endif // PTHASH_UTILS_DENSE_ENCODERS_HPP
+#endif

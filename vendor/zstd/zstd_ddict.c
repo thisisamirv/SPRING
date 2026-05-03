@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  * All rights reserved.
  *
@@ -8,16 +8,9 @@
  * You may select, at your option, one of the above-listed licenses.
  */
 
-/* zstd_ddict.c :
- * concentrates all logic that needs to know the internals of ZSTD_DDict object
- */
-
-/*-*******************************************************
- *  Dependencies
- *********************************************************/
-#include "allocations.h" /* ZSTD_customMalloc, ZSTD_customFree */
-#include "mem.h"         /* low level memory routines */
-#include "zstd_deps.h"   /* ZSTD_memcpy, ZSTD_memmove, ZSTD_memset */
+#include "allocations.h"
+#include "mem.h"
+#include "zstd_deps.h"
 #define FSE_STATIC_LINKING_ONLY
 #include "fse.h"
 #include "huf.h"
@@ -28,9 +21,6 @@
 #include "legacy/zstd_legacy.h"
 #endif
 
-/*-*******************************************************
- *  Types
- *********************************************************/
 struct ZSTD_DDict_s {
   void *dictBuffer;
   const void *dictContent;
@@ -39,7 +29,7 @@ struct ZSTD_DDict_s {
   U32 dictID;
   U32 entropyPresent;
   ZSTD_customMem cMem;
-}; /* typedef'd to ZSTD_DDict within "zstd.h" */
+};
 
 const void *ZSTD_DDict_dictContent(const ZSTD_DDict *ddict) {
   assert(ddict != NULL);
@@ -90,23 +80,20 @@ ZSTD_loadEntropy_intoDDict(ZSTD_DDict *ddict,
 
   if (ddict->dictSize < 8) {
     if (dictContentType == ZSTD_dct_fullDict)
-      return ERROR(
-          dictionary_corrupted); /* only accept specified dictionaries */
-    return 0;                    /* pure content mode */
+      return ERROR(dictionary_corrupted);
+    return 0;
   }
   {
     U32 const magic = MEM_readLE32(ddict->dictContent);
     if (magic != ZSTD_MAGIC_DICTIONARY) {
       if (dictContentType == ZSTD_dct_fullDict)
-        return ERROR(
-            dictionary_corrupted); /* only accept specified dictionaries */
-      return 0;                    /* pure content mode */
+        return ERROR(dictionary_corrupted);
+      return 0;
     }
   }
   ddict->dictID =
       MEM_readLE32((const char *)ddict->dictContent + ZSTD_FRAMEIDSIZE);
 
-  /* load entropy tables */
   RETURN_ERROR_IF(ZSTD_isError(ZSTD_loadDEntropy(
                       &ddict->entropy, ddict->dictContent, ddict->dictSize)),
                   dictionary_corrupted, "");
@@ -133,10 +120,8 @@ static size_t ZSTD_initDDict_internal(ZSTD_DDict *ddict, const void *dict,
   }
   ddict->dictSize = dictSize;
   ddict->entropy.hufTable[0] =
-      (HUF_DTable)((ZSTD_HUFFDTABLE_CAPACITY_LOG) *
-                   0x1000001); /* cover both little and big endian */
+      (HUF_DTable)((ZSTD_HUFFDTABLE_CAPACITY_LOG) * 0x1000001);
 
-  /* parse dictionary content */
   FORWARD_IF_ERROR(ZSTD_loadEntropy_intoDDict(ddict, dictContentType), "");
 
   return 0;
@@ -167,21 +152,12 @@ ZSTD_DDict *ZSTD_createDDict_advanced(const void *dict, size_t dictSize,
   }
 }
 
-/*! ZSTD_createDDict() :
- *   Create a digested dictionary, to start decompression without startup delay.
- *   `dict` content is copied inside DDict.
- *   Consequently, `dict` can be released after `ZSTD_DDict` creation */
 ZSTD_DDict *ZSTD_createDDict(const void *dict, size_t dictSize) {
   ZSTD_customMem const allocator = {NULL, NULL, NULL};
   return ZSTD_createDDict_advanced(dict, dictSize, ZSTD_dlm_byCopy,
                                    ZSTD_dct_auto, allocator);
 }
 
-/*! ZSTD_createDDict_byReference() :
- *  Create a digested dictionary, to start decompression without startup delay.
- *  Dictionary content is simply referenced, it will be accessed during
- * decompression. Warning : dictBuffer must outlive DDict (DDict must be freed
- * before dictBuffer) */
 ZSTD_DDict *ZSTD_createDDict_byReference(const void *dictBuffer,
                                          size_t dictSize) {
   ZSTD_customMem const allocator = {NULL, NULL, NULL};
@@ -199,11 +175,11 @@ const ZSTD_DDict *ZSTD_initStaticDDict(void *sBuffer, size_t sBufferSize,
   assert(sBuffer != NULL);
   assert(dict != NULL);
   if ((size_t)sBuffer & 7)
-    return NULL; /* 8-aligned */
+    return NULL;
   if (sBufferSize < neededSpace)
     return NULL;
   if (dictLoadMethod == ZSTD_dlm_byCopy) {
-    ZSTD_memcpy(ddict + 1, dict, dictSize); /* local copy */
+    ZSTD_memcpy(ddict + 1, dict, dictSize);
     dict = ddict + 1;
   }
   if (ZSTD_isError(ZSTD_initDDict_internal(ddict, dict, dictSize,
@@ -214,7 +190,7 @@ const ZSTD_DDict *ZSTD_initStaticDDict(void *sBuffer, size_t sBufferSize,
 
 size_t ZSTD_freeDDict(ZSTD_DDict *ddict) {
   if (ddict == NULL)
-    return 0; /* support free on NULL */
+    return 0;
   {
     ZSTD_customMem const cMem = ddict->cMem;
     ZSTD_customFree(ddict->dictBuffer, cMem);
@@ -223,10 +199,6 @@ size_t ZSTD_freeDDict(ZSTD_DDict *ddict) {
   }
 }
 
-/*! ZSTD_estimateDDictSize() :
- *  Estimate amount of memory that will be needed to create a dictionary for
- * decompression. Note : dictionary created by reference using ZSTD_dlm_byRef
- * are smaller */
 size_t ZSTD_estimateDDictSize(size_t dictSize,
                               ZSTD_dictLoadMethod_e dictLoadMethod) {
   return sizeof(ZSTD_DDict) + (dictLoadMethod == ZSTD_dlm_byRef ? 0 : dictSize);
@@ -234,15 +206,10 @@ size_t ZSTD_estimateDDictSize(size_t dictSize,
 
 size_t ZSTD_sizeof_DDict(const ZSTD_DDict *ddict) {
   if (ddict == NULL)
-    return 0; /* support sizeof on NULL */
+    return 0;
   return sizeof(*ddict) + (ddict->dictBuffer ? ddict->dictSize : 0);
 }
 
-/*! ZSTD_getDictID_fromDDict() :
- *  Provides the dictID of the dictionary loaded into `ddict`.
- *  If @return == 0, the dictionary is not conformant to Zstandard
- * specification, or empty. Non-conformant dictionaries can still be loaded, but
- * as content-only dictionaries. */
 unsigned ZSTD_getDictID_fromDDict(const ZSTD_DDict *ddict) {
   if (ddict == NULL)
     return 0;

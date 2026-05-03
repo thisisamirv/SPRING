@@ -2,7 +2,6 @@
  *  @file isa-l.h
  *  @brief Include for ISA-L library
  */
-
 #ifndef _ISAL_H_
 #define _ISAL_H_
 

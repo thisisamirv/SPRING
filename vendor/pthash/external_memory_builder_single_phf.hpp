@@ -1,11 +1,12 @@
-#ifndef PTHASH_BUILDERS_EXTERNAL_MEMORY_BUILDER_SINGLE_PHF_HPP
+﻿#ifndef PTHASH_BUILDERS_EXTERNAL_MEMORY_BUILDER_SINGLE_PHF_HPP
 #define PTHASH_BUILDERS_EXTERNAL_MEMORY_BUILDER_SINGLE_PHF_HPP
 
-#include "search.hpp"
 #include "builders_util.hpp"
-#include "mm_file.hpp"
 #include "hasher.hpp"
 #include "logger.hpp"
+#include "mm_file.hpp"
+#include "search.hpp"
+
 
 namespace pthash {
 
@@ -15,13 +16,13 @@ struct external_memory_builder_single_phf {
   typedef Bucketer bucketer_type;
 
   external_memory_builder_single_phf() = default;
-  // non construction-copyable
+
   external_memory_builder_single_phf(
       external_memory_builder_single_phf const &) = delete;
-  // non copyable
+
   external_memory_builder_single_phf &
   operator=(external_memory_builder_single_phf const &) = delete;
-  // allow moves
+
   external_memory_builder_single_phf(
       external_memory_builder_single_phf &&) noexcept = default;
   external_memory_builder_single_phf &
@@ -38,8 +39,7 @@ struct external_memory_builder_single_phf {
 
   template <typename Iterator>
   build_timings build_from_keys(Iterator keys, const uint64_t num_keys,
-                                build_configuration const &config) //
-  {
+                                build_configuration const &config) {
     assert(num_keys > 0);
     util::check_hash_collision_probability<Hasher>(num_keys);
 
@@ -151,22 +151,20 @@ struct external_memory_builder_single_phf {
       auto start = clock_type::now();
       bits::bit_vector::builder taken_bvb(m_table_size);
 
-      { // search
+      {
         auto buckets_iterator = tfm.buckets_iterator();
 
-        // write all bucket-pilot pairs to files
         uint64_t ram_for_pilots =
             ram - bitmap_taken_bytes - hashed_pilots_cache_bytes;
         auto pilots = tfm.get_multifile_pairs_writer(num_non_empty_buckets,
                                                      ram_for_pilots, 1, 0);
 
-        search(m_num_keys, m_num_buckets, num_non_empty_buckets, //
-               config, buckets_iterator, taken_bvb, pilots);
+        search(m_num_keys, m_num_buckets, num_non_empty_buckets, config,
+               buckets_iterator, taken_bvb, pilots);
 
         pilots.flush();
         buckets_iterator.close();
-        // merge all sorted bucket-pilot pairs on a single file, saving only the
-        // pilot
+
         pilots_merger_t pilots_merger(tfm.get_pilots_filename(), ram);
         merge(tfm.pairs_blocks(), pilots_merger, false);
         pilots_merger.finalize_and_close(m_num_buckets);
@@ -175,13 +173,12 @@ struct external_memory_builder_single_phf {
           std::remove(m_pilots_filename.c_str());
         m_pilots_filename = tfm.get_pilots_filename();
 
-        // remove unused temporary files
         tfm.remove_all_pairs_files();
         tfm.remove_all_merge_files();
       }
 
-      if (config.minimal and num_keys < table_size) { // fill free slots
-        // write all free slots to file
+      if (config.minimal and num_keys < table_size) {
+
         buffered_file_t<uint64_t> writer(tfm.get_free_slots_filename(),
                                          ram - bitmap_taken_bytes);
         bits::bit_vector taken;
@@ -356,7 +353,7 @@ private:
     buffered_file_t<bucket_payload_pair> m_buffer;
   };
 
-  struct buckets_t { // merger
+  struct buckets_t {
     buckets_t(std::vector<std::string> const &filenames, uint64_t ram,
               std::vector<bool> &used_bucket_sizes)
         : m_filenames(filenames), m_buffers(filenames.size()),
@@ -497,7 +494,7 @@ private:
     void add(bucket_id_type bucket_id, bucket_size_type bucket_size,
              HashIterator hashes) {
       assert(bucket_size == 1);
-      (void)bucket_size; // avoid unused warning in release mode
+      (void)bucket_size;
       emplace_back_and_fill(bucket_id, *hashes);
     }
 
@@ -535,7 +532,7 @@ private:
     void flush_impl(std::vector<bucket_payload_pair> &buffer) {
       const uint64_t size = buffer.size();
 
-      if (m_num_threads_sort > 1) { // parallel
+      if (m_num_threads_sort > 1) {
         std::vector<memory_view<bucket_payload_pair>> blocks;
         uint64_t num_keys_per_thread =
             (size + m_num_threads_sort - 1) / m_num_threads_sort;
@@ -565,7 +562,7 @@ private:
         ++(*m_num_pairs_files);
         merge(blocks, pairs_merger, false);
         pairs_merger.close();
-      } else { // sequential
+      } else {
         std::ofstream out(m_filenames[*m_num_pairs_files],
                           std::ofstream::out | std::ofstream::binary);
         if (!out.is_open())
@@ -757,4 +754,4 @@ private:
 
 } // namespace pthash
 
-#endif // PTHASH_BUILDERS_EXTERNAL_MEMORY_BUILDER_SINGLE_PHF_HPP
+#endif

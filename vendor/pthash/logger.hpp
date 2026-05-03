@@ -1,4 +1,4 @@
-#ifndef PTHASH_UTILS_LOGGER_HPP
+﻿#ifndef PTHASH_UTILS_LOGGER_HPP
 #define PTHASH_UTILS_LOGGER_HPP
 
 #include <cassert>
@@ -27,7 +27,7 @@ struct progress_logger {
     if (++m_logged_events >= m_next_event_to_log) {
       update(false);
       m_next_event_to_log += m_log_step;
-      // the following ensures the last update on 100%
+
       if (m_next_event_to_log > m_total_events)
         m_next_event_to_log = m_total_events;
     }
@@ -66,4 +66,4 @@ private:
 
 } // namespace pthash
 
-#endif // PTHASH_UTILS_LOGGER_HPP
+#endif

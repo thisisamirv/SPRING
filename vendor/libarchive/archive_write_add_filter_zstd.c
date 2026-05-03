@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2017 Sean Purcell
  * Copyright (c) 2023-2024 Klara, Inc.
  * All rights reserved.
@@ -76,8 +76,6 @@
 #error "archive_write_private.h must be included"
 #endif
 
-/* Don't compile this if we don't have zstd.h */
-
 struct private_data {
   int compression_level;
   int threads;
@@ -104,12 +102,10 @@ struct private_data {
 #endif
 };
 
-/* If we don't have the library use default range values (zstdcli.c v1.4.0) */
 #define CLEVEL_MIN -99
-#define CLEVEL_STD_MIN                                                         \
-  0 /* prior to 1.3.4 and more recent without using --fast */
+#define CLEVEL_STD_MIN 0
 #define CLEVEL_DEFAULT 3
-#define CLEVEL_STD_MAX 19 /* without using --ultra */
+#define CLEVEL_STD_MAX 19
 #define CLEVEL_MAX 22
 
 #define LONG_STD 27
@@ -131,9 +127,6 @@ static int drive_compressor(struct archive_write_filter *,
                             struct private_data *, int, const void *, size_t);
 #endif
 
-/*
- * Add a zstd compression filter to this write handle.
- */
 int archive_write_add_filter_zstd(struct archive *_a) {
   struct archive_write *a = (struct archive_write *)_a;
   struct archive_write_filter *f = __archive_write_allocate_filter(_a);
@@ -248,9 +241,6 @@ static int string_to_size(const char *string, size_t *numberp) {
 }
 #endif
 
-/*
- * Set write options.
- */
 static int archive_compressor_zstd_options(struct archive_write_filter *f,
                                            const char *key, const char *value) {
   struct private_data *data = (struct private_data *)f->data;
@@ -260,7 +250,7 @@ static int archive_compressor_zstd_options(struct archive_write_filter *f,
     if (string_to_number(value, &level) != ARCHIVE_OK) {
       return (ARCHIVE_WARN);
     }
-    /* If we don't have the library, hard-code the max level */
+
     int minimum = CLEVEL_MIN;
     int maximum = CLEVEL_MAX;
 #if HAVE_ZSTD_H && HAVE_ZSTD_compressStream
@@ -289,8 +279,7 @@ static int archive_compressor_zstd_options(struct archive_write_filter *f,
     if (threads == 0) {
       threads = sysconf(_SC_NPROCESSORS_ONLN);
     }
-#elif !defined(__CYGWIN__) && defined(_WIN32_WINNT) &&                         \
-    _WIN32_WINNT >= 0x0601 /* _WIN32_WINNT_WIN7 */
+#elif !defined(__CYGWIN__) && defined(_WIN32_WINNT) && _WIN32_WINNT >= 0x0601
     if (threads == 0) {
       DWORD winCores = GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
       threads = (intmax_t)winCores;
@@ -356,24 +345,18 @@ static int archive_compressor_zstd_options(struct archive_write_filter *f,
     return (ARCHIVE_OK);
   }
 
-  /* Note: The "warn" return is just to inform the options
-   * supervisor that we didn't handle it.  It will generate
-   * a suitable error if no one used this option. */
   return (ARCHIVE_WARN);
 }
 
 #if HAVE_ZSTD_H && HAVE_ZSTD_compressStream
-/*
- * Setup callback.
- */
+
 static int archive_compressor_zstd_open(struct archive_write_filter *f) {
   struct private_data *data = (struct private_data *)f->data;
 
   if (data->out.dst == NULL) {
     size_t bs = ZSTD_CStreamOutSize(), bpb;
     if (f->archive->magic == ARCHIVE_WRITE_MAGIC) {
-      /* Buffer size should be a multiple number of
-       * the of bytes per block for performance. */
+
       bpb = archive_write_get_bytes_per_block(f->archive);
       if (bpb > bs)
         bs = bpb;
@@ -409,9 +392,6 @@ static int archive_compressor_zstd_open(struct archive_write_filter *f) {
   return (ARCHIVE_OK);
 }
 
-/*
- * Write data to the compressed stream.
- */
 static int archive_compressor_zstd_write(struct archive_write_filter *f,
                                          const void *buff, size_t length) {
   struct private_data *data = (struct private_data *)f->data;
@@ -419,9 +399,6 @@ static int archive_compressor_zstd_write(struct archive_write_filter *f,
   return (drive_compressor(f, data, 0, buff, length));
 }
 
-/*
- * Flush the compressed stream.
- */
 static int archive_compressor_zstd_flush(struct archive_write_filter *f) {
   struct private_data *data = (struct private_data *)f->data;
 
@@ -434,9 +411,6 @@ static int archive_compressor_zstd_flush(struct archive_write_filter *f) {
   return (drive_compressor(f, data, 1, NULL, 0));
 }
 
-/*
- * Finish the compression...
- */
 static int archive_compressor_zstd_close(struct archive_write_filter *f) {
   struct private_data *data = (struct private_data *)f->data;
 
@@ -445,10 +419,6 @@ static int archive_compressor_zstd_close(struct archive_write_filter *f) {
   return (drive_compressor(f, data, 1, NULL, 0));
 }
 
-/*
- * Utility function to push input data through compressor,
- * writing full output blocks as necessary.
- */
 static int drive_compressor(struct archive_write_filter *f,
                             struct private_data *data, int flush,
                             const void *src, size_t length) {
@@ -506,7 +476,7 @@ fatal:
   return (ARCHIVE_FATAL);
 }
 
-#else /* HAVE_ZSTD_H && HAVE_ZSTD_compressStream */
+#else
 
 static int archive_compressor_zstd_open(struct archive_write_filter *f) {
   struct private_data *data = (struct private_data *)f->data;
@@ -514,7 +484,7 @@ static int archive_compressor_zstd_open(struct archive_write_filter *f) {
   int r;
 
   archive_string_init(&as);
-  /* --no-check matches library default */
+
   archive_strcpy(&as, "zstd --no-check");
 
   if (data->compression_level < CLEVEL_STD_MIN) {
@@ -549,7 +519,7 @@ static int archive_compressor_zstd_write(struct archive_write_filter *f,
 }
 
 static int archive_compressor_zstd_flush(struct archive_write_filter *f) {
-  (void)f; /* UNUSED */
+  (void)f;
 
   return (ARCHIVE_OK);
 }
@@ -560,4 +530,4 @@ static int archive_compressor_zstd_close(struct archive_write_filter *f) {
   return __archive_write_program_close(f, data->pdata);
 }
 
-#endif /* HAVE_ZSTD_H && HAVE_ZSTD_compressStream */
+#endif

@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2007 Tim Kientzle
  * Copyright (c) 2011 Andres Mejia
  * Copyright (c) 2011 Michihiro NAKAJIMA
@@ -37,27 +37,18 @@
 #endif
 #include "archive_digest_private.h"
 
-/* In particular, force the configure probe to break if it tries
- * to test a combination of OpenSSL and libmd. */
 #if defined(ARCHIVE_CRYPTO_OPENSSL) && defined(ARCHIVE_CRYPTO_LIBMD)
 #error Cannot use both OpenSSL and libmd.
 #endif
 
-/* Common in other bcrypt implementations, but missing from VS2008. */
 #ifndef BCRYPT_SUCCESS
 #define BCRYPT_SUCCESS(r) ((NTSTATUS)(r) == STATUS_SUCCESS)
 #endif
 
-/*
- * Message digest functions for Windows platform.
- */
 #if defined(ARCHIVE_CRYPTO_MD5_WIN) || defined(ARCHIVE_CRYPTO_SHA1_WIN) ||     \
     defined(ARCHIVE_CRYPTO_SHA256_WIN) ||                                      \
     defined(ARCHIVE_CRYPTO_SHA384_WIN) || defined(ARCHIVE_CRYPTO_SHA512_WIN)
 
-/*
- * Initialize a Message digest.
- */
 #if defined(HAVE_BCRYPT_H) && _WIN32_WINNT >= _WIN32_WINNT_VISTA
 static int win_crypto_init(Digest_CTX *ctx, const WCHAR *algo) {
   NTSTATUS status;
@@ -98,9 +89,6 @@ static int win_crypto_init(Digest_CTX *ctx, DWORD prov, ALG_ID algId) {
 }
 #endif
 
-/*
- * Update a Message digest.
- */
 static int win_crypto_Update(Digest_CTX *ctx, const unsigned char *buf,
                              size_t len) {
 
@@ -137,9 +125,8 @@ static int win_crypto_Final(unsigned char *buf, size_t bufsize,
   return (ARCHIVE_OK);
 }
 
-#endif /* defined(ARCHIVE_CRYPTO_*_WIN) */
+#endif
 
-/* MD5 implementations */
 #if defined(ARCHIVE_CRYPTO_MD5_LIBC)
 
 static int __archive_md5init(archive_md5_ctx *ctx) {
@@ -178,9 +165,6 @@ static int __archive_md5final(archive_md5_ctx *ctx, void *md) {
 
 #elif defined(ARCHIVE_CRYPTO_MD5_LIBSYSTEM)
 
-// These functions are available in macOS 10.4 and later, but deprecated
-// from 10.15 onwards. We need to continue supporting this feature regardless,
-// so suppress the warnings.
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
@@ -300,10 +284,7 @@ static int __archive_md5update(archive_md5_ctx *ctx, const void *indata,
 }
 
 static int __archive_md5final(archive_md5_ctx *ctx, void *md) {
-  /* HACK: archive_write_set_format_xar.c is finalizing empty contexts, so
-   * this is meant to cope with that. Real fix is probably to fix
-   * archive_write_set_format_xar.c
-   */
+
   if (*ctx) {
     EVP_DigestFinal(*ctx, md, NULL);
     EVP_MD_CTX_free(*ctx);
@@ -315,27 +296,26 @@ static int __archive_md5final(archive_md5_ctx *ctx, void *md) {
 #else
 
 static int __archive_md5init(archive_md5_ctx *ctx) {
-  (void)ctx; /* UNUSED */
+  (void)ctx;
   return (ARCHIVE_FAILED);
 }
 
 static int __archive_md5update(archive_md5_ctx *ctx, const void *indata,
                                size_t insize) {
-  (void)ctx;    /* UNUSED */
-  (void)indata; /* UNUSED */
-  (void)insize; /* UNUSED */
+  (void)ctx;
+  (void)indata;
+  (void)insize;
   return (ARCHIVE_FAILED);
 }
 
 static int __archive_md5final(archive_md5_ctx *ctx, void *md) {
-  (void)ctx; /* UNUSED */
-  (void)md;  /* UNUSED */
+  (void)ctx;
+  (void)md;
   return (ARCHIVE_FAILED);
 }
 
 #endif
 
-/* RIPEMD160 implementations */
 #if defined(ARCHIVE_CRYPTO_RMD160_LIBC)
 
 static int __archive_ripemd160init(archive_rmd160_ctx *ctx) {
@@ -458,27 +438,26 @@ static int __archive_ripemd160final(archive_rmd160_ctx *ctx, void *md) {
 #else
 
 static int __archive_ripemd160init(archive_rmd160_ctx *ctx) {
-  (void)ctx; /* UNUSED */
+  (void)ctx;
   return (ARCHIVE_FAILED);
 }
 
 static int __archive_ripemd160update(archive_rmd160_ctx *ctx,
                                      const void *indata, size_t insize) {
-  (void)ctx;    /* UNUSED */
-  (void)indata; /* UNUSED */
-  (void)insize; /* UNUSED */
+  (void)ctx;
+  (void)indata;
+  (void)insize;
   return (ARCHIVE_FAILED);
 }
 
 static int __archive_ripemd160final(archive_rmd160_ctx *ctx, void *md) {
-  (void)ctx; /* UNUSED */
-  (void)md;  /* UNUSED */
+  (void)ctx;
+  (void)md;
   return (ARCHIVE_FAILED);
 }
 
 #endif
 
-/* SHA1 implementations */
 #if defined(ARCHIVE_CRYPTO_SHA1_LIBC)
 
 static int __archive_sha1init(archive_sha1_ctx *ctx) {
@@ -627,10 +606,7 @@ static int __archive_sha1update(archive_sha1_ctx *ctx, const void *indata,
 }
 
 static int __archive_sha1final(archive_sha1_ctx *ctx, void *md) {
-  /* HACK: archive_write_set_format_xar.c is finalizing empty contexts, so
-   * this is meant to cope with that. Real fix is probably to fix
-   * archive_write_set_format_xar.c
-   */
+
   if (*ctx) {
     EVP_DigestFinal(*ctx, md, NULL);
     EVP_MD_CTX_free(*ctx);
@@ -642,27 +618,26 @@ static int __archive_sha1final(archive_sha1_ctx *ctx, void *md) {
 #else
 
 static int __archive_sha1init(archive_sha1_ctx *ctx) {
-  (void)ctx; /* UNUSED */
+  (void)ctx;
   return (ARCHIVE_FAILED);
 }
 
 static int __archive_sha1update(archive_sha1_ctx *ctx, const void *indata,
                                 size_t insize) {
-  (void)ctx;    /* UNUSED */
-  (void)indata; /* UNUSED */
-  (void)insize; /* UNUSED */
+  (void)ctx;
+  (void)indata;
+  (void)insize;
   return (ARCHIVE_FAILED);
 }
 
 static int __archive_sha1final(archive_sha1_ctx *ctx, void *md) {
-  (void)ctx; /* UNUSED */
-  (void)md;  /* UNUSED */
+  (void)ctx;
+  (void)md;
   return (ARCHIVE_FAILED);
 }
 
 #endif
 
-/* SHA256 implementations */
 #if defined(ARCHIVE_CRYPTO_SHA256_LIBC)
 
 static int __archive_sha256init(archive_sha256_ctx *ctx) {
@@ -858,27 +833,26 @@ static int __archive_sha256final(archive_sha256_ctx *ctx, void *md) {
 #else
 
 static int __archive_sha256init(archive_sha256_ctx *ctx) {
-  (void)ctx; /* UNUSED */
+  (void)ctx;
   return (ARCHIVE_FAILED);
 }
 
 static int __archive_sha256update(archive_sha256_ctx *ctx, const void *indata,
                                   size_t insize) {
-  (void)ctx;    /* UNUSED */
-  (void)indata; /* UNUSED */
-  (void)insize; /* UNUSED */
+  (void)ctx;
+  (void)indata;
+  (void)insize;
   return (ARCHIVE_FAILED);
 }
 
 static int __archive_sha256final(archive_sha256_ctx *ctx, void *md) {
-  (void)ctx; /* UNUSED */
-  (void)md;  /* UNUSED */
+  (void)ctx;
+  (void)md;
   return (ARCHIVE_FAILED);
 }
 
 #endif
 
-/* SHA384 implementations */
 #if defined(ARCHIVE_CRYPTO_SHA384_LIBC)
 
 static int __archive_sha384init(archive_sha384_ctx *ctx) {
@@ -1056,27 +1030,26 @@ static int __archive_sha384final(archive_sha384_ctx *ctx, void *md) {
 #else
 
 static int __archive_sha384init(archive_sha384_ctx *ctx) {
-  (void)ctx; /* UNUSED */
+  (void)ctx;
   return (ARCHIVE_FAILED);
 }
 
 static int __archive_sha384update(archive_sha384_ctx *ctx, const void *indata,
                                   size_t insize) {
-  (void)ctx;    /* UNUSED */
-  (void)indata; /* UNUSED */
-  (void)insize; /* UNUSED */
+  (void)ctx;
+  (void)indata;
+  (void)insize;
   return (ARCHIVE_FAILED);
 }
 
 static int __archive_sha384final(archive_sha384_ctx *ctx, void *md) {
-  (void)ctx; /* UNUSED */
-  (void)md;  /* UNUSED */
+  (void)ctx;
+  (void)md;
   return (ARCHIVE_FAILED);
 }
 
 #endif
 
-/* SHA512 implementations */
 #if defined(ARCHIVE_CRYPTO_SHA512_LIBC)
 
 static int __archive_sha512init(archive_sha512_ctx *ctx) {
@@ -1272,54 +1245,42 @@ static int __archive_sha512final(archive_sha512_ctx *ctx, void *md) {
 #else
 
 static int __archive_sha512init(archive_sha512_ctx *ctx) {
-  (void)ctx; /* UNUSED */
+  (void)ctx;
   return (ARCHIVE_FAILED);
 }
 
 static int __archive_sha512update(archive_sha512_ctx *ctx, const void *indata,
                                   size_t insize) {
-  (void)ctx;    /* UNUSED */
-  (void)indata; /* UNUSED */
-  (void)insize; /* UNUSED */
+  (void)ctx;
+  (void)indata;
+  (void)insize;
   return (ARCHIVE_FAILED);
 }
 
 static int __archive_sha512final(archive_sha512_ctx *ctx, void *md) {
-  (void)ctx; /* UNUSED */
-  (void)md;  /* UNUSED */
+  (void)ctx;
+  (void)md;
   return (ARCHIVE_FAILED);
 }
 
 #endif
 
-/* NOTE: Message Digest functions are set based on availability and by the
- * following order of preference.
- * 1. libc
- * 2. libc2
- * 3. libc3
- * 4. libmd
- * 5. libSystem
- * 6. Windows API
- * 7. mbedTLS
- * 8. Nettle
- * 9. OpenSSL
- */
 const struct archive_digest __archive_digest = {
-    /* MD5 */
-    &__archive_md5init, &__archive_md5update, &__archive_md5final,
 
-    /* RIPEMD160 */
-    &__archive_ripemd160init, &__archive_ripemd160update,
+    &__archive_md5init,        &__archive_md5update,
+    &__archive_md5final,
+
+    &__archive_ripemd160init,  &__archive_ripemd160update,
     &__archive_ripemd160final,
 
-    /* SHA1 */
-    &__archive_sha1init, &__archive_sha1update, &__archive_sha1final,
+    &__archive_sha1init,       &__archive_sha1update,
+    &__archive_sha1final,
 
-    /* SHA256 */
-    &__archive_sha256init, &__archive_sha256update, &__archive_sha256final,
+    &__archive_sha256init,     &__archive_sha256update,
+    &__archive_sha256final,
 
-    /* SHA384 */
-    &__archive_sha384init, &__archive_sha384update, &__archive_sha384final,
+    &__archive_sha384init,     &__archive_sha384update,
+    &__archive_sha384final,
 
-    /* SHA512 */
-    &__archive_sha512init, &__archive_sha512update, &__archive_sha512final};
+    &__archive_sha512init,     &__archive_sha512update,
+    &__archive_sha512final};

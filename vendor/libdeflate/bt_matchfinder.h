@@ -1,4 +1,4 @@
-/*
+﻿/*
  * bt_matchfinder.h - Lempel-Ziv matchfinding with a hash table of binary trees
  *
  * Copyright 2016 Eric Biggers
@@ -76,33 +76,23 @@
     (1UL << BT_MATCHFINDER_HASH4_ORDER)) *                                     \
    sizeof(mf_pos_t))
 
-/* Representation of a match found by the bt_matchfinder  */
 struct lz_match {
 
-  /* The number of bytes matched.  */
   u16 length;
 
-  /* The offset back from the current position that was matched.  */
   u16 offset;
 };
 
 struct MATCHFINDER_ALIGNED bt_matchfinder {
 
-  /* The hash table for finding length 3 matches  */
   mf_pos_t hash3_tab[1UL << BT_MATCHFINDER_HASH3_ORDER]
                     [BT_MATCHFINDER_HASH3_WAYS];
 
-  /* The hash table which contains the roots of the binary trees for
-   * finding length 4+ matches  */
   mf_pos_t hash4_tab[1UL << BT_MATCHFINDER_HASH4_ORDER];
 
-  /* The child node references for the binary trees.  The left and right
-   * children of the node for the sequence with position 'pos' are
-   * 'child_tab[pos * 2]' and 'child_tab[pos * 2 + 1]', respectively.  */
   mf_pos_t child_tab[2UL * MATCHFINDER_WINDOW_SIZE];
 };
 
-/* Prepare the matchfinder for a new input buffer.  */
 static forceinline void bt_matchfinder_init(struct bt_matchfinder *mf) {
   STATIC_ASSERT(BT_MATCHFINDER_TOTAL_HASH_SIZE % MATCHFINDER_SIZE_ALIGNMENT ==
                 0);
@@ -126,13 +116,8 @@ static forceinline mf_pos_t *bt_right_child(struct bt_matchfinder *mf,
   return &mf->child_tab[2 * (node & (MATCHFINDER_WINDOW_SIZE - 1)) + 1];
 }
 
-/* The minimum permissible value of 'max_len' for bt_matchfinder_get_matches()
- * and bt_matchfinder_skip_byte().  There must be sufficiently many bytes
- * remaining to load a 32-bit integer from the *next* position.  */
 #define BT_MATCHFINDER_REQUIRED_NBYTES 5
 
-/* Advance the binary tree matchfinder by one byte, optionally recording
- * matches.  @record_matches should be a compile-time constant.  */
 static forceinline struct lz_match *bt_matchfinder_advance_one_byte(
     struct bt_matchfinder *const mf, const u8 *const in_base,
     const ptrdiff_t cur_pos, const u32 max_len, const u32 nice_len,
@@ -250,38 +235,6 @@ static forceinline struct lz_match *bt_matchfinder_advance_one_byte(
   }
 }
 
-/*
- * Retrieve a list of matches with the current position.
- *
- * @mf
- *	The matchfinder structure.
- * @in_base
- *	Pointer to the next byte in the input buffer to process _at the last
- *	time bt_matchfinder_init() or bt_matchfinder_slide_window() was called_.
- * @cur_pos
- *	The current position in the input buffer relative to @in_base (the
- *	position of the sequence being matched against).
- * @max_len
- *	The maximum permissible match length at this position.  Must be >=
- *	BT_MATCHFINDER_REQUIRED_NBYTES.
- * @nice_len
- *	Stop searching if a match of at least this length is found.
- *	Must be <= @max_len.
- * @max_search_depth
- *	Limit on the number of potential matches to consider.  Must be >= 1.
- * @next_hashes
- *	The precomputed hash codes for the sequence beginning at @in_next.
- *	These will be used and then updated with the precomputed hashcodes for
- *	the sequence beginning at @in_next + 1.
- * @lz_matchptr
- *	An array in which this function will record the matches.  The recorded
- *	matches will be sorted by strictly increasing length and (non-strictly)
- *	increasing offset.  The maximum number of matches that may be found is
- *	'nice_len - 2'.
- *
- * The return value is a pointer to the next available slot in the @lz_matchptr
- * array.  (If no matches were found, this will be the same as @lz_matchptr.)
- */
 static forceinline struct lz_match *
 bt_matchfinder_get_matches(struct bt_matchfinder *mf, const u8 *in_base,
                            ptrdiff_t cur_pos, u32 max_len, u32 nice_len,
@@ -292,12 +245,6 @@ bt_matchfinder_get_matches(struct bt_matchfinder *mf, const u8 *in_base,
                                          next_hashes, lz_matchptr, true);
 }
 
-/*
- * Advance the matchfinder, but don't record any matches.
- *
- * This is very similar to bt_matchfinder_get_matches() because both functions
- * must do hashing and tree re-rooting.
- */
 static forceinline void
 bt_matchfinder_skip_byte(struct bt_matchfinder *mf, const u8 *in_base,
                          ptrdiff_t cur_pos, u32 nice_len, u32 max_search_depth,
@@ -306,4 +253,4 @@ bt_matchfinder_skip_byte(struct bt_matchfinder *mf, const u8 *in_base,
                                   max_search_depth, next_hashes, NULL, false);
 }
 
-#endif /* LIB_BT_MATCHFINDER_H */
+#endif

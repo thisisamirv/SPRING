@@ -1,4 +1,4 @@
-/*
+﻿/*
  * arm/matchfinder_impl.h - ARM implementations of matchfinder functions
  *
  * Copyright 2016 Eric Biggers
@@ -29,9 +29,9 @@
 #define LIB_ARM_MATCHFINDER_IMPL_H
 
 #if defined(__arm__) || defined(__aarch64__)
+#include "cpu_features_arm.h"
 #include "lib_common.h"
 #include "matchfinder_defs.h"
-#include "cpu_features_arm.h"
 
 #if defined(HAVE_NEON_NATIVE) && HAVE_NEON_NATIVE
 
@@ -73,8 +73,8 @@ static forceinline void matchfinder_rebase_neon(mf_pos_t *data, size_t size) {
 }
 #define matchfinder_rebase matchfinder_rebase_neon
 
-#endif /* HAVE_NEON_NATIVE */
+#endif
 
-#endif /* __arm__ || __aarch64__ */
+#endif
 
-#endif /* LIB_ARM_MATCHFINDER_IMPL_H */
+#endif

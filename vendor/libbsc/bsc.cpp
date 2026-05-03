@@ -1,7 +1,4 @@
-/*-----------------------------------------------------------*/
-/* Block Sorting, Lossless Data Compression Library.         */
-/* Block Sorting Compressor                                  */
-/*-----------------------------------------------------------*/
+﻿
 
 /*--
 
@@ -785,14 +782,11 @@ public:
 
     return 0;
   }
+};
 
-}; // end class bsc_class
-
-void BSC_compress(const char *infile, const char *outfile,
-                  const int bsize /* = BSC_BLOCK_SIZE*/) {
+void BSC_compress(const char *infile, const char *outfile, const int bsize) {
   bsc_class b;
-  // from
-  // https://stackoverflow.com/questions/39883433/create-argc-argv-in-the-code
+
   std::vector<std::string> arguments = {
       "", "e", infile, outfile, "-b" + std::to_string(bsize), "-p", "-e1"};
   std::vector<char *> argv;
@@ -804,8 +798,7 @@ void BSC_compress(const char *infile, const char *outfile,
 
 void BSC_decompress(const char *infile, const char *outfile) {
   bsc_class b;
-  // from
-  // https://stackoverflow.com/questions/39883433/create-argc-argv-in-the-code
+
   std::vector<std::string> arguments = {"", "d", infile, outfile};
   std::vector<char *> argv;
   for (const auto &arg : arguments)
@@ -816,7 +809,3 @@ void BSC_decompress(const char *infile, const char *outfile) {
 
 } // namespace bsc
 } // namespace spring
-
-/*-----------------------------------------------------------*/
-/* End                                               bsc.cpp */
-/*-----------------------------------------------------------*/

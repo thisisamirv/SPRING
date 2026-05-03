@@ -1,4 +1,4 @@
-#include "bitbuf2.h"
+﻿#include "bitbuf2.h"
 #include "huff_codes.h"
 #include "huffman.h"
 #include "igzip_lib.h"
@@ -61,7 +61,7 @@ void isal_deflate_body_base(struct isal_zstream *stream) {
     dist = (next_in - file_start - last_seen[hash]) & 0xFFFF;
     last_seen[hash] = (uint64_t)(next_in - file_start);
 
-    /* The -1 are to handle the case when dist = 0 */
+    
     if (dist - 1 < hist_size) {
       assert(dist != 0);
 
@@ -142,7 +142,7 @@ void isal_deflate_finish_base(struct isal_zstream *stream) {
       last_seen[hash] = (uint64_t)(next_in - file_start);
 
       if (dist - 1 <
-          hist_size) { /* The -1 are to handle the case when dist = 0 */
+          hist_size) { 
         match_length = compare258(next_in - dist, next_in, end_in - next_in);
 
         if (match_length >= SHORTEST_MATCH) {

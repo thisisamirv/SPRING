@@ -1,4 +1,4 @@
-/*
+﻿/*
  * xxHash - Extremely Fast Hash algorithm
  * Copyright (c) Yann Collet - Meta Platforms, Inc
  *
@@ -8,11 +8,7 @@
  * You may select, at your option, one of the above-listed licenses.
  */
 
-/*
- * xxhash.c instantiates functions defined in xxhash.h
- */
-
-#define XXH_STATIC_LINKING_ONLY /* access advanced declarations */
-#define XXH_IMPLEMENTATION      /* access definitions */
+#define XXH_STATIC_LINKING_ONLY
+#define XXH_IMPLEMENTATION
 
 #include "xxhash.h"

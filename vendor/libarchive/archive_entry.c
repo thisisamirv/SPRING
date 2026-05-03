@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2007 Tim Kientzle
  * Copyright (c) 2016 Martin Matuska
  * All rights reserved.
@@ -50,17 +50,14 @@
 #include <limits.h>
 #endif
 #ifdef HAVE_LINUX_FS_H
-#include <linux/fs.h> /* for Linux file flags */
+#include <linux/fs.h>
 #endif
-/*
- * Some Linux distributions have both linux/ext2_fs.h and ext2fs/ext2_fs.h.
- * As the include guards don't agree, the order of include is important.
- */
+
 #ifdef HAVE_LINUX_EXT2_FS_H
-#include <linux/ext2_fs.h> /* for Linux file flags */
+#include <linux/ext2_fs.h>
 #endif
 #if defined(HAVE_EXT2FS_EXT2_FS_H) && !defined(__CYGWIN__)
-#include <ext2fs/ext2_fs.h> /* for Linux file flags */
+#include <ext2fs/ext2_fs.h>
 #endif
 #include <stddef.h>
 #include <stdio.h>
@@ -90,37 +87,28 @@
 #include "archive_private.h"
 
 #if !defined(HAVE_MAJOR) && !defined(major)
-/* Replacement for major/minor/makedev. */
+
 #define major(x) ((int)(0x00ff & ((x) >> 8)))
 #define minor(x) ((int)(0xffff00ff & (x)))
 #define makedev(maj, min) ((0xff00 & ((maj) << 8)) | (0xffff00ff & (min)))
 #endif
 
-/* Play games to come up with a suitable makedev() definition. */
 #ifdef __QNXNTO__
-/* QNX.  <sigh> */
+
 #include <sys/netmgr.h>
 #define ae_makedev(maj, min) makedev(ND_LOCAL_NODE, (maj), (min))
 #elif defined makedev
-/* There's a "makedev" macro. */
+
 #define ae_makedev(maj, min) makedev((maj), (min))
 #elif defined mkdev ||                                                         \
     ((defined _WIN32 || defined __WIN32__) && !defined(__CYGWIN__))
-/* Windows. <sigh> */
+
 #define ae_makedev(maj, min) mkdev((maj), (min))
 #else
-/* There's a "makedev" function. */
+
 #define ae_makedev(maj, min) makedev((maj), (min))
 #endif
 
-/*
- * This adjustment is needed to support the following idiom for adding
- * 1000ns to the stored time:
- * archive_entry_set_atime(archive_entry_atime(),
- *                         archive_entry_atime_nsec() + 1000)
- * The additional if() here compensates for ambiguity in the C standard,
- * which permits two possible interpretations of a % b when a is negative.
- */
 #define FIX_NS(t, ns)                                                          \
   do {                                                                         \
     t += ns / 1000000000;                                                      \
@@ -154,15 +142,9 @@ static size_t wcslen(const wchar_t *s) {
 }
 #endif
 #ifndef HAVE_WMEMCMP
-/* Good enough for simple equality testing, but not for sorting. */
+
 #define wmemcmp(a, b, i) memcmp((a), (b), (i) * sizeof(wchar_t))
 #endif
-
-/****************************************************************************
- *
- * Public Interface
- *
- ****************************************************************************/
 
 struct archive_entry *archive_entry_clear(struct archive_entry *entry) {
   if (entry == NULL)
@@ -190,9 +172,6 @@ struct archive_entry *archive_entry_clone(struct archive_entry *entry) {
   size_t s;
   const void *p;
 
-  /* Allocate new structure and copy over all of the fields. */
-  /* TODO: Should we copy the archive over?  Or require a new archive
-   * as an argument? */
   entry2 = archive_entry_new2(entry->archive);
   if (entry2 == NULL)
     return (NULL);
@@ -200,8 +179,6 @@ struct archive_entry *archive_entry_clone(struct archive_entry *entry) {
   entry2->ae_fflags_set = entry->ae_fflags_set;
   entry2->ae_fflags_clear = entry->ae_fflags_clear;
 
-  /* TODO: XXX If clone can have a different archive, what do we do here if
-   * character sets are different? XXX */
   archive_mstring_copy(&entry2->ae_fflags_text, &entry->ae_fflags_text);
   archive_mstring_copy(&entry2->ae_gname, &entry->ae_gname);
   archive_mstring_copy(&entry2->ae_linkname, &entry->ae_linkname);
@@ -210,13 +187,10 @@ struct archive_entry *archive_entry_clone(struct archive_entry *entry) {
   entry2->ae_set = entry->ae_set;
   archive_mstring_copy(&entry2->ae_uname, &entry->ae_uname);
 
-  /* Copy symlink type */
   entry2->ae_symlink_type = entry->ae_symlink_type;
 
-  /* Copy encryption status */
   entry2->encryption = entry->encryption;
 
-  /* Copy digests */
 #define copy_digest(_e2, _e, _t)                                               \
   memcpy(_e2->digest._t, _e->digest._t, sizeof(_e2->digest._t))
 
@@ -229,21 +203,17 @@ struct archive_entry *archive_entry_clone(struct archive_entry *entry) {
 
 #undef copy_digest
 
-  /* Copy ACL data over. */
   archive_acl_copy(&entry2->acl, &entry->acl);
 
-  /* Copy Mac OS metadata. */
   p = archive_entry_mac_metadata(entry, &s);
   archive_entry_copy_mac_metadata(entry2, p, s);
 
-  /* Copy xattr data over. */
   xp = entry->xattr_head;
   while (xp != NULL) {
     archive_entry_xattr_add_entry(entry2, xp->name, xp->value, xp->size);
     xp = xp->next;
   }
 
-  /* Copy sparse data over. */
   sp = entry->sparse_head;
   while (sp != NULL) {
     archive_entry_sparse_add_entry(entry2, sp->offset, sp->length);
@@ -272,10 +242,6 @@ struct archive_entry *archive_entry_new2(struct archive *a) {
   entry->ae_symlink_type = AE_SYMLINK_TYPE_UNDEFINED;
   return (entry);
 }
-
-/*
- * Functions for reading fields from an archive_entry.
- */
 
 __LA_TIME_T
 archive_entry_atime(struct archive_entry *entry) {
@@ -360,15 +326,6 @@ void archive_entry_fflags(struct archive_entry *entry, unsigned long *set,
   *clear = entry->ae_fflags_clear;
 }
 
-/*
- * Note: if text was provided, this just returns that text.  If you
- * really need the text to be rebuilt in a canonical form, set the
- * text, ask for the bitmaps, then set the bitmaps.  (Setting the
- * bitmaps clears any stored text.)  This design is deliberate: if
- * we're editing archives, we don't want to discard flags just because
- * they aren't supported on the current system.  The bitmap<->text
- * conversions are platform-specific (see below).
- */
 const char *archive_entry_fflags_text(struct archive_entry *entry) {
   const char *f;
   char *p;
@@ -524,23 +481,16 @@ unsigned int archive_entry_nlink(struct archive_entry *entry) {
   return (entry->ae_stat.aest_nlink);
 }
 
-/* Instead, our caller could have chosen a specific encoding
- * (archive_mstring_get_mbs, archive_mstring_get_utf8,
- * archive_mstring_get_wcs).  So we should try multiple
- * encodings.  Try mbs first because of history, even though
- * utf8 might be better for pathname portability.
- * Also omit wcs because of type mismatch (char * versus wchar *)
- */
 const char *archive_entry_pathname(struct archive_entry *entry) {
   const char *p;
   if (archive_mstring_get_mbs(entry->archive, &entry->ae_pathname, &p) == 0)
     return (p);
-#if HAVE_EILSEQ /*{*/
+#if HAVE_EILSEQ
   if (errno == EILSEQ) {
     if (archive_mstring_get_utf8(entry->archive, &entry->ae_pathname, &p) == 0)
       return (p);
   }
-#endif /*}*/
+#endif
   if (errno == ENOMEM)
     __archive_errx(1, "No memory");
   return (NULL);
@@ -752,10 +702,6 @@ int archive_entry_is_metadata_encrypted(struct archive_entry *entry) {
 int archive_entry_is_encrypted(struct archive_entry *entry) {
   return (entry->encryption & (AE_ENCRYPTION_DATA | AE_ENCRYPTION_METADATA));
 }
-
-/*
- * Functions to set archive_entry properties.
- */
 
 void archive_entry_set_filetype(struct archive_entry *entry,
                                 unsigned int type) {
@@ -996,7 +942,6 @@ void archive_entry_set_devminor(struct archive_entry *entry, __LA_DEV_T m) {
   entry->ae_stat.aest_devminor = m;
 }
 
-/* Set symlink if symlink is already set, else set hardlink. */
 void archive_entry_set_link(struct archive_entry *entry, const char *target) {
   archive_mstring_copy_mbs(&entry->ae_linkname, target);
   if ((entry->ae_set & AE_SET_SYMLINK) == 0) {
@@ -1012,7 +957,6 @@ void archive_entry_set_link_utf8(struct archive_entry *entry,
   }
 }
 
-/* Set symlink if symlink is already set, else set hardlink. */
 void archive_entry_copy_link(struct archive_entry *entry, const char *target) {
   archive_mstring_copy_mbs(&entry->ae_linkname, target);
   if ((entry->ae_set & AE_SET_SYMLINK) == 0) {
@@ -1020,7 +964,6 @@ void archive_entry_copy_link(struct archive_entry *entry, const char *target) {
   }
 }
 
-/* Set symlink if symlink is already set, else set hardlink. */
 void archive_entry_copy_link_w(struct archive_entry *entry,
                                const wchar_t *target) {
   archive_mstring_copy_wcs(&entry->ae_linkname, target);
@@ -1334,7 +1277,6 @@ void archive_entry_copy_mac_metadata(struct archive_entry *entry, const void *p,
   }
 }
 
-/* Digest handling */
 const unsigned char *archive_entry_digest(struct archive_entry *entry,
                                           int type) {
   switch (type) {
@@ -1392,15 +1334,6 @@ int archive_entry_set_digest(struct archive_entry *entry, int type,
 #undef copy_digest
 }
 
-/*
- * ACL management.  The following would, of course, be a lot simpler
- * if: 1) the last draft of POSIX.1e were a really thorough and
- * complete standard that addressed the needs of ACL archiving and 2)
- * everyone followed it faithfully.  Alas, neither is true, so the
- * following is a lot more complex than might seem necessary to the
- * uninitiated.
- */
-
 struct archive_acl *archive_entry_acl(struct archive_entry *entry) {
   return &entry->acl;
 }
@@ -1409,18 +1342,12 @@ void archive_entry_acl_clear(struct archive_entry *entry) {
   archive_acl_clear(&entry->acl);
 }
 
-/*
- * Add a single ACL entry to the internal list of ACL data.
- */
 int archive_entry_acl_add_entry(struct archive_entry *entry, int type,
                                 int permset, int tag, int id,
                                 const char *name) {
   return archive_acl_add_entry(&entry->acl, type, permset, tag, id, name);
 }
 
-/*
- * As above, but with a wide-character name.
- */
 int archive_entry_acl_add_entry_w(struct archive_entry *entry, int type,
                                   int permset, int tag, int id,
                                   const wchar_t *name) {
@@ -1428,33 +1355,18 @@ int archive_entry_acl_add_entry_w(struct archive_entry *entry, int type,
                                      wcslen(name));
 }
 
-/*
- * Return a bitmask of ACL types in an archive entry ACL list
- */
 int archive_entry_acl_types(struct archive_entry *entry) {
   return (archive_acl_types(&entry->acl));
 }
 
-/*
- * Return a count of entries matching "want_type".
- */
 int archive_entry_acl_count(struct archive_entry *entry, int want_type) {
   return archive_acl_count(&entry->acl, want_type);
 }
 
-/*
- * Prepare for reading entries from the ACL data.  Returns a count
- * of entries matching "want_type", or zero if there are no
- * non-extended ACL entries of that type.
- */
 int archive_entry_acl_reset(struct archive_entry *entry, int want_type) {
   return archive_acl_reset(&entry->acl, want_type);
 }
 
-/*
- * Return the next ACL entry in the list.  Fake entries for the
- * standard permissions and include them in the returned list.
- */
 int archive_entry_acl_next(struct archive_entry *entry, int want_type,
                            int *type, int *permset, int *tag, int *id,
                            const char **name) {
@@ -1466,10 +1378,6 @@ int archive_entry_acl_next(struct archive_entry *entry, int want_type,
   return (r);
 }
 
-/*
- * Generate a text version of the ACL. The flags parameter controls
- * the style of the generated ACL.
- */
 wchar_t *archive_entry_acl_to_text_w(struct archive_entry *entry,
                                      la_ssize_t *len, int flags) {
   return (archive_acl_to_text_w(&entry->acl, len, flags, entry->archive));
@@ -1485,9 +1393,6 @@ char *_archive_entry_acl_to_text_l(struct archive_entry *entry, ssize_t *len,
   return (archive_acl_to_text_l(&entry->acl, len, flags, sc));
 }
 
-/*
- * ACL text parser.
- */
 int archive_entry_acl_from_text_w(struct archive_entry *entry,
                                   const wchar_t *wtext, int type) {
   return (archive_acl_from_text_w(&entry->acl, wtext, type));
@@ -1504,16 +1409,13 @@ int _archive_entry_acl_from_text_l(struct archive_entry *entry,
   return (archive_acl_from_text_l(&entry->acl, text, type, sc));
 }
 
-/* Deprecated */
 static int archive_entry_acl_text_compat(int *flags) {
   if ((*flags & ARCHIVE_ENTRY_ACL_TYPE_POSIX1E) == 0)
     return (1);
 
-  /* ABI compat with old ARCHIVE_ENTRY_ACL_STYLE_EXTRA_ID */
   if ((*flags & OLD_ARCHIVE_ENTRY_ACL_STYLE_EXTRA_ID) != 0)
     *flags |= ARCHIVE_ENTRY_ACL_STYLE_EXTRA_ID;
 
-  /* ABI compat with old ARCHIVE_ENTRY_ACL_STYLE_MARK_DEFAULT */
   if ((*flags & OLD_ARCHIVE_ENTRY_ACL_STYLE_MARK_DEFAULT) != 0)
     *flags |= ARCHIVE_ENTRY_ACL_STYLE_MARK_DEFAULT;
 
@@ -1522,7 +1424,6 @@ static int archive_entry_acl_text_compat(int *flags) {
   return (0);
 }
 
-/* Deprecated */
 const wchar_t *archive_entry_acl_text_w(struct archive_entry *entry,
                                         int flags) {
   free(entry->acl.acl_text_w);
@@ -1533,7 +1434,6 @@ const wchar_t *archive_entry_acl_text_w(struct archive_entry *entry,
   return (entry->acl.acl_text_w);
 }
 
-/* Deprecated */
 const char *archive_entry_acl_text(struct archive_entry *entry, int flags) {
   free(entry->acl.acl_text);
   entry->acl.acl_text = NULL;
@@ -1543,7 +1443,6 @@ const char *archive_entry_acl_text(struct archive_entry *entry, int flags) {
   return (entry->acl.acl_text);
 }
 
-/* Deprecated */
 int _archive_entry_acl_text_l(struct archive_entry *entry, int flags,
                               const char **acl_text, size_t *len,
                               struct archive_string_conv *sc) {
@@ -1559,100 +1458,21 @@ int _archive_entry_acl_text_l(struct archive_entry *entry, int flags,
   return (0);
 }
 
-/*
- * Following code is modified from UC Berkeley sources, and
- * is subject to the following copyright notice.
- */
-
-/*-
- * Copyright (c) 1993
- *	The Regents of the University of California.  All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 4. Neither the name of the University nor the names of its contributors
- *    may be used to endorse or promote products derived from this software
- *    without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ``AS IS'' AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED.  IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE
- * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
- * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
- * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
- * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
- * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
- * SUCH DAMAGE.
- */
-
-/*
- * Supported file flags on FreeBSD and Mac OS:
- * sappnd,sappend		SF_APPEND
- * arch,archived		SF_ARCHIVED
- * schg,schange,simmutable	SF_IMMUTABLE
- * sunlnk,sunlink		SF_NOUNLINK	(FreeBSD only)
- * uappnd,uappend		UF_APPEND
- * compressed			UF_COMPRESSED	(Mac OS only)
- * hidden,uhidden		UF_HIDDEN
- * uchg,uchange,uimmutable	UF_IMMUTABLE
- * nodump			UF_NODUMP
- * uunlnk,uunlink		UF_NOUNLINK	(FreeBSD only)
- * offline,uoffline		UF_OFFLINE	(FreeBSD only)
- * opaque			UF_OPAQUE
- * rdonly,urdonly,readonly	UF_READONLY	(FreeBSD only)
- * reparse,ureparse		UF_REPARSE	(FreeBSD only)
- * sparse,usparse		UF_SPARSE	(FreeBSD only)
- * system,usystem		UF_SYSTEM	(FreeBSD only)
- *
- * See chflags(2) for more information
- *
- * Supported file attributes on Linux:
- * a	append only			FS_APPEND_FL		sappnd
- * A	no atime updates		FS_NOATIME_FL		atime
- * c	compress			FS_COMPR_FL		compress
- * C	no copy on write		FS_NOCOW_FL		cow
- * d	no dump				FS_NODUMP_FL		dump
- * D	synchronous directory updates	FS_DIRSYNC_FL		dirsync
- * i	immutable			FS_IMMUTABLE_FL		schg
- * j	data journalling		FS_JOURNAL_DATA_FL	journal
- * P	project hierarchy		FS_PROJINHERIT_FL	projinherit
- * s	secure deletion			FS_SECRM_FL		securedeletion
- * S	synchronous updates		FS_SYNC_FL		sync
- * t	no tail-merging			FS_NOTAIL_FL		tail
- * T	top of directory hierarchy	FS_TOPDIR_FL		topdir
- * u	undeletable			FS_UNRM_FL		undel
- *
- * See ioctl_iflags(2) for more information
- *
- * Equivalent file flags supported on FreeBSD / Mac OS and Linux:
- * SF_APPEND		FS_APPEND_FL		sappnd
- * SF_IMMUTABLE		FS_IMMUTABLE_FL		schg
- * UF_NODUMP		FS_NODUMP_FL		nodump
- */
-
 static const struct flag {
   const char *name;
   const wchar_t *wname;
   unsigned long set;
   unsigned long clear;
 } fileflags[] = {
-/* Preferred (shorter) names per flag first, all prefixed by "no" */
+
 #ifdef SF_APPEND
     {"nosappnd", L"nosappnd", SF_APPEND, 0},
     {"nosappend", L"nosappend", SF_APPEND, 0},
 #endif
-#if defined(FS_APPEND_FL) /* 'a' */
+#if defined(FS_APPEND_FL)
     {"nosappnd", L"nosappnd", FS_APPEND_FL, 0},
     {"nosappend", L"nosappend", FS_APPEND_FL, 0},
-#elif defined(EXT2_APPEND_FL) /* 'a' */
+#elif defined(EXT2_APPEND_FL)
     {"nosappnd", L"nosappnd", EXT2_APPEND_FL, 0},
     {"nosappend", L"nosappend", EXT2_APPEND_FL, 0},
 #endif
@@ -1665,11 +1485,11 @@ static const struct flag {
     {"noschange", L"noschange", SF_IMMUTABLE, 0},
     {"nosimmutable", L"nosimmutable", SF_IMMUTABLE, 0},
 #endif
-#if defined(FS_IMMUTABLE_FL) /* 'i' */
+#if defined(FS_IMMUTABLE_FL)
     {"noschg", L"noschg", FS_IMMUTABLE_FL, 0},
     {"noschange", L"noschange", FS_IMMUTABLE_FL, 0},
     {"nosimmutable", L"nosimmutable", FS_IMMUTABLE_FL, 0},
-#elif defined(EXT2_IMMUTABLE_FL) /* 'i' */
+#elif defined(EXT2_IMMUTABLE_FL)
     {"noschg", L"noschg", EXT2_IMMUTABLE_FL, 0},
     {"noschange", L"noschange", EXT2_IMMUTABLE_FL, 0},
     {"nosimmutable", L"nosimmutable", EXT2_IMMUTABLE_FL, 0},
@@ -1690,7 +1510,7 @@ static const struct flag {
 #ifdef UF_NODUMP
     {"nodump", L"nodump", 0, UF_NODUMP},
 #endif
-#if defined(FS_NODUMP_FL) /* 'd' */
+#if defined(FS_NODUMP_FL)
     {"nodump", L"nodump", 0, FS_NODUMP_FL},
 #elif defined(EXT2_NODUMP_FL)
     {"nodump", L"nodump", 0, EXT2_NODUMP_FL},
@@ -1703,7 +1523,7 @@ static const struct flag {
     {"nouunlink", L"nouunlink", UF_NOUNLINK, 0},
 #endif
 #ifdef UF_COMPRESSED
-    /* Mac OS */
+
     {"nocompressed", L"nocompressed", UF_COMPRESSED, 0},
 #endif
 #ifdef UF_HIDDEN
@@ -1744,70 +1564,65 @@ static const struct flag {
     {"nosystem", L"nosystem", FILE_ATTRIBUTE_SYSTEM, 0},
     {"nousystem", L"nousystem", FILE_ATTRIBUTE_SYSTEM, 0},
 #endif
-#if defined(FS_UNRM_FL) /* 'u' */
+#if defined(FS_UNRM_FL)
     {"noundel", L"noundel", FS_UNRM_FL, 0},
 #elif defined(EXT2_UNRM_FL)
     {"noundel", L"noundel", EXT2_UNRM_FL, 0},
 #endif
 
-#if defined(FS_COMPR_FL) /* 'c' */
+#if defined(FS_COMPR_FL)
     {"nocompress", L"nocompress", FS_COMPR_FL, 0},
 #elif defined(EXT2_COMPR_FL)
     {"nocompress", L"nocompress", EXT2_COMPR_FL, 0},
 #endif
 
-#if defined(FS_NOATIME_FL) /* 'A' */
+#if defined(FS_NOATIME_FL)
     {"noatime", L"noatime", 0, FS_NOATIME_FL},
 #elif defined(EXT2_NOATIME_FL)
     {"noatime", L"noatime", 0, EXT2_NOATIME_FL},
 #endif
-#if defined(FS_DIRSYNC_FL) /* 'D' */
+#if defined(FS_DIRSYNC_FL)
     {"nodirsync", L"nodirsync", FS_DIRSYNC_FL, 0},
 #elif defined(EXT2_DIRSYNC_FL)
     {"nodirsync", L"nodirsync", EXT2_DIRSYNC_FL, 0},
 #endif
-#if defined(FS_JOURNAL_DATA_FL) /* 'j' */
+#if defined(FS_JOURNAL_DATA_FL)
     {"nojournal-data", L"nojournal-data", FS_JOURNAL_DATA_FL, 0},
     {"nojournal", L"nojournal", FS_JOURNAL_DATA_FL, 0},
 #elif defined(EXT3_JOURNAL_DATA_FL)
     {"nojournal-data", L"nojournal-data", EXT3_JOURNAL_DATA_FL, 0},
     {"nojournal", L"nojournal", EXT3_JOURNAL_DATA_FL, 0},
 #endif
-#if defined(FS_SECRM_FL) /* 's' */
+#if defined(FS_SECRM_FL)
     {"nosecdel", L"nosecdel", FS_SECRM_FL, 0},
     {"nosecuredeletion", L"nosecuredeletion", FS_SECRM_FL, 0},
 #elif defined(EXT2_SECRM_FL)
     {"nosecdel", L"nosecdel", EXT2_SECRM_FL, 0},
     {"nosecuredeletion", L"nosecuredeletion", EXT2_SECRM_FL, 0},
 #endif
-#if defined(FS_SYNC_FL) /* 'S' */
+#if defined(FS_SYNC_FL)
     {"nosync", L"nosync", FS_SYNC_FL, 0},
 #elif defined(EXT2_SYNC_FL)
     {"nosync", L"nosync", EXT2_SYNC_FL, 0},
 #endif
-#if defined(FS_NOTAIL_FL) /* 't' */
+#if defined(FS_NOTAIL_FL)
     {"notail", L"notail", 0, FS_NOTAIL_FL},
 #elif defined(EXT2_NOTAIL_FL)
     {"notail", L"notail", 0, EXT2_NOTAIL_FL},
 #endif
-#if defined(FS_TOPDIR_FL) /* 'T' */
+#if defined(FS_TOPDIR_FL)
     {"notopdir", L"notopdir", FS_TOPDIR_FL, 0},
 #elif defined(EXT2_TOPDIR_FL)
     {"notopdir", L"notopdir", EXT2_TOPDIR_FL, 0},
 #endif
-#ifdef FS_NOCOW_FL /* 'C' */
+#ifdef FS_NOCOW_FL
     {"nocow", L"nocow", 0, FS_NOCOW_FL},
 #endif
-#ifdef FS_PROJINHERIT_FL /* 'P' */
+#ifdef FS_PROJINHERIT_FL
     {"noprojinherit", L"noprojinherit", FS_PROJINHERIT_FL, 0},
 #endif
     {NULL, NULL, 0, 0}};
 
-/*
- * fflagstostr --
- *	Convert file flags to a comma-separated string.  If no flags
- *	are set, return the empty string.
- */
 static char *ae_fflagstostr(unsigned long bitset, unsigned long bitclear) {
   char *string, *dp;
   const char *sp;
@@ -1850,16 +1665,6 @@ static char *ae_fflagstostr(unsigned long bitset, unsigned long bitclear) {
   return (string);
 }
 
-/*
- * strtofflags --
- *	Take string of arguments and return file flags.  This
- *	version works a little differently than strtofflags(3).
- *	In particular, it always tests every token, skipping any
- *	unrecognized tokens.  It returns a pointer to the first
- *	unrecognized token, or NULL if every token was recognized.
- *	This version is also const-correct and does not modify the
- *	provided string.
- */
 static const char *ae_strtofflags(const char *s, size_t l, unsigned long *setp,
                                   unsigned long *clrp) {
   const char *start, *end;
@@ -1870,14 +1675,14 @@ static const char *ae_strtofflags(const char *s, size_t l, unsigned long *setp,
   set = clear = 0;
   start = s;
   failed = NULL;
-  /* Find start of first token. */
+
   while (l > 0 && (*start == '\t' || *start == ' ' || *start == ',')) {
     start++;
     l--;
   }
   while (l > 0) {
     size_t length;
-    /* Locate end of token. */
+
     end = start;
     while (l > 0 && *end != '\t' && *end != ' ' && *end != ',') {
       end++;
@@ -1887,23 +1692,22 @@ static const char *ae_strtofflags(const char *s, size_t l, unsigned long *setp,
     for (flag = fileflags; flag->name != NULL; flag++) {
       size_t flag_length = strlen(flag->name);
       if (length == flag_length && memcmp(start, flag->name, length) == 0) {
-        /* Matched "noXXXX", so reverse the sense. */
+
         clear |= flag->set;
         set |= flag->clear;
         break;
       } else if (length == flag_length - 2 &&
                  memcmp(start, flag->name + 2, length) == 0) {
-        /* Matched "XXXX", so don't reverse. */
+
         set |= flag->set;
         clear |= flag->clear;
         break;
       }
     }
-    /* Ignore unknown flag names. */
+
     if (flag->name == NULL && failed == NULL)
       failed = start;
 
-    /* Find start of next token. */
     start = end;
     while (l > 0 && (*start == '\t' || *start == ' ' || *start == ',')) {
       start++;
@@ -1916,20 +1720,9 @@ static const char *ae_strtofflags(const char *s, size_t l, unsigned long *setp,
   if (clrp)
     *clrp = clear;
 
-  /* Return location of first failure. */
   return (failed);
 }
 
-/*
- * wcstofflags --
- *	Take string of arguments and return file flags.  This
- *	version works a little differently than strtofflags(3).
- *	In particular, it always tests every token, skipping any
- *	unrecognized tokens.  It returns a pointer to the first
- *	unrecognized token, or NULL if every token was recognized.
- *	This version is also const-correct and does not modify the
- *	provided string.
- */
 static const wchar_t *ae_wcstofflags(const wchar_t *s, unsigned long *setp,
                                      unsigned long *clrp) {
   const wchar_t *start, *end;
@@ -1940,12 +1733,12 @@ static const wchar_t *ae_wcstofflags(const wchar_t *s, unsigned long *setp,
   set = clear = 0;
   start = s;
   failed = NULL;
-  /* Find start of first token. */
+
   while (*start == L'\t' || *start == L' ' || *start == L',')
     start++;
   while (*start != L'\0') {
     size_t length;
-    /* Locate end of token. */
+
     end = start;
     while (*end != L'\0' && *end != L'\t' && *end != L' ' && *end != L',')
       end++;
@@ -1953,23 +1746,22 @@ static const wchar_t *ae_wcstofflags(const wchar_t *s, unsigned long *setp,
     for (flag = fileflags; flag->wname != NULL; flag++) {
       size_t flag_length = wcslen(flag->wname);
       if (length == flag_length && wmemcmp(start, flag->wname, length) == 0) {
-        /* Matched "noXXXX", so reverse the sense. */
+
         clear |= flag->set;
         set |= flag->clear;
         break;
       } else if (length == flag_length - 2 &&
                  wmemcmp(start, flag->wname + 2, length) == 0) {
-        /* Matched "XXXX", so don't reverse. */
+
         set |= flag->set;
         clear |= flag->clear;
         break;
       }
     }
-    /* Ignore unknown flag names. */
+
     if (flag->wname == NULL && failed == NULL)
       failed = start;
 
-    /* Find start of next token. */
     start = end;
     while (*start == L'\t' || *start == L' ' || *start == L',')
       start++;
@@ -1980,7 +1772,6 @@ static const wchar_t *ae_wcstofflags(const wchar_t *s, unsigned long *setp,
   if (clrp)
     *clrp = clear;
 
-  /* Return location of first failure. */
   return (failed);
 }
 

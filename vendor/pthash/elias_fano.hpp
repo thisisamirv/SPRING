@@ -1,4 +1,4 @@
-#ifndef PTHASH_EXTERNAL_BITS_ELIAS_FANO_HPP
+﻿#ifndef PTHASH_EXTERNAL_BITS_ELIAS_FANO_HPP
 #define PTHASH_EXTERNAL_BITS_ELIAS_FANO_HPP
 
 #include "bit_vector.hpp"
@@ -9,16 +9,13 @@
 
 namespace bits {
 
-template < //
-    /* build a succinct select index on the zeros of high_bits for efficient
-       next_neq */
-    bool index_zeros = false, //
-    /* if encode_prefix_sum = false, the sequence is assumed to be sorted */
-    bool encode_prefix_sum = false, //
+template <
 
-    typename DArray1 = darray1, //
-    typename DArray0 = darray0  //
-    >
+    bool index_zeros = false,
+
+    bool encode_prefix_sum = false,
+
+    typename DArray1 = darray1, typename DArray0 = darray0>
 struct elias_fano {
   elias_fano() = default;
 
@@ -32,14 +29,13 @@ struct elias_fano {
       auto tmp = begin;
       for (uint64_t i = 0; i != n; ++i, ++tmp)
         universe += *tmp;
-      n = n + 1; // because a zero is added at the beginning
+      n = n + 1;
     } else {
-      if (universe == uint64_t(-1)) // otherwise use the provided universe
-      {
+      if (universe == uint64_t(-1)) {
         if constexpr (std::is_same_v<typename Iterator::iterator_category,
                                      std::random_access_iterator_tag>) {
           universe = *(begin + (n - 1));
-        } else { // scan
+        } else {
           auto tmp = begin;
           for (uint64_t i = 0; i != n - 1; ++i, ++tmp)
             ;
@@ -48,18 +44,7 @@ struct elias_fano {
       }
     }
 
-    /* This version takes at most: n*floor(log(U/n)) + 3*n bits */
     uint64_t l = uint64_t((n && universe / n) ? util::msb(universe / n) : 0);
-    // std::cout << "n=" << n << std::endl;
-    // std::cout << "U=" << universe << std::endl;
-    // std::cout << "l=" << l << std::endl;
-
-    // uint64_t num_high_bits = n + (universe >> l) + 1;
-    // std::cout << "num_high_bits = " << num_high_bits << std::endl;
-    // std::cout << "total bits = " << (num_high_bits + n * l) << std::endl;
-    // std::cout << "(n*log(U/n)+2n) = " << n *
-    // (std::log2(static_cast<double>(universe) / n) + 2)
-    //           << std::endl;
 
     bit_vector::builder bvb_high_bits(n + (universe >> l) + 1);
     compact_vector::builder cvb_low_bits(n, l);
@@ -67,19 +52,18 @@ struct elias_fano {
     const uint64_t low_mask = (uint64_t(1) << l) - 1;
     uint64_t last = 0;
 
-    // add a zero at the beginning
     if constexpr (encode_prefix_sum) {
       if (l)
         cvb_low_bits.set(0, 0);
       bvb_high_bits.set(0, 1);
-      n = n - 1; // restore n
+      n = n - 1;
     }
 
     for (uint64_t i = 0; i != n; ++i, ++begin) {
       auto v = *begin;
       if constexpr (encode_prefix_sum) {
-        v = v + last;              // prefix sum
-      } else if (i and v < last) { // check the order
+        v = v + last;
+      } else if (i and v < last) {
         std::cerr << "error at " << i << "/" << n << ":\n";
         std::cerr << "last " << last << "\n";
         std::cerr << "current " << v << "\n";
@@ -90,12 +74,6 @@ struct elias_fano {
       bvb_high_bits.set((v >> l) + i + encode_prefix_sum, 1);
       last = v;
     }
-
-    // std::cout << "high bits:\n";
-    // for (uint64_t i = 0; i != bvb_high_bits.num_bits(); ++i) {
-    //     std::cout << int(bvb_high_bits.get(i));
-    // }
-    // std::cout << std::endl;
 
     m_back = last;
     bvb_high_bits.build(m_high_bits);
@@ -109,8 +87,7 @@ struct elias_fano {
     iterator() : m_ef(nullptr), m_pos(0), m_l(0), m_val(0) {}
 
     iterator(elias_fano const *ef, uint64_t pos = 0)
-        : m_ef(ef), m_pos(pos), m_l(ef->m_low_bits.width()), m_val(0) //
-    {
+        : m_ef(ef), m_pos(pos), m_l(ef->m_low_bits.width()), m_val(0) {
       if (!has_next() or m_ef->m_high_bits_d1.num_positions() == 0)
         return;
       assert(m_l < 64);
@@ -121,8 +98,7 @@ struct elias_fano {
     }
 
     iterator(elias_fano const *ef, uint64_t pos, uint64_t high_hint)
-        : m_ef(ef), m_pos(pos), m_l(ef->m_low_bits.width()), m_val(0) //
-    {
+        : m_ef(ef), m_pos(pos), m_l(ef->m_low_bits.width()), m_val(0) {
       if (!has_next() or m_ef->m_high_bits_d1.num_positions() == 0)
         return;
       assert(m_l < 64);
@@ -144,16 +120,10 @@ struct elias_fano {
       read_next_value();
     }
 
-    /*
-        Return the value before the current position.
-    */
     uint64_t prev_value() {
       assert(m_pos > 0);
       uint64_t pos = m_pos - 1;
-      /*
-          `read_next_value()` sets the state ahead of 1 position,
-          hence must go back by 2 to get previous value.
-      */
+
       assert(m_high_bits_it.position() >= 2);
       uint64_t high = m_high_bits_it.prev(m_high_bits_it.position() - 2);
       assert(high == m_ef->m_high_bits_d1.select(m_ef->m_high_bits, pos));
@@ -188,18 +158,6 @@ struct elias_fano {
            m_low_bits.access(i);
   }
 
-  /*
-      If encode_prefix_sum = true, the iterator passed to the encode() method
-      can yield non-sorted values, so that diff(i) returns the i-th element
-      from the original sequence.
-      Example. Assume the values are V = [3, 2, 5, 1, 16],
-      then we will encode V' = [0, 3, 5, 10, 11, 27], so that
-          diff(0) = V[0] = V'[1] - V'[0] = 3-0 = 3
-          diff(1) = V[1] = V'[2] - V'[1] = 5-1 = 2
-          diff(2) = V[2] = V'[3] - V'[2] = 10-5 = 5
-          diff(3) = V[3] = V'[4] - V'[3] = 11-10 = 1
-          diff(4) = V[4] = V'[5] - V'[4] = 27-11 = 16
-  */
   [[nodiscard]] uint64_t diff(uint64_t i) const {
     assert(i < size() && encode_prefix_sum);
     uint64_t low1 = m_low_bits.access(i);
@@ -219,44 +177,10 @@ struct elias_fano {
     uint64_t val;
   };
 
-  /*
-      Return [position,value] of the leftmost smallest element that is >= x.
-      Return [size()-1,back()] if x > back().
-
-      Example.
-
-      1, 3, 3, 4, 5, 6, 6, 9, 12, 14, 17, 17
-      0  1  2  3  4  5  6  7   8   9  10  11
-
-      next_geq(0) = [0,1]
-      next_geq(3) = [1,3]
-      next_geq(6) = [5,6]
-      next_geq(7) = [7,9]
-      next_geq(17) = [10,17]
-      next_geq(23) = [11,17] (saturate)
-  */
   return_value next_geq(const uint64_t x) const {
     return next_geq_leftmost(x).first;
   }
 
-  /*
-      Return [position,value] of the rightmost largest element that is <= x.
-      Return [size()-1,back()] if x >= back().
-      Return [uint64(-1),uint64(-1)] if x < front()
-      (result is undefined; uint64(-1) = 2^64-1).
-
-      Example.
-
-      1, 3, 3, 4, 5, 6, 6, 9, 12, 14, 17, 17
-      0  1  2  3  4  5  6  7   8   9  10  11
-
-      prev_leq(0) = [uint64(-1),uint64(-1)] (undefined, because 0 < front() = 1)
-      prev_leq(3) = [2,3]
-      prev_leq(6) = [6,6]
-      prev_leq(7) = [6,6]
-      prev_leq(17) = [11,17]
-      prev_leq(23) = [11,17] (saturate, because 23 >= back() = 17)
-  */
   return_value prev_leq(const uint64_t x) const {
     auto [ret, it] = next_geq_rightmost(x);
     if (ret.val > x)
@@ -264,71 +188,6 @@ struct elias_fano {
     return ret;
   }
 
-  // /*
-  //     It is assumed that all elements are distinct.
-  // */
-  // return_value pred(const uint64_t x) const {
-  //     static_assert(index_zeros == true, "must build index on zeros");
-  //     assert(m_high_bits_d0.num_positions());
-
-  //     if (x > back()) return {size() - 1, back()};
-  //     if (x <= access(0)) return {uint64_t(-1), uint64_t(-1)};
-
-  //     uint64_t h_x = x >> m_low_bits.width();
-  //     uint64_t p = 0;
-  //     uint64_t begin = 0;
-  //     if (h_x > 0) {
-  //         p = m_high_bits_d0.select(m_high_bits, h_x - 1);
-  //         begin = p - h_x + 1;
-  //     }
-  //     assert(begin < size());
-
-  //     auto it = iterator(this, begin, p /* high hint */);
-  //     uint64_t pos = begin;
-  //     uint64_t val = it.value();
-
-  //     if (x <= val) {
-  //         assert(pos > 0);
-  //         return {pos - 1, it.prev_value()};
-  //     }
-
-  //     assert(val < x);
-  //     uint64_t prev = uint64_t(-1);
-  //     while (val < x) {
-  //         prev = val;
-  //         ++pos;
-  //         it.next();
-  //         val = it.value();
-  //     }
-  //     /* now pos is the position of the leftmost element that is >= x */
-  //     assert(val >= x);
-  //     assert(pos < size());
-  //     assert(val == access(pos));
-  //     assert(it.position() == pos);
-  //     assert(pos > 0);
-  //     return {pos - 1, prev};
-  // }
-
-  /*
-      Determine integers lo and hi, with lo < hi, such that lo <= x < hi
-      and lo is the largest rightmost value that is <= x (hence, it is
-     prev_leq(x)) and hi is the smallest leftmost value that is > x.
-
-      Return the tuple [lo_pos, lo, hi_pos, hi].
-
-      Example.
-
-      1, 3, 3, 4, 5, 6, 6, 9, 12, 14, 17, 17
-      0  1  2  3  4  5  6  7   8   9  10  11
-
-      locate(0) = [uint64(-1),uint64(-1), 0, 1]
-      locate(3) = [2,3,3,4]
-      locate(6) = [6,6,7,9]
-      locate(7) = [6,6,7,9]
-      locate(17) = [11,17,11,17]
-      locate(23) = [11,17,uint64(-1),uint64(-1)] (saturate, because 23 >= back()
-     = 17)
-  */
   std::pair<return_value, return_value> locate(const uint64_t x) const {
     auto [lo, it] = next_geq_rightmost(x);
     if (lo.val > x) {
@@ -338,7 +197,7 @@ struct elias_fano {
     return_value hi{uint64_t(-1), uint64_t(-1)};
     if (lo.pos != size() - 1) {
       hi.pos = lo.pos + 1;
-      hi.val = it.value(); // element next to lo.val
+      hi.val = it.value();
       assert(it.position() == hi.pos);
     }
     return {lo, hi};
@@ -385,10 +244,6 @@ private:
     visitor.visit(std::forward<T>(t).m_low_bits);
   }
 
-  /*
-      Return [position,value] of the leftmost smallest element that is >= x.
-      Return [size()-1,back()] if x > back().
-  */
   std::pair<return_value, iterator> next_geq_leftmost(const uint64_t x) const {
     static_assert(index_zeros == true, "must build index on zeros");
     assert(m_high_bits_d0.num_positions());
@@ -405,32 +260,16 @@ private:
     }
     assert(begin < size());
 
-    /*
-        `begin` is the position of the first element that has high part >= h_x
-        and `p` is the position in `m_high_bits` of the (h_x-1)-th 0,
-        so it is passed to the iterator as a hint to recover the high part
-        of the element at position `begin` without doing a select_1.
-    */
-
-    // uint64_t end = m_high_bits_d0.select(m_high_bits, h_x) - h_x;
-    // assert(end <= size());
-    // assert(begin <= end);
-    // return binary search for x in [begin, end)
-
-    auto it = iterator(this, begin, p /* high hint */);
+    auto it = iterator(this, begin, p);
     uint64_t pos = begin;
     uint64_t val = it.value();
     while (val < x) {
       ++pos;
-      /*
-          Note: no need for bound checking here
-          because x <= back(), hence pos cannot
-          be equal to size().
-      */
+
       it.next();
       val = it.value();
     }
-    /* now pos is the position of the leftmost element that is >= x */
+
     assert(val >= x);
     assert(pos < size());
     assert(val == access(pos));
@@ -438,15 +277,11 @@ private:
     return {{pos, val}, it};
   }
 
-  /*
-      Return [position,value] of the rightmost smallest element that is >= x.
-      Return [size()-1,back()] if x >= back().
-  */
   std::pair<return_value, iterator> next_geq_rightmost(const uint64_t x) const {
     auto [ret, it] = next_geq_leftmost(x);
     if (ret.val == x and ret.pos != size() - 1) {
       assert(it.position() == ret.pos);
-      do { // scan to pick the rightmost one
+      do {
         ++ret.pos;
         if (ret.pos == size())
           break;
@@ -464,4 +299,4 @@ private:
 
 } // namespace bits
 
-#endif // PTHASH_EXTERNAL_BITS_ELIAS_FANO_HPP
+#endif

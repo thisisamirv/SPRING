@@ -1,4 +1,4 @@
-#include <assert.h>
+﻿#include <assert.h>
 #include <memory.h>
 #include <stdint.h>
 
@@ -8,7 +8,7 @@
 #else
 #include <x86intrin.h>
 #endif
-#endif //__x86_64__  || __i386__ || _M_X64 || _M_IX86
+#endif
 
 #include "bitbuf2.h"
 #include "encode_df.h"
@@ -23,7 +23,6 @@ struct deflate_icf *encode_deflate_icf_base(struct deflate_icf *next_in,
     lsym = hufftables->lit_len_table[next_in->lit_len];
     dsym = hufftables->dist_lit_table[next_in->lit_dist];
 
-    // insert ll code, dist_code, and extra_bits
     write_bits_unsafe(bb, lsym.code_and_extra, lsym.length);
     write_bits_unsafe(bb, dsym.code, dsym.length);
     write_bits_unsafe(bb, next_in->dist_extra, dsym.extra_bit_count);

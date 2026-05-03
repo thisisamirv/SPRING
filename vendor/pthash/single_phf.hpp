@@ -1,17 +1,17 @@
-#ifndef PTHASH_SINGLE_PHF_HPP
+﻿#ifndef PTHASH_SINGLE_PHF_HPP
 #define PTHASH_SINGLE_PHF_HPP
 
+#include "builders_util.hpp"
+#include "dense_encoders.hpp"
+#include "elias_fano.hpp"
 #include "external_memory_builder_single_phf.hpp"
 #include "internal_memory_builder_single_phf.hpp"
-#include "builders_util.hpp"
-#include "elias_fano.hpp"
-#include "dense_encoders.hpp"
+
 
 namespace pthash {
 
 template <typename Hasher, typename Bucketer, typename Encoder, bool Minimal>
-struct single_phf //
-{
+struct single_phf {
   static_assert(!std::is_base_of_v<dense_encoder, Encoder>,
                 "Dense encoders are only valid for dense_partitioned_phf. "
                 "Select another encoder.");
@@ -43,7 +43,7 @@ struct single_phf //
     auto start = clock_type::now();
 
     if (Minimal != config.minimal) {
-      throw std::runtime_error( //
+      throw std::runtime_error(
           "template parameter 'Minimal' must be equal to config.minimal");
     }
 
@@ -141,4 +141,4 @@ private:
 
 } // namespace pthash
 
-#endif // PTHASH_SINGLE_PHF_HPP
+#endif

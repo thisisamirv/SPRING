@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <algorithm>
 #include <atomic>
@@ -30,10 +30,6 @@
 namespace rapidgzip {
 class SharedFileReader final : public FileReader {
 private:
-  /**
-   * Create a new shared file reader from an existing FileReader. Takes
-   * ownership of the given FileReader!
-   */
   explicit SharedFileReader(FileReader *file)
       : m_statistics(
             dynamic_cast<SharedFileReader *>(file) == nullptr
@@ -56,9 +52,6 @@ private:
     }
 #endif
 
-    /* Fall back to a clone-like copy of all members if the source is also a
-     * SharedFileReader. Most of the members are already copied inside the
-     * member initializer list. */
     if (auto *const sharedFile = dynamic_cast<SharedFileReader *>(file);
         sharedFile != nullptr) {
       m_sharedFile = sharedFile->m_sharedFile;
@@ -74,7 +67,7 @@ private:
       if ((p != nullptr) && !p->closed()) {
         p->close();
       }
-      delete p; // NOLINT(cppcoreguidelines-owning-memory)
+      delete p;
     });
   }
 
@@ -113,12 +106,8 @@ public:
     }
   }
 
-  /**
-   * Creates a shallow copy of this file reader with an independent file
-   * position to access the underlying file.
-   */
   [[nodiscard]] UniqueFileReader cloneRaw() const override {
-    /* Cannot use std::make_unique because the copy constructor is private! */
+
     return UniqueFileReader(new SharedFileReader(*this));
   }
 
@@ -135,13 +124,6 @@ public:
   }
 
 private:
-  /**
-   * Create a new shared file reader from an existing SharedFileReader by
-   * copying shared pointers. The underlying file and mutex are held as a
-   * shared_ptr and therefore not copied itself! Make it private because only
-   * @ref clone should call this. It cannot be defaulted because the FileReader
-   * base class deleted its copy constructor.
-   */
   SharedFileReader(const SharedFileReader &other)
       : m_statistics(other.m_statistics), m_sharedFile(other.m_sharedFile),
         m_fileDescriptor(other.m_fileDescriptor), m_mutex(other.m_mutex),
@@ -150,11 +132,7 @@ private:
 
 public:
   void close() override {
-    /* This is a shared file. Closing the underlying file while it might be used
-     * by another process, seems like a bug-prone functionality. If you really
-     * want to close a file, delete all SharedFileReader classes using it. It
-     * will be closed by the last destructor @see deleter set in the
-     * constructor. */
+
     const auto lock = getLock();
     m_sharedFile.reset();
   }
@@ -165,8 +143,7 @@ public:
   }
 
   [[nodiscard]] bool eof() const override {
-    /* m_sharedFile->eof() won't work because some other thread might set the
-     * EOF bit on the underlying file! */
+
     const auto fileSize = size();
     return fileSize ? m_currentPosition >= *fileSize : false;
   }
@@ -204,7 +181,7 @@ public:
     if ((origin == SEEK_END) && !size().has_value()) {
       const auto fileLock = getLock();
       m_currentPosition = m_sharedFile->seek(offset, origin);
-      /* File size must have become available when seeking relative to end. */
+
       m_fileSizeBytes = m_sharedFile->size();
       if (const auto fileSize = size(); fileSize) {
         m_currentPosition = std::min(m_currentPosition, *fileSize);
@@ -225,13 +202,6 @@ public:
       return 0;
     }
 
-    /* Copy the shared pointer in order to avoid race-conditions with @ref
-     * close, which might clear
-     * @ref m_sharedFile. This copy avoids having to keep m_mutex locked the
-     * whole time. Else, we would have to recheck m_sharedFile before after each
-     * relock. Note that there are two semantics here:
-     * 1. Locking access to the underlying file
-     * 2. Locking access to the shared_ptr member. */
     const auto sharedFile = [this]() {
       const auto lock = getLock();
       return std::shared_ptr<FileReader>(m_sharedFile);
@@ -247,10 +217,7 @@ public:
     const auto fileSize = size();
     if (m_usePread && (m_fileDescriptor >= 0) && fileSize.has_value() &&
         sharedFile->seekable()) {
-      /* This statistic only approximates the actual pread behavior. The OS can
-       * probably reorder concurrent pread calls and we would have to enclose
-       * pread itself in a lock, which defeats the purpose of pread for speed.
-       */
+
       if (m_statistics && m_statistics->enabled) {
         const std::scoped_lock lock{m_statistics->mutex};
 
@@ -271,15 +238,10 @@ public:
 
       nMaxBytesToRead =
           std::min(nMaxBytesToRead, *fileSize - m_currentPosition);
-      const auto nBytesReadWithPread =
-          ::pread(sharedFile->fileno(), buffer, nMaxBytesToRead,
-                  m_currentPosition); // NOLINT
+      const auto nBytesReadWithPread = ::pread(
+          sharedFile->fileno(), buffer, nMaxBytesToRead, m_currentPosition);
       if ((nBytesReadWithPread == 0) && !m_fileSizeBytes.has_value()) {
-        /* EOF reached. A lock should not be necessary because the file size
-         * should not change after EOF has has been reached but, as it will only
-         * be locked once, the performance overhead is negligible for the amount
-         * of security it brings against weird implementations for m_sharedFile.
-         */
+
         const auto fileLock = getLock();
         m_fileSizeBytes = sharedFile->size();
       }
@@ -302,8 +264,6 @@ public:
         }
       }
 
-      /* Seeking alone does not clear the EOF nor fail bit if the last read did
-       * set it. */
       sharedFile->clearerr();
       sharedFile->seekTo(m_currentPosition);
       nBytesRead = sharedFile->read(buffer, nMaxBytesToRead);
@@ -322,11 +282,7 @@ public:
     return nBytesRead;
   }
 
-  [[nodiscard]] size_t tell() const override {
-    /* Do not use m_sharedFile->tell() because another thread might move that
-     * internal file position! */
-    return m_currentPosition;
-  }
+  [[nodiscard]] size_t tell() const override { return m_currentPosition; }
 
   void clearerr() override {
     throw std::invalid_argument(
@@ -334,22 +290,6 @@ public:
         "set an error again right away, which makes this interface useless.");
   }
 
-  /**
-   * In order to avoid deadlocks where:
-   * - Thread 1 has the GIL and tries to acquire the SharedFileReader lock
-   * - Thread 2 has the SharedFileReader lock and tries to acquire the GIL
-   * this enforces a fixed lock order
-   * The order per se locks the std::mutex first and only then acquires the GIL.
-   * The other way around has been proven to not work because the GIL gets
-   * released at seemingly arbitrary points, in the given test case inside
-   * PythonFileReader::read -> PyObject_Call somewhere between PyObject_Call and
-   * _Py_Read, which tries to lock the GIL again, which might deadlock. But then
-   * there is the Python main thread, which has the GIL already locked when
-   * calling into this function! This messes up our lock order, so therefore, we
-   * need to try to unlock the GIL before trying to lock
-   * @ref m_fileLock. In case it already is unlocked, then ScopedGILUnlock will
-   * not do anything.
-   */
   struct FileLock {
     explicit FileLock(std::mutex &mutex) : m_fileLock(mutex) {}
 
@@ -363,11 +303,6 @@ public:
 #endif
   };
 
-  /**
-   * @return Raw pointer to underlying FileReader and lock, which acts as a kind
-   * of borrow together. The raw pointer must not be used after the lock has
-   * been destroyed.
-   */
   [[nodiscard]] std::pair<std::unique_ptr<FileLock>, FileReader *>
   underlyingFile() {
     return {getUniqueLock(), m_sharedFile.get()};
@@ -378,10 +313,6 @@ public:
   [[nodiscard]] bool usePread() const noexcept { return m_usePread; }
 
 private:
-  /**
-   * This should be used for internal locks to avoid the allocations by
-   * std::unique_ptr for each access to @ref size() for example.
-   */
   [[nodiscard]] FileLock getLock() const {
     if (m_statistics && m_statistics->enabled) {
       ++m_statistics->locks;
@@ -400,8 +331,7 @@ private:
   struct AccessStatistics {
     bool showProfileOnDestruction{false};
     bool enabled{false};
-    uint64_t lastAccessOffset{
-        0}; // necessary for pread because tell() won't work
+    uint64_t lastAccessOffset{0};
     Statistics<uint64_t> read;
     Statistics<uint64_t> seekBack;
     Statistics<uint64_t> seekForward;
@@ -417,14 +347,8 @@ private:
   int m_fileDescriptor{-1};
   const std::shared_ptr<std::mutex> m_mutex;
 
-  /** This is only for performance to avoid querying the file. */
   std::optional<size_t> m_fileSizeBytes;
 
-  /**
-   * This is the independent file pointer that this class offers! Each seek call
-   * will only update this and each read call will seek to this offset in an
-   * atomic manner before reading from the underlying file.
-   */
   size_t m_currentPosition{0};
 
   bool m_usePread{true};

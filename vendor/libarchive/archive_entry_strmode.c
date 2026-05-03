@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2007 Tim Kientzle
  * All rights reserved.
  *
@@ -50,7 +50,6 @@ const char *archive_entry_strmode(struct archive_entry *entry) {
   mode_t mode;
   int i;
 
-  /* Fill in a default string, then selectively override. */
   strcpy(bp, "?rwxrwxrwx ");
 
   mode = archive_entry_mode(entry);

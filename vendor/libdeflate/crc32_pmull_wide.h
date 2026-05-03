@@ -1,75 +1,19 @@
-#if defined(__arm__) || defined(__aarch64__)
+﻿#if defined(__arm__) || defined(__aarch64__)
 #include "lib_common.h"
 
-/*
- * Default definitions of template parameters for standalone IDE parsing.
- * These are overridden when this file is included as a template.
- */
 #ifndef SUFFIX
 #define SUFFIX _pmull_wide_dummy
 #define ATTRIBUTES
 #endif
-/* CONCAT_IMPL/CONCAT/ADD_SUFFIX must be defined before crc32_pmull_helpers.h.
- * Use #ifndef so this is safe both for standalone IDE parsing (SUFFIX just
- * set above) and for re-invocations where the caller already set SUFFIX but
- * a previous crc32_pmull_helpers.h run undefed these at its end. */
+
 #ifndef CONCAT_IMPL
 #define CONCAT_IMPL(a, b) a##b
 #define CONCAT(a, b) CONCAT_IMPL(a, b)
 #define ADD_SUFFIX(name) CONCAT(name, SUFFIX)
 #endif
 
-/*
-
- * arm/crc32_pmull_wide.h - gzip CRC-32 with PMULL (extra-wide version)
- *
- * Copyright 2022 Eric Biggers
- *
- * Permission is hereby granted, free of charge, to any person
- * obtaining a copy of this software and associated documentation
- * files (the "Software"), to deal in the Software without
- * restriction, including without limitation the rights to use,
- * copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the
- * Software is furnished to do so, subject to the following
- * conditions:
- *
- * The above copyright notice and this permission notice shall be
- * included in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
- * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
- * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
- * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
- * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
- * OTHER DEALINGS IN THE SOFTWARE.
- */
-
-/*
- * This file is a "template" for instantiating PMULL-based crc32_arm functions.
- * The "parameters" are:
- *
- * SUFFIX:
- *	Name suffix to append to all instantiated functions.
- * ATTRIBUTES:
- *	Target function attributes to use.
- * ENABLE_EOR3:
- *	Use the eor3 instruction (from the sha3 extension).
- *
- * This is the extra-wide version; it uses an unusually large stride length of
- * 12, and it assumes that crc32 instructions are available too.  It's intended
- * for powerful CPUs that support both pmull and crc32 instructions, but where
- * throughput of pmull and xor (given enough instructions issued in parallel) is
- * significantly higher than that of crc32, thus making the crc32 instructions
- * (counterintuitively) not actually the fastest way to compute the CRC-32.  The
- * Apple M1 processor is an example of such a CPU.
- */
-
 #include "crc32_pmull_helpers.h"
-/* crc32_pmull_helpers.h undefines CONCAT_IMPL/CONCAT/ADD_SUFFIX at its end.
- * Redefine them so the function body below can use ADD_SUFFIX. */
+
 #define CONCAT_IMPL(a, b) a##b
 #define CONCAT(a, b) CONCAT_IMPL(a, b)
 #define ADD_SUFFIX(name) CONCAT(name, SUFFIX)
@@ -79,9 +23,9 @@ static ATTRIBUTES u32 ADD_SUFFIX(crc32_arm)(u32 crc, const u8 *p, size_t len) {
 
   if (len < 3 * 192) {
     static const u64 _aligned_attribute(16) mults[3][2] = {
-        {CRC32_X543_MODG, CRC32_X479_MODG}, /* 4 vecs */
-        {CRC32_X287_MODG, CRC32_X223_MODG}, /* 2 vecs */
-        {CRC32_X159_MODG, CRC32_X95_MODG},  /* 1 vecs */
+        {CRC32_X543_MODG, CRC32_X479_MODG},
+        {CRC32_X287_MODG, CRC32_X223_MODG},
+        {CRC32_X159_MODG, CRC32_X95_MODG},
     };
     poly64x2_t multipliers_4, multipliers_2, multipliers_1;
 
@@ -90,10 +34,7 @@ static ATTRIBUTES u32 ADD_SUFFIX(crc32_arm)(u32 crc, const u8 *p, size_t len) {
     multipliers_4 = load_multipliers(mults[0]);
     multipliers_2 = load_multipliers(mults[1]);
     multipliers_1 = load_multipliers(mults[2]);
-    /*
-     * Short length; don't bother aligning the pointer, and fold
-     * 64 bytes (4 vectors) at a time, at most.
-     */
+
     v0 = veorq_u8(vld1q_u8(p + 0), u32_to_bytevec(crc));
     v1 = vld1q_u8(p + 16);
     v2 = vld1q_u8(p + 32);
@@ -119,10 +60,10 @@ static ATTRIBUTES u32 ADD_SUFFIX(crc32_arm)(u32 crc, const u8 *p, size_t len) {
     v0 = fold_vec(v0, v1, multipliers_1);
   } else {
     static const u64 _aligned_attribute(16) mults[4][2] = {
-        {CRC32_X1567_MODG, CRC32_X1503_MODG}, /* 12 vecs */
-        {CRC32_X799_MODG, CRC32_X735_MODG},   /* 6 vecs */
-        {CRC32_X415_MODG, CRC32_X351_MODG},   /* 3 vecs */
-        {CRC32_X159_MODG, CRC32_X95_MODG},    /* 1 vecs */
+        {CRC32_X1567_MODG, CRC32_X1503_MODG},
+        {CRC32_X799_MODG, CRC32_X735_MODG},
+        {CRC32_X415_MODG, CRC32_X351_MODG},
+        {CRC32_X159_MODG, CRC32_X95_MODG},
     };
     const poly64x2_t multipliers_12 = load_multipliers(mults[0]);
     const poly64x2_t multipliers_6 = load_multipliers(mults[1]);
@@ -131,7 +72,6 @@ static ATTRIBUTES u32 ADD_SUFFIX(crc32_arm)(u32 crc, const u8 *p, size_t len) {
     const size_t align = -(uintptr_t)p & 15;
     const uint8x16_t *vp;
 
-    /* Align p to the next 16-byte boundary. */
     if (align) {
       if (align & 1)
         crc = __crc32b(crc, *p++);
@@ -163,7 +103,7 @@ static ATTRIBUTES u32 ADD_SUFFIX(crc32_arm)(u32 crc, const u8 *p, size_t len) {
     v10 = *vp++;
     v11 = *vp++;
     len -= 192;
-    /* Fold 192 bytes (12 vectors) at a time. */
+
     do {
       v0 = fold_vec(v0, *vp++, multipliers_12);
       v1 = fold_vec(v1, *vp++, multipliers_12);
@@ -180,10 +120,6 @@ static ATTRIBUTES u32 ADD_SUFFIX(crc32_arm)(u32 crc, const u8 *p, size_t len) {
       len -= 192;
     } while (len >= 192);
 
-    /*
-     * Fewer than 192 bytes left.  Fold v0-v11 down to just v0,
-     * while processing up to 144 more bytes.
-     */
     v0 = fold_vec(v0, v6, multipliers_6);
     v1 = fold_vec(v1, v7, multipliers_6);
     v2 = fold_vec(v2, v8, multipliers_6);
@@ -212,11 +148,11 @@ static ATTRIBUTES u32 ADD_SUFFIX(crc32_arm)(u32 crc, const u8 *p, size_t len) {
     v0 = fold_vec(v0, v2, multipliers_1);
     p = (const u8 *)vp;
   }
-  /* Reduce 128 to 32 bits using crc32 instructions. */
+
   crc = __crc32d(0, vgetq_lane_u64(vreinterpretq_u64_u8(v0), 0));
   crc = __crc32d(crc, vgetq_lane_u64(vreinterpretq_u64_u8(v0), 1));
 tail:
-  /* Finish up the remainder using crc32 instructions. */
+
   if (len & 32) {
     crc = __crc32d(crc, get_unaligned_le64(p + 0));
     crc = __crc32d(crc, get_unaligned_le64(p + 8));
@@ -252,4 +188,4 @@ tail:
 #undef CONCAT_IMPL
 #undef CONCAT
 #undef ADD_SUFFIX
-#endif /* __arm__ || __aarch64__ */
+#endif

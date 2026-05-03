@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2007 Tim Kientzle
  * All rights reserved.
  *
@@ -81,14 +81,14 @@ int archive_write_fail(struct archive *a) {
 int archive_write_free(struct archive *a) { return archive_free(a); }
 
 #if ARCHIVE_VERSION_NUMBER < 4000000
-/* For backwards compatibility; will be removed with libarchive 4.0. */
+
 int archive_write_finish(struct archive *a) { return archive_write_free(a); }
 #endif
 
 int archive_read_free(struct archive *a) { return archive_free(a); }
 
 #if ARCHIVE_VERSION_NUMBER < 4000000
-/* For backwards compatibility; will be removed with libarchive 4.0. */
+
 int archive_read_finish(struct archive *a) { return archive_read_free(a); }
 #endif
 

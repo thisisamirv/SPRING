@@ -1,4 +1,4 @@
-/*
+﻿/*
  * gzip_compress.c - compress with a gzip wrapper
  *
  * Copyright 2016 Eric Biggers
@@ -26,7 +26,7 @@
  */
 
 #include "lib_common.h"
-// lib_common first
+
 #include "deflate_compress.h"
 #include "gzip_constants.h"
 
@@ -42,18 +42,17 @@ LIBDEFLATEAPI size_t libdeflate_gzip_compress(struct libdeflate_compressor *c,
   if (out_nbytes_avail <= GZIP_MIN_OVERHEAD)
     return 0;
 
-  /* ID1 */
   *out_next++ = GZIP_ID1;
-  /* ID2 */
+
   *out_next++ = GZIP_ID2;
-  /* CM */
+
   *out_next++ = GZIP_CM_DEFLATE;
-  /* FLG */
+
   *out_next++ = 0;
-  /* MTIME */
+
   put_unaligned_le32(GZIP_MTIME_UNAVAILABLE, out_next);
   out_next += 4;
-  /* XFL */
+
   xfl = 0;
   compression_level = libdeflate_get_compression_level(c);
   if (compression_level < 2)
@@ -61,21 +60,18 @@ LIBDEFLATEAPI size_t libdeflate_gzip_compress(struct libdeflate_compressor *c,
   else if (compression_level >= 8)
     xfl |= GZIP_XFL_SLOWEST_COMPRESSION;
   *out_next++ = xfl;
-  /* OS */
-  *out_next++ = GZIP_OS_UNKNOWN; /* OS  */
 
-  /* Compressed data  */
+  *out_next++ = GZIP_OS_UNKNOWN;
+
   deflate_size = libdeflate_deflate_compress(
       c, in, in_nbytes, out_next, out_nbytes_avail - GZIP_MIN_OVERHEAD);
   if (deflate_size == 0)
     return 0;
   out_next += deflate_size;
 
-  /* CRC32 */
   put_unaligned_le32(libdeflate_crc32(0, in, in_nbytes), out_next);
   out_next += 4;
 
-  /* ISIZE */
   put_unaligned_le32((u32)in_nbytes, out_next);
   out_next += 4;
 

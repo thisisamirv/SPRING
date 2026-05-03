@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  * All rights reserved.
  *
@@ -15,9 +15,8 @@
 extern "C" {
 #endif
 
-/* =====   ZSTDERRORLIB_API : control library symbols visibility   ===== */
 #ifndef ZSTDERRORLIB_VISIBLE
-/* Backwards compatibility with old macro name */
+
 #ifdef ZSTDERRORLIB_VISIBILITY
 #define ZSTDERRORLIB_VISIBLE ZSTDERRORLIB_VISIBILITY
 #elif defined(__GNUC__) && (__GNUC__ >= 4) && !defined(__MINGW32__)
@@ -38,29 +37,12 @@ extern "C" {
 #if defined(ZSTD_DLL_EXPORT) && (ZSTD_DLL_EXPORT == 1)
 #define ZSTDERRORLIB_API __declspec(dllexport) ZSTDERRORLIB_VISIBLE
 #elif defined(ZSTD_DLL_IMPORT) && (ZSTD_DLL_IMPORT == 1)
-#define ZSTDERRORLIB_API                                                       \
-  __declspec(dllimport)                                                        \
-  ZSTDERRORLIB_VISIBLE /* It isn't required but allows to generate better      \
-                          code, saving a function pointer load from the IAT    \
-                          and an indirect jump.*/
+#define ZSTDERRORLIB_API __declspec(dllimport) ZSTDERRORLIB_VISIBLE
+
 #else
 #define ZSTDERRORLIB_API ZSTDERRORLIB_VISIBLE
 #endif
 
-/*-*********************************************
- *  Error codes list
- *-*********************************************
- *  Error codes _values_ are pinned down since v1.3.1 only.
- *  Therefore, don't rely on values if you may link to any version < v1.3.1.
- *
- *  Only values < 100 are considered stable.
- *
- *  note 1 : this API shall be used with static linking only.
- *           dynamic linking is not yet officially supported.
- *  note 2 : Prefer relying on the enum than on its value whenever possible
- *           This is the only supported way to use the error list < v1.3.1
- *  note 3 : ZSTD_isError() is always correct, whatever the library version.
- **********************************************/
 typedef enum {
   ZSTD_error_no_error = 0,
   ZSTD_error_GENERIC = 1,
@@ -91,24 +73,21 @@ typedef enum {
   ZSTD_error_dstBuffer_null = 74,
   ZSTD_error_noForwardProgress_destFull = 80,
   ZSTD_error_noForwardProgress_inputEmpty = 82,
-  /* following error codes are __NOT STABLE__, they can be removed or changed in
-     future versions */
+
   ZSTD_error_frameIndex_tooLarge = 100,
   ZSTD_error_seekableIO = 102,
   ZSTD_error_dstBuffer_wrong = 104,
   ZSTD_error_srcBuffer_wrong = 105,
   ZSTD_error_sequenceProducer_failed = 106,
   ZSTD_error_externalSequences_invalid = 107,
-  ZSTD_error_maxCode = 120 /* never EVER use this value directly, it can change
-                              in future versions! Use ZSTD_isError() instead */
+  ZSTD_error_maxCode = 120
+
 } ZSTD_ErrorCode;
 
-ZSTDERRORLIB_API const char *ZSTD_getErrorString(
-    ZSTD_ErrorCode code); /**< Same as ZSTD_getErrorName, but using a
-                             `ZSTD_ErrorCode` enum argument */
+ZSTDERRORLIB_API const char *ZSTD_getErrorString(ZSTD_ErrorCode code);
 
 #if defined(__cplusplus)
 }
 #endif
 
-#endif /* ZSTD_ERRORS_H_398273423 */
+#endif

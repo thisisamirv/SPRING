@@ -1,19 +1,13 @@
-/*
- * decompress_defs.h - shared types for decompression
- */
+﻿
 
 #ifndef LIB_DECOMPRESS_DEFS_H
 #define LIB_DECOMPRESS_DEFS_H
 
 #include "lib_common.h"
-// lib_common first
-#include "libdeflate.h"
-#include "deflate_constants.h"
 
-/*
- * These are the TABLEBITS values we use for each of the DEFLATE Huffman codes,
- * along with their corresponding ENOUGH values.
- */
+#include "deflate_constants.h"
+#include "libdeflate.h"
+
 #define PRECODE_TABLEBITS 7
 #define PRECODE_ENOUGH 128
 #define LITLEN_TABLEBITS 11
@@ -21,18 +15,15 @@
 #define OFFSET_TABLEBITS 8
 #define OFFSET_ENOUGH 402
 
-/* Litlen and offset decode table entry flags */
 #define HUFFDEC_LITERAL 0x80000000
 #define HUFFDEC_EXCEPTIONAL 0x00008000
 #define HUFFDEC_SUBTABLE_POINTER 0x00004000
 #define HUFFDEC_END_OF_BLOCK 0x00002000
 
-/* Maximum number of bits that can be consumed by decoding a match length */
 #define LENGTH_MAXBITS                                                         \
   (DEFLATE_MAX_LITLEN_CODEWORD_LEN + DEFLATE_MAX_EXTRA_LENGTH_BITS)
 #define LENGTH_MAXFASTBITS (LITLEN_TABLEBITS + DEFLATE_MAX_EXTRA_LENGTH_BITS)
 
-/* Maximum number of bits that can be consumed by decoding a match offset */
 #define OFFSET_MAXBITS                                                         \
   (DEFLATE_MAX_OFFSET_CODEWORD_LEN + DEFLATE_MAX_EXTRA_OFFSET_BITS)
 #define OFFSET_MAXFASTBITS (OFFSET_TABLEBITS + DEFLATE_MAX_EXTRA_OFFSET_BITS)
@@ -67,9 +58,6 @@ typedef enum libdeflate_result (*decompress_func_t)(
     size_t in_nbytes, void *restrict out, size_t out_nbytes_avail,
     size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret);
 
-/*
- * make_decode_table_entry() creates a decode table entry for the given symbol
- */
 static forceinline u32 make_decode_table_entry(const u32 decode_results[],
                                                u32 sym, u32 len) {
   return decode_results[sym] + (len << 8) + len;
@@ -81,7 +69,6 @@ static forceinline u32 make_decode_table_entry(const u32 decode_results[],
 #define DECOMP_INTERNAL extern
 #endif
 
-/* Prototypes for helper functions defined in deflate_decompress.c */
 DECOMP_INTERNAL MAYBE_UNUSED bool
 build_precode_decode_table(struct libdeflate_decompressor *d);
 DECOMP_INTERNAL MAYBE_UNUSED bool
@@ -91,4 +78,4 @@ DECOMP_INTERNAL MAYBE_UNUSED bool
 build_offset_decode_table(struct libdeflate_decompressor *d,
                           unsigned num_litlen_syms, unsigned num_offset_syms);
 
-#endif /* LIB_DECOMPRESS_DEFS_H */
+#endif

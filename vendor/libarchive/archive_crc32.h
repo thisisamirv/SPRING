@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2009 Joerg  Sonnenberger
  * All rights reserved.
  *
@@ -34,14 +34,6 @@
 
 #include <stddef.h>
 
-/*
- * When zlib is unavailable, we should still be able to validate
- * uncompressed zip archives.  That requires us to be able to compute
- * the CRC32 check value.  This is a drop-in compatible replacement
- * for crc32() from zlib.  It's slower than the zlib implementation,
- * but still pretty fast: This runs about 300MB/s on my 3GHz P4
- * compared to about 800MB/s for the zlib implementation.
- */
 static unsigned long crc32(unsigned long crc, const void *_p, size_t len) {
   unsigned long crc2, b, i;
   const unsigned char *p = (const unsigned char *)_p;
@@ -66,8 +58,7 @@ static unsigned long crc32(unsigned long crc, const void *_p, size_t len) {
   }
 
   crc = crc ^ 0xffffffffUL;
-  /* A use of this loop is about 20% - 30% faster than
-   * no use version in any optimization option of gcc.  */
+
   for (; len >= 8; len -= 8) {
     crc = crc_tbl[(crc ^ *p++) & 0xff] ^ (crc >> 8);
     crc = crc_tbl[(crc ^ *p++) & 0xff] ^ (crc >> 8);

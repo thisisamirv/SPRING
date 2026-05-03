@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  * All rights reserved.
  *
@@ -10,11 +10,6 @@
 
 #ifndef ZSTD_COMMON_CPU_H
 #define ZSTD_COMMON_CPU_H
-
-/**
- * Implementation taken from folly/CpuId.h
- * https://github.com/facebook/folly/blob/master/folly/CpuId.h
- */
 
 #include "mem.h"
 
@@ -52,11 +47,7 @@ MEM_STATIC ZSTD_cpuid_t ZSTD_cpuid(void) {
     }
   }
 #else
-  /* Clang compiler has a bug (fixed in https://reviews.llvm.org/D101338) in
-   * which the `__cpuid` intrinsic does not save and restore `rbx` as it needs
-   * to due to being a reserved register. So in that case, do the `cpuid`
-   * ourselves. Clang supports inline assembly anyway.
-   */
+
   U32 n;
   __asm__("pushq %%rbx\n\t"
           "cpuid\n\t"
@@ -85,10 +76,7 @@ MEM_STATIC ZSTD_cpuid_t ZSTD_cpuid(void) {
 #endif
 #elif defined(__i386__) && defined(__PIC__) && !defined(__clang__) &&          \
     defined(__GNUC__)
-  /* The following block like the normal cpuid branch below, but gcc
-   * reserves ebx for use of its pic register so we must specially
-   * handle the save and restore to avoid clobbering the register
-   */
+
   U32 n;
   __asm__("pushl %%ebx\n\t"
           "cpuid\n\t"
@@ -140,7 +128,6 @@ MEM_STATIC ZSTD_cpuid_t ZSTD_cpuid(void) {
     return ((cpuid.r) & (1U << bit)) != 0;                                     \
   }
 
-/* cpuid(1): Processor Info and Feature Bits. */
 #define C(name, bit) X(name, f1c, bit)
 C(sse3, 0)
 C(pclmuldq, 1)
@@ -204,7 +191,6 @@ D(tm, 29)
 D(pbe, 31)
 #undef D
 
-/* cpuid(7): Extended Features. */
 #define B(name, bit) X(name, f7b, bit)
 B(bmi1, 3)
 B(hle, 4)
@@ -238,4 +224,4 @@ C(avx512vbmi, 1)
 
 #undef X
 
-#endif /* ZSTD_COMMON_CPU_H */
+#endif

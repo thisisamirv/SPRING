@@ -1,13 +1,8 @@
-#ifndef TREES_H
+﻿#ifndef TREES_H
 #define TREES_H
-/* header created automatically with -DGEN_TREES_H */
+
 #include "deflate.h"
 #include "zutil.h"
-
-// The tables below are generated and intentionally define variables in this
-// header for inclusion by the zlib implementation. Suppress clang-tidy's
-// warning about definitions in headers for this generated data.
-// NOLINTBEGIN(misc-definitions-in-headers)
 
 #define DIST_CODE_LEN 512
 
@@ -133,7 +128,4 @@ local const int base_dist[D_CODES] = {
     32,   48,   64,   96,   128,  192,  256,  384,   512,   768,
     1024, 1536, 2048, 3072, 4096, 6144, 8192, 12288, 16384, 24576};
 
-#endif /* TREES_H */
-
-// End suppression region
-// NOLINTEND(misc-definitions-in-headers)
+#endif

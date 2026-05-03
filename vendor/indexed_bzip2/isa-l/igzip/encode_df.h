@@ -1,11 +1,10 @@
-#ifndef ENCODE_DF_H
+﻿#ifndef ENCODE_DF_H
 #define ENCODE_DF_H
 
 #include "huff_codes.h"
 #include "igzip_lib.h"
 #include <stdint.h>
 
-/* Deflate Intermediate Compression Format */
 #define LIT_LEN_BIT_COUNT 10
 #define LIT_LEN_MASK ((1 << LIT_LEN_BIT_COUNT) - 1)
 #define DIST_LIT_BIT_COUNT 9

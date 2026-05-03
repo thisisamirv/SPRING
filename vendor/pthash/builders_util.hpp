@@ -1,7 +1,7 @@
-#ifndef PTHASH_BUILDERS_UTIL_HPP
+﻿#ifndef PTHASH_BUILDERS_UTIL_HPP
 #define PTHASH_BUILDERS_UTIL_HPP
 
-#include <cmath> // log, sqrt
+#include <cmath>
 #include <iostream>
 #include <numeric>
 #include <unordered_map>
@@ -35,8 +35,8 @@ struct build_timings {
 };
 
 struct build_configuration {
-  double lambda = 4.5;                     // avg. bucket size
-  double alpha = constants::default_alpha; // load factor
+  double lambda = 4.5;
+  double alpha = constants::default_alpha;
   uint64_t avg_partition_size = 0;
   uint64_t num_buckets = constants::invalid_num_buckets;
   uint64_t table_size = constants::invalid_table_size;
@@ -52,8 +52,7 @@ struct build_configuration {
 
 static inline uint64_t
 compute_avg_partition_size(const uint64_t num_keys,
-                           build_configuration const &config) //
-{
+                           build_configuration const &config) {
   uint64_t avg_partition_size = config.avg_partition_size;
   if (config.dense_partitioning)
     return avg_partition_size;
@@ -86,10 +85,6 @@ static inline uint64_t compute_num_partitions(const uint64_t num_keys,
   return std::ceil(static_cast<double>(num_keys) / avg_partition_size);
 }
 
-/*
-    This bound is by Raab and Steger: "Balls into Bins" — A Simple and Tight
-   Analysis, (Thm. 1, with alpha = 1).
-*/
 static uint64_t max_partition_size_estimate(const uint64_t avg_partition_size,
                                             const uint64_t num_partitions) {
   assert(avg_partition_size > 0);
@@ -97,11 +92,6 @@ static uint64_t max_partition_size_estimate(const uint64_t avg_partition_size,
          sqrt(2.0 * avg_partition_size * log(num_partitions));
 }
 
-/*
-    Find the avg_partition_size for a given n,
-    so that the max. partition size is (almost)
-    never above c.
-*/
 static inline uint64_t find_avg_partition_size(const uint64_t n) {
   const uint64_t c = constants::table_size_per_partition;
   if (n < c)
@@ -194,7 +184,6 @@ void merge_single_block(Pairs const &pairs, Merger &merger, bool verbose) {
     logger.log();
   }
 
-  // add the last bucket
   merger.add(pairs[num_pairs - 1].bucket_id, bucket_size,
              payload_iterator(pairs.end() - bucket_size));
   logger.finalize();
@@ -208,13 +197,11 @@ void merge_multiple_blocks(std::vector<Pairs> const &pairs_blocks,
       [](uint64_t sum, Pairs const &pairs) { return sum + pairs.size(); });
   progress_logger logger(num_pairs, " == merged ", " pairs", verbose);
 
-  // input iterators and heap
   std::vector<typename Pairs::const_iterator> iterators;
   std::vector<uint32_t> idx_heap;
   iterators.reserve(pairs_blocks.size());
   idx_heap.reserve(pairs_blocks.size());
 
-  // heap functions
   auto stdheap_idx_comparator = [&](uint32_t idxa, uint32_t idxb) {
     return !((*iterators[idxa]) < (*iterators[idxb]));
   };
@@ -222,7 +209,7 @@ void merge_multiple_blocks(std::vector<Pairs> const &pairs_blocks,
     auto idx = idx_heap[0];
     ++iterators[idx];
     if (PTHASH_LIKELY(iterators[idx] != pairs_blocks[idx].end())) {
-      // percolate down the head
+
       uint64_t pos = 0;
       uint64_t size = idx_heap.size();
       while (2 * pos + 1 < size) {
@@ -241,7 +228,6 @@ void merge_multiple_blocks(std::vector<Pairs> const &pairs_blocks,
     }
   };
 
-  // create the input iterators and the heap
   for (uint64_t i = 0; i != pairs_blocks.size(); ++i) {
     iterators.push_back(pairs_blocks[i].begin());
     idx_heap.push_back(i);
@@ -252,7 +238,6 @@ void merge_multiple_blocks(std::vector<Pairs> const &pairs_blocks,
   std::vector<uint64_t> bucket_payloads;
   bucket_payloads.reserve(MAX_BUCKET_SIZE);
 
-  // read the first pair
   {
     bucket_payload_pair pair = (*iterators[idx_heap[0]]);
     bucket_id = pair.bucket_id;
@@ -261,7 +246,6 @@ void merge_multiple_blocks(std::vector<Pairs> const &pairs_blocks,
     logger.log();
   }
 
-  // merge
   for (uint64_t i = 0; (PTHASH_LIKELY(idx_heap.size()));
        ++i, advance_heap_head()) {
     bucket_payload_pair pair = (*iterators[idx_heap[0]]);
@@ -281,7 +265,6 @@ void merge_multiple_blocks(std::vector<Pairs> const &pairs_blocks,
     logger.log();
   }
 
-  // add the last bucket
   merger.add(bucket_id, bucket_payloads.size(), bucket_payloads.begin());
   logger.finalize();
 }
@@ -309,7 +292,7 @@ void fill_free_slots(Taken const &taken, const uint64_t num_keys,
   auto next_used_slot_iter = taken.get_iterator_at(next_used_slot);
 
   while (true) {
-    // find the next free slot (on the left)
+
     while (last_free_slot < num_keys && *last_free_slot_iter) {
       ++last_free_slot;
       ++last_free_slot_iter;
@@ -318,9 +301,6 @@ void fill_free_slots(Taken const &taken, const uint64_t num_keys,
     if (last_free_slot == num_keys)
       break;
 
-    // fill with the last free slot (on the left) until I find a new used slot
-    // (on the right) note: since I found a free slot on the left, there must be
-    // an used slot on the right
     assert(next_used_slot < table_size);
     while (!*next_used_slot_iter) {
       free_slots.emplace_back(last_free_slot);
@@ -328,8 +308,7 @@ void fill_free_slots(Taken const &taken, const uint64_t num_keys,
       ++next_used_slot_iter;
     }
     assert(next_used_slot < table_size);
-    // fill the used slot (on the right) with the last free slot and advance all
-    // cursors
+
     free_slots.emplace_back(last_free_slot);
     last_valid_free_slot = last_free_slot;
     ++next_used_slot;
@@ -337,7 +316,7 @@ void fill_free_slots(Taken const &taken, const uint64_t num_keys,
     ++last_free_slot_iter;
     ++next_used_slot_iter;
   }
-  // fill the tail with the last valid slot that I found
+
   while (next_used_slot != table_size) {
     free_slots.emplace_back(last_valid_free_slot);
     ++next_used_slot;
@@ -367,15 +346,12 @@ inline double compute_empirical_entropy(std::vector<uint64_t> const &values) {
   if (values.empty())
     return 0.0;
   std::unordered_map<uint64_t, uint64_t> frequency_map;
-  // uint64_t large_values = 0;
-  // const uint64_t T = 255;
+
   for (auto v : values) {
-    // if (v > T) large_values += 1;
+
     frequency_map[v]++;
   }
-  // std::cout << (large_values * 100.0) / values.size() << "% of values are
-  // larger than " << T
-  //           << std::endl;
+
   double entropy = 0.0;
   const uint64_t total_count = values.size();
   for (auto p : frequency_map) {
@@ -387,4 +363,4 @@ inline double compute_empirical_entropy(std::vector<uint64_t> const &values) {
 
 } // namespace pthash
 
-#endif // PTHASH_BUILDERS_UTIL_HPP
+#endif

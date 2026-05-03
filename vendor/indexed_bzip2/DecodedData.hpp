@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <algorithm>
 #include <array>
@@ -27,20 +27,11 @@ public:
 
   class Iterator {
   public:
-    /**
-     * This iterator provides a view of the decoded data as requested via an
-     * offset and a length. If no relative offset or length is specified it will
-     * create a view of all of the data. The interface will return subviews as
-     * pointer-length pairs because the data might not be in one contiguous
-     * chunk internally.
-     */
     explicit Iterator(const DecodedData &decodedData,
                       const size_t offsetInChunk = 0,
                       const size_t size = std::numeric_limits<size_t>::max())
         : m_data(decodedData), m_size(size), m_offsetInChunk(offsetInChunk) {
-      /* Iterate over the chunks and decrease m_offsetInChunk by each chunk size
-       * until it validly points into m_currentChunk, i.e., is smaller than its
-       * size. */
+
       for (m_currentChunk = 0; m_currentChunk < m_data.data.size();
            ++m_currentChunk) {
         const auto &chunk = m_data.data[m_currentChunk];
@@ -130,48 +121,17 @@ public:
            dataWithMarkersSize() * sizeof(uint16_t);
   }
 
-  /**
-   * This is used to determine whether it is necessary to call applyWindow.
-   * Testing for @ref dataWithMarkers.empty() is not sufficient because markers
-   * could be contained in other members for derived classes! In that case @ref
-   * containsMarkers will be overridden.
-   * @note Probably should not be called internally because it is allowed to be
-   * shadowed by a child class method.
-   */
   [[nodiscard]] bool containsMarkers() const noexcept {
     return !dataWithMarkers.empty();
   }
 
   [[nodiscard]] size_t countMarkerSymbols() const;
 
-  /**
-   * Replaces all 16-bit wide marker symbols by looking up the referenced 8-bit
-   * symbols in @p window.
-   * @note Probably should not be called internally because it is allowed to be
-   * shadowed by a child class method.
-   */
   void applyWindow(WindowView const &window);
 
-  /**
-   * Returns the last 32 KiB decoded bytes. This can be called after decoding a
-   * block has finished and then can be used to store and load it with
-   * deflate::Block::setInitialWindow to restart decoding with the next block.
-   * Because this is not supposed to be called very often, it returns a copy of
-   * the data instead of views.
-   */
   [[nodiscard]] DecodedVector
   getLastWindow(WindowView const &previousWindow) const;
 
-  /**
-   * @param skipBytes The number of bits to shift the previous window and fill
-   * it with new data. A value of 0 would simply return @p previousWindow while
-   * a value equal to size() would return the window as it would be after this
-   * whole block.
-   * @note Should only be called after @ref applyWindow because @p skipBytes
-   * larger than @ref dataSize will throw.
-   * @note Probably should not be called internally because it is allowed to be
-   * shadowed by a child class method.
-   */
   [[nodiscard]] DecodedVector getWindowAt(WindowView const &previousWindow,
                                           size_t skipBytes) const;
 
@@ -184,11 +144,6 @@ public:
     }
   }
 
-  /**
-   * Check decoded blocks that account for possible markers whether they
-   * actually contain markers and, if not so, convert and move them to actual
-   * decoded data.
-   */
   void cleanUnmarkedData();
 
 #ifdef TEST_DECODED_DATA
@@ -204,15 +159,6 @@ public:
 #endif
 
 private:
-  /**
-   * Use vectors of vectors to avoid reallocations. The order of this data is:
-   * - @ref dataWithMarkers (front to back)
-   * - @ref data (front to back)
-   * This order is fixed because there should be no reason for markers after we
-   * got enough data without markers! There is no append( DecodedData ) method
-   * because this property might not be retained after using
-   * @ref cleanUnmarkedData.
-   */
   std::vector<MarkerVector> dataWithMarkers;
   std::vector<MarkerVector> reusedDataBuffers;
   std::vector<DecodedVector> dataBuffers;
@@ -259,12 +205,6 @@ inline void DecodedData::append(DecodedDataView const &buffers) {
     }
   }
 
-  /* Add complexity to the already complex dataBuffers + data (views) structure
-   * by trying to force the dataBuffer chunks to 128 KiB makes no sense because
-   * this method for appending views is only called when decompressing with
-   * rapidgzip and as soon as we have 32 KiB of symbols, the decompression
-   * should delegate to ISA-L except in pathological edge cases such as very
-   * large deflate blocks. */
   if (buffers.dataSize() > 0) {
     auto &copied = dataBuffers.emplace_back();
     copied.reserve(buffers.dataSize());
@@ -293,8 +233,6 @@ inline void DecodedData::applyWindow(WindowView const &window) {
     return;
   }
 
-  /* Because of the overhead of copying the window, avoid it for small
-   * replacements. */
   if (markerCount >= 128_Ki) {
     const std::array<uint8_t, 64_Ki> fullWindow = [&window]() noexcept {
       std::array<uint8_t, 64_Ki> result{};
@@ -305,31 +243,19 @@ inline void DecodedData::applyWindow(WindowView const &window) {
 
     for (auto &chunk : dataWithMarkers) {
       auto *const target = reinterpret_cast<uint8_t *>(chunk.data());
-      /* Do not use std::transform because it allows out-of-order execution!
-       * std::transform might be ~3% faster for FASTQ files btu it is hard to
-       * measure as timings seem to vary a lot. Still, we need to be correct
-       * before being fast, but maybe something can be done with inline
-       * Assembler or the intermediary "compressed" marker format might also
-       * help. Note that these 3% shouldn't matter because we already are quite
-       * faster than before: rapidgzip-v0.9.0 : 2706.3 <= 2862.5 +- 2.3 <=
-       * 2979.9 rapidgzip-v0.8.1 : 1988.2 <= 2067.8 +- 1.4 <= 2139.8
-       */
+
       for (size_t i = 0; i < chunk.size(); ++i) {
         target[i] = fullWindow[chunk[i]];
       }
     }
   } else {
-    /* For maximum size windows, we can skip one check because even UINT16_MAX
-     * is valid. */
+
     static_assert(std::numeric_limits<uint16_t>::max() - MAX_WINDOW_SIZE + 1U ==
                   MAX_WINDOW_SIZE);
     if (window.size() >= MAX_WINDOW_SIZE) {
       const MapMarkers<true> mapMarkers(window);
       for (auto &chunk : dataWithMarkers) {
-        /* Do not use std::transform because it allows out-of-order execution
-         * and if a later i is computed first, it might overwrite values that
-         * are need for earlier i's because we are transforming in-place into a
-         * vector with smaller element size! */
+
         auto *const target = reinterpret_cast<uint8_t *>(chunk.data());
         for (size_t i = 0; i < chunk.size(); ++i) {
           target[i] = mapMarkers(chunk[i]);
@@ -339,8 +265,7 @@ inline void DecodedData::applyWindow(WindowView const &window) {
       const MapMarkers<false> mapMarkers(window);
       for (auto &chunk : dataWithMarkers) {
         auto *const target = reinterpret_cast<uint8_t *>(chunk.data());
-        /* Do not use std::transform because it allows out-of-order execution!
-         */
+
         for (size_t i = 0; i < chunk.size(); ++i) {
           target[i] = mapMarkers(chunk[i]);
         }
@@ -354,24 +279,10 @@ inline void DecodedData::applyWindow(WindowView const &window) {
   }
   std::swap(reusedDataBuffers, dataWithMarkers);
 
-  /* Prepend a VectorView to @ref data for each reused chunk buffer. */
   std::vector<VectorView<uint8_t>> dataViews;
   dataViews.reserve(reusedDataBuffers.size() + data.size());
   for (auto &chunk : reusedDataBuffers) {
-    /**
-     * @todo Note that this leaves half of the chunk space unused because the
-     * number of elements stays the same while the element type size is halved.
-     * I assume that shrink_to_fit would be expensive. Therefore, it would be
-     * nice to simple join neihgboring chunks to fill all available space and
-     * free the rest of the chunks. But, depending on the individual chunk
-     * sizes, this can become complex.
-     * @note It is kind of an exception that this works! Because
-     * reinterpret_cast with target types (unsigned) char* are excepted from the
-     * strict aliasing rules. For other types, it would be undefined behavior,
-     * e.g., trying to reuse a vector of uint32_t as uint16_t!
-     * @see
-     * https://en.cppreference.com/w/cpp/language/reinterpret_cast#Type_aliasing
-     */
+
     dataViews.emplace_back(reinterpret_cast<uint8_t *>(chunk.data()),
                            chunk.size());
   }
@@ -403,11 +314,9 @@ DecodedData::getWindowAt(WindowView const &previousWindow,
            j < previousWindow.size(); ++j, ++prefilled) {
         window[prefilled] = previousWindow[j];
       }
-      // prefilled = lastBytesToCopyFromPrevious = MAX_WINDOW_SIZE - skipBytes
+
     } else {
-      /* If previousWindow.size() < MAX_WINDOW_SIZE, which might happen at the
-       * start of streams, then behave as if previousWindow was padded with
-       * leading zeros. */
+
       const auto zerosToFill =
           lastBytesToCopyFromPrevious - previousWindow.size();
       for (; prefilled < zerosToFill; ++prefilled) {
@@ -417,21 +326,13 @@ DecodedData::getWindowAt(WindowView const &previousWindow,
       for (size_t j = 0; j < previousWindow.size(); ++j, ++prefilled) {
         window[prefilled] = previousWindow[j];
       }
-      // prefilled = lastBytesToCopyFromPrevious - previousWindow.size() +
-      // previousWindow.size()
     }
     assert(prefilled == MAX_WINDOW_SIZE - skipBytes);
   }
 
   const auto remainingBytes = window.size() - prefilled;
 
-  /* Skip over skipBytes in data and then copy the last remainingBytes before
-   * it. */
   auto offset = skipBytes - remainingBytes;
-  /* if skipBytes < MAX_WINDOW_SIZE
-   *     offset = skipBytes - ( window.size() - ( MAX_WINDOW_SIZE - skipBytes )
-   * ) = 0 if skipBytes >= MAX_WINDOW_SIZE offset = skipBytes - ( window.size()
-   * - 0 ) */
 
   const auto copyFromDataWithMarkers = [this, &offset, &prefilled,
                                         &window](const auto &mapMarker) {
@@ -454,10 +355,9 @@ DecodedData::getWindowAt(WindowView const &previousWindow,
   };
 
   if (previousWindow.size() >= MAX_WINDOW_SIZE) {
-    copyFromDataWithMarkers(MapMarkers</* full window */ true>(previousWindow));
+    copyFromDataWithMarkers(MapMarkers<true>(previousWindow));
   } else {
-    copyFromDataWithMarkers(
-        MapMarkers</* full window */ false>(previousWindow));
+    copyFromDataWithMarkers(MapMarkers<false>(previousWindow));
   }
 
   for (const auto &chunk : data) {
@@ -483,8 +383,7 @@ DecodedData::getWindowAt(WindowView const &previousWindow,
 inline void DecodedData::cleanUnmarkedData() {
   while (!dataWithMarkers.empty()) {
     const auto &toDowncast = dataWithMarkers.back();
-    /* Try to not only downcast whole chunks of data but also as many bytes as
-     * possible for the last chunk. */
+
     const auto marker =
         std::find_if(toDowncast.rbegin(), toDowncast.rend(), [](auto value) {
           return value > std::numeric_limits<uint8_t>::max();
@@ -511,13 +410,6 @@ inline void DecodedData::cleanUnmarkedData() {
   shrinkToFit();
 }
 
-/**
- * m rapidgzip && src/tools/rapidgzip -v -d -c -P 0 4GiB-base64.gz | wc -c
- * Non-polymorphic: Decompressed in total 4294967296 B in 1.49444 s -> 2873.96
- * MB/s With virtual ~DecodedData() = default: Decompressed in total 4294967296
- * B in 3.58325 s -> 1198.62 MB/s I don't know why it happens. Maybe it affects
- * inline of function calls or moves of instances.
- */
 static_assert(!std::is_polymorphic_v<DecodedData>,
               "Simply making it polymorphic halves performance!");
 
@@ -531,8 +423,7 @@ toIoVec(const DecodedData &decodedData, const size_t offsetInBlock,
        static_cast<bool>(it); ++it) {
     const auto &[data, size] = *it;
     ::iovec buffer{};
-    /* The const_cast should be safe because vmsplice and writev should not
-     * modify the input data. */
+
     buffer.iov_base = const_cast<void *>(reinterpret_cast<const void *>(data));
     ;
     buffer.iov_len = size;
@@ -540,5 +431,5 @@ toIoVec(const DecodedData &decodedData, const size_t offsetInBlock,
   }
   return buffersToWrite;
 }
-#endif // HAVE_IOVEC
+#endif
 } // namespace rapidgzip::deflate

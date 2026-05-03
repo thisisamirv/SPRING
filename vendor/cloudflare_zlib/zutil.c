@@ -1,9 +1,7 @@
-/* zutil.c -- target dependent utility functions for the compression library
+﻿/* zutil.c -- target dependent utility functions for the compression library
  * Copyright (C) 1995-2017 Jean-loup Gailly
  * For conditions of distribution and use, see copyright notice in zlib.h
  */
-
-/* @(#) $Id$ */
 
 #include "zutil.h"
 #include <stdlib.h>
@@ -11,17 +9,16 @@
 #include "gzguts.h"
 #endif
 
-z_const char *const z_errmsg[10] = {
-    "need dictionary",      /* Z_NEED_DICT       2  */
-    "stream end",           /* Z_STREAM_END      1  */
-    "",                     /* Z_OK              0  */
-    "file error",           /* Z_ERRNO         (-1) */
-    "stream error",         /* Z_STREAM_ERROR  (-2) */
-    "data error",           /* Z_DATA_ERROR    (-3) */
-    "insufficient memory",  /* Z_MEM_ERROR     (-4) */
-    "buffer error",         /* Z_BUF_ERROR     (-5) */
-    "incompatible version", /* Z_VERSION_ERROR (-6) */
-    ""};
+z_const char *const z_errmsg[10] = {"need dictionary",
+                                    "stream end",
+                                    "",
+                                    "file error",
+                                    "stream error",
+                                    "data error",
+                                    "insufficient memory",
+                                    "buffer error",
+                                    "incompatible version",
+                                    ""};
 
 const char *ZEXPORT zlibVersion(void) { return ZLIB_VERSION; }
 
@@ -144,16 +141,10 @@ void ZLIB_INTERNAL z_error(char *m) {
 }
 #endif
 
-/* exported to allow conversion of error code to string for compress() and
- * uncompress()
- */
 const char *ZEXPORT zError(int err) { return ERR_MSG(err); }
 
 #if defined(_WIN32_WCE) && _WIN32_WCE < 0x800
-/* The older Microsoft C Run-Time Library for Windows CE doesn't have
- * errno.  We define it as a global variable to simplify porting.
- * Its value is always 0 and should not be used.
- */
+
 int errno = 0;
 #endif
 
@@ -163,7 +154,7 @@ void ZLIB_INTERNAL zmemcpy(Bytef *dest, const Bytef *source, uInt len) {
   if (len == 0)
     return;
   do {
-    *dest++ = *source++; /* ??? to be unrolled */
+    *dest++ = *source++;
   } while (--len != 0);
 }
 
@@ -181,7 +172,7 @@ void ZLIB_INTERNAL zmemzero(Bytef *dest, uInt len) {
   if (len == 0)
     return;
   do {
-    *dest++ = 0; /* ??? to be unrolled */
+    *dest++ = 0;
   } while (--len != 0);
 }
 #endif
@@ -191,18 +182,10 @@ void ZLIB_INTERNAL zmemzero(Bytef *dest, uInt len) {
 #ifdef SYS16BIT
 
 #ifdef __TURBOC__
-/* Turbo C in 16-bit mode */
 
 #define MY_ZCALLOC
 
-/* Turbo C malloc() does not allow dynamic allocation of 64K bytes
- * and farmalloc(64K) returns a pointer with an offset of 8, so we
- * must fix the pointer. Warning: the pointer must be put back to its
- * original form in order to free it, use zcfree().
- */
-
 #define MAX_PTR 10
-/* 10*64K = 640K */
 
 local int next_ptr = 0;
 
@@ -212,20 +195,11 @@ typedef struct ptr_table_s {
 } ptr_table;
 
 local ptr_table table[MAX_PTR];
-/* This table is used to remember the original form of pointers
- * to large buffers (64K). Such pointers are normalized with a zero offset.
- * Since MSDOS is not a preemptive multitasking OS, this table is not
- * protected from concurrent access. This hack doesn't work anyway on
- * a protected system like OS/2. Use Microsoft C instead.
- */
 
 voidpf ZLIB_INTERNAL zcalloc(voidpf opaque, unsigned items, unsigned size) {
-  voidpf buf = opaque; /* just to make some compilers happy */
+  voidpf buf = opaque;
   ulg bsize = (ulg)items * size;
 
-  /* If we allocate less than 65520 bytes, we assume that farmalloc
-   * will return a usable pointer which doesn't have to be normalized.
-   */
   if (bsize < 65520L) {
     buf = farmalloc(bsize);
     if (*(ush *)&buf != 0)
@@ -237,7 +211,6 @@ voidpf ZLIB_INTERNAL zcalloc(voidpf opaque, unsigned items, unsigned size) {
     return NULL;
   table[next_ptr].org_ptr = buf;
 
-  /* Normalize the pointer to seg:0 */
   *((ush *)&buf + 1) += ((ush)((uch *)buf - 0) + 15) >> 4;
   *(ush *)&buf = 0;
   table[next_ptr++].new_ptr = buf;
@@ -246,11 +219,11 @@ voidpf ZLIB_INTERNAL zcalloc(voidpf opaque, unsigned items, unsigned size) {
 
 void ZLIB_INTERNAL zcfree(voidpf opaque, voidpf ptr) {
   int n;
-  if (*(ush *)&ptr != 0) { /* object < 64K */
+  if (*(ush *)&ptr != 0) {
     farfree(ptr);
     return;
   }
-  /* Find the original pointer */
+
   for (n = 0; n < next_ptr; n++) {
     if (ptr != table[n].new_ptr)
       continue;
@@ -262,14 +235,13 @@ void ZLIB_INTERNAL zcfree(voidpf opaque, voidpf ptr) {
     next_ptr--;
     return;
   }
-  ptr = opaque; /* just to make some compilers happy */
+  ptr = opaque;
   Assert(0, "zcfree: ptr not found");
 }
 
-#endif /* __TURBOC__ */
+#endif
 
 #ifdef M_I86
-/* Microsoft C in 16-bit mode */
 
 #define MY_ZCALLOC
 
@@ -280,21 +252,21 @@ void ZLIB_INTERNAL zcfree(voidpf opaque, voidpf ptr) {
 
 voidpf ZLIB_INTERNAL zcalloc(voidpf opaque, uInt items, uInt size) {
   if (opaque)
-    opaque = 0; /* to make compiler happy */
+    opaque = 0;
   return _halloc((long)items, size);
 }
 
 void ZLIB_INTERNAL zcfree(voidpf opaque, voidpf ptr) {
   if (opaque)
-    opaque = 0; /* to make compiler happy */
+    opaque = 0;
   _hfree(ptr);
 }
 
-#endif /* M_I86 */
+#endif
 
-#endif /* SYS16BIT */
+#endif
 
-#ifndef MY_ZCALLOC /* Any system without a special alloc function */
+#ifndef MY_ZCALLOC
 
 #ifndef STDC
 extern voidp malloc(uInt size);
@@ -304,7 +276,7 @@ extern void free(voidpf ptr);
 
 voidpf ZLIB_INTERNAL zcalloc(voidpf opaque, unsigned items, unsigned size) {
   if (opaque)
-    items += size - size; /* make compiler happy */
+    items += size - size;
   return sizeof(uInt) > 2 ? (voidpf)malloc(items * size)
                           : (voidpf)calloc(items, size);
 }
@@ -312,9 +284,9 @@ voidpf ZLIB_INTERNAL zcalloc(voidpf opaque, unsigned items, unsigned size) {
 void ZLIB_INTERNAL zcfree(voidpf opaque, voidpf ptr) {
   free(ptr);
   if (opaque)
-    return; /* make compiler happy */
+    return;
 }
 
-#endif /* MY_ZCALLOC */
+#endif
 
-#endif /* !Z_SOLO */
+#endif

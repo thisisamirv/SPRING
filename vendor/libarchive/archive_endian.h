@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2002 Thomas Moestl <tmm@FreeBSD.org>
  * All rights reserved.
  *
@@ -31,21 +31,10 @@
 
 #include "archive_platform.h"
 
-/* Note:  This is a purely internal header! */
-/* Do not use this outside of libarchive internal code! */
-
 #ifndef __LIBARCHIVE_BUILD
 #error This header is only to be used internally to libarchive.
 #endif
 
-/*
- * Disabling inline keyword for compilers known to choke on it:
- * - Watcom C++ in C code.  (For any version?)
- * - SGI MIPSpro
- * - Microsoft Visual C++ 6.0 (supposedly newer versions too)
- * - IBM VisualAge 6 (XL v6)
- * - Sun WorkShop C (SunPro) before 5.9
- */
 #if defined(__WATCOMC__) || defined(__sgi) || defined(__hpux) ||               \
     defined(__BORLANDC__)
 #define inline
@@ -57,14 +46,9 @@
 #define inline __inline
 #endif
 
-/* Alignment-agnostic encode/decode bytestream to/from little/big endian. */
-
 static inline uint16_t archive_be16dec(const void *pp) {
   unsigned char const *p = (unsigned char const *)pp;
 
-  /* Store into unsigned temporaries before left shifting, to avoid
-  promotion to signed int and then left shifting into the sign bit,
-  which is undefined behaviour. */
   unsigned int p1 = p[1];
   unsigned int p0 = p[0];
 
@@ -74,9 +58,6 @@ static inline uint16_t archive_be16dec(const void *pp) {
 static inline uint32_t archive_be32dec(const void *pp) {
   unsigned char const *p = (unsigned char const *)pp;
 
-  /* Store into unsigned temporaries before left shifting, to avoid
-  promotion to signed int and then left shifting into the sign bit,
-  which is undefined behaviour. */
   unsigned int p3 = p[3];
   unsigned int p2 = p[2];
   unsigned int p1 = p[1];
@@ -94,9 +75,6 @@ static inline uint64_t archive_be64dec(const void *pp) {
 static inline uint16_t archive_le16dec(const void *pp) {
   unsigned char const *p = (unsigned char const *)pp;
 
-  /* Store into unsigned temporaries before left shifting, to avoid
-  promotion to signed int and then left shifting into the sign bit,
-  which is undefined behaviour. */
   unsigned int p1 = p[1];
   unsigned int p0 = p[0];
 
@@ -106,9 +84,6 @@ static inline uint16_t archive_le16dec(const void *pp) {
 static inline uint32_t archive_le32dec(const void *pp) {
   unsigned char const *p = (unsigned char const *)pp;
 
-  /* Store into unsigned temporaries before left shifting, to avoid
-  promotion to signed int and then left shifting into the sign bit,
-  which is undefined behaviour. */
   unsigned int p3 = p[3];
   unsigned int p2 = p[2];
   unsigned int p1 = p[1];

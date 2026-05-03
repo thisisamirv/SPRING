@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2007 Tim Kientzle
  * All rights reserved.
  *
@@ -25,18 +25,6 @@
 
 #include "archive_platform.h"
 
-/*
- * The use of printf()-family functions can be troublesome
- * for space-constrained applications.  In addition, correctly
- * implementing this function in terms of vsnprintf() requires
- * two calls (one to determine the size, another to format the
- * result), which in turn requires duplicating the argument list
- * using va_copy, which isn't yet universally available. <sigh>
- *
- * So, I've implemented a bare minimum of printf()-like capability
- * here.  This is only used to format error messages, so doesn't
- * require any floating-point support or field-width handling.
- */
 #ifdef HAVE_ERRNO_H
 #include <errno.h>
 #endif
@@ -54,10 +42,6 @@
 #error "archive_string.h must be included"
 #endif
 
-/*
- * Utility functions to format signed/unsigned integers and append
- * them to an archive_string.
- */
 static void append_uint(struct archive_string *as, uintmax_t d, unsigned base) {
   static const char digits[] = "0123456789abcdef";
   if (d >= base)
@@ -84,15 +68,11 @@ void archive_string_sprintf(struct archive_string *as, const char *fmt, ...) {
   va_end(ap);
 }
 
-/*
- * Like 'vsprintf', but ensures the target is big enough, resizing if
- * necessary.
- */
 void archive_string_vsprintf(struct archive_string *as, const char *fmt,
                              va_list ap) {
   char long_flag;
-  intmax_t s;  /* Signed integer temp. */
-  uintmax_t u; /* Unsigned integer temp. */
+  intmax_t s;
+  uintmax_t u;
   const char *p, *p2;
   const wchar_t *pw;
 
@@ -189,7 +169,7 @@ void archive_string_vsprintf(struct archive_string *as, const char *fmt,
     case 'u':
     case 'x':
     case 'X':
-      /* Common handling for unsigned integer formats. */
+
       switch (long_flag) {
       case 'j':
         u = va_arg(ap, uintmax_t);
@@ -207,7 +187,7 @@ void archive_string_vsprintf(struct archive_string *as, const char *fmt,
         u = va_arg(ap, unsigned int);
         break;
       }
-      /* Format it in the correct base. */
+
       switch (*p) {
       case 'o':
         append_uint(as, u, 8);
@@ -221,7 +201,7 @@ void archive_string_vsprintf(struct archive_string *as, const char *fmt,
       }
       break;
     default:
-      /* Rewind and print the initial '%' literally. */
+
       p = saved_p;
       archive_strappend_char(as, *p);
     }

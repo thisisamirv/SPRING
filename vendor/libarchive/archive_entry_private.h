@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2007 Tim Kientzle
  * All rights reserved.
  *
@@ -59,51 +59,11 @@ struct ae_digest {
   unsigned char sha512[64];
 };
 
-/*
- * Description of an archive entry.
- *
- * Basically, this is a "struct stat" with a few text fields added in.
- *
- * TODO: Add "comment", "charset", and possibly other entries
- * that are supported by "pax interchange" format.  However, GNU, ustar,
- * cpio, and other variants don't support these features, so they're not an
- * excruciatingly high priority right now.
- *
- * TODO: "pax interchange" format allows essentially arbitrary
- * key/value attributes to be attached to any entry.  Supporting
- * such extensions may make this library useful for special
- * applications (e.g., a package manager could attach special
- * package-management attributes to each entry).  There are tricky
- * API issues involved, so this is not going to happen until
- * there's a real demand for it.
- *
- * TODO: Design a good API for handling sparse files.
- */
 struct archive_entry {
   struct archive *archive;
 
-  /*
-   * Note that ae_stat.st_mode & AE_IFMT  can be  0!
-   *
-   * This occurs when the actual file type of the object is not
-   * in the archive.  For example, 'tar' archives store
-   * hardlinks without marking the type of the underlying
-   * object.
-   */
-
-  /*
-   * We have a "struct aest" for holding file metadata rather than just
-   * a "struct stat" because on some platforms the "struct stat" has
-   * fields which are too narrow to hold the range of possible values;
-   * we don't want to lose information if we read an archive and write
-   * out another (e.g., in "tar -cf new.tar @old.tar").
-   *
-   * The "stat" pointer points to some form of platform-specific struct
-   * stat; it is declared as a void * rather than a struct stat * as
-   * some platforms have multiple varieties of stat structures.
-   */
   void *stat;
-  int stat_valid; /* Set to 0 whenever a field in aest changes. */
+  int stat_valid;
 
   struct aest {
     int64_t aest_atime;
@@ -119,14 +79,7 @@ struct archive_entry {
     uint32_t aest_nlink;
     uint64_t aest_size;
     int64_t aest_uid;
-    /*
-     * Because converting between device codes and
-     * major/minor values is platform-specific and
-     * inherently a bit risky, we only do that conversion
-     * lazily.  That way, we will do a better job of
-     * preserving information in those cases where no
-     * conversion is actually required.
-     */
+
     int aest_dev_is_broken_down;
     dev_t aest_dev;
     dev_t aest_devmajor;
@@ -137,7 +90,7 @@ struct archive_entry {
     dev_t aest_rdevminor;
   } ae_stat;
 
-  int ae_set; /* bitmap of fields that are currently set */
+  int ae_set;
 #define AE_SET_HARDLINK 1
 #define AE_SET_SYMLINK 2
 #define AE_SET_ATIME 4
@@ -153,20 +106,15 @@ struct archive_entry {
 #define AE_SET_GID 4096
 #define AE_SET_RDEV 8192
 
-  /*
-   * Use aes here so that we get transparent mbs<->wcs conversions.
-   */
-  struct archive_mstring ae_fflags_text; /* Text fflags per fflagstostr(3) */
-  unsigned long ae_fflags_set;           /* Bitmap fflags */
+  struct archive_mstring ae_fflags_text;
+  unsigned long ae_fflags_set;
   unsigned long ae_fflags_clear;
-  struct archive_mstring ae_gname; /* Name of owning group */
-  struct archive_mstring
-      ae_linkname; /* Name of target for hardlink or symlink */
-  struct archive_mstring ae_pathname; /* Name of entry */
-  struct archive_mstring ae_uname;    /* Name of owner */
+  struct archive_mstring ae_gname;
+  struct archive_mstring ae_linkname;
+  struct archive_mstring ae_pathname;
+  struct archive_mstring ae_uname;
 
-  /* Not used within libarchive; useful for some clients. */
-  struct archive_mstring ae_sourcepath; /* Path this entry is sourced from. */
+  struct archive_mstring ae_sourcepath;
 
 #define AE_ENCRYPTION_NONE 0
 #define AE_ENCRYPTION_DATA 1
@@ -176,7 +124,6 @@ struct archive_entry {
   void *mac_metadata;
   size_t mac_metadata_size;
 
-  /* Digest support. */
 #define AE_MSET_DIGEST_MD5 1
 #define AE_MSET_DIGEST_RMD160 2
 #define AE_MSET_DIGEST_SHA1 4
@@ -186,23 +133,18 @@ struct archive_entry {
   uint_least32_t mset_digest;
   struct ae_digest digest;
 
-  /* ACL support. */
   struct archive_acl acl;
 
-  /* extattr support. */
   struct ae_xattr *xattr_head;
   struct ae_xattr *xattr_p;
 
-  /* sparse support. */
   struct ae_sparse *sparse_head;
   struct ae_sparse *sparse_tail;
   struct ae_sparse *sparse_p;
 
-  /* Miscellaneous. */
   char strmode[12];
 
-  /* Symlink type support */
   int ae_symlink_type;
 };
 
-#endif /* !ARCHIVE_ENTRY_PRIVATE_H_INCLUDED */
+#endif

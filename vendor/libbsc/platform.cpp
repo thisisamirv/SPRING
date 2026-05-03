@@ -1,7 +1,4 @@
-/*-----------------------------------------------------------*/
-/* Block Sorting, Lossless Data Compression Library.         */
-/* Platform specific functions and constants                 */
-/*-----------------------------------------------------------*/
+﻿
 
 /*--
 
@@ -88,31 +85,31 @@ int bsc_get_cpu_features(void) {
   bsc_cpuid(regs, 1);
   if ((regs[3] & (1 << 26)) == 0) {
     return g_cpu_features = LIBBSC_CPU_FEATURE_NONE;
-  } // no SSE2
+  }
   if ((regs[2] & (1 << 0)) == 0) {
     return g_cpu_features = LIBBSC_CPU_FEATURE_SSE2;
-  } // no SSE3
+  }
   if ((regs[2] & (1 << 9)) == 0) {
     return g_cpu_features = LIBBSC_CPU_FEATURE_SSE3;
-  } // no SSSE3
+  }
   if ((regs[2] & (1 << 19)) == 0) {
     return g_cpu_features = LIBBSC_CPU_FEATURE_SSSE3;
-  } // no SSE4.1
+  }
   if ((regs[2] & (1 << 23)) == 0) {
     return g_cpu_features = LIBBSC_CPU_FEATURE_SSE41;
-  } // no POPCNT
+  }
   if ((regs[2] & (1 << 20)) == 0) {
     return g_cpu_features = LIBBSC_CPU_FEATURE_SSE41;
-  } // no SSE4.2
+  }
   if ((regs[2] & (1 << 28)) == 0) {
     return g_cpu_features = LIBBSC_CPU_FEATURE_SSE42;
-  } // no AVX
+  }
   if ((regs[2] & (1 << 27)) == 0) {
     return g_cpu_features = LIBBSC_CPU_FEATURE_SSE42;
-  } // no XSAVE
+  }
   if ((bsc_xgetbv() & 0x6) != 0x6) {
     return g_cpu_features = LIBBSC_CPU_FEATURE_SSE42;
-  } // AVX not enabled by OS
+  }
 
   bsc_cpuid(regs, 0);
   if (regs[0] < 7) {
@@ -122,25 +119,25 @@ int bsc_get_cpu_features(void) {
   bsc_cpuid(regs, 7);
   if ((regs[1] & (1 << 5)) == 0) {
     return g_cpu_features = LIBBSC_CPU_FEATURE_AVX;
-  } // no AVX2
+  }
   if ((regs[1] & (1 << 16)) == 0) {
     return g_cpu_features = LIBBSC_CPU_FEATURE_AVX2;
-  } // no AVX512F
+  }
   if ((regs[1] & (1 << 28)) == 0) {
     return g_cpu_features = LIBBSC_CPU_FEATURE_AVX2;
-  } // no AVX512CD
+  }
   if ((bsc_xgetbv() & 0xE0) != 0xE0) {
     return g_cpu_features = LIBBSC_CPU_FEATURE_AVX2;
-  } // AVX512 not enabled by OS
+  }
   if ((regs[1] & (1 << 17)) == 0) {
     return g_cpu_features = LIBBSC_CPU_FEATURE_AVX512CD;
-  } // no AVX512DQ
+  }
   if ((regs[1] & (1u << 31)) == 0) {
     return g_cpu_features = LIBBSC_CPU_FEATURE_AVX512CD;
-  } // no AVX512VL
+  }
   if ((regs[1] & (1 << 30)) == 0) {
     return g_cpu_features = LIBBSC_CPU_FEATURE_AVX512CD;
-  } // no AVX512BW
+  }
 
   return g_cpu_features = LIBBSC_CPU_FEATURE_AVX512BW;
 }
@@ -210,10 +207,7 @@ void bsc_free(void *address) { return bsc_free_fn(address); }
 int bsc_platform_init(int features, void *(*malloc)(size_t size),
                       void *(*zero_malloc)(size_t size),
                       void (*free)(void *address)) {
-  /* If the caller provides a malloc function but not a zero_malloc
-     function, we want to use malloc to implement zero_malloc.
-     Otherwise we'll use the default function which may be slightly
-     faster on some platforms. */
+
   if (zero_malloc != NULL) {
     bsc_zero_malloc_fn = zero_malloc;
   } else if (malloc != NULL) {
@@ -271,7 +265,3 @@ int bsc_platform_init(int features, void *(*malloc)(size_t size),
 
   return LIBBSC_NO_ERROR;
 }
-
-/*-----------------------------------------------------------*/
-/* End                                          platform.cpp */
-/*-----------------------------------------------------------*/

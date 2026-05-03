@@ -1,9 +1,5 @@
-#ifndef SPRING_QVZ_CODEBOOK_H_
+﻿#ifndef SPRING_QVZ_CODEBOOK_H_
 #define SPRING_QVZ_CODEBOOK_H_
-/**
- * Functions and definitions relating to reading codebooks from files, used
- * for both the encoder and decoder code
- */
 
 #include "qvz/util.h"
 
@@ -19,14 +15,10 @@
 namespace spring {
 namespace qvz {
 
-#define MODE_RATIO                                                             \
-  0 // Traditional implementation, output bitrate is scaled from input
-#define MODE_FIXED 1     // Fixed rate per symbol
-#define MODE_FIXED_MSE 2 // Fixed average MSE per column
+#define MODE_RATIO 0
+#define MODE_FIXED 1
+#define MODE_FIXED_MSE 2
 
-/**
- * Options for the compression process
- */
 struct qv_options_t {
   uint8_t verbose;
   uint8_t stats;
@@ -36,17 +28,11 @@ struct qv_options_t {
   uint8_t distortion;
   char *dist_file;
   char *uncompressed_name;
-  double ratio;  // Used for parameter to all modes
-  double e_dist; // Expected distortion as calculated during optimization
+  double ratio;
+  double e_dist;
   double cluster_threshold;
 };
 
-/**
- * Stores an array of conditional PMFs for the current column given the previous
- * column. PMF pointers are stored in a flat array so don't try to find the PMF
- * you
- * want directly--use the accessor
- */
 struct cond_pmf_list_t {
   uint32_t columns;
   const struct alphabet_t *alphabet;
@@ -54,27 +40,16 @@ struct cond_pmf_list_t {
   struct pmf_list_t *marginal_pmfs;
 };
 
-/**
- * Stores an array of quantizer pointers for the column for all possible left
- * context
- * values. Unused ones are left as null pointers. This is also stored as a flat
- * array
- * so the accessor must be used to look up the correct quantizer
- * The dreaded triple pointer is used to store an array of (different length)
- * arrays
- * of pointers to quantizers
- */
 struct cond_quantizer_list_t {
   uint32_t columns;
   uint32_t lines;
   struct alphabet_t **input_alphabets;
   struct quantizer_t ***q;
-  double **ratio;   // Raw ratio
-  uint8_t **qratio; // Quantized ratio
+  double **ratio;
+  uint8_t **qratio;
   struct qv_options_t *options;
 };
 
-// Memory management
 struct cond_pmf_list_t *
 alloc_conditional_pmf_list(const struct alphabet_t *alphabet, uint32_t columns);
 struct cond_quantizer_list_t *
@@ -82,12 +57,10 @@ alloc_conditional_quantizer_list(uint32_t columns);
 void free_conditional_pmf_list(struct cond_pmf_list_t *);
 void free_cond_quantizer_list(struct cond_quantizer_list_t *);
 
-// Per-column initializer for conditional quantizer list
 void cond_quantizer_init_column(struct cond_quantizer_list_t *list,
                                 uint32_t column,
                                 const struct alphabet_t *input_union);
 
-// Accessors
 struct pmf_t *get_cond_pmf(struct cond_pmf_list_t *list, uint32_t column,
                            symbol_t prev);
 struct quantizer_t *
@@ -109,14 +82,12 @@ struct quantizer_t *choose_quantizer(struct cond_quantizer_list_t *list,
                                      symbol_t prev, uint32_t *q_idx);
 uint32_t find_state_encoding(struct quantizer_t *codebook, symbol_t value);
 
-// Meat of the implementation
 void calculate_statistics(struct quality_file_t *);
 double optimize_for_entropy(struct pmf_t *pmf, struct distortion_t *dist,
                             double target, struct quantizer_t **lo,
                             struct quantizer_t **hi);
 void generate_codebooks(struct quality_file_t *info);
 
-// Master functions to handle codebooks in the output file
 void write_codebooks(FILE *fp, struct quality_file_t *info);
 void write_codebook(FILE *fp, struct cond_quantizer_list_t *quantizers);
 void read_codebooks(FILE *fp, struct quality_file_t *info);

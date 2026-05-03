@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2007 Tim Kientzle
  * All rights reserved.
  *
@@ -39,8 +39,8 @@
 #if OPENSSL_VERSION_NUMBER < 0x10100000L ||                                    \
     (defined(LIBRESSL_VERSION_NUMBER) &&                                       \
      LIBRESSL_VERSION_NUMBER < 0x20700000L)
-#include <stdlib.h> /* malloc, free */
-#include <string.h> /* memset */
+#include <stdlib.h>
+#include <string.h>
 static inline HMAC_CTX *HMAC_CTX_new(void) {
   HMAC_CTX *ctx = calloc(1, sizeof(HMAC_CTX));
   return ctx;

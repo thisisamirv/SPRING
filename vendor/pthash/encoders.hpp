@@ -1,11 +1,12 @@
-#ifndef PTHASH_UTILS_ENCODERS_HPP
+﻿#ifndef PTHASH_UTILS_ENCODERS_HPP
 #define PTHASH_UTILS_ENCODERS_HPP
 
 #include "compact_vector.hpp"
 #include "elias_fano.hpp"
+#include "pthash_util.hpp"
 #include "ranked_sequence.hpp"
 #include "rice_sequence.hpp"
-#include "pthash_util.hpp"
+
 
 #include <cassert>
 #include <vector>
@@ -61,13 +62,6 @@ struct partitioned_compact {
       uint64_t num_bits =
           (max_value == 0) ? 1 : std::ceil(std::log2(max_value + 1));
       assert(num_bits > 0);
-
-      // std::cout << i << ": " << num_bits << '\n';
-      // for (uint64_t k = begin_partition; k != end_partition; ++k) {
-      //     uint64_t num_bits_val = (begin[k] == 0) ? 1 :
-      //     std::ceil(std::log2(begin[k] + 1)); std::cout << "  " <<
-      //     num_bits_val << '/' << num_bits << '\n';
-      // }
 
       for (uint64_t k = begin_partition; k != end_partition; ++k) {
         bvb.append_bits(*(begin + k), num_bits);
@@ -245,11 +239,10 @@ private:
   Back m_back;
 };
 
-/* dual encoders */
 typedef dual<rice, rice> rice_rice;
 typedef dual<compact, compact> compact_compact;
 typedef dual<dictionary, dictionary> dictionary_dictionary;
 
 } // namespace pthash
 
-#endif // PTHASH_UTILS_ENCODERS_HPP
+#endif

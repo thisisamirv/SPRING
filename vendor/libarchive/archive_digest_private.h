@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2007 Tim Kientzle
  * Copyright (c) 2011 Andres Mejia
  * All rights reserved.
@@ -36,32 +36,6 @@
 #error "Should have include config.h first!"
 #endif
 
-/*
- * Crypto support in various Operating Systems:
- *
- * NetBSD:
- * - MD5 and SHA1 in libc: without _ after algorithm name
- * - SHA2 in libc: with _ after algorithm name
- *
- * OpenBSD:
- * - MD5, SHA1 and SHA2 in libc: without _ after algorithm name
- * - OpenBSD 4.4 and earlier have SHA2 in libc with _ after algorithm name
- *
- * DragonFly and FreeBSD:
- * - MD5 libmd: without _ after algorithm name
- * - SHA1, SHA256 and SHA512 in libmd: with _ after algorithm name
- *
- * Mac OS X (10.4 and later):
- * - MD5, SHA1 and SHA2 in libSystem: with CC_ prefix and _ after algorithm name
- *
- * OpenSSL:
- * - MD5, SHA1 and SHA2 in libcrypto: with _ after algorithm name
- *
- * Windows:
- * - MD5, SHA1 and SHA2 in archive_crypto.c using Windows crypto API
- */
-
-/* libc crypto headers */
 #if defined(ARCHIVE_CRYPTO_MD5_LIBC)
 #include <md5.h>
 #endif
@@ -83,7 +57,6 @@
 #include <sha2.h>
 #endif
 
-/* libmd crypto headers */
 #if defined(ARCHIVE_CRYPTO_MD5_LIBMD) ||                                       \
     defined(ARCHIVE_CRYPTO_RMD160_LIBMD) ||                                    \
     defined(ARCHIVE_CRYPTO_SHA1_LIBMD) ||                                      \
@@ -108,7 +81,6 @@
 #include <sha512.h>
 #endif
 
-/* libSystem crypto headers */
 #if defined(ARCHIVE_CRYPTO_MD5_LIBSYSTEM) ||                                   \
     defined(ARCHIVE_CRYPTO_SHA1_LIBSYSTEM) ||                                  \
     defined(ARCHIVE_CRYPTO_SHA256_LIBSYSTEM) ||                                \
@@ -118,7 +90,6 @@
 #define ARCHIVE_CRYPTO_CommonCrypto 1
 #endif
 
-/* mbed TLS crypto headers */
 #if defined(ARCHIVE_CRYPTO_MD5_MBEDTLS)
 #include <mbedtls/md5.h>
 #endif
@@ -136,7 +107,6 @@
 #include <mbedtls/sha512.h>
 #endif
 
-/* Nettle crypto headers */
 #if defined(ARCHIVE_CRYPTO_MD5_NETTLE)
 #include <nettle/md5.h>
 #endif
@@ -150,7 +120,6 @@
 #include <nettle/sha.h>
 #endif
 
-/* OpenSSL crypto headers */
 #if defined(ARCHIVE_CRYPTO_MD5_OPENSSL) ||                                     \
     defined(ARCHIVE_CRYPTO_RMD160_OPENSSL) ||                                  \
     defined(ARCHIVE_CRYPTO_SHA1_OPENSSL) ||                                    \
@@ -161,12 +130,11 @@
 #include "archive_openssl_evp_private.h"
 #endif
 
-/* Windows crypto headers */
 #if defined(ARCHIVE_CRYPTO_MD5_WIN) || defined(ARCHIVE_CRYPTO_SHA1_WIN) ||     \
     defined(ARCHIVE_CRYPTO_SHA256_WIN) ||                                      \
     defined(ARCHIVE_CRYPTO_SHA384_WIN) || defined(ARCHIVE_CRYPTO_SHA512_WIN)
 #if defined(HAVE_BCRYPT_H) && _WIN32_WINNT >= _WIN32_WINNT_VISTA
-/* don't use bcrypt when XP needs to be supported */
+
 #include <bcrypt.h>
 #define ARCHIVE_CRYPTO_CNG 1
 typedef struct {
@@ -186,7 +154,6 @@ typedef struct {
 #endif
 #endif
 
-/* typedefs */
 #if defined(ARCHIVE_CRYPTO_MD5_LIBC)
 typedef MD5_CTX archive_md5_ctx;
 #elif defined(ARCHIVE_CRYPTO_MD5_LIBMD)
@@ -313,7 +280,6 @@ typedef EVP_MD_CTX *archive_sha512_ctx;
 typedef unsigned char archive_sha512_ctx;
 #endif
 
-/* defines */
 #if defined(ARCHIVE_CRYPTO_MD5_LIBC) || defined(ARCHIVE_CRYPTO_MD5_LIBMD) ||   \
     defined(ARCHIVE_CRYPTO_MD5_LIBSYSTEM) ||                                   \
     defined(ARCHIVE_CRYPTO_MD5_MBEDTLS) ||                                     \
@@ -395,9 +361,8 @@ typedef unsigned char archive_sha512_ctx;
 #define archive_sha512_update(ctx, buf, n)                                     \
   __archive_digest.sha512update(ctx, buf, n)
 
-/* Minimal interface to digest functionality for internal use in libarchive */
 struct archive_digest {
-  /* Message Digest */
+
   int (*md5init)(archive_md5_ctx *ctx);
   int (*md5update)(archive_md5_ctx *, const void *, size_t);
   int (*md5final)(archive_md5_ctx *, void *);

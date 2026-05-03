@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <algorithm>
 #include <cassert>
@@ -7,7 +7,7 @@
 #include <stdexcept>
 
 #include <VectorView.hpp>
-#include <definitions.hpp> // MAX_WINDOW_SIZE
+#include <definitions.hpp>
 
 namespace rapidgzip::deflate {
 template <bool FULL_WINDOW> struct MapMarkers {
@@ -39,8 +39,7 @@ private:
 
 inline void replaceMarkerBytes(WeakVector<std::uint16_t> buffer,
                                VectorView<std::uint8_t> const &window) {
-  /* For maximum size windows, we can skip one check because even UINT16_MAX is
-   * valid. */
+
   if (window.size() >= MAX_WINDOW_SIZE) {
     std::transform(buffer.begin(), buffer.end(), buffer.begin(),
                    MapMarkers<true>(window));

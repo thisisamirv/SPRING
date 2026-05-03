@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <algorithm>
 #include <array>
@@ -36,18 +36,6 @@ namespace rapidgzip {
       ((static_cast<uint32_t>(value) & 0xFF00U) >> 8U));
 }
 
-/**
- * @verbatim
- * 63                48                  32                  16        8 0 | |
- * |                   |         |         | 0000 0000 0000 0000 0000 0000 0000
- * 0000 0000 0000 0000 0000 0000 1111 1111 1111
- *                                                                  <------------>
- *                                                                   nBitsSet =
- * 12
- * @endverbatim
- *
- * @param nBitsSet the number of lowest bits which should be 1 (rest are 0)
- */
 template <typename T>
 [[nodiscard]] constexpr T nLowestBitsSet(uint8_t nBitsSet) {
   static_assert(std::is_unsigned_v<T>, "Type must be unsigned!");
@@ -76,7 +64,6 @@ template <typename T, uint8_t nBitsSet>
   }
 }
 
-/* Size: uint64_t: 16 KiB, uint32_t: 8 KiB, ... */
 template <typename T>
 static constexpr std::array<T, 256U> N_LOWEST_BITS_SET_LUT = []() {
   std::array<T, 256U> result{};
@@ -100,7 +87,6 @@ template <typename T>
   return static_cast<T>(static_cast<T>(~T(0)) << nZeroBits);
 }
 
-/* Size: uint64_t: 16 KiB, uint32_t: 8 KiB, ... */
 template <typename T>
 static constexpr std::array<T, 256U> N_HIGHEST_BITS_SET_LUT = []() {
   std::array<T, 256U> result{};
@@ -125,9 +111,7 @@ template <typename T, uint8_t nBitsSet>
 }
 
 [[nodiscard]] constexpr uint8_t reverseBitsWithoutLUT(uint8_t data) {
-  /* Reverse bits using bit-parallelism in a recursive fashion, i.e., first swap
-   * every bit with its neighbor, then swap each half nibble with its neighbor,
-   * then each nibble. */
+
   constexpr std::array<uint8_t, 3> masks = {0b0101'0101U, 0b0011'0011U,
                                             0b0000'1111U};
   for (size_t i = 0; i < masks.size(); ++i) {
@@ -174,9 +158,7 @@ template <typename T, uint8_t nBitsSet>
 }
 
 [[nodiscard]] constexpr uint64_t reverseBitsWithoutLUT(uint64_t data) {
-  /* Reverse bits using bit-parallelism in a recursive fashion, i.e., first swap
-   * every bit with its neighbor, then swap each half nibble with its neighbor,
-   * then each nibble, then each byte, then each word, then each double word. */
+
   constexpr std::array<uint64_t, 6> masks = {
       0b0101'0101'0101'0101'0101'0101'0101'0101'0101'0101'0101'0101'0101'0101'0101'0101U,
       0b0011'0011'0011'0011'0011'0011'0011'0011'0011'0011'0011'0011'0011'0011'0011'0011U,
@@ -185,11 +167,7 @@ template <typename T, uint8_t nBitsSet>
       0b0000'0000'0000'0000'1111'1111'1111'1111'0000'0000'0000'0000'1111'1111'1111'1111U,
       0b0000'0000'0000'0000'0000'0000'0000'0000'1111'1111'1111'1111'1111'1111'1111'1111U,
   };
-  /* Using godbolt, shows that both gcc 8.6 and clang will unroll this loop!
-   * Clang 13 seems to produce even shorter code by somehow skipping word and
-   * dword swaps, maybe implementing those via moves instead. Both, evaluate the
-   * 1U << i and ~masks[i] expressions at compile-time. Note that ~mask is -mask
-   * on two's-complement platforms! */
+
   for (size_t i = 0; i < masks.size(); ++i) {
     data = ((data & masks[i]) << (1U << i)) | ((data & ~masks[i]) >> (1U << i));
   }
@@ -232,7 +210,6 @@ createReversedBitsLUT<uint16_t>() {
   return result;
 }
 
-/* Size: uint16_t: 64 KiB, uint8_t: 256 B */
 template <typename T>
 alignas(8) static constexpr auto REVERSED_BITS_LUT = createReversedBitsLUT<T>();
 
@@ -246,21 +223,12 @@ template <typename T> [[nodiscard]] constexpr T reverseBits(T value) {
   }
 }
 
-/**
- * Reverses the lowest @p bitCount bits. The highest bits are set to 0 and are
- * assumed to be zero in the input.
- * @param bitCount Must be greater than zero or else the applied bitshift is
- * undefined behavior as per C++ standard.
- */
 template <typename T>
 [[nodiscard]] constexpr T reverseBits(T value, uint8_t bitCount) {
   return reverseBits<T>(value) >>
          static_cast<uint8_t>(std::numeric_limits<T>::digits - bitCount);
 }
 
-/**
- * Basically ceil(log2(stateCount)) with an exception for 0.
- */
 [[nodiscard]] constexpr uint8_t requiredBits(const uint64_t stateCount) {
   if (stateCount == 0) {
     return 0;

@@ -1,4 +1,4 @@
-/**********************************************************************
+﻿/**********************************************************************
   Copyright(c) 2011-2016 Intel Corporation All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -41,14 +41,8 @@
 #endif
 #else
 #define inline __inline
-#endif //__x86_64__  || __i386__ || _M_X64 || _M_IX86
+#endif
 
-/**
- * @brief Calculate the bit offset of the msb.
- * @param val 32-bit unsigned integer input
- *
- * @returns bit offset of msb starting at 1 for first bit
- */
 static inline uint32_t bsr(uint32_t val) {
   uint32_t msb;
 #if defined(_MSC_VER)
@@ -186,9 +180,6 @@ static inline void get_lit_icf_code(uint32_t lit, uint32_t *code) {
   *code = lit;
 }
 
-/**
- * @brief Returns a hash of the first 3 bytes of input data.
- */
 static inline uint32_t compute_hash(uint32_t data) {
 #ifdef __SSE4_2__
 
@@ -196,7 +187,7 @@ static inline uint32_t compute_hash(uint32_t data) {
 
 #else
   uint64_t hash;
-  /* Use multiplication to create a hash, 0xBDD06057 is a prime number */
+
   hash = data;
   hash *= 0xB2D06057;
   hash >>= 16;
@@ -205,7 +196,7 @@ static inline uint32_t compute_hash(uint32_t data) {
 
   return hash;
 
-#endif /* __SSE4_2__ */
+#endif
 }
 
 #define PROD1 0xFFFFE84B
@@ -230,12 +221,6 @@ static inline uint32_t compute_long_hash(uint64_t data) {
   return compute_hash(data >> 32) ^ compute_hash(data);
 }
 
-/**
- * @brief Returns how long str1 and str2 have the same symbols.
- * @param str1: First input string.
- * @param str2: Second input string.
- * @param max_length: length of the smaller string.
- */
 static inline int compare258(uint8_t *str1, uint8_t *str2,
                              uint32_t max_length) {
   uint32_t count;
@@ -262,32 +247,32 @@ static inline int compare258(uint8_t *str1, uint8_t *str2,
     if (*str1++ != *str2++)
       return count;
     count++;
-    /* fall through */
+
   case 6:
     if (*str1++ != *str2++)
       return count;
     count++;
-    /* fall through */
+
   case 5:
     if (*str1++ != *str2++)
       return count;
     count++;
-    /* fall through */
+
   case 4:
     if (*str1++ != *str2++)
       return count;
     count++;
-    /* fall through */
+
   case 3:
     if (*str1++ != *str2++)
       return count;
     count++;
-    /* fall through */
+
   case 2:
     if (*str1++ != *str2++)
       return count;
     count++;
-    /* fall through */
+
   case 1:
     if (*str1 != *str2)
       return count;
@@ -297,12 +282,6 @@ static inline int compare258(uint8_t *str1, uint8_t *str2,
   return count;
 }
 
-/**
- * @brief Returns how long str1 and str2 have the same symbols.
- * @param str1: First input string.
- * @param str2: Second input string.
- * @param max_length: length of the smaller string.
- */
 static inline int compare(uint8_t *str1, uint8_t *str2, uint32_t max_length) {
   uint32_t count;
   uint64_t test;
@@ -325,32 +304,32 @@ static inline int compare(uint8_t *str1, uint8_t *str2, uint32_t max_length) {
     if (*str1++ != *str2++)
       return count;
     count++;
-    /* fall through */
+
   case 6:
     if (*str1++ != *str2++)
       return count;
     count++;
-    /* fall through */
+
   case 5:
     if (*str1++ != *str2++)
       return count;
     count++;
-    /* fall through */
+
   case 4:
     if (*str1++ != *str2++)
       return count;
     count++;
-    /* fall through */
+
   case 3:
     if (*str1++ != *str2++)
       return count;
     count++;
-    /* fall through */
+
   case 2:
     if (*str1++ != *str2++)
       return count;
     count++;
-    /* fall through */
+
   case 1:
     if (*str1 != *str2)
       return count;

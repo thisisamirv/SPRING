@@ -1,4 +1,4 @@
-/*--
+﻿/*--
 
 This file is a part of libsais, a library for linear time suffix array,
 longest common prefix array and burrows wheeler transform construction.
@@ -21,12 +21,12 @@ Please see the file LICENSE for full copyright information.
 
 --*/
 
-/*--
 
-Changes made to the original file:
-  - July 14, 2021 Switched to internal bsc malloc / free functions.
 
---*/
+
+
+
+
 
 #include <limits.h>
 #include <stddef.h>

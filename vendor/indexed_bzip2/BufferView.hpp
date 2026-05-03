@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <algorithm>
 #include <cstring>
@@ -28,9 +28,6 @@ public:
   [[nodiscard]] UniqueFileReader cloneRaw() const override {
     return std::make_unique<BufferViewFileReader>(m_buffer, m_size);
   }
-
-  /* Copying is simply not allowed because that might interfere with the file
-   * position state, use SharedFileReader! */
 
   void close() override { m_closed = true; }
 
@@ -70,7 +67,6 @@ public:
 
     const auto newBufferPosition = effectiveOffset(offset, origin);
 
-    /* Check if we can simply seek inside the buffer. */
     if (newBufferPosition <= m_size) {
       m_bufferPosition = newBufferPosition;
       return tell();

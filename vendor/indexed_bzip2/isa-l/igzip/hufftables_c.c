@@ -1,4 +1,4 @@
-/**********************************************************************
+﻿/**********************************************************************
   Copyright(c) 2011-2016 Intel Corporation All rights reserved.
 
   Redistribution and use in source and binary forms, with or without
@@ -2109,7 +2109,7 @@ struct isal_hufftables hufftables_default = {
                    0x000fec6f, 0x000fee6f, 0x000ff06f, 0x000ff26f,
                    0x000ff46f, 0x000ff66f, 0x000ff86f, 0x000ffa6f,
                    0x000ffc6f, 0x000ffe6f
-#endif /* LONGER_HUFFTABLE */
+#endif
     },
 
     .len_table =
@@ -2230,7 +2230,7 @@ struct isal_hufftables hufftables_default = {
 #endif
 };
 
-#else // LARGE_WINDOW
+#else
 
 const uint8_t gzip_hdr[] = {0x1f, 0x8b, 0x08, 0x00, 0x00,
                             0x00, 0x00, 0x00, 0x00, 0xff};
@@ -4311,7 +4311,7 @@ struct isal_hufftables hufftables_default = {
                    0x001fd970, 0x001fdd70, 0x001fe170, 0x001fe570,
                    0x001fe970, 0x001fed70, 0x001ff170, 0x001ff570,
                    0x001ff970, 0x001ffd70
-#endif /* LONGER_HUFFTABLE */
+#endif
     },
 
     .len_table =
@@ -4431,7 +4431,7 @@ struct isal_hufftables hufftables_default = {
 			 0x04, 0x05, 0x05, 0x06}
 #endif
 };
-#endif // LARGE_WINDOW
+#endif
 
 struct isal_hufftables hufftables_static = {
 
@@ -6489,7 +6489,7 @@ struct isal_hufftables hufftables_static = {
                    0x001fda70, 0x001fde70, 0x001fe270, 0x001fe670,
                    0x001fea70, 0x001fee70, 0x001ff270, 0x001ff670,
                    0x001ffa70, 0x001ffe70
-#endif /* LONGER_HUFFTABLE */
+#endif
     },
 
     .len_table =

@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2017 Martin Matuska
  * All rights reserved.
  *
@@ -41,7 +41,7 @@
 #include <sys/types.h>
 #endif
 #ifdef HAVE_SYS_ACL_H
-#define _ACL_PRIVATE /* For debugging */
+#define _ACL_PRIVATE
 #include <sys/acl.h>
 #endif
 
@@ -51,8 +51,8 @@
 #include "archive_write_disk_private.h"
 
 typedef struct {
-  const int a_perm; /* Libarchive permission or flag */
-  const int p_perm; /* Platform permission or flag */
+  const int a_perm;
+  const int p_perm;
 } acl_perm_map_t;
 
 static const acl_perm_map_t acl_posix_perm_map[] = {
@@ -102,7 +102,7 @@ static const acl_perm_map_t acl_nfs4_flag_map[] = {
 const int acl_nfs4_flag_map_size =
     (int)(sizeof(acl_nfs4_flag_map) / sizeof(acl_nfs4_flag_map[0]));
 
-#endif /* ARCHIVE_ACL_SUNOS_NFS4 */
+#endif
 
 static void *sunacl_get(int cmd, int *aclcnt, int fd, const char *path) {
   int cnt, cntcmd;
@@ -156,10 +156,6 @@ static void *sunacl_get(int cmd, int *aclcnt, int fd, const char *path) {
   return (aclp);
 }
 
-/*
- * Check if acl is trivial
- * This is a FreeBSD acl_is_trivial_np() implementation for Solaris
- */
 static int sun_acl_is_trivial(void *aclp, int aclcnt, mode_t mode, int is_nfs4,
                               int is_dir, int *trivialp) {
 #if ARCHIVE_ACL_SUNOS_NFS4
@@ -182,11 +178,6 @@ static int sun_acl_is_trivial(void *aclp, int aclcnt, mode_t mode, int is_nfs4,
 
   *trivialp = 0;
 
-  /*
-   * POSIX.1e ACLs marked with ACL_IS_TRIVIAL are compatible with
-   * FreeBSD acl_is_trivial_np(). On Solaris they have 4 entries,
-   * including mask.
-   */
   if (!is_nfs4) {
     if (aclcnt == 4)
       *trivialp = 1;
@@ -194,43 +185,31 @@ static int sun_acl_is_trivial(void *aclp, int aclcnt, mode_t mode, int is_nfs4,
   }
 
 #if ARCHIVE_ACL_SUNOS_NFS4
-  /*
-   * Continue with checking NFSv4 ACLs
-   *
-   * Create list of trivial ace's to be compared
-   */
 
-  /* owner@ allow pre */
   tace[0].a_flags = ACE_OWNER;
   tace[0].a_type = ACE_ACCESS_ALLOWED_ACE_TYPE;
   tace[0].a_access_mask = 0;
 
-  /* owner@ deny */
   tace[1].a_flags = ACE_OWNER;
   tace[1].a_type = ACE_ACCESS_DENIED_ACE_TYPE;
   tace[1].a_access_mask = 0;
 
-  /* group@ deny */
   tace[2].a_flags = ACE_GROUP | ACE_IDENTIFIER_GROUP;
   tace[2].a_type = ACE_ACCESS_DENIED_ACE_TYPE;
   tace[2].a_access_mask = 0;
 
-  /* owner@ allow */
   tace[3].a_flags = ACE_OWNER;
   tace[3].a_type = ACE_ACCESS_ALLOWED_ACE_TYPE;
   tace[3].a_access_mask = ownset;
 
-  /* group@ allow */
   tace[4].a_flags = ACE_GROUP | ACE_IDENTIFIER_GROUP;
   tace[4].a_type = ACE_ACCESS_ALLOWED_ACE_TYPE;
   tace[4].a_access_mask = pubset;
 
-  /* everyone@ allow */
   tace[5].a_flags = ACE_EVERYONE;
   tace[5].a_type = ACE_ACCESS_ALLOWED_ACE_TYPE;
   tace[5].a_access_mask = pubset;
 
-  /* Permissions for everyone@ */
   if (mode & 0004)
     tace[5].a_access_mask |= rperm;
   if (mode & 0002)
@@ -238,7 +217,6 @@ static int sun_acl_is_trivial(void *aclp, int aclcnt, mode_t mode, int is_nfs4,
   if (mode & 0001)
     tace[5].a_access_mask |= eperm;
 
-  /* Permissions for group@ */
   if (mode & 0040)
     tace[4].a_access_mask |= rperm;
   else if (mode & 0004)
@@ -252,7 +230,6 @@ static int sun_acl_is_trivial(void *aclp, int aclcnt, mode_t mode, int is_nfs4,
   else if (mode & 0001)
     tace[2].a_access_mask |= eperm;
 
-  /* Permissions for owner@ */
   if (mode & 0400) {
     tace[3].a_access_mask |= rperm;
     if (!(mode & 0040) && (mode & 0004))
@@ -272,7 +249,6 @@ static int sun_acl_is_trivial(void *aclp, int aclcnt, mode_t mode, int is_nfs4,
   } else if ((mode & 0010) || (mode & 0001))
     tace[1].a_access_mask |= eperm;
 
-  /* Check if the acl count matches */
   p = 3;
   for (i = 0; i < 3; i++) {
     if (tace[i].a_access_mask != 0)
@@ -285,10 +261,7 @@ static int sun_acl_is_trivial(void *aclp, int aclcnt, mode_t mode, int is_nfs4,
   for (i = 0; i < 6; i++) {
     if (tace[i].a_access_mask != 0) {
       ace = &((ace_t *)aclp)[p];
-      /*
-       * Illumos added ACE_DELETE_CHILD to write perms for
-       * directories. We have to check against that, too.
-       */
+
       if (ace->a_flags != tace[i].a_flags || ace->a_type != tace[i].a_type ||
           (ace->a_access_mask != tace[i].a_access_mask &&
            (!is_dir || (tace[i].a_access_mask & wperm) == 0 ||
@@ -299,16 +272,13 @@ static int sun_acl_is_trivial(void *aclp, int aclcnt, mode_t mode, int is_nfs4,
   }
 
   *trivialp = 1;
-#else  /* !ARCHIVE_ACL_SUNOS_NFS4 */
-  (void)is_dir; /* UNUSED */
-  (void)aclp;   /* UNUSED */
-#endif /* !ARCHIVE_ACL_SUNOS_NFS4 */
+#else
+  (void)is_dir;
+  (void)aclp;
+#endif
   return (0);
 }
 
-/*
- * Translate Solaris POSIX.1e and NFSv4 ACLs into libarchive internal ACL
- */
 static int translate_acl(struct archive_read_disk *a,
                          struct archive_entry *entry, void *aclp, int aclcnt,
                          int default_entry_acl_type) {
@@ -348,7 +318,7 @@ static int translate_acl(struct archive_read_disk *a,
         entry_acl_type = ARCHIVE_ENTRY_ACL_TYPE_ALARM;
         break;
       default:
-        /* Unknown entry type, skip */
+
         continue;
       }
 
@@ -376,53 +346,53 @@ static int translate_acl(struct archive_read_disk *a,
           ae_perm |= acl_nfs4_perm_map[i].a_perm;
       }
     } else
-#endif /* ARCHIVE_ACL_SUNOS_NFS4 */
-      if (default_entry_acl_type == ARCHIVE_ENTRY_ACL_TYPE_ACCESS) {
-        aclent = &((aclent_t *)aclp)[e];
-        if ((aclent->a_type & ACL_DEFAULT) != 0)
-          entry_acl_type = ARCHIVE_ENTRY_ACL_TYPE_DEFAULT;
-        else
-          entry_acl_type = ARCHIVE_ENTRY_ACL_TYPE_ACCESS;
-        ae_id = aclent->a_id;
+#endif
+        if (default_entry_acl_type == ARCHIVE_ENTRY_ACL_TYPE_ACCESS) {
+      aclent = &((aclent_t *)aclp)[e];
+      if ((aclent->a_type & ACL_DEFAULT) != 0)
+        entry_acl_type = ARCHIVE_ENTRY_ACL_TYPE_DEFAULT;
+      else
+        entry_acl_type = ARCHIVE_ENTRY_ACL_TYPE_ACCESS;
+      ae_id = aclent->a_id;
 
-        switch (aclent->a_type) {
-        case DEF_USER:
-        case USER:
-          ae_name = archive_read_disk_uname(&a->archive, ae_id);
-          ae_tag = ARCHIVE_ENTRY_ACL_USER;
-          break;
-        case DEF_GROUP:
-        case GROUP:
-          ae_name = archive_read_disk_gname(&a->archive, ae_id);
-          ae_tag = ARCHIVE_ENTRY_ACL_GROUP;
-          break;
-        case DEF_CLASS_OBJ:
-        case CLASS_OBJ:
-          ae_tag = ARCHIVE_ENTRY_ACL_MASK;
-          break;
-        case DEF_USER_OBJ:
-        case USER_OBJ:
-          ae_tag = ARCHIVE_ENTRY_ACL_USER_OBJ;
-          break;
-        case DEF_GROUP_OBJ:
-        case GROUP_OBJ:
-          ae_tag = ARCHIVE_ENTRY_ACL_GROUP_OBJ;
-          break;
-        case DEF_OTHER_OBJ:
-        case OTHER_OBJ:
-          ae_tag = ARCHIVE_ENTRY_ACL_OTHER;
-          break;
-        default:
-          /* Unknown tag type, skip */
-          continue;
-        }
+      switch (aclent->a_type) {
+      case DEF_USER:
+      case USER:
+        ae_name = archive_read_disk_uname(&a->archive, ae_id);
+        ae_tag = ARCHIVE_ENTRY_ACL_USER;
+        break;
+      case DEF_GROUP:
+      case GROUP:
+        ae_name = archive_read_disk_gname(&a->archive, ae_id);
+        ae_tag = ARCHIVE_ENTRY_ACL_GROUP;
+        break;
+      case DEF_CLASS_OBJ:
+      case CLASS_OBJ:
+        ae_tag = ARCHIVE_ENTRY_ACL_MASK;
+        break;
+      case DEF_USER_OBJ:
+      case USER_OBJ:
+        ae_tag = ARCHIVE_ENTRY_ACL_USER_OBJ;
+        break;
+      case DEF_GROUP_OBJ:
+      case GROUP_OBJ:
+        ae_tag = ARCHIVE_ENTRY_ACL_GROUP_OBJ;
+        break;
+      case DEF_OTHER_OBJ:
+      case OTHER_OBJ:
+        ae_tag = ARCHIVE_ENTRY_ACL_OTHER;
+        break;
+      default:
 
-        for (i = 0; i < acl_posix_perm_map_size; ++i) {
-          if ((aclent->a_perm & acl_posix_perm_map[i].p_perm) != 0)
-            ae_perm |= acl_posix_perm_map[i].a_perm;
-        }
-      } else
-        return (ARCHIVE_WARN);
+        continue;
+      }
+
+      for (i = 0; i < acl_posix_perm_map_size; ++i) {
+        if ((aclent->a_perm & acl_posix_perm_map[i].p_perm) != 0)
+          ae_perm |= acl_posix_perm_map[i].a_perm;
+      }
+    } else
+      return (ARCHIVE_WARN);
 
     archive_entry_acl_add_entry(entry, entry_acl_type, ae_perm, ae_tag, ae_id,
                                 ae_name);
@@ -478,7 +448,7 @@ static int set_acl(struct archive *a, int fd, const char *name,
   }
 
   if (S_ISLNK(mode)) {
-    /* Skip ACLs on symbolic links */
+
     ret = ARCHIVE_OK;
     goto exit_free;
   }
@@ -499,13 +469,13 @@ static int set_acl(struct archive *a, int fd, const char *name,
       aclent->a_perm = 0;
     }
 #if ARCHIVE_ACL_SUNOS_NFS4
-    else { /* cmd == ACE_SETACL */
+    else {
       ace = &((ace_t *)aclp)[e];
       ace->a_who = -1;
       ace->a_access_mask = 0;
       ace->a_flags = 0;
     }
-#endif /* ARCHIVE_ACL_SUNOS_NFS4 */
+#endif
 
     switch (ae_tag) {
     case ARCHIVE_ENTRY_ACL_USER:
@@ -657,13 +627,12 @@ static int set_acl(struct archive *a, int fd, const char *name,
     e++;
   }
 
-  /* Try restoring the ACL through 'fd' if we can. */
   if (fd >= 0) {
     if (facl(fd, cmd, entries, aclp) == 0)
       ret = ARCHIVE_OK;
     else {
       if (errno == EOPNOTSUPP) {
-        /* Filesystem doesn't support ACLs */
+
         ret = ARCHIVE_OK;
       } else {
         archive_set_error(a, errno, "Failed to set acl on fd: %s", tname);
@@ -672,7 +641,7 @@ static int set_acl(struct archive *a, int fd, const char *name,
     }
   } else if (acl(name, cmd, entries, aclp) != 0) {
     if (errno == EOPNOTSUPP) {
-      /* Filesystem doesn't support ACLs */
+
       ret = ARCHIVE_OK;
     } else {
       archive_set_error(a, errno, "Failed to set acl: %s", tname);
@@ -707,8 +676,7 @@ int archive_read_disk_entry_setup_acls(struct archive_read_disk *a,
   if (*fd >= 0)
     aclp = sunacl_get(ACE_GETACL, &aclcnt, *fd, NULL);
   else if ((!a->follow_symlinks) && (archive_entry_filetype(entry) == AE_IFLNK))
-    /* We can't get the ACL of a symlink, so we assume it can't
-       have one. */
+
     aclp = NULL;
   else
     aclp = sunacl_get(ACE_GETACL, &aclcnt, 0, accpath);
@@ -732,19 +700,16 @@ int archive_read_disk_entry_setup_acls(struct archive_read_disk *a,
     }
     return (r);
   }
-#endif /* ARCHIVE_ACL_SUNOS_NFS4 */
+#endif
 
-  /* Retrieve POSIX.1e ACLs from file. */
   if (*fd >= 0)
     aclp = sunacl_get(GETACL, &aclcnt, *fd, NULL);
   else if ((!a->follow_symlinks) && (archive_entry_filetype(entry) == AE_IFLNK))
-    /* We can't get the ACL of a symlink, so we assume it can't
-       have one. */
+
     aclp = NULL;
   else
     aclp = sunacl_get(GETACL, &aclcnt, 0, accpath);
 
-  /* Ignore "trivial" ACLs that just mirror the file mode. */
   if (aclp != NULL &&
       sun_acl_is_trivial(aclp, aclcnt, archive_entry_mode(entry), 0,
                          S_ISDIR(archive_entry_mode(entry)), &r) == 0 &&
@@ -772,14 +737,13 @@ int archive_write_disk_set_acls(struct archive *a, int fd, const char *name,
                                 __LA_MODE_T mode) {
   int ret = ARCHIVE_OK;
 
-  (void)mode; /* UNUSED */
+  (void)mode;
 
   if ((archive_acl_types(abstract_acl) & ARCHIVE_ENTRY_ACL_TYPE_POSIX1E) != 0) {
-    /* Solaris writes POSIX.1e access and default ACLs together */
+
     ret = set_acl(a, fd, name, abstract_acl, mode,
                   ARCHIVE_ENTRY_ACL_TYPE_POSIX1E, "posix1e");
 
-    /* Simultaneous POSIX.1e and NFSv4 is not supported */
     return (ret);
   }
 #if ARCHIVE_ACL_SUNOS_NFS4
@@ -791,4 +755,4 @@ int archive_write_disk_set_acls(struct archive *a, int fd, const char *name,
 #endif
   return (ret);
 }
-#endif /* ARCHIVE_ACL_SUNOS */
+#endif

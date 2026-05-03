@@ -1,7 +1,4 @@
-/*-----------------------------------------------------------*/
-/* Block Sorting, Lossless Data Compression Library.         */
-/* Static tables of constant values                          */
-/*-----------------------------------------------------------*/
+﻿
 
 /*--
 
@@ -3510,7 +3507,3 @@ static INLINE int model_run_state(const int contextRank0, const int contextRun,
 }
 
 #endif
-
-/*-----------------------------------------------------------*/
-/* End                                              tables.h */
-/*-----------------------------------------------------------*/

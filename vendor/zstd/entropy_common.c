@@ -1,4 +1,4 @@
-/* ******************************************************************
+﻿/* ******************************************************************
  * Common functions of New Generation Entropy library
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
@@ -12,29 +12,21 @@
  * You may select, at your option, one of the above-listed licenses.
  ****************************************************************** */
 
-/* *************************************
- *  Dependencies
- ***************************************/
-#include "error_private.h" /* ERR_*, ERROR */
+#include "error_private.h"
 #include "mem.h"
-#define FSE_STATIC_LINKING_ONLY /* FSE_MIN_TABLELOG */
-#include "bits.h"               /* ZSDT_highbit32, ZSTD_countTrailingZeros32 */
+#define FSE_STATIC_LINKING_ONLY
+#include "bits.h"
 #include "fse.h"
 #include "huf.h"
 
-/*===   Version   ===*/
 unsigned FSE_versionNumber(void) { return FSE_VERSION_NUMBER; }
 
-/*===   Error Management   ===*/
 unsigned FSE_isError(size_t code) { return ERR_isError(code); }
 const char *FSE_getErrorName(size_t code) { return ERR_getErrorName(code); }
 
 unsigned HUF_isError(size_t code) { return ERR_isError(code); }
 const char *HUF_getErrorName(size_t code) { return ERR_getErrorName(code); }
 
-/*-**************************************************************
- *  FSE NCount encoding-decoding
- ****************************************************************/
 FORCE_INLINE_TEMPLATE
 size_t FSE_readNCount_body(short *normalizedCounter, unsigned *maxSVPtr,
                            unsigned *tableLogPtr, const void *headerBuffer,
@@ -52,7 +44,7 @@ size_t FSE_readNCount_body(short *normalizedCounter, unsigned *maxSVPtr,
   int previous0 = 0;
 
   if (hbSize < 8) {
-    /* This function only works when hbSize >= 8 */
+
     char buffer[8] = {0};
     ZSTD_memcpy(buffer, headerBuffer, hbSize);
     {
@@ -67,14 +59,11 @@ size_t FSE_readNCount_body(short *normalizedCounter, unsigned *maxSVPtr,
   }
   assert(hbSize >= 8);
 
-  /* init */
-  ZSTD_memset(
-      normalizedCounter, 0,
-      (*maxSVPtr + 1) *
-          sizeof(normalizedCounter[0])); /* all symbols not present in NCount
-                                            have a frequency of 0 */
+  ZSTD_memset(normalizedCounter, 0,
+              (*maxSVPtr + 1) * sizeof(normalizedCounter[0]));
+
   bitStream = MEM_readLE32(ip);
-  nbBits = (bitStream & 0xF) + FSE_MIN_TABLELOG; /* extract tableLog */
+  nbBits = (bitStream & 0xF) + FSE_MIN_TABLELOG;
   if (nbBits > FSE_TABLELOG_ABSOLUTE_MAX)
     return ERROR(tableLog_tooLarge);
   bitStream >>= 4;
@@ -86,11 +75,7 @@ size_t FSE_readNCount_body(short *normalizedCounter, unsigned *maxSVPtr,
 
   for (;;) {
     if (previous0) {
-      /* Count the number of repeats. Each time the
-       * 2-bit repeat code is 0b11 there is another
-       * repeat.
-       * Avoid UB by setting the high bit to 1.
-       */
+
       int repeats = ZSTD_countTrailingZeros32(~bitStream | 0x80000000) >> 1;
       while (repeats >= 12) {
         charnum += 3 * 12;
@@ -108,24 +93,15 @@ size_t FSE_readNCount_body(short *normalizedCounter, unsigned *maxSVPtr,
       bitStream >>= 2 * repeats;
       bitCount += 2 * repeats;
 
-      /* Add the final repeat which isn't 0b11. */
       assert((bitStream & 3) < 3);
       charnum += bitStream & 3;
       bitCount += 2;
 
-      /* This is an error, but break and return an error
-       * at the end, because returning out of a loop makes
-       * it harder for the compiler to optimize.
-       */
       if (charnum >= maxSV1)
         break;
 
-      /* We don't need to set the normalized count to 0
-       * because we already memset the whole buffer to 0.
-       */
-
       if (LIKELY(ip <= iend - 7) || (ip + (bitCount >> 3) <= iend - 4)) {
-        assert((bitCount >> 3) <= 3); /* For first condition to work */
+        assert((bitCount >> 3) <= 3);
         ip += bitCount >> 3;
         bitCount &= 7;
       } else {
@@ -149,10 +125,8 @@ size_t FSE_readNCount_body(short *normalizedCounter, unsigned *maxSVPtr,
         bitCount += nbBits;
       }
 
-      count--; /* extra accuracy */
-      /* When it matters (small blocks), this is a
-       * predictable branch, because we don't use -1.
-       */
+      count--;
+
       if (count >= 0) {
         remaining -= count;
       } else {
@@ -164,10 +138,7 @@ size_t FSE_readNCount_body(short *normalizedCounter, unsigned *maxSVPtr,
 
       assert(threshold > 1);
       if (remaining < threshold) {
-        /* This branch can be folded into the
-         * threshold update condition because we
-         * know that threshold > 1.
-         */
+
         if (remaining <= 1)
           break;
         nbBits = ZSTD_highbit32(remaining) + 1;
@@ -189,7 +160,7 @@ size_t FSE_readNCount_body(short *normalizedCounter, unsigned *maxSVPtr,
   }
   if (remaining != 1)
     return ERROR(corruption_detected);
-  /* Only possible when there are too many zeros. */
+
   if (charnum > maxSV1)
     return ERROR(maxSymbolValue_tooSmall);
   if (bitCount > 32)
@@ -200,7 +171,6 @@ size_t FSE_readNCount_body(short *normalizedCounter, unsigned *maxSVPtr,
   return ip - istart;
 }
 
-/* Avoids the FORCE_INLINE of the _body() function. */
 static size_t FSE_readNCount_body_default(short *normalizedCounter,
                                           unsigned *maxSVPtr,
                                           unsigned *tableLogPtr,
@@ -238,23 +208,15 @@ size_t FSE_readNCount(short *normalizedCounter, unsigned *maxSVPtr,
                       unsigned *tableLogPtr, const void *headerBuffer,
                       size_t hbSize) {
   return FSE_readNCount_bmi2(normalizedCounter, maxSVPtr, tableLogPtr,
-                             headerBuffer, hbSize, /* bmi2 */ 0);
+                             headerBuffer, hbSize, 0);
 }
 
-/*! HUF_readStats() :
-    Read compact Huffman tree, saved by HUF_writeCTable().
-    `huffWeight` is destination buffer.
-    `rankStats` is assumed to be a table of at least HUF_TABLELOG_MAX U32.
-    @return : size read from `src` , or an error Code .
-    Note : Needed by HUF_readCTable() and HUF_readDTableX?() .
-*/
 size_t HUF_readStats(BYTE *huffWeight, size_t hwSize, U32 *rankStats,
                      U32 *nbSymbolsPtr, U32 *tableLogPtr, const void *src,
                      size_t srcSize) {
   U32 wksp[HUF_READ_STATS_WORKSPACE_SIZE_U32];
   return HUF_readStats_wksp(huffWeight, hwSize, rankStats, nbSymbolsPtr,
-                            tableLogPtr, src, srcSize, wksp, sizeof(wksp),
-                            /* flags */ 0);
+                            tableLogPtr, src, srcSize, wksp, sizeof(wksp), 0);
 }
 
 FORCE_INLINE_TEMPLATE size_t
@@ -269,10 +231,8 @@ HUF_readStats_body(BYTE *huffWeight, size_t hwSize, U32 *rankStats,
   if (!srcSize)
     return ERROR(srcSize_wrong);
   iSize = ip[0];
-  /* ZSTD_memset(huffWeight, 0, hwSize);   */ /* is not necessary, even though
-                                                 some analyzer complain ... */
 
-  if (iSize >= 128) { /* special header */
+  if (iSize >= 128) {
     oSize = iSize - 127;
     iSize = ((oSize + 1) / 2);
     if (iSize + 1 > srcSize)
@@ -287,17 +247,16 @@ HUF_readStats_body(BYTE *huffWeight, size_t hwSize, U32 *rankStats,
         huffWeight[n + 1] = ip[n / 2] & 15;
       }
     }
-  } else { /* header compressed with FSE (normal case) */
+  } else {
     if (iSize + 1 > srcSize)
       return ERROR(srcSize_wrong);
-    /* max (hwSize-1) values decoded, as last one is implied */
+
     oSize = FSE_decompress_wksp_bmi2(huffWeight, hwSize - 1, ip + 1, iSize, 6,
                                      workSpace, wkspSize, bmi2);
     if (FSE_isError(oSize))
       return oSize;
   }
 
-  /* collect weight stats */
   ZSTD_memset(rankStats, 0, (HUF_TABLELOG_MAX + 1) * sizeof(U32));
   weightTotal = 0;
   {
@@ -312,37 +271,31 @@ HUF_readStats_body(BYTE *huffWeight, size_t hwSize, U32 *rankStats,
   if (weightTotal == 0)
     return ERROR(corruption_detected);
 
-  /* get last non-null symbol weight (implied, total must be 2^n) */
   {
     U32 const tableLog = ZSTD_highbit32(weightTotal) + 1;
     if (tableLog > HUF_TABLELOG_MAX)
       return ERROR(corruption_detected);
     *tableLogPtr = tableLog;
-    /* determine last weight */
+
     {
       U32 const total = 1 << tableLog;
       U32 const rest = total - weightTotal;
       U32 const verif = 1 << ZSTD_highbit32(rest);
       U32 const lastWeight = ZSTD_highbit32(rest) + 1;
       if (verif != rest)
-        return ERROR(
-            corruption_detected); /* last value must be a clean power of 2 */
+        return ERROR(corruption_detected);
       huffWeight[oSize] = (BYTE)lastWeight;
       rankStats[lastWeight]++;
     }
   }
 
-  /* check tree construction validity */
   if ((rankStats[1] < 2) || (rankStats[1] & 1))
-    return ERROR(corruption_detected); /* by construction : at least 2 elts of
-                                          rank 1, must be even */
+    return ERROR(corruption_detected);
 
-  /* results */
   *nbSymbolsPtr = (U32)(oSize + 1);
   return iSize + 1;
 }
 
-/* Avoids the FORCE_INLINE of the _body() function. */
 static size_t HUF_readStats_body_default(BYTE *huffWeight, size_t hwSize,
                                          U32 *rankStats, U32 *nbSymbolsPtr,
                                          U32 *tableLogPtr, const void *src,

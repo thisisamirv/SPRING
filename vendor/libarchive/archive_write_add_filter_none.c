@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2010 Tim Kientzle
  * All rights reserved.
  *
@@ -36,11 +36,11 @@
 #endif
 
 int archive_write_set_compression_none(struct archive *a) {
-  (void)a; /* UNUSED */
+  (void)a;
   return (ARCHIVE_OK);
 }
 
 int archive_write_add_filter_none(struct archive *a) {
-  (void)a; /* UNUSED */
+  (void)a;
   return (ARCHIVE_OK);
 }

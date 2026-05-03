@@ -1,7 +1,4 @@
-/*-----------------------------------------------------------*/
-/* Block Sorting, Lossless Data Compression Library.         */
-/* Compression/decompression functions                       */
-/*-----------------------------------------------------------*/
+﻿
 
 /*--
 
@@ -741,7 +738,3 @@ int bsc_decompress(const unsigned char *input, int inputSize,
                     : LIBBSC_DATA_CORRUPT)
              : LIBBSC_DATA_CORRUPT;
 }
-
-/*-------------------------------------------------*/
-/* End                                  libbsc.cpp */
-/*-------------------------------------------------*/

@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2010 Tim Kientzle
  * All rights reserved.
  *
@@ -27,24 +27,15 @@
 #define ARCHIVE_ACL_PRIVATE_H_INCLUDED
 
 #ifndef __LIBARCHIVE_BUILD
-/* For editor/LSP parsing, prefer system types when available. Only provide
- * a guarded fallback typedef if a system header did not supply them. */
+
 #if defined(__has_include) && __has_include(<sys/types.h>)
 #include <sys/types.h>
 #endif
 
-/* Fallback: only define these typedefs if no common guard macro is present.
- * We avoid testing 'mode_t' or 'ssize_t' directly (they are typedefs, not
- * macros), and instead set and test our own guard macros when providing
- * replacements. This prevents accidental redefinition when system headers
- * already define these types. */
 #if !defined(_ARCHIVE_MODE_T_DEFINED) && !defined(_MODE_T) &&                  \
     !defined(_MODE_T_DEFINED) && !defined(__mode_t_defined) &&                 \
     !defined(__MINGW32__) && !defined(__MINGW64__)
-/* On MinGW/MSYS the C runtime already defines `mode_t` (typedef _mode_t),
- * but it typically doesn't set one of the common guard macros we check.
- * Avoid providing our fallback typedef when compiling under MinGW to
- * prevent a conflicting redefinition. */
+
 typedef int mode_t;
 #define _ARCHIVE_MODE_T_DEFINED
 #endif
@@ -61,18 +52,18 @@ typedef long ssize_t;
 
 struct archive_acl_entry {
   struct archive_acl_entry *next;
-  int type;                    /* E.g., access or default */
-  int tag;                     /* E.g., user/group/other/mask */
-  int permset;                 /* r/w/x bits */
-  int id;                      /* uid/gid for user/group */
-  struct archive_mstring name; /* uname/gname */
+  int type;
+  int tag;
+  int permset;
+  int id;
+  struct archive_mstring name;
 };
 
 struct archive_acl {
   mode_t mode;
   struct archive_acl_entry *acl_head;
   struct archive_acl_entry *acl_p;
-  int acl_state; /* See acl_next for details. */
+  int acl_state;
   wchar_t *acl_text_w;
   char *acl_text;
   int acl_types;
@@ -98,15 +89,10 @@ wchar_t *archive_acl_to_text_w(struct archive_acl *, ssize_t *, int,
 char *archive_acl_to_text_l(struct archive_acl *, ssize_t *, int,
                             struct archive_string_conv *);
 
-/*
- * ACL text parser.
- */
-int archive_acl_from_text_w(struct archive_acl *, const wchar_t * /* wtext */,
-                            int /* type */);
-int archive_acl_from_text_l(struct archive_acl *, const char * /* text */,
-                            int /* type */, struct archive_string_conv *);
-int archive_acl_from_text_nl(struct archive_acl *, const char * /* text */,
-                             size_t /* size of text */, int /* type */,
+int archive_acl_from_text_w(struct archive_acl *, const wchar_t *, int);
+int archive_acl_from_text_l(struct archive_acl *, const char *, int,
+                            struct archive_string_conv *);
+int archive_acl_from_text_nl(struct archive_acl *, const char *, size_t, int,
                              struct archive_string_conv *);
 
-#endif /* !ARCHIVE_ACL_PRIVATE_H_INCLUDED */
+#endif

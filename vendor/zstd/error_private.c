@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  * All rights reserved.
  *
@@ -7,9 +7,6 @@
  * in the COPYING file in the root directory of this source tree).
  * You may select, at your option, one of the above-listed licenses.
  */
-
-/* The purpose of this file is to have a single list of error strings embedded
- * in binary */
 
 #include "error_private.h"
 
@@ -80,8 +77,7 @@ const char *ERR_getErrorString(ERR_enum code) {
   case PREFIX(noForwardProgress_inputEmpty):
     return "Operation made no progress over multiple calls, due to input being "
            "empty";
-    /* following error codes are not stable and may be removed or changed in a
-     * future version */
+
   case PREFIX(frameIndex_tooLarge):
     return "Frame index is too large";
   case PREFIX(seekableIO):

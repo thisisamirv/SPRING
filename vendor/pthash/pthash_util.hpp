@@ -1,4 +1,4 @@
-#ifndef PTHASH_UTILS_UTIL_HPP
+﻿#ifndef PTHASH_UTILS_UTIL_HPP
 #define PTHASH_UTILS_UTIL_HPP
 
 #include <cassert>
@@ -35,18 +35,14 @@ static const uint64_t invalid_num_buckets = uint64_t(-1);
 static const uint64_t invalid_table_size = uint64_t(-1);
 static const double default_alpha = 0.94;
 
-/* for partitioned_phf */
 static const uint64_t min_partition_size = 100000;
 
-/* for dense_partitioned_phf */
 static const uint64_t log2_table_size_per_partition = 12;
 static const uint64_t table_size_per_partition =
     1ULL << log2_table_size_per_partition;
 
-/* For skew_bucketer: a*n keys are placed in b*m buckets */
 constexpr float a = 0.6;
 constexpr float b = 0.3;
-/***********************************************************/
 
 } // namespace constants
 
@@ -73,4 +69,4 @@ template <typename DurationType> double to_microseconds(DurationType const &d) {
 
 } // namespace pthash
 
-#endif // PTHASH_UTILS_UTIL_HPP
+#endif

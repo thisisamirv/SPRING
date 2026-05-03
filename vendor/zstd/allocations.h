@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  * All rights reserved.
  *
@@ -8,21 +8,16 @@
  * You may select, at your option, one of the above-listed licenses.
  */
 
-/* This file provides custom allocation primitives
- */
-
 #define ZSTD_DEPS_NEED_MALLOC
-#include "zstd_deps.h" /* ZSTD_malloc, ZSTD_calloc, ZSTD_free, ZSTD_memset */
+#include "zstd_deps.h"
 #include <string.h>
 
-#include "compiler.h" /* MEM_STATIC */
+#include "compiler.h"
 #define ZSTD_STATIC_LINKING_ONLY
-#include "zstd.h" /* ZSTD_customMem */
+#include "zstd.h"
 
 #ifndef ZSTD_ALLOCATIONS_H
 #define ZSTD_ALLOCATIONS_H
-
-/* custom memory allocation functions */
 
 MEM_STATIC void *ZSTD_customMalloc(size_t size, ZSTD_customMem customMem) {
   if (customMem.customAlloc)
@@ -32,7 +27,7 @@ MEM_STATIC void *ZSTD_customMalloc(size_t size, ZSTD_customMem customMem) {
 
 MEM_STATIC void *ZSTD_customCalloc(size_t size, ZSTD_customMem customMem) {
   if (customMem.customAlloc) {
-    /* calloc implemented as malloc+memset */
+
     void *const ptr = customMem.customAlloc(customMem.opaque, size);
 
     if (ptr == NULL) {
@@ -54,4 +49,4 @@ MEM_STATIC void ZSTD_customFree(void *ptr, ZSTD_customMem customMem) {
   }
 }
 
-#endif /* ZSTD_ALLOCATIONS_H */
+#endif

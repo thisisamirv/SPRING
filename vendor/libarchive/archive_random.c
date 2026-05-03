@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2014 Michihiro NAKAJIMA
  * All rights reserved.
  *
@@ -56,7 +56,7 @@
 
 static void la_arc4random_buf(void *, size_t);
 
-#endif /* HAVE_ARC4RANDOM_BUF */
+#endif
 
 #include "archive.h"
 
@@ -67,10 +67,9 @@ static void la_arc4random_buf(void *, size_t);
 
 #if defined(_WIN32) && !defined(__CYGWIN__)
 #if defined(HAVE_BCRYPT_H) && _WIN32_WINNT >= _WIN32_WINNT_VISTA
-/* don't use bcrypt when XP needs to be supported */
+
 #include <bcrypt.h>
 
-/* Common in other bcrypt implementations, but missing from VS2008. */
 #ifndef BCRYPT_SUCCESS
 #define BCRYPT_SUCCESS(r) ((NTSTATUS)(r) == STATUS_SUCCESS)
 #endif
@@ -83,11 +82,6 @@ static void la_arc4random_buf(void *, size_t);
 #ifndef O_CLOEXEC
 #define O_CLOEXEC 0
 #endif
-
-/*
- * Random number generator function.
- * This simply calls arc4random_buf function if the platform provides it.
- */
 
 int archive_random(void *buf, size_t nbytes) {
 #if defined(_WIN32) && !defined(__CYGWIN__)
@@ -120,7 +114,7 @@ int archive_random(void *buf, size_t nbytes) {
     if (success)
       return ARCHIVE_OK;
   }
-  /* TODO: Does this case really happen? */
+
   return ARCHIVE_FAILED;
 #endif
 #elif !defined(HAVE_ARC4RANDOM_BUF) && (!defined(_WIN32) || defined(__CYGWIN__))
@@ -134,41 +128,11 @@ int archive_random(void *buf, size_t nbytes) {
 
 #if !defined(HAVE_ARC4RANDOM_BUF) && (!defined(_WIN32) || defined(__CYGWIN__))
 
-/*	$OpenBSD: arc4random.c,v 1.24 2013/06/11 16:59:50 deraadt Exp $	*/
-/*
- * Copyright (c) 1996, David Mazieres <dm@uun.org>
- * Copyright (c) 2008, Damien Miller <djm@openbsd.org>
- *
- * Permission to use, copy, modify, and distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
- * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
- * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
- * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
- */
-
-/*
- * Arc4 random number generator for OpenBSD.
- *
- * This code is derived from section 17.1 of Applied Cryptography,
- * second edition, which describes a stream cipher allegedly
- * compatible with RSA Labs "RC4" cipher (the actual description of
- * which is a trade secret).  The same algorithm is used as a stream
- * cipher called "arcfour" in Tatu Ylonen's ssh package.
- *
- * RC4 is a registered trademark of RSA Laboratories.
- */
-
 #ifdef __GNUC__
 #define inline __inline
-#else /* !__GNUC__ */
+#else
 #define inline
-#endif /* !__GNUC__ */
+#endif
 
 struct arc4_stream {
   uint8_t i;
@@ -241,17 +205,9 @@ static void arc4_stir(void) {
   if (!done) {
     (void)gettimeofday(&rdat.tv, NULL);
     rdat.pid = getpid();
-    /* We'll just take whatever was on the stack too... */
   }
 
   arc4_addrandom((uint8_t *)&rdat, KEYSIZE);
-
-  /*
-   * Discard early keystream, as per recommendations in:
-   * "(Not So) Random Shuffles of RC4" by Ilya Mironov.
-   * As per the Network Operations Division, cryptographic requirements
-   * published on wikileaks on March 2017.
-   */
 
   for (i = 0; i < 3072; i++)
     (void)arc4_getbyte();
@@ -291,4 +247,4 @@ static void la_arc4random_buf(void *_buf, size_t n) {
   _ARC4_UNLOCK();
 }
 
-#endif /* !HAVE_ARC4RANDOM_BUF */
+#endif

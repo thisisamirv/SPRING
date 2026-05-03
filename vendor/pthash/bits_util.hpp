@@ -1,4 +1,4 @@
-#ifndef PTHASH_EXTERNAL_BITS_UTIL_HPP
+﻿#ifndef PTHASH_EXTERNAL_BITS_UTIL_HPP
 #define PTHASH_EXTERNAL_BITS_UTIL_HPP
 
 #include <bit>
@@ -11,19 +11,13 @@
 
 namespace bits::util {
 
-/*
-    Good reference for built-in functions:
-    http://gcc.gnu.org/onlinedocs/gcc/Other-Builtins.html
-*/
-
-/* return the position of the most significant bit (msb) */
 static inline uint64_t msb(uint32_t x) {
-  assert(x > 0);                // if x is 0, the result is undefined
-  return 31 - __builtin_clz(x); // count leading zeros (clz)
+  assert(x > 0);
+  return 31 - __builtin_clz(x);
 }
 static inline uint64_t msbll(uint64_t x) {
-  assert(x > 0);                  // if x is 0, the result is undefined
-  return 63 - __builtin_clzll(x); // count leading zeros (clz)
+  assert(x > 0);
+  return 63 - __builtin_clzll(x);
 }
 static inline bool msbll(uint64_t x, uint64_t &ret) {
   if (x) {
@@ -40,14 +34,13 @@ static inline uint64_t ceil_log2_uint64(uint64_t x) {
   return (x > 1) ? msbll(x - 1) + 1 : 0;
 }
 
-/* return the position of the least significant bit (lsb) */
 static inline uint64_t lsb(uint32_t x) {
-  assert(x > 0);           // if x is 0, the result is undefined
-  return __builtin_ctz(x); // count trailing zeros (ctz)
+  assert(x > 0);
+  return __builtin_ctz(x);
 }
 static inline uint64_t lsbll(uint64_t x) {
-  assert(x > 0);             // if x is 0, the result is undefined
-  return __builtin_ctzll(x); // count trailing zeros (ctz)
+  assert(x > 0);
+  return __builtin_ctzll(x);
 }
 static inline bool lsbll(uint64_t x, uint64_t &ret) {
   if (x) {
@@ -67,18 +60,13 @@ static inline uint64_t popcount(uint64_t x) {
 #endif
 }
 
-/*
-    Return the position of the i-th 1 in the word,
-    assuming i < popcount(word).
-*/
 static inline uint64_t select_in_word(uint64_t word, uint64_t i) {
   assert(i < popcount(word));
 #ifndef __BMI2__
-  // Modified from: Bit Twiddling Hacks
-  // https://graphics.stanford.edu/~seander/bithacks.html#SelectPosFromMSBRank
-  unsigned int s;      // Output: Resulting position of bit with rank r [1-64]
-  uint64_t a, b, c, d; // Intermediate temporaries for bit count.
-  unsigned int t;      // Bit count temporary.
+
+  unsigned int s;
+  uint64_t a, b, c, d;
+  unsigned int t;
   uint64_t k = popcount(word) - i;
   a = word - ((word >> 1) & ~0UL / 3);
   b = (a & ~0UL / 5) + ((a >> 2) & ~0UL / 5);
@@ -113,4 +101,4 @@ static inline uint64_t select_in_word(uint64_t word, uint64_t i) {
 
 } // namespace bits::util
 
-#endif // PTHASH_EXTERNAL_BITS_UTIL_HPP
+#endif

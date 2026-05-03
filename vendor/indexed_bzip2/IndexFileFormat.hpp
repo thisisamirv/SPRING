@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <algorithm>
 #include <array>
@@ -19,12 +19,12 @@
 #include <utility>
 #include <vector>
 
+#include <Bgzf.hpp>
+#include <FileReader.hpp>
 #include <FileUtils.hpp>
 #include <ThreadPool.hpp>
 #include <VectorView.hpp>
-#include <common.hpp> // _Ki literals
-#include <FileReader.hpp>
-#include <Bgzf.hpp>
+#include <common.hpp>
 #ifdef LIBRAPIDARCHIVE_WITH_ISAL
 #include <isal.hpp>
 #endif
@@ -33,38 +33,6 @@
 #include "WindowMap.hpp"
 
 namespace rapidgzip {
-/**
- * File Format:
- * @see zran_export_index and zran_import_index functions in indexed_gzip
- * https://github.com/pauldmccarthy/indexed_gzip
- *
- * @verbatim
- * 00  GZIDX      # Index File ID
- * 05  \x01       # File Version
- * 06  \x00       # Flags (Unused)
- * 07  <8B>       # Compressed Size (uint64_t)
- * 15  <8B>       # Uncompressed Size (uint64_t)
- * 23  <4B>       # Spacing (uint32_t)
- * 27  <4B>       # Window Size (uint32_t), Expected to be 32768, indexed_gzip
- * checks that it is >= 32768. 31  <4B>       # Number of Checkpoints (uint32_t)
- * 35
- * <Checkpoint Data> (Repeated Number of Checkpoints Times)
- * > 00  <8B>       # Compressed Offset in Rounded Down Bytes (uint64_t)
- * > 08  <8B>       # Uncompressed Offset (uint64_t)
- * > 16  <1B>       # Bits (uint8_t), Possible Values: 0-7
- * >                # "this is the number of bits in the compressed data, before
- * the [byte offset]" > 17  <1B>       # Data Flag (uint8_t), 1 if this
- * checkpoint has window data, else 0. > 18             # For format version 0,
- * this flag did not exist and all but the first checkpoint had windows! <Window
- * Data> (Might be fewer than checkpoints because no data is written for e.g.
- * stream boundaries) > 00  <Window Size Bytes>  # Window Data, i.e.,
- * uncompressed buffer before the checkpoint's offset.
- * @endverbatim
- *
- * @note The checkpoint and window data have fixed length, so theoretically, the
- * data could be read on-demand from the file by seeking to the required
- * position.
- */
 
 struct Checkpoint {
   uint64_t compressedOffsetInBits{0};
@@ -118,24 +86,16 @@ public:
   }
 
 private:
-  /* Forbid copies because it is unexpected that the windows are shared between
-   * copies! */
   GzipIndex(const GzipIndex &) = default;
   GzipIndex &operator=(const GzipIndex &) = default;
 
 public:
   uint64_t compressedSizeInBytes{std::numeric_limits<uint64_t>::max()};
   uint64_t uncompressedSizeInBytes{std::numeric_limits<uint64_t>::max()};
-  /**
-   * This is a kind of guidance for spacing between checkpoints in the
-   * uncompressed data! If the compression ratio is very high, it could mean
-   * that the checkpoint sizes can be larger than the compressed file even for
-   * very large spacings.
-   */
+
   uint32_t checkpointSpacing{0};
   uint32_t windowSizeInBytes{0};
-  /** Must be sorted by Checkpoint::compressedOffsetInBits and
-   * Checkpoint::uncompressedOffsetInBytes. */
+
   std::vector<Checkpoint> checkpoints;
 
   std::shared_ptr<WindowMap> windows;
@@ -145,7 +105,7 @@ public:
 
   [[nodiscard]] constexpr bool
   operator==(const GzipIndex &other) const noexcept {
-    // *INDENT-OFF*
+
     return (compressedSizeInBytes == other.compressedSizeInBytes) &&
            (uncompressedSizeInBytes == other.uncompressedSizeInBytes) &&
            (checkpointSpacing == other.checkpointSpacing) &&
@@ -155,7 +115,6 @@ public:
            (newlineFormat == other.newlineFormat) &&
            ((windows == other.windows) ||
             (windows && other.windows && (*windows == *other.windows)));
-    // *INDENT-ON*
   }
 };
 
@@ -189,9 +148,7 @@ inline void checkedRead(FileReader *const indexFile, void *buffer,
 }
 
 template <typename T> [[nodiscard]] T readValue(FileReader *const file) {
-  /* Note that indexed_gzip itself does no endianness check or conversion during
-   * writing, so this system-specific reading is as portable as it gets assuming
-   * that the indexes are read on the same system they are written. */
+
   T value;
   checkedRead(file, &value, sizeof(value));
   return value;
@@ -262,27 +219,12 @@ readGzipIndex(UniqueFileReader indexFile, UniqueFileReader archiveFile = {},
                                 "over the magic bytes if given.");
   }
 
-  /* We need a seekable archive to add the very first and very last offset
-   * pairs. If the archive is not seekable, loading the index makes not much
-   * sense anyways. If it is still needed, then use a better index file format
-   * instead of BGZI. */
   if (!archiveFile || !archiveFile->size().has_value()) {
     throw std::invalid_argument(
         "Cannot import bgzip index without knowing the archive size!");
   }
   const auto archiveSize = archiveFile->size();
 
-  /**
-   * Try to interpret it as BGZF index, which is simply a list of 64-bit values
-   * stored in little endian: uint64_t number_entries [Repated number_entries
-   * times]: uint64_t compressed_offset uint64_t uncompressed_offset Such an
-   * index can be created with: bgzip -c file > file.bgz; bgzip --reindex
-   * file.bgz
-   * @see http://www.htslib.org/doc/bgzip.html#GZI_FORMAT
-   * @note by reusing the already read 5 bytes we can avoid any seek, making it
-   * possible to work with a non-seekable input although I doubt it will be
-   * used.
-   */
   uint64_t numberOfEntries{0};
   std::memcpy(&numberOfEntries, alreadyReadBytes.data(),
               alreadyReadBytes.size());
@@ -293,11 +235,9 @@ readGzipIndex(UniqueFileReader indexFile, UniqueFileReader archiveFile = {},
 
   GzipIndex index;
 
-  /* I don't understand why bgzip writes out 0xFFFF'FFFF'FFFF'FFFFULL in case of
-   * an empty file instead of simply 0, but it does. */
   if (numberOfEntries == std::numeric_limits<uint64_t>::max()) {
-    numberOfEntries = 0; // Set it to a sane value which also will make the file
-                         // size check work.
+    numberOfEntries = 0;
+
     index.compressedSizeInBytes = 0;
     index.uncompressedSizeInBytes = 0;
   }
@@ -338,7 +278,7 @@ readGzipIndex(UniqueFileReader indexFile, UniqueFileReader archiveFile = {},
     auto &checkpoint = index.checkpoints.emplace_back();
     checkpoint.compressedOffsetInBits = readValue<uint64_t>(indexFile.get());
     checkpoint.uncompressedOffsetInBytes = readValue<uint64_t>(indexFile.get());
-    checkpoint.compressedOffsetInBits += 18U; // Jump over gzip header
+    checkpoint.compressedOffsetInBits += 18U;
     checkpoint.compressedOffsetInBits *= 8U;
 
     const auto &lastCheckPoint = *(index.checkpoints.rbegin() + 1);
@@ -369,7 +309,6 @@ readGzipIndex(UniqueFileReader indexFile, UniqueFileReader archiveFile = {},
       throw std::invalid_argument(std::move(message).str());
     }
 
-    /* Emplace an empty window to show that the block does not need data. */
     index.windows->emplace(checkpoint.compressedOffsetInBits, {},
                            CompressionType::NONE);
   }
@@ -379,7 +318,7 @@ readGzipIndex(UniqueFileReader indexFile, UniqueFileReader archiveFile = {},
     bitReader.seekTo(index.checkpoints.back().compressedOffsetInBits);
     index.uncompressedSizeInBytes =
         index.checkpoints.back().uncompressedOffsetInBytes
-        // NOLINTNEXTLINE(performance-move-const-arg)
+
         + countDecompressedBytes(std::move(bitReader), {});
   } catch (const std::invalid_argument &) {
     throw std::invalid_argument(
@@ -405,9 +344,9 @@ readGzipIndex(UniqueFileReader indexFile,
     throw std::invalid_argument(
         "The file position must match the number of given bytes.");
   }
-  static constexpr size_t HEADER_BUFFER_SIZE =
-      MAGIC_BYTES.size() + /* version */ 1U + /* reserved flags */ 1U +
-      2 * sizeof(uint64_t) + 2 * sizeof(uint32_t);
+  static constexpr size_t HEADER_BUFFER_SIZE = MAGIC_BYTES.size() + 1U + 1U +
+                                               2 * sizeof(uint64_t) +
+                                               2 * sizeof(uint32_t);
   if (alreadyReadBytes.size() > HEADER_BUFFER_SIZE) {
     throw std::invalid_argument("This function only supports skipping up to "
                                 "over the magic bytes if given.");
@@ -435,7 +374,7 @@ readGzipIndex(UniqueFileReader indexFile,
         "Index was written with a newer indexed_gzip version than supported!");
   }
 
-  headerBytesReader->seek(1, SEEK_CUR); // Skip reserved flags 1B
+  headerBytesReader->seek(1, SEEK_CUR);
 
   GzipIndex index;
   index.compressedSizeInBytes = readValue<uint64_t>(headerBytesReader.get());
@@ -453,12 +392,6 @@ readGzipIndex(UniqueFileReader indexFile,
     throw std::invalid_argument(std::move(message).str());
   }
 
-  /* However, a window size larger than 32 KiB makes no sense because the
-   * Lempel-Ziv back-references in the deflate format are limited to 32 KiB!
-   * Smaller values might, however, be enforced by especially memory-constrained
-   * encoders. This basically means that we either check for this to be exactly
-   * 32 KiB or we simply throw away all other data and only load the last 32 KiB
-   * of the window buffer. */
   if (index.windowSizeInBytes != 32_Ki) {
     throw std::invalid_argument(
         "Only a window size of 32 KiB makes sense because indexed_gzip "
@@ -467,16 +400,12 @@ readGzipIndex(UniqueFileReader indexFile,
   }
   const auto checkpointCount = readValue<uint32_t>(indexFile.get());
 
-  std::vector<std::tuple</* encoded offset */ size_t, /* window size */ size_t,
-                         /* compression ratio */ double>>
-      windowInfos;
+  std::vector<std::tuple<size_t, size_t, double>> windowInfos;
 
   index.checkpoints.resize(checkpointCount);
   for (uint32_t i = 0; i < checkpointCount; ++i) {
     auto &checkpoint = index.checkpoints[i];
 
-    /* First load only compressed offset rounded down in bytes, the bits are
-     * loaded down below! */
     checkpoint.compressedOffsetInBits = readValue<uint64_t>(indexFile.get());
     if (checkpoint.compressedOffsetInBits > index.compressedSizeInBytes) {
       throw std::invalid_argument(
@@ -509,7 +438,7 @@ readGzipIndex(UniqueFileReader indexFile,
         windowSize = index.windowSizeInBytes;
       }
     } else {
-      if (/* data flag */ readValue<uint8_t>(indexFile.get()) != 0) {
+      if (readValue<uint8_t>(indexFile.get()) != 0) {
         windowSize = index.windowSizeInBytes;
       }
     }
@@ -533,7 +462,6 @@ readGzipIndex(UniqueFileReader indexFile,
   std::deque<std::future<std::pair<size_t, std::shared_ptr<WindowMap::Window>>>>
       futures;
 
-  /* Waits for at least one future and inserts it into the window map. */
   const auto processFuture = [&]() {
     using namespace std::chrono_literals;
 
@@ -563,19 +491,13 @@ readGzipIndex(UniqueFileReader indexFile,
 
   index.windows = std::make_shared<WindowMap>();
   for (auto &[offset, windowSize, compressionRatio] : windowInfos) {
-    /* Package the non-copyable FasterVector into a copyable smart pointer
-     * because the lambda given into the ThreadPool gets inserted into a
-     * std::function living inside std::packaged_task, and std::function
-     * requires every capture to be copyable. While it may compile with Clang
-     * and GCC, it does not with MSVC. */
+
     auto window = std::make_shared<FasterVector<uint8_t>>();
     if (windowSize > 0) {
       window->resize(windowSize);
       checkedRead(indexFile.get(), window->data(), window->size());
     }
 
-    /* Only bother with overhead-introducing compression for large chunk
-     * compression ratios. */
     if (compressionRatio > 2) {
       futures.emplace_back(threadPool.submit(
           [toCompress = std::move(window), offset2 = offset]() mutable {
@@ -612,7 +534,7 @@ inline void writeGzipIndex(
   const auto hasValidWindow = [&index,
                                windowSizeInBytes](const auto &checkpoint) {
     if (checkpoint.compressedOffsetInBits == index.compressedSizeInBytes * 8U) {
-      /* We do not need a window for the very last offset. */
+
       return true;
     }
     const auto window = index.windows->get(checkpoint.compressedOffsetInBits);
@@ -626,12 +548,9 @@ inline void writeGzipIndex(
   }
 
   checkedWrite(MAGIC_BYTES.data(), MAGIC_BYTES.size());
-  checkedWrite(/* format version */ "\x01", 1);
-  checkedWrite(/* reserved flags */ "\x00",
-               1); // NOLINT(bugprone-string-literal-with-embedded-nul)
+  checkedWrite("\x01", 1);
+  checkedWrite("\x00", 1);
 
-  /* The spacing is only used for decompression, so after reading a >full< index
-   * file, it should be irrelevant! */
   uint32_t checkpointSpacing = index.checkpointSpacing;
 
   if (!checkpoints.empty() && (checkpointSpacing < windowSizeInBytes)) {
@@ -676,7 +595,7 @@ inline void writeGzipIndex(
   for (const auto &checkpoint : checkpoints) {
     const auto result = index.windows->get(checkpoint.compressedOffsetInBits);
     if (!result) {
-      /* E.g., allowed for the checkpoint at the end of the file. */
+
       continue;
     }
 
@@ -705,76 +624,7 @@ inline void writeGzipIndex(
 } // namespace indexed_gzip
 
 namespace gztool {
-/**
- * @verbatim
- * Such an index can be created with gztool:
- *   sudo apt install gztool
- *   gztool -s 1 -z foo.gz
- *
- * Gztool Format Outline:
- *
- * Offset | Size | Value          | Description
- * -------+------+----------------+---------------------------------------------------
- *      0 |    8 | 0              | Magic Bytes for bgzip index compatibility
- * -------+------+----------------+---------------------------------------------------
- *      8 |    7 | "gzipind"      | Magic Bytes
- * -------+------+----------------+---------------------------------------------------
- *     15 |    1 | "x" or "X"     | Format version.
- *        |      |                | Version 0 ("x") does not contain line
- * information. |      |                | Version 1 ("X") does contain line
- * information.
- * -------+------+----------------+---------------------------------------------------
- *     16 |    4 | Line Format    | 0: \n 1: \r (Inconsistently documented in
- * gztool!) |      |                | Only available if format version == "X".
- * -------+------+----------------+---------------------------------------------------
- *     20 |    8 | Number of      | The amount of seek points available in the
- * index. |      | Seek Points    |
- * -------+------+----------------+---------------------------------------------------
- *     28 |    8 | Expected Seek  | This will be UINT64_MAX while the index is
- * still |      | Points         | created, not an actual value. |      | | This
- * could as well have been a flag |      |                | "index complete"
- * instead.
- * -------+------+----------------+---------------------------------------------------
- *     36 |    ? | List of Seek   | "Number of Seek Points" seek points.
- *        |      | Points         |
- * -------+------+----------------+---------------------------------------------------
- *      ? |    8 | Uncompressed   | Only available if index is complete.
- *        |      | Size           |
- * -------+------+----------------+---------------------------------------------------
- *      ? |    8 | Line Count     | Only available if format version == "X".
- *        |      |                |
- *
- * Seek Point Member
- * Offset | Size | Value          | Description
- * -------+------+----------------+---------------------------------------------------
- *      0 |    8 | Ucompressed    | Offset in the uncompressed stream in bytes.
- *        |      | Offset         |
- * -------+------+----------------+---------------------------------------------------
- *      8 |    8 | Compressed     | ceil( compressed bit offset / 8 )
- *        |      | Offset         |
- * -------+------+----------------+---------------------------------------------------
- *     16 |    4 | Compressed     | compressed bit offset
- *        |      | Offset Bits    | - mod( compressed bit offset / 8 )
- *        |      |                | (3 bits or 1 B would have been enough for
- * this.)
- * -------+------+----------------+---------------------------------------------------
- *     24 |    4 | Compressed     |
- *        |      | Window Size    |
- * -------+------+----------------+---------------------------------------------------
- *     28 |    ? | Compressed     |
- *        |      | Window         |
- * -------+------+----------------+---------------------------------------------------
- *      ? |    8 | Line Number    | Number of newlines in all preceding
- * uncompressed |      |                | data + 1. Only available if format
- * version == "X".
- * @endverbatim
- *
- * The line number of the first seek point will always be 1 by definition.
- * @see
- * https://github.com/circulosmeos/gztool/blob/d0088a3314bd7a80c1ea126de7729d0039cb5b3d/gztool.c#L3754
- * That's also why the free-standing total line number at the end of the index
- * file is necessary to have.
- */
+
 static constexpr std::string_view MAGIC_BYTES{"\0\0\0\0\0\0\0\0gzipind",
                                               8U + 7U};
 
@@ -797,10 +647,6 @@ readGzipIndex(UniqueFileReader indexFile,
 
   GzipIndex index;
 
-  /* We need a seekable archive to add the very first and very last offset
-   * pairs. If the archive is not seekable, loading the index makes not much
-   * sense anyways. If it is still needed, then use a better index file format
-   * instead of gztool index. */
   if (!archiveSize) {
     throw std::invalid_argument(
         "Cannot import gztool index without knowing the archive size!");
@@ -862,8 +708,6 @@ readGzipIndex(UniqueFileReader indexFile,
           "Checkpoint uncompressed offset is after the file end!");
     }
 
-    /* First load only compressed offset rounded down in bytes, the bits are
-     * loaded down below! */
     checkpoint.compressedOffsetInBits =
         readBigEndianValue<uint64_t>(indexFile.get());
     if (checkpoint.compressedOffsetInBits > index.compressedSizeInBytes) {
@@ -888,7 +732,7 @@ readGzipIndex(UniqueFileReader indexFile,
     const auto compressedWindowSize =
         readBigEndianValue<uint32_t>(indexFile.get());
     if (compressedWindowSize == 0) {
-      /* Emplace an empty window to show that the chunk does not need data. */
+
       index.windows->emplace(checkpoint.compressedOffsetInBits, {},
                              CompressionType::NONE);
     } else {
@@ -896,9 +740,6 @@ readGzipIndex(UniqueFileReader indexFile,
       checkedRead(indexFile.get(), compressedWindow.data(),
                   compressedWindow.size());
 
-      /** @todo Parallelize or avoid decompression just in order to find out the
-       * decompressed size. Simply defining a new more suitable format seems
-       * easier. */
       gzip::BitReader bitReader(std::make_unique<BufferViewFileReader>(
           compressedWindow.data(), compressedWindow.size()));
 
@@ -947,8 +788,6 @@ readGzipIndex(UniqueFileReader indexFile,
         checkpoint.compressedOffsetInBits = index.compressedSizeInBytes * 8U;
         checkpoint.uncompressedOffsetInBytes = index.uncompressedSizeInBytes;
 
-        /* Emplace an empty window to show that the chunk at the file end does
-         * not need data. */
         index.windows->emplace(checkpoint.compressedOffsetInBits, {},
                                CompressionType::NONE);
       } else if (index.checkpoints.back().uncompressedOffsetInBytes !=
@@ -986,7 +825,7 @@ inline void writeGzipIndex(
   const auto hasValidWindow = [&index,
                                windowSizeInBytes](const auto &checkpoint) {
     if (checkpoint.compressedOffsetInBits == index.compressedSizeInBytes * 8U) {
-      /* We do not need a window for the very last offset. */
+
       return true;
     }
     const auto window = index.windows->get(checkpoint.compressedOffsetInBits);
@@ -1000,14 +839,12 @@ inline void writeGzipIndex(
   }
 
   checkedWrite(MAGIC_BYTES.data(), MAGIC_BYTES.size());
-  checkedWrite(/* format version */ index.hasLineOffsets ? "X" : "x", 1);
+  checkedWrite(index.hasLineOffsets ? "X" : "x", 1);
   if (index.hasLineOffsets) {
     writeValue(static_cast<uint32_t>(
         index.newlineFormat == NewlineFormat::LINE_FEED ? 0 : 1));
   }
 
-  /* Do not write out the last checkpoint at the end of the file because gztool
-   * also does not write those. */
   auto lastCheckPoint = index.checkpoints.rbegin();
   while ((lastCheckPoint != index.checkpoints.rend()) &&
          (lastCheckPoint->uncompressedOffsetInBytes ==
@@ -1017,10 +854,8 @@ inline void writeGzipIndex(
   const auto checkpointCount =
       index.checkpoints.size() -
       std::distance(index.checkpoints.rbegin(), lastCheckPoint);
-  writeValue(
-      /* Number of Seek Points */ static_cast<uint64_t>(checkpointCount));
-  writeValue(/* Number of Expected Seek Points */ static_cast<uint64_t>(
-      checkpointCount));
+  writeValue(static_cast<uint64_t>(checkpointCount));
+  writeValue(static_cast<uint64_t>(checkpointCount));
 
   for (const auto &checkpoint : checkpoints) {
     if (checkpoint.compressedOffsetInBits == index.compressedSizeInBytes * 8U) {
@@ -1048,13 +883,7 @@ inline void writeGzipIndex(
       }
       checkedWrite(compressedData->data(), compressedData->size());
     } else {
-      /* Recompress window to ZLIB. */
-      /**
-       * @todo Reduce overhead from the usual gzip data by stripping of the gzip
-       * container and re-adding a zlib container. This can keep the
-       * byte-aligned deflate stream but will require decompressing it in order
-       * to compute the Adler32 checksum for the zlib footer.
-       */
+
       const auto windowPointer = result->decompress();
       if (!windowPointer) {
         throw std::logic_error("Did not get decompressed data buffer!");
@@ -1066,16 +895,14 @@ inline void writeGzipIndex(
       }
 
       using namespace rapidgzip;
-      const auto recompressed =
-          compressWithZlib(window, CompressionStrategy::DEFAULT,
-                           /* dictionary */ {}, ContainerFormat::ZLIB);
+      const auto recompressed = compressWithZlib(
+          window, CompressionStrategy::DEFAULT, {}, ContainerFormat::ZLIB);
       writeValue(static_cast<uint32_t>(recompressed.size()));
       checkedWrite(recompressed.data(), recompressed.size());
     }
 
     if (index.hasLineOffsets) {
-      writeValue(static_cast<uint64_t>(checkpoint.lineOffset +
-                                       1U /* gztool starts counting from 1 */));
+      writeValue(static_cast<uint64_t>(checkpoint.lineOffset + 1U));
     }
   }
 
@@ -1107,8 +934,6 @@ inline void writeGzipIndex(
                                        formatId, parallelization);
   }
 
-  /* The gztool index has chosen its first 8 bytes to look just like an empty
-   * bgzip index. */
   if (const auto commonSize =
           std::min(formatId.size(), gztool::MAGIC_BYTES.size());
       std::string_view(formatId.data(), commonSize) ==
@@ -1116,8 +941,6 @@ inline void writeGzipIndex(
     return gztool::readGzipIndex(std::move(indexFile), archiveSize, formatId);
   }
 
-  /* Bgzip indexes have no magic bytes and simply start with the number of
-   * chunks. */
   return bgzip::readGzipIndex(std::move(indexFile), std::move(archiveFile),
                               formatId);
 }

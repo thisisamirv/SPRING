@@ -1,4 +1,4 @@
-#ifndef PTHASH_UTILS_HASHER_HPP
+﻿#ifndef PTHASH_UTILS_HASHER_HPP
 #define PTHASH_UTILS_HASHER_HPP
 
 #include <stdexcept>
@@ -18,22 +18,7 @@ struct high_collision_probability_runtime_error : public std::runtime_error {
 
 template <typename Hasher>
 static inline void check_hash_collision_probability(uint64_t size) {
-  /*
-      Adapted from: https://preshing.com/20110504/hash-collision-probabilities.
-      Given a universe of size U (total number of possible hash values),
-      which is U = 2^b for b-bit hash codes,
-      the collision probability for n keys is (approximately):
-          1 - e^{-n(n-1)/(2U)}.
-      For example, for U=2^32 (32-bit hash codes), this probability
-      gets to 50% already for n = 77,163 keys.
-      We can approximate 1-e^{-X} with X when X is sufficiently small.
-      Then our collision probability is
-          n(n-1)/(2U) ~ n^2/(2U).
-      So it can derived that for ~1.97B keys and 64-bit hash codes,
-      the probability of collision is ~0.1 (10%), which may not be
-      so small for some applications.
-      For n = 2^30, the probability of collision is ~0.031 (3.1%).
-  */
+
   if (sizeof(typename Hasher::hash_type) * 8 == 64 and size > (1ULL << 30)) {
     throw high_collision_probability_runtime_error();
   }
@@ -76,17 +61,14 @@ private:
 struct xxhash_64 {
   typedef hash64 hash_type;
 
-  // generic range of bytes
   static hash64 hash(uint8_t const *begin, uint8_t const *end, uint64_t seed) {
     return XXH64(begin, end - begin, seed);
   }
 
-  // specialization for std::string
   static hash64 hash(std::string const &val, uint64_t seed) {
     return XXH64(val.data(), val.size(), seed);
   }
 
-  // specialization for uint64_t
   static hash64 hash(uint64_t const &val, uint64_t seed) {
     return XXH64(&val, sizeof(val), seed);
   }
@@ -95,17 +77,14 @@ struct xxhash_64 {
 struct xxhash_128 {
   typedef hash128 hash_type;
 
-  // generic range of bytes
   static hash128 hash(uint8_t const *begin, uint8_t const *end, uint64_t seed) {
     return XXH128(begin, end - begin, seed);
   }
 
-  // specialization for std::string
   static hash128 hash(std::string const &val, uint64_t seed) {
     return XXH128(val.data(), val.size(), seed);
   }
 
-  // specialization for uint64_t
   static hash128 hash(uint64_t const &val, uint64_t seed) {
     return XXH128(&val, sizeof(val), seed);
   }
@@ -113,4 +92,4 @@ struct xxhash_128 {
 
 } // namespace pthash
 
-#endif // PTHASH_UTILS_HASHER_HPP
+#endif

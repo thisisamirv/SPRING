@@ -1,11 +1,8 @@
-#include "qvz/util.h"
+﻿#include "qvz/util.h"
 
 namespace spring {
 namespace qvz {
 
-/**
- * Finds the ceiling of the log2 of a number iteratively
- */
 int cb_log2(int x) {
   int res = 0;
   int x2 = x;

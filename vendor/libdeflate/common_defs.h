@@ -1,4 +1,4 @@
-/*
+﻿/*
  * common_defs.h
  *
  * Copyright 2016 Eric Biggers
@@ -29,45 +29,37 @@
 #define COMMON_DEFS_H
 
 #include <stdbool.h>
-#include <stddef.h> /* for size_t */
+#include <stddef.h>
 #include <stdint.h>
 #ifdef _MSC_VER
-#include <intrin.h>             /* for _BitScan*() and other intrinsics */
-#include <stdlib.h>             /* for _byteswap_*() */
-                                /* Disable MSVC warnings that are expected. */
-                                /* /W2 */
-#pragma warning(disable : 4146) /* unary minus on unsigned type */
-                                /* /W3 */
-#pragma warning(disable : 4018) /* signed/unsigned mismatch */
-#pragma warning(disable : 4244) /* possible loss of data */
-#pragma warning(disable : 4267) /* possible loss of precision */
-#pragma warning(disable : 4310) /* cast truncates constant value */
-                                /* /W4 */
-#pragma warning(disable : 4100) /* unreferenced formal parameter */
-#pragma warning(disable : 4127) /* conditional expression is constant */
-#pragma warning(disable                                                        \
-                : 4189) /* local variable initialized but not referenced */
-#pragma warning(disable : 4232) /* nonstandard extension used */
-#pragma warning(disable : 4245) /* conversion from 'int' to 'unsigned int' */
-#pragma warning(disable                                                        \
-                : 4295) /* array too small to include terminating null */
+#include <intrin.h>
+#include <stdlib.h>
+
+#pragma warning(disable : 4146)
+
+#pragma warning(disable : 4018)
+#pragma warning(disable : 4244)
+#pragma warning(disable : 4267)
+#pragma warning(disable : 4310)
+
+#pragma warning(disable : 4100)
+#pragma warning(disable : 4127)
+#pragma warning(disable : 4189)
+#pragma warning(disable : 4232)
+#pragma warning(disable : 4245)
+#pragma warning(disable : 4295)
 #endif
 #ifndef FREESTANDING
-#include <string.h> /* for memcpy() */
+#include <string.h>
 #endif
 
-/* ========================================================================== */
-/*                             Target architecture                            */
-/* ========================================================================== */
-
-/* If possible, define a compiler-independent ARCH_* macro. */
 #undef ARCH_X86_64
 #undef ARCH_X86_32
 #undef ARCH_ARM64
 #undef ARCH_ARM32
 #undef ARCH_RISCV
 #ifdef _MSC_VER
-/* Way too many things are broken in ARM64EC to pretend that it is x86_64. */
+
 #if defined(_M_X64) && !defined(_M_ARM64EC)
 #define ARCH_X86_64
 #elif defined(_M_IX86)
@@ -91,11 +83,6 @@
 #endif
 #endif
 
-/* ========================================================================== */
-/*                              Type definitions                              */
-/* ========================================================================== */
-
-/* Fixed-width integer types */
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
@@ -105,7 +92,6 @@ typedef int16_t s16;
 typedef int32_t s32;
 typedef int64_t s64;
 
-/* ssize_t, if not available in <sys/types.h> */
 #ifdef _MSC_VER
 #ifdef _WIN64
 typedef long long ssize_t;
@@ -114,24 +100,12 @@ typedef long ssize_t;
 #endif
 #endif
 
-/*
- * Word type of the target architecture.  Use 'size_t' instead of
- * 'unsigned long' to account for platforms such as Windows that use 32-bit
- * 'unsigned long' on 64-bit architectures.
- */
 typedef size_t machine_word_t;
 
-/* Number of bytes in a word */
 #define WORDBYTES ((int)sizeof(machine_word_t))
 
-/* Number of bits in a word */
 #define WORDBITS (8 * WORDBYTES)
 
-/* ========================================================================== */
-/*                         Optional compiler features                         */
-/* ========================================================================== */
-
-/* Compiler version checks.  Only use when absolutely necessary. */
 #if defined(__GNUC__) && !defined(__clang__) && !defined(__INTEL_COMPILER)
 #define GCC_PREREQ(major, minor)                                               \
   (__GNUC__ > (major) || (__GNUC__ == (major) && __GNUC_MINOR__ >= (minor)))
@@ -165,30 +139,18 @@ typedef size_t machine_word_t;
 #define MSVC_PREREQ(version) 0
 #endif
 
-/*
- * __has_attribute(attribute) - check whether the compiler supports the given
- * attribute (and also supports doing the check in the first place).  Mostly
- * useful just for clang, since gcc didn't add this macro until gcc 5.
- */
 #ifndef __has_attribute
 #define __has_attribute(attribute) 0
 #endif
 
-/*
- * __has_builtin(builtin) - check whether the compiler supports the given
- * builtin (and also supports doing the check in the first place).  Mostly
- * useful just for clang, since gcc didn't add this macro until gcc 10.
- */
 #ifndef __has_builtin
 #define __has_builtin(builtin) 0
 #endif
 
-/* inline - suggest that a function be inlined */
 #ifdef _MSC_VER
 #define inline __inline
-#endif /* else assume 'inline' is usable as-is */
+#endif
 
-/* forceinline - force a function to be inlined, if possible */
 #if defined(__GNUC__) || __has_attribute(always_inline)
 #define forceinline inline __attribute__((always_inline))
 #elif defined(_MSC_VER)
@@ -197,49 +159,38 @@ typedef size_t machine_word_t;
 #define forceinline inline
 #endif
 
-/* MAYBE_UNUSED - mark a function or variable as maybe unused */
 #if defined(__GNUC__) || __has_attribute(unused)
 #define MAYBE_UNUSED __attribute__((unused))
 #else
 #define MAYBE_UNUSED
 #endif
 
-/* NORETURN - mark a function as never returning, e.g. due to calling abort() */
 #if defined(__GNUC__) || __has_attribute(noreturn)
 #define NORETURN __attribute__((noreturn))
 #else
 #define NORETURN
 #endif
 
-/*
- * restrict - hint that writes only occur through the given pointer.
- *
- * Don't use MSVC's __restrict, since it has nonstandard behavior.
- * Standard restrict is okay, if it is supported.
- */
 #if !defined(__STDC_VERSION__) || (__STDC_VERSION__ < 201112L)
 #if defined(__GNUC__) || defined(__clang__)
 #define restrict __restrict__
 #else
 #define restrict
 #endif
-#endif /* else assume 'restrict' is usable as-is */
+#endif
 
-/* likely(expr) - hint that an expression is usually true */
 #if defined(__GNUC__) || __has_builtin(__builtin_expect)
 #define likely(expr) __builtin_expect(!!(expr), 1)
 #else
 #define likely(expr) (expr)
 #endif
 
-/* unlikely(expr) - hint that an expression is usually false */
 #if defined(__GNUC__) || __has_builtin(__builtin_expect)
 #define unlikely(expr) __builtin_expect(!!(expr), 0)
 #else
 #define unlikely(expr) (expr)
 #endif
 
-/* prefetchr(addr) - prefetch into L1 cache for read */
 #undef prefetchr
 #if defined(__GNUC__) || __has_builtin(__builtin_prefetch)
 #define prefetchr(addr) __builtin_prefetch((addr), 0)
@@ -247,7 +198,7 @@ typedef size_t machine_word_t;
 #if defined(ARCH_X86_32) || defined(ARCH_X86_64)
 #define prefetchr(addr) _mm_prefetch((addr), _MM_HINT_T0)
 #elif defined(ARCH_ARM64)
-#define prefetchr(addr) __prefetch2((addr), 0x00 /* prfop=PLDL1KEEP */)
+#define prefetchr(addr) __prefetch2((addr), 0x00)
 #elif defined(ARCH_ARM32)
 #define prefetchr(addr) __prefetch(addr)
 #endif
@@ -256,7 +207,6 @@ typedef size_t machine_word_t;
 #define prefetchr(addr)
 #endif
 
-/* prefetchw(addr) - prefetch into L1 cache for write */
 #undef prefetchw
 #if defined(__GNUC__) || __has_builtin(__builtin_prefetch)
 #define prefetchw(addr) __builtin_prefetch((addr), 1)
@@ -264,7 +214,7 @@ typedef size_t machine_word_t;
 #if defined(ARCH_X86_32) || defined(ARCH_X86_64)
 #define prefetchw(addr) _m_prefetchw(addr)
 #elif defined(ARCH_ARM64)
-#define prefetchw(addr) __prefetch2((addr), 0x10 /* prfop=PSTL1KEEP */)
+#define prefetchw(addr) __prefetch2((addr), 0x10)
 #elif defined(ARCH_ARM32)
 #define prefetchw(addr) __prefetchw(addr)
 #endif
@@ -273,10 +223,6 @@ typedef size_t machine_word_t;
 #define prefetchw(addr)
 #endif
 
-/*
- * _aligned_attribute(n) - declare that the annotated variable, or variables of
- * the annotated type, must be aligned on n-byte boundaries.
- */
 #undef _aligned_attribute
 #if defined(__GNUC__) || __has_attribute(aligned)
 #define _aligned_attribute(n) __attribute__((aligned(n)))
@@ -284,24 +230,11 @@ typedef size_t machine_word_t;
 #define _aligned_attribute(n) __declspec(align(n))
 #endif
 
-/*
- * _target_attribute(attrs) - override the compilation target for a function.
- *
- * This accepts one or more comma-separated suffixes to the -m prefix jointly
- * forming the name of a machine-dependent option.  On gcc-like compilers, this
- * enables codegen for the given targets, including arbitrary compiler-generated
- * code as well as the corresponding intrinsics.  On other compilers this macro
- * expands to nothing, though MSVC allows intrinsics to be used anywhere anyway.
- */
 #if defined(__GNUC__) || __has_attribute(target)
 #define _target_attribute(attrs) __attribute__((target(attrs)))
 #else
 #define _target_attribute(attrs)
 #endif
-
-/* ========================================================================== */
-/*                          Miscellaneous macros                              */
-/* ========================================================================== */
 
 #define ARRAY_LEN(A) (sizeof(A) / sizeof((A)[0]))
 #define MIN(a, b) ((a) <= (b) ? (a) : (b))
@@ -311,17 +244,7 @@ typedef size_t machine_word_t;
 #define ALIGN(n, a) (((n) + (a) - 1) & ~((a) - 1))
 #define ROUND_UP(n, d) ((d) * DIV_ROUND_UP((n), (d)))
 
-/* ========================================================================== */
-/*                           Endianness handling                              */
-/* ========================================================================== */
-
-/*
- * CPU_IS_LITTLE_ENDIAN() - 1 if the CPU is little endian, or 0 if it is big
- * endian.  When possible this is a compile-time macro that can be used in
- * preprocessor conditionals.  As a fallback, a generic method is used that
- * can't be used in preprocessor conditionals but should still be optimized out.
- */
-#if defined(__BYTE_ORDER__) /* gcc v4.6+ and clang */
+#if defined(__BYTE_ORDER__)
 #define CPU_IS_LITTLE_ENDIAN() (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
 #elif defined(_MSC_VER)
 #define CPU_IS_LITTLE_ENDIAN() true
@@ -337,7 +260,6 @@ static forceinline bool CPU_IS_LITTLE_ENDIAN(void) {
 }
 #endif
 
-/* bswap16(v) - swap the bytes of a 16-bit integer */
 static forceinline u16 bswap16(u16 v) {
 #if defined(__GNUC__) || __has_builtin(__builtin_bswap16)
   return __builtin_bswap16(v);
@@ -348,7 +270,6 @@ static forceinline u16 bswap16(u16 v) {
 #endif
 }
 
-/* bswap32(v) - swap the bytes of a 32-bit integer */
 static forceinline u32 bswap32(u32 v) {
 #if defined(__GNUC__) || __has_builtin(__builtin_bswap32)
   return __builtin_bswap32(v);
@@ -360,7 +281,6 @@ static forceinline u32 bswap32(u32 v) {
 #endif
 }
 
-/* bswap64(v) - swap the bytes of a 64-bit integer */
 static forceinline u64 bswap64(u64 v) {
 #if defined(__GNUC__) || __has_builtin(__builtin_bswap64)
   return __builtin_bswap64(v);
@@ -381,14 +301,6 @@ static forceinline u64 bswap64(u64 v) {
 #define be32_bswap(v) (CPU_IS_LITTLE_ENDIAN() ? bswap32(v) : (v))
 #define be64_bswap(v) (CPU_IS_LITTLE_ENDIAN() ? bswap64(v) : (v))
 
-/* ========================================================================== */
-/*                          Unaligned memory accesses                         */
-/* ========================================================================== */
-
-/*
- * UNALIGNED_ACCESS_IS_FAST() - 1 if unaligned memory accesses can be performed
- * efficiently on the target platform, otherwise 0.
- */
 #if (defined(__GNUC__) || defined(__clang__)) &&                               \
     (defined(ARCH_X86_64) || defined(ARCH_X86_32) ||                           \
      defined(__ARM_FEATURE_UNALIGNED) || defined(__powerpc64__) ||             \
@@ -416,30 +328,11 @@ static forceinline u64 bswap64(u64 v) {
 #define UNALIGNED_ACCESS_IS_FAST 0
 #endif
 
-/*
- * Implementing unaligned memory accesses using memcpy() is portable, and it
- * usually gets optimized appropriately by modern compilers.  I.e., each
- * memcpy() of 1, 2, 4, or WORDBYTES bytes gets compiled to a load or store
- * instruction, not to an actual function call.
- *
- * We no longer use the "packed struct" approach to unaligned accesses, as that
- * is nonstandard, has unclear semantics, and doesn't receive enough testing
- * (see https://gcc.gnu.org/bugzilla/show_bug.cgi?id=94994).
- *
- * arm32 with __ARM_FEATURE_UNALIGNED in gcc 5 and earlier is a known exception
- * where memcpy() generates inefficient code
- * (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=67366).  However, we no longer
- * consider that one case important enough to maintain different code for.
- * If you run into it, please just use a newer version of gcc (or use clang).
- */
-
 #ifdef FREESTANDING
 #define MEMCOPY __builtin_memcpy
 #else
 #define MEMCOPY memcpy
 #endif
-
-/* Unaligned loads and stores without endianness conversion */
 
 #define DEFINE_UNALIGNED_TYPE(type)                                            \
   static forceinline type load_##type##_unaligned(const void *p) {             \
@@ -462,8 +355,6 @@ DEFINE_UNALIGNED_TYPE(machine_word_t)
 
 #define load_word_unaligned load_machine_word_t_unaligned
 #define store_word_unaligned store_machine_word_t_unaligned
-
-/* Unaligned loads with endianness conversion */
 
 static forceinline u16 get_unaligned_le16(const u8 *p) {
   if (UNALIGNED_ACCESS_IS_FAST)
@@ -509,8 +400,6 @@ static forceinline machine_word_t get_unaligned_leword(const u8 *p) {
   else
     return get_unaligned_le64(p);
 }
-
-/* Unaligned stores with endianness conversion */
 
 static forceinline void put_unaligned_le16(u16 v, u8 *p) {
   if (UNALIGNED_ACCESS_IS_FAST) {
@@ -575,16 +464,6 @@ static forceinline void put_unaligned_leword(machine_word_t v, u8 *p) {
     put_unaligned_le64(v, p);
 }
 
-/* ========================================================================== */
-/*                         Bit manipulation functions                         */
-/* ========================================================================== */
-
-/*
- * Bit Scan Reverse (BSR) - find the 0-based index (relative to the least
- * significant end) of the *most* significant 1 bit in the input value.  The
- * input value must be nonzero!
- */
-
 static forceinline unsigned bsr32(u32 v) {
 #if defined(__GNUC__) || __has_builtin(__builtin_clz)
   return 31 - __builtin_clz(v);
@@ -626,12 +505,6 @@ static forceinline unsigned bsrw(machine_word_t v) {
   else
     return bsr64(v);
 }
-
-/*
- * Bit Scan Forward (BSF) - find the 0-based index (relative to the least
- * significant end) of the *least* significant 1 bit in the input value.  The
- * input value must be nonzero!
- */
 
 static forceinline unsigned bsf32(u32 v) {
 #if defined(__GNUC__) || __has_builtin(__builtin_ctz)
@@ -675,10 +548,6 @@ static forceinline unsigned bsfw(machine_word_t v) {
     return bsf64(v);
 }
 
-/*
- * rbit32(v): reverse the bits in a 32-bit integer.  This doesn't have a
- * fallback implementation; use '#ifdef rbit32' to check if this is available.
- */
 #undef rbit32
 #if (defined(__GNUC__) || defined(__clang__)) && defined(ARCH_ARM32) &&        \
     (__ARM_ARCH >= 7 || (__ARM_ARCH == 6 && defined(__ARM_ARCH_6T2__)))
@@ -695,4 +564,4 @@ static forceinline u32 rbit32(u32 v) {
 #define rbit32 rbit32
 #endif
 
-#endif /* COMMON_DEFS_H */
+#endif

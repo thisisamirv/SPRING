@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright © 2025 ARJANEN Loïc Jean David
  * All rights reserved.
  *
@@ -48,7 +48,7 @@
 
 #if defined(_WIN32) && !defined(__CYGWIN__)
 #include <winnt.h>
-/* Windows FILETIME to NTFS time. */
+
 uint64_t FILETIME_to_ntfs(const FILETIME *filetime) {
   ULARGE_INTEGER utc;
   utc.HighPart = filetime->dwHighDateTime;
@@ -57,7 +57,6 @@ uint64_t FILETIME_to_ntfs(const FILETIME *filetime) {
 }
 #endif
 
-/* Convert an MSDOS-style date/time into Unix-style time. */
 int64_t dos_to_unix(uint32_t dos_time) {
   uint16_t msTime, msDate;
   struct tm ts;
@@ -67,9 +66,9 @@ int64_t dos_to_unix(uint32_t dos_time) {
   msDate = (dos_time >> 16);
 
   memset(&ts, 0, sizeof(ts));
-  ts.tm_year = ((msDate >> 9) & 0x7f) + 80; /* Years since 1900. */
-  ts.tm_mon = ((msDate >> 5) & 0x0f) - 1;   /* Month number. */
-  ts.tm_mday = msDate & 0x1f;               /* Day of month. */
+  ts.tm_year = ((msDate >> 9) & 0x7f) + 80;
+  ts.tm_mon = ((msDate >> 5) & 0x0f) - 1;
+  ts.tm_mday = msDate & 0x1f;
   ts.tm_hour = (msTime >> 11) & 0x1f;
   ts.tm_min = (msTime >> 5) & 0x3f;
   ts.tm_sec = (msTime << 1) & 0x3e;
@@ -78,7 +77,6 @@ int64_t dos_to_unix(uint32_t dos_time) {
   return (int64_t)(t == (time_t)-1 ? INT32_MAX : t);
 }
 
-/* Convert into MSDOS-style date/time. */
 uint32_t unix_to_dos(int64_t unix_time) {
   struct tm *t;
   uint32_t dt;
@@ -111,7 +109,7 @@ uint32_t unix_to_dos(int64_t unix_time) {
       dt <<= 16;
       dt += (t->tm_hour & 0x1f) << 11;
       dt += (t->tm_min & 0x3f) << 5;
-      /* Only counting every 2 seconds. */
+
       dt += (t->tm_sec & 0x3e) >> 1;
     }
   }
@@ -123,7 +121,6 @@ uint32_t unix_to_dos(int64_t unix_time) {
   return dt;
 }
 
-/* Convert NTFS time to Unix sec/nsec */
 void ntfs_to_unix(uint64_t ntfs, int64_t *secs, uint32_t *nsecs) {
   if (ntfs > INT64_MAX) {
     ntfs -= NTFS_EPOC_TICKS;
@@ -139,7 +136,6 @@ void ntfs_to_unix(uint64_t ntfs, int64_t *secs, uint32_t *nsecs) {
   }
 }
 
-/* Convert Unix sec/nsec to NTFS time */
 uint64_t unix_to_ntfs(int64_t secs, uint32_t nsecs) {
   uint64_t ntfs;
 

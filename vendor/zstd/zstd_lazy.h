@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  * All rights reserved.
  *
@@ -13,15 +13,9 @@
 
 #include "zstd_compress_internal.h"
 
-/**
- * Dedicated Dictionary Search Structure bucket log. In the
- * ZSTD_dedicatedDictSearch mode, the hashTable has
- * 2 ** ZSTD_LAZY_DDSS_BUCKET_LOG entries in each bucket, rather than just
- * one.
- */
 #define ZSTD_LAZY_DDSS_BUCKET_LOG 2
 
-#define ZSTD_ROW_HASH_TAG_BITS 8 /* nb bits to use for the tag */
+#define ZSTD_ROW_HASH_TAG_BITS 8
 
 #if !defined(ZSTD_EXCLUDE_GREEDY_BLOCK_COMPRESSOR) ||                          \
     !defined(ZSTD_EXCLUDE_LAZY_BLOCK_COMPRESSOR) ||                            \
@@ -33,10 +27,8 @@ void ZSTD_row_update(ZSTD_MatchState_t *ms, const BYTE *ip);
 void ZSTD_dedicatedDictSearch_lazy_loadDictionary(ZSTD_MatchState_t *ms,
                                                   const BYTE *ip);
 
-void ZSTD_preserveUnsortedMark(
-    U32 *table, U32 size,
-    U32 reducerValue); /*! used in ZSTD_reduceIndex(). preemptively
-                  increase value of ZSTD_DUBT_UNSORTED_MARK */
+void ZSTD_preserveUnsortedMark(U32 *table, U32 size, U32 reducerValue);
+
 #endif
 
 #ifndef ZSTD_EXCLUDE_GREEDY_BLOCK_COMPRESSOR
@@ -241,4 +233,4 @@ size_t ZSTD_compressBlock_btlazy2_extDict(ZSTD_MatchState_t *ms,
 #define ZSTD_COMPRESSBLOCK_BTLAZY2_EXTDICT NULL
 #endif
 
-#endif /* ZSTD_LAZY_H */
+#endif

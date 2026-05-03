@@ -1,4 +1,4 @@
-# cmake-format: off
+﻿# cmake-format: off
 # Copyright (c) 2025, Intel Corporation
 #
 # Redistribution and use in source and binary forms, with or without
@@ -24,9 +24,6 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # cmake-format: on
-
-# IGZIP module CMake configuration
-
 set(IGZIP_BASE_SOURCES
     igzip/igzip.c
     igzip/hufftables_c.c
@@ -39,12 +36,10 @@ set(IGZIP_BASE_SOURCES
     igzip/huff_codes.c
     igzip/igzip_inflate.c
 )
-
 set(IGZIP_BASE_ALIASES_SOURCES
     igzip/igzip_base_aliases.c
     igzip/proc_heap_base.c
 )
-
 set(IGZIP_X86_64_SOURCES
     igzip/igzip_body.asm
     igzip/igzip_finish.asm
@@ -68,7 +63,6 @@ set(IGZIP_X86_64_SOURCES
     igzip/igzip_set_long_icf_fg_04.asm
     igzip/igzip_set_long_icf_fg_06.asm
 )
-
 set(IGZIP_AARCH64_SOURCES
     igzip/proc_heap_base.c
     igzip/aarch64/igzip_inflate_multibinary_arm64.S
@@ -86,38 +80,28 @@ set(IGZIP_AARCH64_SOURCES
     igzip/aarch64/igzip_deflate_hash_aarch64.S
     igzip/aarch64/igzip_decode_huffman_code_block_aarch64.S
 )
-
 set(IGZIP_RISCV64_SOURCES
     igzip/riscv64/igzip_multibinary_riscv64_dispatcher.c
     igzip/riscv64/igzip_multibinary_riscv64.S
     igzip/riscv64/igzip_isal_adler32_rvv.S
 )
-
-# Build source list based on architecture
 set(IGZIP_SOURCES ${IGZIP_BASE_SOURCES})
-
 if(CPU_X86_64)
     if(DEFINED USE_NASM AND USE_NASM)
         list(APPEND IGZIP_SOURCES ${IGZIP_X86_64_SOURCES})
     else()
-        # NASM not available: use portable base aliases for x86_64
         list(APPEND IGZIP_SOURCES ${IGZIP_BASE_ALIASES_SOURCES})
     endif()
 elseif(CPU_AARCH64)
     list(APPEND IGZIP_SOURCES ${IGZIP_AARCH64_SOURCES})
 elseif(CPU_PPC64LE)
-    # PPC64LE uses base aliases
     list(APPEND IGZIP_SOURCES ${IGZIP_BASE_ALIASES_SOURCES})
 elseif(CPU_RISCV64)
     list(APPEND IGZIP_SOURCES ${IGZIP_RISCV64_SOURCES})
 elseif(CPU_UNDEFINED)
     list(APPEND IGZIP_SOURCES ${IGZIP_BASE_ALIASES_SOURCES})
 endif()
-
-# Headers exported by IGZIP module
 set(IGZIP_HEADERS
     include/igzip_lib.h
 )
-
-# Add to main extern headers list
 list(APPEND EXTERN_HEADERS ${IGZIP_HEADERS})

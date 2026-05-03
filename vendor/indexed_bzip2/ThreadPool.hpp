@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <algorithm>
 #include <atomic>
@@ -23,33 +23,12 @@
 #endif
 
 namespace rapidgzip {
-/**
- * Function evaluations can be given to a ThreadPool instance,
- * which assigns the evaluation to one of its threads to be evaluated in
- * parallel.
- */
+
 class ThreadPool {
 public:
-  using ThreadPinning =
-      std::unordered_map</* thread Index */ size_t, /* core ID */ uint32_t>;
+  using ThreadPinning = std::unordered_map<size_t, uint32_t>;
 
 private:
-  /**
-   * A small type-erasure function wrapper for non-copyable function objects
-   * with no function arguments.
-   *
-   * std::function<void()> won't work to wrap std::packaged_task
-   * because the former requires a copy-constructible object, which the latter
-   * is not.
-   * @see http://www.open-std.org/jtc1/sc22/wg21/docs/lwg-defects.html#1287
-   *
-   * By upcasting from a templated specialized derived class to this base class,
-   * the template type is "erased". However, @ref BaseFunctor can't be directly
-   * used with very much correctly because the default operations like copy,
-   * move and so on won't work correctly with the members in the derived class
-   * when it is called from the base class type. For this reason, this
-   * FunctionWrapper creates a unique_ptr of @ref BaseFunctor.
-   */
   class PackagedTaskWrapper {
   private:
     struct BaseFunctor {
@@ -98,24 +77,13 @@ public:
     }
 
 #ifdef WITH_PYTHON_SUPPORT
-    /* The GIL needs to be unlocked for the worker threads to not wait
-     * infinitely when calling methods on a given Python file object. In this
-     * waiting time, they also wouldn't check m_threadPoolRunning, nor
-     * PyErr_CheckSignals and therefore would deadlock. */
+
     const ScopedGILUnlock unlockedGIL;
 #endif
 
     m_threads.clear();
   }
 
-  /**
-   * Any function taking no arguments and returning any argument may be
-   * submitted to be executed. The returned future can be used to access the
-   * result when it is really needed.
-   * @param priority Tasks are processed ordered by their priority, i.e., tasks
-   * with priority 0 are processed only after all tasks with priority 0 have
-   * been processed.
-   */
   template <class T_Functor,
             std::enable_if_t<std::is_invocable_v<T_Functor>, void> * = nullptr>
   std::future<decltype(std::declval<T_Functor>()())> submit(T_Functor &&task,
@@ -126,8 +94,6 @@ public:
       return std::async(std::launch::deferred, std::forward<T_Functor>(task));
     }
 
-    /* Use a packaged task, which abstracts handling the return type and makes
-     * the task return void. */
     using ReturnType = decltype(std::declval<T_Functor>()());
     std::packaged_task<ReturnType()> packagedTask{
         std::forward<T_Functor>(task)};
@@ -159,10 +125,6 @@ public:
   }
 
 private:
-  /**
-   * Does not lock! Therefore it is a private method that should only be called
-   * with a lock.
-   */
   [[nodiscard]] bool hasUnprocessedTasks() const {
     return std::any_of(m_tasks.begin(), m_tasks.end(),
                        [](const auto &tasks) { return !tasks.second.empty(); });
@@ -209,18 +171,11 @@ private:
   const ThreadPinning m_threadPinning;
   std::atomic<size_t> m_idleThreadCount{0};
 
-  std::map</* priority */ int, std::deque<PackagedTaskWrapper>> m_tasks;
-  /** necessary for m_tasks AND m_pingWorkers or else the notify_all might go
-   * unnoticed! */
+  std::map<int, std::deque<PackagedTaskWrapper>> m_tasks;
 
   mutable std::mutex m_mutex;
   std::condition_variable m_pingWorkers;
 
-  /**
-   * Should come last so that it's lifetime is the shortest, i.e., there is no
-   * danger for the other members to not yet be constructed or be already
-   * destructed while a task is still running.
-   */
   std::vector<JoiningThread> m_threads;
 };
 } // namespace rapidgzip

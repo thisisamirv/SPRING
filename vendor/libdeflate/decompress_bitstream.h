@@ -1,6 +1,4 @@
-/*
- * decompress_bitstream.h - decompression bitstream handling
- */
+﻿
 
 #ifndef LIB_DECOMPRESS_BITSTREAM_H
 #define LIB_DECOMPRESS_BITSTREAM_H
@@ -9,11 +7,6 @@
 #include "decompress_defs.h"
 #include "deflate_constants.h"
 
-/*
- * If the expression passed to SAFETY_CHECK() evaluates to false, then the
- * decompression routine immediately returns LIBDEFLATE_BAD_DATA, indicating the
- * compressed data is invalid.
- */
 #if 0
 #define SAFETY_CHECK(expr) (void)(expr)
 #else
@@ -22,17 +15,12 @@
   return LIBDEFLATE_BAD_DATA
 #endif
 
-/*
- * The type for the bitbuffer variable.  For best performance, this should have
- * size equal to a machine word.
- */
 #ifndef BITBUF_T_DEFINED
 #define BITBUF_T_DEFINED
 typedef machine_word_t bitbuf_t;
 #endif
 #define BITBUF_NBITS (8 * (int)sizeof(bitbuf_t))
 
-/* BITMASK(n) returns a bitmask of length 'n'. */
 #define BITMASK(n) (((bitbuf_t)1 << (n)) - 1)
 
 #define MAX_BITSLEFT                                                           \
@@ -100,4 +88,4 @@ typedef machine_word_t bitbuf_t;
                 8) +                                                           \
    sizeof(bitbuf_t))
 
-#endif /* LIB_DECOMPRESS_BITSTREAM_H */
+#endif

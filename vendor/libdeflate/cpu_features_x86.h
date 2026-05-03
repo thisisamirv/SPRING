@@ -1,4 +1,4 @@
-/*
+﻿/*
  * x86/cpu_features.h - feature detection for x86 CPUs
  *
  * Copyright 2016 Eric Biggers
@@ -37,12 +37,7 @@
 #define X86_CPU_FEATURE_AVX (1 << 2)
 #define X86_CPU_FEATURE_AVX2 (1 << 3)
 #define X86_CPU_FEATURE_BMI2 (1 << 4)
-/*
- * ZMM indicates whether 512-bit vectors (zmm registers) should be used.  On
- * some CPUs, to avoid downclocking issues we don't set ZMM even if the CPU and
- * operating system support AVX-512.  On these CPUs, we may still use AVX-512
- * instructions, but only with xmm and ymm registers.
- */
+
 #define X86_CPU_FEATURE_ZMM (1 << 5)
 #define X86_CPU_FEATURE_AVX512BW (1 << 6)
 #define X86_CPU_FEATURE_AVX512VL (1 << 7)
@@ -51,7 +46,7 @@
 #define X86_CPU_FEATURE_AVXVNNI (1 << 10)
 
 #if defined(__GNUC__) || defined(__clang__) || defined(_MSC_VER)
-/* Runtime x86 CPU feature detection is supported. */
+
 #define X86_CPU_FEATURES_KNOWN (1U << 31)
 extern volatile u32 libdeflate_x86_cpu_features;
 
@@ -62,11 +57,7 @@ static inline u32 get_x86_cpu_features(void) {
     libdeflate_init_x86_cpu_features();
   return libdeflate_x86_cpu_features;
 }
-/*
- * x86 intrinsics are also supported.  Include the headers needed to use them.
- * Normally just immintrin.h suffices.  With clang in MSVC compatibility mode,
- * immintrin.h incorrectly skips including sub-headers, so include those too.
- */
+
 #include <immintrin.h>
 #if defined(_MSC_VER) && defined(__clang__)
 #include <avx2intrin.h>
@@ -164,6 +155,6 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #define HAVE_AVXVNNI(features) ((features) & X86_CPU_FEATURE_AVXVNNI)
 #endif
 
-#endif /* __x86_64__ || __i386__ || _M_X64 || _M_IX86 */
+#endif
 
-#endif /* LIB_X86_CPU_FEATURES_H */
+#endif

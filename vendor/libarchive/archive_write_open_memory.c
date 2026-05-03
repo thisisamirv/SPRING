@@ -1,4 +1,4 @@
-/*-
+﻿/*-
  * Copyright (c) 2003-2007 Tim Kientzle
  * All rights reserved.
  *
@@ -50,11 +50,6 @@ static int memory_write_free(struct archive *, void *);
 static int memory_write_open(struct archive *, void *);
 static ssize_t memory_write(struct archive *, void *, const void *buff, size_t);
 
-/*
- * Client provides a pointer to a block of memory to receive
- * the data.  The 'size' param both tells us the size of the
- * client buffer and lets us tell the client the final size.
- */
 int archive_write_open_memory(struct archive *a, void *buff, size_t buffSize,
                               size_t *used) {
   struct write_memory_data *mine;
@@ -77,18 +72,12 @@ static int memory_write_open(struct archive *a, void *client_data) {
   mine->used = 0;
   if (mine->client_size != NULL)
     *mine->client_size = mine->used;
-  /* Disable padding if it hasn't been set explicitly. */
+
   if (-1 == archive_write_get_bytes_in_last_block(a))
     archive_write_set_bytes_in_last_block(a, 1);
   return (ARCHIVE_OK);
 }
 
-/*
- * Copy the data into the client buffer.
- * Note that we update mine->client_size on every write.
- * In particular, this means the client can follow exactly
- * how much has been written into their buffer at any time.
- */
 static ssize_t memory_write(struct archive *a, void *client_data,
                             const void *buff, size_t length) {
   struct write_memory_data *mine;
@@ -106,7 +95,7 @@ static ssize_t memory_write(struct archive *a, void *client_data,
 }
 
 static int memory_write_free(struct archive *a, void *client_data) {
-  (void)a; /* UNUSED */
+  (void)a;
   free(client_data);
   return (ARCHIVE_OK);
 }
