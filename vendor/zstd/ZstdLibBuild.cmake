@@ -13,7 +13,6 @@ option(ZSTD_BUILD_STATIC "BUILD STATIC LIBRARIES" ON)
 option(ZSTD_BUILD_SHARED "BUILD SHARED LIBRARIES" ON)
 option(ZSTD_BUILD_COMPRESSION "BUILD COMPRESSION MODULE" ON)
 option(ZSTD_BUILD_DECOMPRESSION "BUILD DECOMPRESSION MODULE" ON)
-option(ZSTD_BUILD_DICTBUILDER "BUILD DICTBUILDER MODULE" ON)
 option(ZSTD_BUILD_DEPRECATED "BUILD DEPRECATED MODULE" OFF)
 
 set(ZSTDLIB_VISIBLE "" CACHE STRING "Visibility for ZSTDLIB API")
@@ -87,10 +86,6 @@ if(ZSTD_BUILD_DECOMPRESSION)
     set(Sources ${Sources} ${DecompressSources})
     set(Headers ${Headers} ${DecompressHeaders})
 endif()
-if(ZSTD_BUILD_DICTBUILDER)
-    set(Sources ${Sources} ${DictBuilderSources})
-    set(Headers ${Headers} ${DictBuilderHeaders})
-endif()
 if(ZSTD_BUILD_DEPRECATED)
     set(Sources ${Sources} ${DeprecatedSources})
     set(Headers ${Headers} ${DeprecatedHeaders})
@@ -143,70 +138,20 @@ endmacro()
 # Define directories containing the library's public headers
 set(PUBLIC_INCLUDE_DIRS ${LIBRARY_DIR})
 set(CMAKE_RC_FLAGS "${CMAKE_RC_FLAGS} /I \"${LIBRARY_DIR}\"")
-# Split project to static and shared libraries build
-if(ZSTD_BUILD_SHARED)
-    add_library(libzstd_shared SHARED ${Sources} ${Headers} ${PlatformDependResources})
-    target_include_directories(libzstd_shared INTERFACE $<BUILD_INTERFACE:${PUBLIC_INCLUDE_DIRS}>)
-    if(ZSTD_MULTITHREAD_SUPPORT)
-        target_compile_definitions(libzstd_shared PUBLIC ZSTD_MULTITHREAD)
-        if(UNIX)
-            target_link_libraries(libzstd_shared ${THREADS_LIBS})
-        endif()
-    endif()
-    add_definition(libzstd_shared ZSTDLIB_VISIBLE)
-    add_definition(libzstd_shared ZSTDERRORLIB_VISIBLE)
-    add_definition(libzstd_shared ZDICTLIB_VISIBLE)
-endif()
-if(ZSTD_BUILD_STATIC)
-    add_library(libzstd_static STATIC ${Sources} ${Headers})
-    target_include_directories(libzstd_static INTERFACE $<BUILD_INTERFACE:${PUBLIC_INCLUDE_DIRS}>)
-    if(ZSTD_MULTITHREAD_SUPPORT)
-        target_compile_definitions(libzstd_static PUBLIC ZSTD_MULTITHREAD)
-        if(UNIX)
-            target_link_libraries(libzstd_static ${THREADS_LIBS})
-        endif()
-    endif()
-    add_definition(libzstd_static ZSTDLIB_VISIBLE)
-    add_definition(libzstd_static ZSTDERRORLIB_VISIBLE)
-    add_definition(libzstd_static ZDICTLIB_VISIBLE)
-    add_definition(libzstd_static ZSTDLIB_STATIC_API)
-    add_definition(libzstd_static ZDICTLIB_STATIC_API)
-endif()
-if(ZSTD_BUILD_SHARED AND NOT ZSTD_BUILD_STATIC)
-    if(NOT BUILD_SHARED_LIBS)
-        message(WARNING "BUILD_SHARED_LIBS is OFF, but ZSTD_BUILD_SHARED is ON and ZSTD_BUILD_STATIC is OFF, which takes precedence, so libzstd is a shared library")
-    endif()
-    add_library(libzstd INTERFACE)
-    target_link_libraries(libzstd INTERFACE libzstd_shared)
-endif()
-if(ZSTD_BUILD_STATIC AND NOT ZSTD_BUILD_SHARED)
-    if(BUILD_SHARED_LIBS)
-        message(WARNING "BUILD_SHARED_LIBS is ON, but ZSTD_BUILD_SHARED is OFF and ZSTD_BUILD_STATIC is ON, which takes precedence, is set so libzstd is a static library")
-    endif()
-    add_library(libzstd INTERFACE)
-    target_link_libraries(libzstd INTERFACE libzstd_static)
-endif()
-if(ZSTD_BUILD_SHARED AND ZSTD_BUILD_STATIC)
-    # If both ZSTD_BUILD_SHARED and ZSTD_BUILD_STATIC are set, which is the
-    # default, fallback to using BUILD_SHARED_LIBS to determine whether to
-    # set libzstd to static or shared.
-    if(BUILD_SHARED_LIBS)
-        add_library(libzstd INTERFACE)
-        target_link_libraries(libzstd INTERFACE libzstd_shared)
-    else()
-        add_library(libzstd INTERFACE)
-        target_link_libraries(libzstd INTERFACE libzstd_static)
-    endif()
-endif()
+add_library(libzstd_static STATIC ${Sources} ${Headers})
+target_include_directories(libzstd_static INTERFACE $<BUILD_INTERFACE:${PUBLIC_INCLUDE_DIRS}>)
+add_definition(libzstd_static ZSTDLIB_VISIBLE)
+add_definition(libzstd_static ZSTDERRORLIB_VISIBLE)
+add_definition(libzstd_static ZDICTLIB_VISIBLE)
+add_definition(libzstd_static ZSTDLIB_STATIC_API)
+add_definition(libzstd_static ZDICTLIB_STATIC_API)
+
+add_library(libzstd INTERFACE)
+target_link_libraries(libzstd INTERFACE libzstd_static)
 
 # Add specific compile definitions for MSVC project
 if(MSVC)
-    if(ZSTD_BUILD_SHARED)
-        set_property(TARGET libzstd_shared APPEND PROPERTY COMPILE_DEFINITIONS "ZSTD_DLL_EXPORT=1;ZSTD_HEAPMODE=0;_CONSOLE;_CRT_SECURE_NO_WARNINGS")
-    endif()
-    if(ZSTD_BUILD_STATIC)
-        set_property(TARGET libzstd_static APPEND PROPERTY COMPILE_DEFINITIONS "ZSTD_HEAPMODE=0;_CRT_SECURE_NO_WARNINGS")
-    endif()
+    set_property(TARGET libzstd_static APPEND PROPERTY COMPILE_DEFINITIONS "ZSTD_HEAPMODE=0;_CRT_SECURE_NO_WARNINGS")
 endif()
 
 # With MSVC static library needs to be renamed to avoid conflict with import library
@@ -216,62 +161,30 @@ else()
     set(STATIC_LIBRARY_BASE_NAME zstd)
 endif()
 
-# Define static and shared library names
-if(ZSTD_BUILD_SHARED)
-    set_target_properties(
-        libzstd_shared
-        PROPERTIES
-        OUTPUT_NAME zstd
-        VERSION ${ZSTD_FULL_VERSION}
-        SOVERSION ${zstd_VERSION_MAJOR})
+set_target_properties(
+    libzstd_static
+    PROPERTIES
+    POSITION_INDEPENDENT_CODE On
+    OUTPUT_NAME ${STATIC_LIBRARY_BASE_NAME})
 
-    if(ZSTD_FRAMEWORK)
-        set_target_properties(
-            libzstd_shared
-            PROPERTIES
-            FRAMEWORK TRUE
-            FRAMEWORK_VERSION "${ZSTD_FULL_VERSION}"
-            PRODUCT_BUNDLE_IDENTIFIER "github.com/facebook/zstd"
-            XCODE_ATTRIBUTE_INSTALL_PATH "@rpath"
-            PUBLIC_HEADER "${PublicHeaders}"
-            OUTPUT_NAME "zstd"
-            XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
-            XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
-            XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
-            MACOSX_FRAMEWORK_IDENTIFIER "github.com/facebook/zstd"
-            MACOSX_FRAMEWORK_BUNDLE_VERSION "${ZSTD_FULL_VERSION}"
-            MACOSX_FRAMEWORK_SHORT_VERSION_STRING "${ZSTD_SHORT_VERSION}"
-            MACOSX_RPATH TRUE
-            RESOURCE ${PublicHeaders})
-    endif()
-endif()
-
-if(ZSTD_BUILD_STATIC)
+if(ZSTD_FRAMEWORK)
     set_target_properties(
         libzstd_static
         PROPERTIES
-        POSITION_INDEPENDENT_CODE On
-        OUTPUT_NAME ${STATIC_LIBRARY_BASE_NAME})
-
-    if(ZSTD_FRAMEWORK)
-        set_target_properties(
-            libzstd_static
-            PROPERTIES
-            FRAMEWORK TRUE
-            FRAMEWORK_VERSION "${ZSTD_FULL_VERSION}"
-            PRODUCT_BUNDLE_IDENTIFIER "github.com/facebook/zstd/${STATIC_LIBRARY_BASE_NAME}"
-            XCODE_ATTRIBUTE_INSTALL_PATH "@rpath"
-            PUBLIC_HEADER "${PublicHeaders}"
-            OUTPUT_NAME "${STATIC_LIBRARY_BASE_NAME}"
-            XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
-            XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
-            XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
-            MACOSX_FRAMEWORK_IDENTIFIER "github.com/facebook/zstd/${STATIC_LIBRARY_BASE_NAME}"
-            MACOSX_FRAMEWORK_BUNDLE_VERSION "${ZSTD_FULL_VERSION}"
-            MACOSX_FRAMEWORK_SHORT_VERSION_STRING "${ZSTD_SHORT_VERSION}"
-            MACOSX_RPATH TRUE
-            RESOURCE ${PublicHeaders})
-    endif()
+        FRAMEWORK TRUE
+        FRAMEWORK_VERSION "${ZSTD_FULL_VERSION}"
+        PRODUCT_BUNDLE_IDENTIFIER "github.com/facebook/zstd/${STATIC_LIBRARY_BASE_NAME}"
+        XCODE_ATTRIBUTE_INSTALL_PATH "@rpath"
+        PUBLIC_HEADER "${PublicHeaders}"
+        OUTPUT_NAME "${STATIC_LIBRARY_BASE_NAME}"
+        XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY ""
+        XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+        XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
+        MACOSX_FRAMEWORK_IDENTIFIER "github.com/facebook/zstd/${STATIC_LIBRARY_BASE_NAME}"
+        MACOSX_FRAMEWORK_BUNDLE_VERSION "${ZSTD_FULL_VERSION}"
+        MACOSX_FRAMEWORK_SHORT_VERSION_STRING "${ZSTD_SHORT_VERSION}"
+        MACOSX_RPATH TRUE
+        RESOURCE ${PublicHeaders})
 endif()
 
 # (Removed uninstall target for lean spring build)

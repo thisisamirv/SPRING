@@ -31,10 +31,6 @@ option(LIBDEFLATE_ZLIB_SUPPORT "Support the zlib format" ON)
 option(LIBDEFLATE_GZIP_SUPPORT "Support the gzip format" ON)
 option(LIBDEFLATE_FREESTANDING "Build a freestanding library" OFF)
 
-if(NOT LIBDEFLATE_BUILD_STATIC_LIB)
-    set(LIBDEFLATE_USE_SHARED_LIB ON)
-endif()
-
 if(NOT LIBDEFLATE_USER_SET_RELEASE_FLAGS)
     set(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG"
         CACHE STRING "C compiler flags for release builds" FORCE)
@@ -157,18 +153,3 @@ if(LIBDEFLATE_BUILD_STATIC_LIB)
     target_compile_options(libdeflate_static PRIVATE ${LIB_COMPILE_OPTIONS})
 endif()
 
-if(LIBDEFLATE_BUILD_SHARED_LIB)
-    add_library(libdeflate_shared SHARED ${LIB_SOURCES})
-    add_library(libdeflate::libdeflate_shared ALIAS libdeflate_shared)
-
-    set_target_properties(libdeflate_shared PROPERTIES
-        OUTPUT_NAME deflate
-        PUBLIC_HEADER libdeflate.h
-        C_VISIBILITY_PRESET hidden
-        SOVERSION 0)
-    target_include_directories(libdeflate_shared PUBLIC ${LIB_INCLUDE_DIRS})
-    target_compile_definitions(libdeflate_shared PUBLIC LIBDEFLATE_DLL)
-    target_compile_definitions(libdeflate_shared PRIVATE ${LIB_COMPILE_DEFINITIONS})
-    target_compile_options(libdeflate_shared PRIVATE ${LIB_COMPILE_OPTIONS})
-    target_link_libraries(libdeflate_shared PRIVATE ${LIB_LINK_LIBRARIES})
-endif()

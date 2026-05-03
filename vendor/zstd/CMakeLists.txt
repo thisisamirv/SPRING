@@ -64,7 +64,7 @@ include(ZstdOptions)
 # Configure compilation flags
 #-----------------------------------------------------------------------------
 include(AddZstdCompilationFlags)
-ADD_ZSTD_COMPILATION_FLAGS(ON ZSTD_ENABLE_CXX ON)
+ADD_ZSTD_COMPILATION_FLAGS(ON OFF ON)
 
 #-----------------------------------------------------------------------------
 # Configure dependencies

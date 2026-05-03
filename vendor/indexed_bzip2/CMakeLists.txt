@@ -35,13 +35,8 @@ endif()
 find_package(Threads REQUIRED)
 
 # zlib
-if(LIBRAPIDARCHIVE_USE_SYSTEM_ZLIB)
-    if(NOT TARGET ZLIB::ZLIB)
-        find_package(ZLIB REQUIRED)
-    endif()
-    add_library(zlibstatic INTERFACE)
-    target_link_libraries(zlibstatic INTERFACE ZLIB::ZLIB)
-endif()
+add_library(zlibstatic INTERFACE)
+target_link_libraries(zlibstatic INTERFACE ZLIB::ZLIB)
 
 # ISA-L
 if(LIBRAPIDARCHIVE_WITH_ISAL)

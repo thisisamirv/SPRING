@@ -1,6 +1,4 @@
 add_definitions(-DHAVE_CONFIG_H)
-add_definitions(-DHAVE_CONFIG_H)
-add_definitions(-DHAVE_CONFIG_H)
 
 ############################################
 #
@@ -122,21 +120,6 @@ endif()
 
 
 # Libarchive is a shared library
-if(BUILD_SHARED_LIBS)
-    add_library(archive SHARED ${libarchive_SOURCES} ${include_HEADERS})
-    target_include_directories(archive PUBLIC .)
-    target_link_libraries(archive ${ADDITIONAL_LIBS})
-    set_target_properties(archive PROPERTIES
-        VERSION ${SOVERSION_FULL}
-        SOVERSION ${SOVERSION}
-        MACHO_COMPATIBILITY_VERSION ${MACHO_COMPATIBILITY_VERSION}
-        MACHO_CURRENT_VERSION ${MACHO_CURRENT_VERSION})
-    if(WIN32 AND MSVC AND MSVC_USE_STATIC_CRT)
-        set_property(TARGET archive PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-    endif(WIN32 AND MSVC AND MSVC_USE_STATIC_CRT)
-endif(BUILD_SHARED_LIBS)
-
-# archive_static is a static library
 add_library(archive_static STATIC ${libarchive_SOURCES} ${include_HEADERS})
 target_include_directories(archive_static PUBLIC .)
 target_link_libraries(archive_static ${ADDITIONAL_LIBS})
@@ -146,9 +129,7 @@ if(WIN32 AND MSVC AND MSVC_USE_STATIC_CRT)
     set_property(TARGET archive_static PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif(WIN32 AND MSVC AND MSVC_USE_STATIC_CRT)
 # On Posix systems, libarchive.so and libarchive.a can co-exist.
-if(NOT WIN32 OR CYGWIN OR NOT BUILD_SHARED_LIBS)
-    set_target_properties(archive_static PROPERTIES OUTPUT_NAME archive)
-endif(NOT WIN32 OR CYGWIN OR NOT BUILD_SHARED_LIBS)
+set_target_properties(archive_static PROPERTIES OUTPUT_NAME archive)
 
 if(CMAKE_C_COMPILER_ID MATCHES "GNU")
     if(CMAKE_C_COMPILER_ID MATCHES "GNU")
