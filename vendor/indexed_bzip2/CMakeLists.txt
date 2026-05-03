@@ -75,6 +75,9 @@ target_sources(core INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/VectorView.hpp
 )
 target_link_libraries(core INTERFACE Threads::Threads filereader)
+target_compile_options(core INTERFACE
+    "$<$<AND:$<COMPILE_LANG_AND_ID:CXX,Clang>,$<PLATFORM_ID:Windows>>:-fconstexpr-steps=16777216>"
+)
 target_compile_features(core INTERFACE cxx_std_17)
 add_library(libhuffman INTERFACE)
 target_include_directories(libhuffman INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})

@@ -1,7 +1,9 @@
 ﻿#ifndef SPRING_QVZ_UTIL_H_
 #define SPRING_QVZ_UTIL_H_
 
+#ifndef _CRT_SECURE_NO_WARNINGS
 #define _CRT_SECURE_NO_WARNINGS
+#endif
 
 #include <limits>
 #include <math.h>

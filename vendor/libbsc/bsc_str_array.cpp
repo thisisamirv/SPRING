@@ -40,9 +40,12 @@ indirect and consequential damages.
 Sort Transform is disabled by default and can be enabled by defining the
 preprocessor macro LIBBSC_SORT_TRANSFORM_SUPPORT at compile time.
 
+
 --*/
 
+#ifndef _CRT_SECURE_NO_WARNINGS
 #define _CRT_SECURE_NO_WARNINGS
+#endif
 
 #include <math.h>
 #include <stdexcept>

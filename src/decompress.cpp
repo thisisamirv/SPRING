@@ -107,6 +107,19 @@ void close_reference_chunk(reference_chunk &chunk) {
 #endif
 };
 
+std::string make_decompress_step_log_message(const char *label,
+                                             const uint32_t num_reads_done,
+                                             const uint32_t num_reads_cur_step,
+                                             const uint32_t num_blocks_done) {
+  std::string message(label);
+  message.append(std::to_string(num_reads_done));
+  message.append(", reads_this_step=");
+  message.append(std::to_string(num_reads_cur_step));
+  message.append(", num_blocks_done=");
+  message.append(std::to_string(num_blocks_done));
+  return message;
+}
+
 class reference_sequence_store {
 public:
   reference_sequence_store(const reference_sequence_store &) = delete;
@@ -210,12 +223,17 @@ thread_range split_thread_range(const uint64_t item_count, const int thread_id,
 
 std::string block_file_path(const std::string &base_path,
                             const uint32_t block_num) {
-  return base_path + '.' + std::to_string(block_num);
+  std::string path = base_path;
+  path.push_back('.');
+  path.append(std::to_string(block_num));
+  return path;
 }
 
 std::string compressed_block_file_path(const std::string &base_path,
                                        const uint32_t block_num) {
-  return block_file_path(base_path, block_num) + ".bsc";
+  std::string path = block_file_path(base_path, block_num);
+  path.append(".bsc");
+  return path;
 }
 
 bool is_unaligned_block_path(const std::string &path) {
@@ -639,7 +657,7 @@ bool decompress_and_slice_id(const std::string &temp_path_bsc,
     if (block_len == 0)
       continue;
 
-    const std::string block_path = base_id_path + "." + std::to_string(b);
+    const std::string block_path = block_file_path(base_id_path, b);
     std::ofstream block_out(block_path, std::ios::binary);
     if (!block_out)
       throw std::runtime_error("Failed to open ID block file for slicing.");
@@ -834,10 +852,9 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
         num_reads, num_reads_done, num_reads_per_step, paired_end);
     if (num_reads_cur_step == 0)
       break;
-    SPRING_LOG_DEBUG("decompress_short step: num_reads_done=" +
-                     std::to_string(num_reads_done) +
-                     ", reads_this_step=" + std::to_string(num_reads_cur_step) +
-                     ", num_blocks_done=" + std::to_string(num_blocks_done));
+    SPRING_LOG_DEBUG(make_decompress_step_log_message(
+        "decompress_short step: num_reads_done=", num_reads_done,
+        num_reads_cur_step, num_blocks_done));
     for (int stream_index = 0; stream_index < 2; stream_index++) {
       if (stream_index == 1 && !paired_end)
         continue;
@@ -1277,10 +1294,9 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
         num_reads, num_reads_done, num_reads_per_step, paired_end);
     if (num_reads_cur_step == 0)
       break;
-    SPRING_LOG_DEBUG("decompress_long step: num_reads_done=" +
-                     std::to_string(num_reads_done) +
-                     ", reads_this_step=" + std::to_string(num_reads_cur_step) +
-                     ", num_blocks_done=" + std::to_string(num_blocks_done));
+    SPRING_LOG_DEBUG(make_decompress_step_log_message(
+        "decompress_long step: num_reads_done=", num_reads_done,
+        num_reads_cur_step, num_blocks_done));
     for (int stream_index = 0; stream_index < 2; stream_index++) {
       if (stream_index == 1 && !paired_end)
         continue;
