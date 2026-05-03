@@ -247,31 +247,37 @@ static inline int compare258(uint8_t *str1, uint8_t *str2,
     if (*str1++ != *str2++)
       return count;
     count++;
+    /* fall through */
 
   case 6:
     if (*str1++ != *str2++)
       return count;
     count++;
+    /* fall through */
 
   case 5:
     if (*str1++ != *str2++)
       return count;
     count++;
+    /* fall through */
 
   case 4:
     if (*str1++ != *str2++)
       return count;
     count++;
+    /* fall through */
 
   case 3:
     if (*str1++ != *str2++)
       return count;
     count++;
+    /* fall through */
 
   case 2:
     if (*str1++ != *str2++)
       return count;
     count++;
+    /* fall through */
 
   case 1:
     if (*str1 != *str2)
@@ -304,31 +310,37 @@ static inline int compare(uint8_t *str1, uint8_t *str2, uint32_t max_length) {
     if (*str1++ != *str2++)
       return count;
     count++;
+    /* fall through */
 
   case 6:
     if (*str1++ != *str2++)
       return count;
     count++;
+    /* fall through */
 
   case 5:
     if (*str1++ != *str2++)
       return count;
     count++;
+    /* fall through */
 
   case 4:
     if (*str1++ != *str2++)
       return count;
     count++;
+    /* fall through */
 
   case 3:
     if (*str1++ != *str2++)
       return count;
     count++;
+    /* fall through */
 
   case 2:
     if (*str1++ != *str2++)
       return count;
     count++;
+    /* fall through */
 
   case 1:
     if (*str1 != *str2)

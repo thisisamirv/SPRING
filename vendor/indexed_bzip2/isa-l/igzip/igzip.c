@@ -1110,6 +1110,7 @@ int isal_deflate_set_hufftables(struct isal_zstream *stream,
       stream->hufftables = hufftables;
       break;
     }
+    /* fall through */
 
   default:
     return ISAL_INVALID_OPERATION;
