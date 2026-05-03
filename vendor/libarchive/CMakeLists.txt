@@ -172,9 +172,5 @@ if(ENABLE_INSTALL)
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
-install(FILES ${include_HEADERS} DESTINATION include)
+    install(FILES ${include_HEADERS} DESTINATION include)
 endif()
-
-if(ENABLE_TEST)
-    add_subdirectory(test)
-endif(ENABLE_TEST)

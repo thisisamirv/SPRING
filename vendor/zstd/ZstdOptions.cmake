@@ -41,25 +41,13 @@ else()
 endif()
 
 # Build component options
-option(ZSTD_BUILD_PROGRAMS "Build command-line programs" ON)
-option(ZSTD_BUILD_CONTRIB "Build contrib utilities" OFF)
-option(ZSTD_PROGRAMS_LINK_SHARED "Link programs against shared library" OFF)
-
-# Test configuration
-if(BUILD_TESTING)
-    set(ZSTD_BUILD_TESTS_default ON)
-else()
-    set(ZSTD_BUILD_TESTS_default OFF)
-endif()
-option(ZSTD_BUILD_TESTS "Build test suite" ${ZSTD_BUILD_TESTS_default})
-
 # MSVC-specific options
 if(MSVC)
     option(ZSTD_USE_STATIC_RUNTIME "Link to static runtime libraries" OFF)
 endif()
 
-# C++ support (needed for tests)
-set(ZSTD_ENABLE_CXX ${ZSTD_BUILD_TESTS})
+# C++ support is disabled in the lean vendored build.
+set(ZSTD_ENABLE_CXX OFF)
 if(ZSTD_ENABLE_CXX)
     enable_language(CXX)
 endif()

@@ -56,17 +56,6 @@ if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "
     endif()
 endif()
 
-
-# Enable testing
-option(ISAL_BUILD_TESTS "Build the testing tree" ON)
-if(ISAL_BUILD_TESTS)
-    enable_testing()
-    include(CTest)
-endif()
-
-# Enable building ISAL shim library
-option(BUILD_ISAL_SHIM "Build the ISAL shim library" OFF)
-
 # Set default build type
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
@@ -133,11 +122,6 @@ set(LIBISAL_VERSION_PATCH 0)
 include(cmake/crc.cmake)
 include(cmake/igzip.cmake)
 #include(cmake/mem.cmake)
-
-# Conditionally build ISAL shim library
-if(BUILD_ISAL_SHIM)
-    add_subdirectory(igzip/shim)
-endif()
 
 # Add test.h to extern headers (used by all modules)
 list(APPEND EXTERN_HEADERS include/test.h)
