@@ -276,7 +276,7 @@ string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/indexed_bzip2/isa-l
 foreach(openmp_include_dir IN LISTS SPRING_OPENMP_INCLUDE_DIRS)
     string(APPEND SPRING_CLANGD_FLAGS ", \"-I${openmp_include_dir}\"")
 endforeach()
-set(CLANGD_CONTENT "CompileFlags:\n  Add: [${SPRING_CLANGD_FLAGS}, \"-Wno-empty-translation-unit\"]\n---\nIf:\n  PathMatch: ['.*\\.(hpp|cpp|cc|cxx)$', 'src/.*\\.h$']\nCompileFlags:\n  Add: [\"-std=c++20\"]\n---\nIf:\n  PathMatch: '.*\\.in$'\nDiagnostics:\n  Suppress: ['*']\nCompileFlags:\n  Add: ['-ferror-limit=0', '-w']\n")
+set(CLANGD_CONTENT "CompileFlags:\n  Add: [${SPRING_CLANGD_FLAGS}, \"-Wno-empty-translation-unit\"]\n---\nIf:\n  PathMatch: ['.*\\.(hpp|cpp|cc|cxx)$', 'src/.*\\.h$']\nCompileFlags:\n  Add: [\"-std=c++20\"]\n")
 
 
 

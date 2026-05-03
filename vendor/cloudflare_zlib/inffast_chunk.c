@@ -28,6 +28,7 @@
 
 #include "inffast_chunk.h"
 #include "chunkcopy.h"
+#include "inffast.h"
 #include "inflate.h"
 #include "inftrees.h"
 #include "zutil.h"

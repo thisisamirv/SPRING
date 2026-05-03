@@ -10,6 +10,7 @@
 #if defined(INFLATE_CHUNK_SIMD_NEON) || defined(INFLATE_CHUNK_SIMD_SSE2) ||    \
     defined(INFLATE_CHUNK_GENERIC)
 #include "chunkcopy.h"
+#include "inffast.h"
 #include "inffast_chunk.h"
 #else
 #include "inffast.h"
