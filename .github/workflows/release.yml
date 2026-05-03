@@ -205,10 +205,29 @@ jobs:
               run: |
                   $env:CC="gcc"
                   $env:CXX="g++"
-                  $vendoredNinja = (Join-Path $env:GITHUB_WORKSPACE 'dev/ninja/win/ninja.exe') -replace '\\','/'
+                  $vendoredNinja = Join-Path $env:GITHUB_WORKSPACE 'dev/ninja/win/ninja.exe'
+                  $ninjaExe = $null
+                  if (Test-Path $vendoredNinja) {
+                    try {
+                      & $vendoredNinja --version | Out-Null
+                      $ninjaExe = $vendoredNinja
+                    } catch {
+                      Write-Host "Vendored Ninja is not runnable on this runner; falling back to PATH discovery."
+                    }
+                  }
+                  if (-not $ninjaExe) {
+                    $ninjaCommand = Get-Command ninja.exe -ErrorAction SilentlyContinue
+                    if ($ninjaCommand) {
+                      $ninjaExe = $ninjaCommand.Source
+                    }
+                  }
+                  if (-not $ninjaExe) {
+                    throw 'Unable to locate a working ninja.exe for CMake'
+                  }
+                  $ninjaExe = $ninjaExe -replace '\\','/'
                   cmake -S . -B build `
                     -G Ninja `
-                    -DCMAKE_MAKE_PROGRAM="$vendoredNinja" `
+                    -DCMAKE_MAKE_PROGRAM="$ninjaExe" `
                     -DSPRING_STATIC_RUNTIMES=ON
 
             - name: Build (Windows)

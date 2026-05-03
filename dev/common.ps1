@@ -79,6 +79,30 @@ function Assert-Command {
     }
 }
 
+function Get-ParallelJobCount {
+    $requestedJobs = $env:SPRING_LINT_JOBS
+    if (-not [string]::IsNullOrWhiteSpace($requestedJobs)) {
+        $jobCount = 0
+        if (-not [int]::TryParse($requestedJobs, [ref]$jobCount) -or $jobCount -lt 1) {
+            Write-Error "SPRING_LINT_JOBS must be a positive integer"
+            exit 1
+        }
+
+        return $jobCount
+    }
+
+    $processorCount = [System.Environment]::ProcessorCount
+    if ($processorCount -lt 1) {
+        return 1
+    }
+
+    if ($processorCount -gt 1) {
+        return ($processorCount - 1)
+    }
+
+    return $processorCount
+}
+
 function Assert-BuildDir {
     if (-not (Test-Path $BUILD_DIR)) {
         Write-Error "Expected build directory at $BUILD_DIR"

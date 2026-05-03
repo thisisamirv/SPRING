@@ -119,6 +119,100 @@ else {
     foreach ($inc in $LINUX_SYSTEM_INCLUDE_DIRS) { $commonTidyArgs += "--extra-arg-before=-isystem"; $commonTidyArgs += "--extra-arg-before=$inc" }
 }
 
+function Write-FilteredLintOutput {
+    param ([object[]]$lines)
+
+    $filterPattern = '^\d+ warnings? generated\.$|^\d+ warnings? and \d+ errors? generated\.$|^\[\d+/\d+\] Processing file'
+    foreach ($line in $lines) {
+        $text = $line.ToString()
+        if ($text -and $text -notmatch $filterPattern) {
+            Write-Host $text
+        }
+    }
+}
+
+function Invoke-ParallelWorkItems {
+    param (
+        [object[]]$WorkItems,
+        [int]$ThrottleLimit,
+        [scriptblock]$JobScript,
+        [scriptblock]$ResultHandler
+    )
+
+    if ($null -eq $WorkItems -or $WorkItems.Count -eq 0) {
+        return
+    }
+
+    if ($ThrottleLimit -lt 1) {
+        $ThrottleLimit = 1
+    }
+
+    $hadFailure = $false
+    for ($offset = 0; $offset -lt $WorkItems.Count; $offset += $ThrottleLimit) {
+        $jobs = @()
+        $batchEnd = [Math]::Min($offset + $ThrottleLimit, $WorkItems.Count)
+        for ($index = $offset; $index -lt $batchEnd; $index++) {
+            $jobs += Start-Job -ScriptBlock $JobScript -ArgumentList $WorkItems[$index]
+        }
+
+        Wait-Job -Job $jobs | Out-Null
+
+        foreach ($job in $jobs) {
+            $result = Receive-Job -Job $job
+            & $ResultHandler $result
+            if ($result.ExitCode -ne 0) {
+                $hadFailure = $true
+            }
+            Remove-Job -Job $job -Force | Out-Null
+        }
+    }
+
+    if ($hadFailure) {
+        throw "One or more lint jobs failed."
+    }
+}
+
+$clangTidyJobScript = {
+    param($workItem)
+
+    try {
+        $output = & $workItem.Command @($workItem.Arguments) 2>&1 | ForEach-Object { $_.ToString() }
+        $exitCode = if ($null -ne $LASTEXITCODE) { [int]$LASTEXITCODE } else { 0 }
+    }
+    catch {
+        $output = @($_.Exception.Message)
+        $exitCode = 1
+    }
+
+    [pscustomobject]@{
+        Label    = $workItem.Label
+        ExitCode = $exitCode
+        Output   = @($output)
+    }
+}
+
+$pythonLintJobScript = {
+    param($workItem)
+
+    try {
+        $output = & $workItem.Command @($workItem.Arguments) 2>&1 | ForEach-Object { $_.ToString() }
+        $exitCode = if ($null -ne $LASTEXITCODE) { [int]$LASTEXITCODE } else { 0 }
+    }
+    catch {
+        $output = @($_.Exception.Message)
+        $exitCode = 1
+    }
+
+    [pscustomobject]@{
+        Label    = $workItem.Label
+        ExitCode = $exitCode
+        Output   = @($output)
+    }
+}
+
+$lintJobs = Get-ParallelJobCount
+Write-Host "Using up to $lintJobs parallel lint jobs." -ForegroundColor Gray
+
 # Collect files from args or default locations (do not lint tests/ by default)
 $lintTargets = if ($args) { $args } else {
     @(
@@ -296,41 +390,41 @@ dst_path.write_text(json.dumps(entries, indent=2), encoding="utf-8")
         foreach ($inc in $EXTRA_INCLUDES) {
             $compileDbIncludeArgs += "--extra-arg=-I$inc"
         }
-        $tidyArgs = $commonTidyArgs + @("-p", "$tidyDbDir") + $compileDbIncludeArgs + $compileDbFiles
-        
-        $oldPreference = $ErrorActionPreference
-        $ErrorActionPreference = 'SilentlyContinue'
-        & $clangTidyBin @tidyArgs 2>&1 | ForEach-Object {
-            $line = $_.ToString()
-            if ($line -notmatch '^\d+ warnings? generated\.$|^\d+ warnings? and \d+ errors? generated\.$|^\[\d+/\d+\] Processing file') {
-                Write-Host $line
+        $workItems = foreach ($file in $compileDbFiles) {
+            [pscustomobject]@{
+                Label     = $file
+                Command   = $clangTidyBin
+                Arguments = $commonTidyArgs + @("-p", "$tidyDbDir") + $compileDbIncludeArgs + @($file)
             }
         }
-        $ErrorActionPreference = $oldPreference
+
+        Invoke-ParallelWorkItems -WorkItems $workItems -ThrottleLimit $lintJobs -JobScript $clangTidyJobScript -ResultHandler {
+            param($result)
+            Write-Host "Linting $($result.Label)..." -ForegroundColor Gray
+            Write-FilteredLintOutput $result.Output
+        }
     }
 
     if ($standaloneFiles) {
         Write-Host "Linting $($standaloneFiles.Count) standalone files..." -ForegroundColor Cyan
-        foreach ($file in $standaloneFiles) {
-            Write-Host "Linting $file..." -ForegroundColor Gray
-            $includeArgs = @()
-            $includeArgs += "-I$LINT_INCLUDE_DIR"
+        $workItems = foreach ($file in $standaloneFiles) {
+            $includeArgs = @("-I$LINT_INCLUDE_DIR")
             foreach ($inc in $EXTRA_INCLUDES) {
                 $includeArgs += "-I$inc"
             }
             $includeArgs += "-I$((Get-Item $file).DirectoryName)"
 
-            $tidyArgs = $commonTidyArgs + @($file, "--", "--driver-mode=g++", "-std=c++20", "-x", "c++") + $includeArgs
-            
-            $oldPreference = $ErrorActionPreference
-            $ErrorActionPreference = 'SilentlyContinue'
-            & $clangTidyBin @tidyArgs 2>&1 | ForEach-Object {
-                $line = $_.ToString()
-                if ($line -notmatch '^\d+ warnings? generated\.$|^\d+ warnings? and \d+ errors? generated\.$|^\[\d+/\d+\] Processing file') {
-                    Write-Host $line
-                }
+            [pscustomobject]@{
+                Label     = $file
+                Command   = $clangTidyBin
+                Arguments = $commonTidyArgs + @($file, "--", "--driver-mode=g++", "-std=c++20", "-x", "c++") + $includeArgs
             }
-            $ErrorActionPreference = $oldPreference
+        }
+
+        Invoke-ParallelWorkItems -WorkItems $workItems -ThrottleLimit $lintJobs -JobScript $clangTidyJobScript -ResultHandler {
+            param($result)
+            Write-Host "Linting $($result.Label)..." -ForegroundColor Gray
+            Write-FilteredLintOutput $result.Output
         }
     }
 }
@@ -338,8 +432,17 @@ dst_path.write_text(json.dumps(entries, indent=2), encoding="utf-8")
 if ($pythonFiles) {
     Assert-Command "python"
     Write-Host "Linting $($pythonFiles.Count) Python files..." -ForegroundColor Cyan
-    foreach ($file in $pythonFiles) {
-        Write-Host "Linting $file..." -ForegroundColor Gray
-        python -m py_compile $file
+    $workItems = foreach ($file in $pythonFiles) {
+        [pscustomobject]@{
+            Label     = $file
+            Command   = "python"
+            Arguments = @("-m", "py_compile", $file)
+        }
+    }
+
+    Invoke-ParallelWorkItems -WorkItems $workItems -ThrottleLimit $lintJobs -JobScript $pythonLintJobScript -ResultHandler {
+        param($result)
+        Write-Host "Linting $($result.Label)..." -ForegroundColor Gray
+        Write-FilteredLintOutput $result.Output
     }
 }

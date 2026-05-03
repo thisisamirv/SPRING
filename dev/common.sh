@@ -90,6 +90,37 @@ require_command() {
 	fi
 }
 
+resolve_parallel_job_count() {
+	local requested_jobs="${SPRING_LINT_JOBS:-}"
+	local job_count=""
+
+	if [[ -n "$requested_jobs" ]]; then
+		if [[ "$requested_jobs" =~ ^[0-9]+$ ]] && ((requested_jobs > 0)); then
+			printf '%s\n' "$requested_jobs"
+			return
+		fi
+
+		echo "SPRING_LINT_JOBS must be a positive integer" >&2
+		exit 1
+	fi
+
+	if command -v nproc >/dev/null 2>&1; then
+		job_count=$(nproc)
+	elif command -v getconf >/dev/null 2>&1; then
+		job_count=$(getconf _NPROCESSORS_ONLN 2>/dev/null || true)
+	elif command -v sysctl >/dev/null 2>&1; then
+		job_count=$(sysctl -n hw.ncpu 2>/dev/null || true)
+	fi
+
+	if [[ ! "$job_count" =~ ^[0-9]+$ ]] || ((job_count < 1)); then
+		job_count=1
+	elif ((job_count > 1)); then
+		job_count=$((job_count - 1))
+	fi
+
+	printf '%s\n' "$job_count"
+}
+
 require_build_dir() {
 	if [[ ! -d "$BUILD_DIR" ]]; then
 		echo "Expected build directory at $BUILD_DIR" >&2

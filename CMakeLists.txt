@@ -153,6 +153,13 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAGS}")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${FLAGS}")
 
 # OpenMP is required across Spring and several bundled compression components.
+if(MSVC AND (CMAKE_C_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
+    if(NOT DEFINED OpenMP_RUNTIME_MSVC)
+        message(NOTICE "Configuring OpenMP for ClangCL with the LLVM runtime")
+        set(OpenMP_RUNTIME_MSVC "llvm" CACHE STRING "MSVC OpenMP runtime")
+    endif()
+endif()
+
 if(APPLE)
     # Automatically locate Homebrew libomp if not already specified
     if(NOT OpenMP_FOUND AND NOT DEFINED OpenMP_ROOT)

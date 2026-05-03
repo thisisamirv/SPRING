@@ -1299,9 +1299,10 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
                                          block_num, read_lengths_buffer.data(),
                                          buffer_offset, thread_read_count);
 
-            std::string block_base_path = input_read_paths[stream_index] + "." +
-                                          std::to_string(block_num);
-            const std::string compressed_read_path = block_base_path + ".bsc";
+            std::string block_base_path =
+                block_file_path(input_read_paths[stream_index], block_num);
+            const std::string compressed_read_path = compressed_block_file_path(
+                input_read_paths[stream_index], block_num);
             if (std::filesystem::exists(compressed_read_path)) {
               safe_bsc_decompress(compressed_read_path, block_base_path);
               safe_remove_file(compressed_read_path);
@@ -1313,8 +1314,7 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
 
             if (preserve_quality) {
               std::string quality_base_path =
-                  input_quality_paths[stream_index] + "." +
-                  std::to_string(block_num);
+                  block_file_path(input_quality_paths[stream_index], block_num);
               const std::string quality_raw_path = quality_base_path + ".raw";
               safe_bsc_decompress(quality_base_path, quality_raw_path);
               read_raw_string_block(quality_raw_path,
@@ -1341,9 +1341,11 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
                      i < buffer_offset + thread_read_count; i++)
                   modify_id(id_buffer[i], paired_id_code);
               } else {
-                std::string id_base_path = input_id_paths[stream_index] + "." +
-                                           std::to_string(block_num);
-                const std::string compressed_id_path = id_base_path + ".bsc";
+                std::string id_base_path =
+                    block_file_path(input_id_paths[stream_index], block_num);
+                const std::string compressed_id_path =
+                    compressed_block_file_path(input_id_paths[stream_index],
+                                               block_num);
                 if (std::filesystem::exists(compressed_id_path)) {
                   decompress_id_block(compressed_id_path.c_str(),
                                       id_buffer.data() + buffer_offset,

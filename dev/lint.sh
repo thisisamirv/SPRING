@@ -160,6 +160,115 @@ run_clang_tidy() {
 		2> >(grep -Ev '^[0-9]+ warnings? generated\.$|^[0-9]+ warnings? and [0-9]+ errors? generated\.$' >&2)
 }
 
+run_parallel_lint_jobs() {
+	local job_count="$1"
+	local worker_function="$2"
+	shift 2
+	local -a work_items=("$@")
+	local overall_status=0
+	local start_index=0
+
+	if [[ ${#work_items[@]} -eq 0 ]]; then
+		return 0
+	fi
+
+	if ((job_count < 2 || ${#work_items[@]} < 2)); then
+		for work_item in "${work_items[@]}"; do
+			if ! "$worker_function" "$work_item"; then
+				overall_status=1
+			fi
+		done
+		return "$overall_status"
+	fi
+
+	while ((start_index < ${#work_items[@]})); do
+		local batch_end=$((start_index + job_count))
+		local -a batch_pids=()
+		local -a batch_outputs=()
+		local batch_index
+
+		if ((batch_end > ${#work_items[@]})); then
+			batch_end=${#work_items[@]}
+		fi
+
+		for ((batch_index = start_index; batch_index < batch_end; batch_index++)); do
+			local output_file
+			output_file=$(mktemp "${TMPDIR:-/tmp}/spring2-lint.XXXXXX")
+			batch_outputs+=("$output_file")
+			(
+				"$worker_function" "${work_items[batch_index]}"
+			) >"$output_file" 2>&1 &
+			batch_pids+=("$!")
+		done
+
+		for batch_pid in "${batch_pids[@]}"; do
+			if ! wait "$batch_pid"; then
+				overall_status=1
+			fi
+		done
+
+		for output_file in "${batch_outputs[@]}"; do
+			cat "$output_file"
+			rm -f "$output_file"
+		done
+
+		start_index=$batch_end
+	done
+
+	return "$overall_status"
+}
+
+run_compile_db_tidy_for_file() {
+	local file="$1"
+	printf 'Linting compile-db file %s.\n' "$file"
+	run_clang_tidy \
+		"${clang_tidy_common_args[@]}" \
+		-p "$tidy_db_dir" \
+		"$file"
+}
+
+run_standalone_tidy_for_file() {
+	local file="$1"
+	local -a include_args=()
+
+	if $is_msys_windows; then
+		include_args+=("-I$LINT_INCLUDE_DIR")
+	fi
+	for include_dir in "${EXTRA_INCLUDES[@]}"; do
+		include_args+=("-I$include_dir")
+	done
+
+	printf 'Linting standalone file %s.\n' "$file"
+
+	if [[ "$file" == *.c ]]; then
+		run_clang_tidy \
+			"${clang_tidy_common_args[@]}" \
+			"$file" -- \
+			-std=gnu11 \
+			-x c \
+			"${include_args[@]}" \
+			-I"$(dirname -- "$file")"
+	else
+		run_clang_tidy \
+			"${clang_tidy_common_args[@]}" \
+			"$file" -- \
+			--driver-mode=g++ \
+			-std=c++20 \
+			-x c++ \
+			"${include_args[@]}" \
+			-I"$(dirname -- "$file")"
+	fi
+}
+
+run_python_lint_for_file() {
+	local file="$1"
+	printf 'Linting python file %s.\n' "$file"
+	python3 -m py_compile "$file"
+}
+
+lint_jobs=$(resolve_parallel_job_count)
+printf 'Using up to %s parallel lint jobs.\n' "$lint_jobs"
+
 if [[ $# -gt 0 ]]; then
 	lint_targets=("$@")
 else
@@ -308,48 +417,13 @@ if [[ ${#files[@]} -gt 0 ]]; then
 fi
 
 if [[ -n "${compile_db_files+set}" && ${#compile_db_files[@]} -gt 0 ]]; then
-	run_clang_tidy \
-		"${clang_tidy_common_args[@]}" \
-		-p "$tidy_db_dir" \
-		"${compile_db_files[@]}"
+	run_parallel_lint_jobs "$lint_jobs" run_compile_db_tidy_for_file "${compile_db_files[@]}"
 fi
 
 if [[ -n "${standalone_files+set}" && ${#standalone_files[@]} -gt 0 ]]; then
-	for file in "${standalone_files[@]}"; do
-		include_args=()
-		if $is_msys_windows; then
-			include_args+=("-I$LINT_INCLUDE_DIR")
-		fi
-		for include_dir in "${EXTRA_INCLUDES[@]}"; do
-			include_args+=("-I$include_dir")
-		done
-
-		printf 'Linting standalone file %s.\n' "$file"
-
-		if [[ "$file" == *.c ]]; then
-			run_clang_tidy \
-				"${clang_tidy_common_args[@]}" \
-				"$file" -- \
-				-std=gnu11 \
-				-x c \
-				"${include_args[@]}" \
-				-I"$(dirname -- "$file")"
-		else
-			run_clang_tidy \
-				"${clang_tidy_common_args[@]}" \
-				"$file" -- \
-				--driver-mode=g++ \
-				-std=c++20 \
-				-x c++ \
-				"${include_args[@]}" \
-				-I"$(dirname -- "$file")"
-		fi
-	done
+	run_parallel_lint_jobs "$lint_jobs" run_standalone_tidy_for_file "${standalone_files[@]}"
 fi
 
 if [[ -n "${python_files+set}" && ${#python_files[@]} -gt 0 ]]; then
-	for file in "${python_files[@]}"; do
-		printf 'Linting python file %s.\n' "$file"
-		python3 -m py_compile "$file"
-	done
+	run_parallel_lint_jobs "$lint_jobs" run_python_lint_for_file "${python_files[@]}"
 fi
