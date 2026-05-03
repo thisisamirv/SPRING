@@ -185,37 +185,6 @@ AssayDetector::StartupAnalysisResult AssayDetector::analyze_startup_sample(
 
     if (is_r1) {
       stats.r1_lengths.push_back(static_cast<int>(seq.length()));
-      if (seq.length() >= 16) {
-        bool is_barcode_like = true;
-        int acgt_count = 0;
-        int base_counts[4] = {0, 0, 0, 0};
-        for (int i = 0; i < 16; ++i) {
-          const char c = seq[static_cast<size_t>(i)];
-          if (c == 'A') {
-            acgt_count++;
-            base_counts[0]++;
-          } else if (c == 'C') {
-            acgt_count++;
-            base_counts[1]++;
-          } else if (c == 'G') {
-            acgt_count++;
-            base_counts[2]++;
-          } else if (c == 'T') {
-            acgt_count++;
-            base_counts[3]++;
-          } else if (c != 'N') {
-            is_barcode_like = false;
-            break;
-          }
-        }
-        if (is_barcode_like && acgt_count >= 14) {
-          const int max_base = std::max(
-              {base_counts[0], base_counts[1], base_counts[2], base_counts[3]});
-          if (max_base <= 10) {
-            stats.r1_barcode_like_prefix++;
-          }
-        }
-      }
     } else {
       stats.r2_lengths.push_back(static_cast<int>(seq.length()));
     }
@@ -270,9 +239,6 @@ AssayDetector::StartupAnalysisResult AssayDetector::analyze_startup_sample(
           break;
         case BlockID::INTRON_CTRL:
           stats.intron_hits++;
-          break;
-        case BlockID::GENOME_BACKBONE:
-          stats.genome_hits++;
           break;
         default:
           break;
@@ -577,16 +543,6 @@ AssayDetector::evaluate_stages(const ReadStats &stats,
     sc_indicator_count++;
     sc_evidence.push_back("UMI tags");
   }
-
-  // Barcode-like prefix in R1
-  // DISABLED: Too prone to false positives with bisulfite-converted reads
-  // double barcode_prefix_frac =
-  //     static_cast<double>(stats.r1_barcode_like_prefix) / stats.total_reads;
-  // if (barcode_prefix_frac > 0.8) {
-  //   is_single_cell = true;
-  //   sc_indicator_count++;
-  //   sc_evidence.push_back("R1 barcode prefix");
-  // }
 
   // Read length asymmetry (classic 10x pattern: short R1, long R2)
   if (!stats.r1_lengths.empty() && !stats.r2_lengths.empty()) {

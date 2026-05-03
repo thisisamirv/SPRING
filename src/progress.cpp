@@ -15,8 +15,6 @@ ProgressBar *g_global_progress_bar = nullptr;
 
 void Logger::set_level(log_level level) { g_log_level = level; }
 
-log_level Logger::level() { return g_log_level; }
-
 bool Logger::is_info_enabled() {
   return static_cast<int>(g_log_level) >= static_cast<int>(log_level::info);
 }
@@ -24,12 +22,6 @@ bool Logger::is_info_enabled() {
 bool Logger::is_debug_enabled() {
   return static_cast<int>(g_log_level) >= static_cast<int>(log_level::debug);
 }
-
-void Logger::set_verbose(bool verbose) {
-  g_log_level = verbose ? log_level::info : log_level::quiet;
-}
-
-bool Logger::is_verbose() { return is_info_enabled(); }
 
 ProgressBar *ProgressBar::GlobalInstance() { return g_global_progress_bar; }
 

@@ -44,7 +44,13 @@ Changes made to the original file:
 
 #if defined(LIBSAIS_OPENMP)
 #include <omp.h>
+#if defined(_OPENMP) && (_OPENMP >= 202011)
+#define LIBSAIS_OMP_MASTER _Pragma("omp masked")
 #else
+#define LIBSAIS_OMP_MASTER _Pragma("omp master")
+#endif
+#else
+#define LIBSAIS_OMP_MASTER
 #define UNUSED(_x) (void)(_x)
 #endif
 
@@ -1041,7 +1047,7 @@ static sa_sint_t libsais_count_and_gather_lms_suffixes_8u_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         memset(buckets, 0, (size_t)4 * ALPHABET_SIZE * sizeof(sa_sint_t));
 
@@ -2361,7 +2367,7 @@ static void libsais_radix_sort_lms_suffixes_32s_6k_block_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         libsais_radix_sort_lms_suffixes_32s_6k_block_sort(
             induction_bucket, cache - block_start, block_start, block_size);
@@ -2418,7 +2424,7 @@ static void libsais_radix_sort_lms_suffixes_32s_2k_block_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         libsais_radix_sort_lms_suffixes_32s_2k_block_sort(
             induction_bucket, cache - block_start, block_start, block_size);
@@ -2951,7 +2957,7 @@ static sa_sint_t libsais_partial_sorting_scan_left_to_right_8u_block_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         sa_sint_t *RESTRICT induction_bucket = &buckets[4 * ALPHABET_SIZE];
         sa_sint_t *RESTRICT distinct_names = &buckets[2 * ALPHABET_SIZE];
@@ -3685,7 +3691,7 @@ static sa_sint_t libsais_partial_sorting_scan_left_to_right_32s_6k_block_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         d = libsais_partial_sorting_scan_left_to_right_32s_6k_block_sort(
             T, buckets, d, cache - block_start, block_start, block_size);
@@ -3745,7 +3751,7 @@ static sa_sint_t libsais_partial_sorting_scan_left_to_right_32s_4k_block_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         d = libsais_partial_sorting_scan_left_to_right_32s_4k_block_sort(
             T, k, buckets, d, cache - block_start, block_start, block_size);
@@ -3804,7 +3810,7 @@ static void libsais_partial_sorting_scan_left_to_right_32s_1k_block_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         libsais_partial_sorting_scan_left_to_right_32s_1k_block_sort(
             T, buckets, cache - block_start, block_start, block_size);
@@ -4374,7 +4380,7 @@ static sa_sint_t libsais_partial_sorting_scan_right_to_left_8u_block_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         sa_sint_t *RESTRICT induction_bucket = &buckets[0 * ALPHABET_SIZE];
         sa_sint_t *RESTRICT distinct_names = &buckets[2 * ALPHABET_SIZE];
@@ -4466,7 +4472,7 @@ static sa_sint_t libsais_partial_gsa_scan_right_to_left_8u_block_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         sa_sint_t *RESTRICT induction_bucket = &buckets[0 * ALPHABET_SIZE];
         sa_sint_t *RESTRICT distinct_names = &buckets[2 * ALPHABET_SIZE];
@@ -5246,7 +5252,7 @@ static sa_sint_t libsais_partial_sorting_scan_right_to_left_32s_6k_block_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         d = libsais_partial_sorting_scan_right_to_left_32s_6k_block_sort(
             T, buckets, d, cache - block_start, block_start, block_size);
@@ -5306,7 +5312,7 @@ static sa_sint_t libsais_partial_sorting_scan_right_to_left_32s_4k_block_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         d = libsais_partial_sorting_scan_right_to_left_32s_4k_block_sort(
             T, k, buckets, d, cache - block_start, block_start, block_size);
@@ -5365,7 +5371,7 @@ static void libsais_partial_sorting_scan_right_to_left_32s_1k_block_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         libsais_partial_sorting_scan_right_to_left_32s_1k_block_sort(
             T, buckets, cache - block_start, block_start, block_size);
@@ -5592,7 +5598,7 @@ static void libsais_partial_sorting_gather_lms_suffixes_32s_4k_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         fast_sint_t t, position = 0;
         for (t = 0; t < omp_num_threads; ++t) {
@@ -5648,7 +5654,7 @@ static void libsais_partial_sorting_gather_lms_suffixes_32s_1k_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         fast_sint_t t, position = 0;
         for (t = 0; t < omp_num_threads; ++t) {
@@ -5955,7 +5961,7 @@ static void libsais_gather_marked_lms_suffixes_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         fast_sint_t t, position = (fast_sint_t)n + (fast_sint_t)fs;
 
@@ -7187,7 +7193,7 @@ static void libsais_final_bwt_scan_left_to_right_8u_block_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         fast_sint_t t;
         for (t = 0; t < omp_num_threads; ++t) {
@@ -7260,7 +7266,7 @@ static void libsais_final_bwt_aux_scan_left_to_right_8u_block_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         fast_sint_t t;
         for (t = 0; t < omp_num_threads; ++t) {
@@ -7333,7 +7339,7 @@ static void libsais_final_sorting_scan_left_to_right_8u_block_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         fast_sint_t t;
         for (t = 0; t < omp_num_threads; ++t) {
@@ -7400,7 +7406,7 @@ static void libsais_final_sorting_scan_left_to_right_32s_block_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         libsais_final_sorting_scan_left_to_right_32s_block_sort(
             T, buckets, cache - block_start, block_start, block_size);
@@ -8370,7 +8376,7 @@ static void libsais_final_bwt_scan_right_to_left_8u_block_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         fast_sint_t t;
         for (t = omp_num_threads - 1; t >= 0; --t) {
@@ -8443,7 +8449,7 @@ static void libsais_final_bwt_aux_scan_right_to_left_8u_block_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         fast_sint_t t;
         for (t = omp_num_threads - 1; t >= 0; --t) {
@@ -8516,7 +8522,7 @@ static void libsais_final_sorting_scan_right_to_left_8u_block_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         fast_sint_t t;
         for (t = omp_num_threads - 1; t >= 0; --t) {
@@ -8589,7 +8595,7 @@ static void libsais_final_gsa_scan_right_to_left_8u_block_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         fast_sint_t t;
         for (t = omp_num_threads - 1; t >= 0; --t) {
@@ -8656,7 +8662,7 @@ static void libsais_final_sorting_scan_right_to_left_32s_block_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         libsais_final_sorting_scan_right_to_left_32s_block_sort(
             T, buckets, cache - block_start, block_start, block_size);
@@ -9332,7 +9338,7 @@ static void libsais_compact_unique_and_nonunique_lms_suffixes_32s_omp(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         fast_sint_t t, position;
 
@@ -10957,7 +10963,7 @@ static void libsais_unbwt_init_parallel(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         {
           sa_uint_t *RESTRICT bucket1_temp = buckets;
@@ -11028,7 +11034,7 @@ static void libsais_unbwt_init_parallel(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
 
         libsais_unbwt_calculate_fastbits(bucket2, fastbits, lastc, shift);
@@ -11064,7 +11070,7 @@ static void libsais_unbwt_init_parallel(
 
 #pragma omp barrier
 
-#pragma omp master
+LIBSAIS_OMP_MASTER
       {
         memcpy(bucket2,
                buckets + ALPHABET_SIZE +

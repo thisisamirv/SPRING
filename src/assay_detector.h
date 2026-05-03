@@ -51,13 +51,11 @@ private:
     uint64_t rna_hits = 0;
     uint64_t atac_hits = 0;
     uint64_t intron_hits = 0;
-    uint64_t genome_hits = 0;
     uint64_t total_sampled_kmers = 0;
 
     // Single-cell indicators
-    uint64_t headers_with_cb_tag = 0;    // CB:Z: tags in headers
-    uint64_t headers_with_umi_tag = 0;   // UMI tags in headers
-    uint64_t r1_barcode_like_prefix = 0; // R1 starts with barcode-like seq
+    uint64_t headers_with_cb_tag = 0;  // CB:Z: tags in headers
+    uint64_t headers_with_umi_tag = 0; // UMI tags in headers
   };
 
   enum class BlockID {
@@ -69,8 +67,6 @@ private:
   };
 
   void load_reference();
-  void process_reads(const std::string &r1_path, const std::string &r2_path,
-                     ReadStats &stats);
   DetectionResult evaluate_stages(const ReadStats &stats,
                                   bool explicit_sc_layout);
   static bool has_atac_adapter(const std::string &seq);

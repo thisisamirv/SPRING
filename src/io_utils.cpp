@@ -253,19 +253,6 @@ void gzip_ostream::write(const char *data, std::streamsize size) {
   write_gzip_data(file_, data, size);
 }
 
-void gzip_ostream::put(char value) {
-  if (!is_open()) {
-    SPRING_LOG_DEBUG(
-        "block_id=io-utils:gzip-ostream, gzip_ostream::put failure: "
-        "path=gzip_ostream::put, expected_bytes=1, actual_bytes=0, index=0");
-    throw std::runtime_error("gzip_ostream is not open for writing.");
-  }
-  if (gzputc(file_, value) == -1) {
-    throw gzip_runtime_error(file_,
-                             "Failed writing single char to gzip stream");
-  }
-}
-
 void gzip_ostream::close() {
   if (file_) {
     gzclose(file_);

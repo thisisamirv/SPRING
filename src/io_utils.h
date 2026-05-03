@@ -58,7 +58,6 @@ public:
 
   bool open(const std::string &path, int level = Z_DEFAULT_COMPRESSION);
   void write(const char *data, std::streamsize size);
-  void put(char value);
   void close();
   bool is_open() const;
 

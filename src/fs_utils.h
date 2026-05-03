@@ -10,9 +10,6 @@ namespace spring {
 
 size_t get_directory_size(const std::string &temp_dir);
 
-std::string shell_quote(const std::string &value);
-std::string shell_path(const std::string &value);
-
 bool safe_remove_file(const std::string &path) noexcept;
 bool safe_rename_file(const std::string &old_path,
                       const std::string &new_path) noexcept;
