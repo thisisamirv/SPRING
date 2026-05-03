@@ -15,6 +15,24 @@
 using namespace spring;
 
 namespace {
+void create_sampling_fastq(const std::string &path, int total_reads,
+                           int short_reads, int short_len, int long_len) {
+  std::ofstream out(path, std::ios::binary);
+  static constexpr char kBaseCycle[] = {'A', 'C', 'G', 'T'};
+  for (int i = 0; i < total_reads; ++i) {
+    const int read_len = i < short_reads ? short_len : long_len;
+    std::string read;
+    read.reserve(static_cast<size_t>(read_len));
+    for (int j = 0; j < read_len; ++j) {
+      read.push_back(kBaseCycle[(i + j) % 4]);
+    }
+    out << "@sample_" << i << "\n";
+    out << read << "\n";
+    out << "+\n";
+    out << std::string(static_cast<size_t>(read_len), 'I') << "\n";
+  }
+}
+
 TEST_CASE("Testing reverse_complement") {
   SUBCASE("Standard DNA sequences") {
     CHECK(reverse_complement("ATGC", 4) == "GCAT");
@@ -56,6 +74,19 @@ TEST_CASE("Testing uint64 parsing") {
 
 TEST_CASE("Testing AssayDetector") {
   AssayDetector detector;
+
+  SUBCASE("Startup sampling stops at 10,000 fragments") {
+    std::string test_fq = "test_startup_sample_limit.fq";
+    create_sampling_fastq(test_fq, 12050, 10000, 80, 700);
+
+    AssayDetector::StartupAnalysisResult res =
+        detector.analyze_startup_sample(test_fq, "", "", "", "", false, false);
+    CHECK(res.input_summary.sampled_fragments == 10000);
+    CHECK(res.input_summary.max_read_length == 80);
+    CHECK_FALSE(res.input_summary.requires_long_mode());
+
+    std::filesystem::remove(test_fq);
+  }
 
   SUBCASE("No reads parsed") {
     AssayDetector::DetectionResult res = detector.detect("", "", "", "", "");

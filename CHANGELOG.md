@@ -2,7 +2,7 @@
 
 # Changelog
 
-## V1.0.0
+## V1.0.0-rc.1
 
 ### Added
 
@@ -17,6 +17,7 @@
 - Implemented **index-aware grouped sc-RNA ID compression**: For grouped single-cell RNA archives with external `I1`/`I2` lanes, SPRING2 now detects the common Illumina-style layout where the trailing FASTQ identifier token already contains the index reads (`...:I1+I2`). In that case, the grouped index subarchive stores only the identifier prefix and reconstructs the trailing `I1`/`I2` token from the decoded index reads during decompression. This avoids compressing the same barcode token twice, remains fully lossless, and improves grouped sc-RNA compression when cell barcode / sample index bases are provided as explicit index lanes.
 - Added SPRING2 version to the metadata of compressed files.
 - Implemented **lossless poly-A/T tail stripping and restoration for RNA-seq assays**: Strips long terminal poly-A/T runs (>20bp) during preprocessing to improve compression ratios for transcriptomics data. The optimization is strictly lossless, storing stripped sequence bases and quality scores in a synchronized metadata stream that is reordered in tandem with reads. Restoration during decompression ensures identical reconstruction and passes all integrity audits. Activated automatically for high-confidence RNA assays or via `--assay rna`.
+- Added regressions covering the shared 10,000-fragment startup sampler, late overlength escalation from sampled short-read input into long mode, and late CRLF metadata discovery during preprocessing retry.
 - Added integration regressions covering grouped preview/audit corruption detection, grouped decompression with five explicit output files, grouped `SpringReader` streaming, aliased grouped `R3` output formatting, mixed paired FASTQ plus-line and LF/CRLF round-trips, per-stream gzip reconstruction behavior, archive extraction path containment, preview and `SpringReader` rejection of truncated metadata, decompression output-path collision rejection, compression output-path collision rejection, grouped default-output name deduplication, grouped alias metadata validation, grouped invalid-index manifest rejection, working `SpringReader` digests, and graceful failure for corrupted long-read archives.
 
 ### Changed
@@ -28,6 +29,7 @@
 - Had vendored libs flattened for easier maintenance. This allows easier future pruning and specialized modifications.
 - Merged preview into the main binary. spring2 now accepts `-p` or `--preview` and runs the old `spring2-preview` behavior, including `-a/--audit` in preview mode.
 - Changed gzipped input staging to use the vendored rapidgzip library in-process instead of spawning a separate helper executable, so rapidgzip support is embedded directly into `spring2` rather than relying on a sibling runtime tool.
+- Changed compression startup to reuse one shared 10,000-fragment sample for assay detection plus initial read-length, newline, and non-ACGTN analysis instead of running separate startup passes; sampled-long inputs still take the existing full prescan, while sampled-short inputs defer full validation to preprocessing.
 
 ### Fixed
 
@@ -53,6 +55,7 @@
 - Fixed `SpringReader::get_digests()` so library callers can retrieve the actual computed sequence, quality, and ID CRCs after fully consuming an archive, instead of always receiving zeroed outputs.
 - Fixed paired-end preprocess cleanup so merged mate-side `input_N.dna.2`, `read_order_N.bin.2`, and redundant mate-ID intermediates are closed before deletion and removed with the safe filesystem helper; this prevents stale raw temporary files from being packaged into `.sp` archives on Windows and reduces final archive size.
 - Fixed release/install packaging drift so fresh self-contained builds no longer install vendored dependency artifacts or a standalone `rapidgzip` tool; Windows now defaults to static runtime linking, and a clean install produces a single `spring2.exe` instead of extra dependency binaries and headers.
+- Fixed sampled short-read startup detection so preprocessing now validates sampled max-read-length, CRLF, and non-ACGTN assumptions while streaming input, retries once from a clean workdir when later data changes those properties, and escalates to the long-read path with a full prescan when late reads prove the sample was not representative.
 
 ## V1.0.0-beta
 

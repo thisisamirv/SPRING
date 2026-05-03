@@ -27,6 +27,8 @@
 
 namespace spring {
 
+bool has_non_acgtn_symbol(const std::string &read);
+
 namespace {
 
 struct preprocess_paths {
@@ -547,7 +549,86 @@ uint32_t max_read_length_in_step(const std::vector<uint32_t> &read_lengths,
                             read_lengths.begin() + reads_in_step));
 }
 
+bool input_summary_differs(const input_detection_summary &expected,
+                           const input_detection_summary &observed,
+                           const bool paired_end) {
+  if (expected.max_read_length != observed.max_read_length ||
+      expected.contains_non_acgtn_symbols !=
+          observed.contains_non_acgtn_symbols ||
+      expected.use_crlf_by_stream[0] != observed.use_crlf_by_stream[0]) {
+    return true;
+  }
+  return paired_end &&
+         expected.use_crlf_by_stream[1] != observed.use_crlf_by_stream[1];
+}
+
+void detect_input_properties_in_file(const std::string &path,
+                                     const bool fasta_input,
+                                     input_detection_summary &summary,
+                                     const int stream_index) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input.is_open())
+    throw std::runtime_error("Can't open file for pre-scan: " + path);
+
+  std::string line;
+  if (fasta_input) {
+    uint32_t current_len = 0;
+    while (std::getline(input, line)) {
+      if (!line.empty() && line.back() == '\r') {
+        summary.use_crlf_by_stream[stream_index] = true;
+        line.pop_back();
+      }
+      if (line.empty())
+        continue;
+      if (line[0] == '>') {
+        summary.max_read_length =
+            std::max(summary.max_read_length, current_len);
+        current_len = 0;
+      } else {
+        if (!summary.contains_non_acgtn_symbols && has_non_acgtn_symbol(line)) {
+          summary.contains_non_acgtn_symbols = true;
+        }
+        current_len += static_cast<uint32_t>(line.length());
+      }
+    }
+    summary.max_read_length = std::max(summary.max_read_length, current_len);
+    return;
+  }
+
+  while (std::getline(input, line)) {
+    if (!line.empty() && line.back() == '\r') {
+      summary.use_crlf_by_stream[stream_index] = true;
+      line.pop_back();
+    }
+    if (!std::getline(input, line)) {
+      break;
+    }
+    if (!line.empty() && line.back() == '\r') {
+      summary.use_crlf_by_stream[stream_index] = true;
+      line.pop_back();
+    }
+    if (!summary.contains_non_acgtn_symbols && has_non_acgtn_symbol(line)) {
+      summary.contains_non_acgtn_symbols = true;
+    }
+    summary.max_read_length =
+        std::max(summary.max_read_length, static_cast<uint32_t>(line.length()));
+
+    if (std::getline(input, line) && !line.empty() && line.back() == '\r') {
+      summary.use_crlf_by_stream[stream_index] = true;
+    }
+    if (std::getline(input, line) && !line.empty() && line.back() == '\r') {
+      summary.use_crlf_by_stream[stream_index] = true;
+    }
+  }
+}
+
 } // namespace
+
+preprocess_retry_exception::preprocess_retry_exception(
+    const input_detection_summary &summary)
+    : std::runtime_error(
+          "Input properties changed during preprocessing; retry required."),
+      updated_summary_(summary) {}
 
 bool has_non_acgtn_symbol(const std::string &read) {
   return std::ranges::any_of(read, [](char base) {
@@ -556,6 +637,19 @@ bool has_non_acgtn_symbol(const std::string &read) {
     return base != 'A' && base != 'C' && base != 'G' && base != 'T' &&
            base != 'N';
   });
+}
+
+input_detection_summary detect_input_properties(const std::string &infile_1,
+                                                const std::string &infile_2,
+                                                const bool paired_end,
+                                                const bool fasta_input) {
+  SPRING_LOG_INFO("Auto-detecting read lengths and line endings ...");
+  input_detection_summary summary;
+  detect_input_properties_in_file(infile_1, fasta_input, summary, 0);
+  if (paired_end) {
+    detect_input_properties_in_file(infile_2, fasta_input, summary, 1);
+  }
+  return summary;
 }
 
 uint32_t detect_max_read_length_in_file(const std::string &path,
@@ -608,23 +702,17 @@ uint32_t detect_max_read_length(const std::string &infile_1,
                                 const bool paired_end, const bool fasta_input,
                                 std::array<bool, 2> &use_crlf_by_stream,
                                 bool &contains_non_acgtn_symbols) {
-  SPRING_LOG_INFO("Auto-detecting read lengths and line endings ...");
-  use_crlf_by_stream = {false, false};
-  contains_non_acgtn_symbols = false;
-  uint32_t max_len_1 = detect_max_read_length_in_file(
-      infile_1, fasta_input, use_crlf_by_stream[0], contains_non_acgtn_symbols);
-  uint32_t max_len_2 = 0;
-  if (paired_end) {
-    max_len_2 = detect_max_read_length_in_file(infile_2, fasta_input,
-                                               use_crlf_by_stream[1],
-                                               contains_non_acgtn_symbols);
-  }
-  return std::max(max_len_1, max_len_2);
+  const input_detection_summary summary =
+      detect_input_properties(infile_1, infile_2, paired_end, fasta_input);
+  use_crlf_by_stream = summary.use_crlf_by_stream;
+  contains_non_acgtn_symbols = summary.contains_non_acgtn_symbols;
+  return summary.max_read_length;
 }
 
 void preprocess(const std::string &infile_1, const std::string &infile_2,
                 const std::string &temp_dir, compression_params &cp,
-                const bool &fasta_input, ProgressBar *progress) {
+                const bool &fasta_input, ProgressBar *progress,
+                const input_detection_summary *expected_summary) {
   SPRING_LOG_DEBUG(
       "Preprocess start: temp_dir=" + temp_dir + ", input1=" + infile_1 +
       (cp.encoding.paired_end ? (", input2=" + infile_2) : std::string()) +
@@ -758,6 +846,7 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   }
 
   uint32_t max_readlen = 0;
+  input_detection_summary observed_summary;
   std::array<uint64_t, 2> num_reads = {0, 0};
   std::array<uint64_t, 2> num_reads_clean = {0, 0};
   uint32_t num_reads_per_block;
@@ -857,13 +946,35 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
                                     ? &cp.read_info.id_crc[stream_index]
                                     : nullptr;
       uint32_t *sequence_crc_output = &cp.read_info.sequence_crc[stream_index];
+      bool block_saw_crlf = false;
       uint32_t reads_in_step = read_fastq_block(
           input_streams[stream_index], id_array, read_array.data(),
           quality_array.empty() ? nullptr : quality_array.data(),
           num_reads_per_step, fasta_input, read_lengths_array.data(),
           contains_n_output,
           sequence_crc_output, // Compute CRC on original data before stripping
-          quality_crc_output, id_crc_output, cp.encoding.preserve_quality);
+          quality_crc_output, id_crc_output, cp.encoding.preserve_quality,
+          &block_saw_crlf);
+
+      observed_summary.use_crlf_by_stream[stream_index] =
+          observed_summary.use_crlf_by_stream[stream_index] || block_saw_crlf;
+      observed_summary.sampled_fragments += reads_in_step;
+
+      for (uint32_t ri = 0; ri < reads_in_step; ++ri) {
+        observed_summary.max_read_length =
+            std::max(observed_summary.max_read_length, read_lengths_array[ri]);
+        if (!observed_summary.contains_non_acgtn_symbols &&
+            has_non_acgtn_symbol(read_array[ri])) {
+          observed_summary.contains_non_acgtn_symbols = true;
+        }
+      }
+
+      if (expected_summary != nullptr && !cp.encoding.long_flag) {
+        if (observed_summary.contains_non_acgtn_symbols ||
+            observed_summary.max_read_length > MAX_READ_LEN) {
+          throw preprocess_retry_exception(observed_summary);
+        }
+      }
 
       // Strip poly-A/T tails and accumulate per-read tail info.
       // We keep a local buffer (step_tail_info) indexed by read position in
@@ -1367,10 +1478,22 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       quality_header_has_id_by_stream[0];
   cp.read_info.quality_header_has_id_by_stream[1] =
       cp.encoding.paired_end ? quality_header_has_id_by_stream[1] : false;
+  cp.encoding.use_crlf_by_stream[0] = observed_summary.use_crlf_by_stream[0];
+  cp.encoding.use_crlf_by_stream[1] =
+      cp.encoding.paired_end ? observed_summary.use_crlf_by_stream[1] : false;
+  cp.encoding.use_crlf =
+      cp.encoding.use_crlf_by_stream[0] ||
+      (cp.encoding.paired_end && cp.encoding.use_crlf_by_stream[1]);
   cp.read_info.num_reads = num_reads[0] + num_reads[1];
   cp.read_info.num_reads_clean[0] = num_reads_clean[0];
   cp.read_info.num_reads_clean[1] = num_reads_clean[1];
   cp.read_info.max_readlen = max_readlen;
+
+  if (expected_summary != nullptr && !cp.encoding.long_flag &&
+      input_summary_differs(*expected_summary, observed_summary,
+                            cp.encoding.paired_end)) {
+    throw preprocess_retry_exception(observed_summary);
+  }
 
   SPRING_LOG_DEBUG(
       "Preprocess complete: num_reads=" +

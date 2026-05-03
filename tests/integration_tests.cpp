@@ -117,6 +117,40 @@ void create_custom_fastq(const std::string &path, int num_records,
   }
 }
 
+void create_late_long_fastq(const std::string &path, int short_records,
+                            int total_records, int short_len, int long_len) {
+  std::ofstream output(path, std::ios::binary);
+  static constexpr char kBaseCycle[] = {'A', 'C', 'G', 'T'};
+  for (int record = 0; record < total_records; ++record) {
+    const int read_len = record < short_records ? short_len : long_len;
+    std::string sequence;
+    sequence.reserve(static_cast<size_t>(read_len));
+    for (int base = 0; base < read_len; ++base) {
+      sequence.push_back(kBaseCycle[(record + base) % 4]);
+    }
+    write_fastq_record(
+        output, std::string("@late_long_") + std::to_string(record), sequence,
+        std::string(static_cast<size_t>(read_len), 'I'), false, false);
+  }
+}
+
+void create_delayed_crlf_fastq(const std::string &path, int total_records,
+                               int lf_records, int read_len = 80) {
+  std::ofstream output(path, std::ios::binary);
+  static constexpr char kBaseCycle[] = {'A', 'C', 'G', 'T'};
+  for (int record = 0; record < total_records; ++record) {
+    std::string sequence;
+    sequence.reserve(static_cast<size_t>(read_len));
+    for (int base = 0; base < read_len; ++base) {
+      sequence.push_back(kBaseCycle[(record + base) % 4]);
+    }
+    write_fastq_record(
+        output, std::string("@delayed_crlf_") + std::to_string(record),
+        sequence, std::string(static_cast<size_t>(read_len), 'I'), false,
+        record >= lf_records);
+  }
+}
+
 void create_custom_paired_fastqs(const std::string &r1_path,
                                  const std::string &r2_path, int num_records,
                                  bool r1_quality_header_has_id,
@@ -677,6 +711,65 @@ TEST_CASE("Paired FASTQ preserves per-stream plus lines and line endings") {
 
   CHECK(read_file_binary(out_r1) == read_file_binary(r1_fastq));
   CHECK(read_file_binary(out_r2) == read_file_binary(r2_fastq));
+
+  fs::remove_all(test_dir);
+}
+
+TEST_CASE("Late overlength read escalates sampled short input into long mode") {
+  const std::string test_dir = "late_long_retry_test_tmp";
+  fs::create_directories(test_dir);
+
+  const std::string input_fastq = test_dir + "/input.fastq";
+  const std::string archive_path = test_dir + "/late_long.sp";
+  const std::string output_fastq = test_dir + "/restored.fastq";
+
+  create_late_long_fastq(input_fastq, 10000, 10032, 80, 700);
+
+  const std::string compress_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -c --R1 " + input_fastq + " -o " +
+      archive_path + " -w " + test_dir + "/work_compress -t 1";
+  const std::string decompress_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_path + " -o " +
+      output_fastq + " -w " + test_dir + "/work_decompress -t 1";
+
+  REQUIRE(std::system(compress_cmd.c_str()) == 0);
+  REQUIRE(std::system(decompress_cmd.c_str()) == 0);
+  CHECK(read_file_binary(output_fastq) == read_file_binary(input_fastq));
+
+  auto contents = read_files_from_tar_memory(archive_path, {"cp.bin"});
+  REQUIRE(contents.contains("cp.bin"));
+  compression_params cp{};
+  std::istringstream cp_input(contents["cp.bin"], std::ios::binary);
+  read_compression_params(cp_input, cp);
+  REQUIRE(cp_input.good());
+  CHECK(cp.encoding.long_flag);
+  CHECK(cp.read_info.max_readlen == 700);
+
+  fs::remove_all(test_dir);
+}
+
+TEST_CASE("Late CRLF updates metadata after startup sample") {
+  const std::string test_dir = "late_crlf_retry_test_tmp";
+  fs::create_directories(test_dir);
+
+  const std::string input_fastq = test_dir + "/input.fastq";
+  const std::string archive_path = test_dir + "/late_crlf.sp";
+
+  create_delayed_crlf_fastq(input_fastq, 10040, 10000);
+
+  const std::string compress_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -c --R1 " + input_fastq + " -o " +
+      archive_path + " -w " + test_dir + "/work_compress -t 1";
+  REQUIRE(std::system(compress_cmd.c_str()) == 0);
+
+  auto contents = read_files_from_tar_memory(archive_path, {"cp.bin"});
+  REQUIRE(contents.contains("cp.bin"));
+  compression_params cp{};
+  std::istringstream cp_input(contents["cp.bin"], std::ios::binary);
+  read_compression_params(cp_input, cp);
+  REQUIRE(cp_input.good());
+  CHECK(cp.encoding.use_crlf_by_stream[0]);
+  CHECK(cp.encoding.use_crlf);
 
   fs::remove_all(test_dir);
 }

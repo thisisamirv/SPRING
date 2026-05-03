@@ -316,17 +316,25 @@ uint32_t read_fastq_block(std::istream *input_stream, std::string *id_array,
                           const uint32_t &num_reads, const bool &fasta_flag,
                           uint32_t *read_lengths, uint8_t *read_contains_n,
                           uint32_t *sequence_crc, uint32_t *quality_crc,
-                          uint32_t *id_crc,
-                          const bool validate_quality_length) {
+                          uint32_t *id_crc, const bool validate_quality_length,
+                          bool *saw_crlf) {
   if (!fasta_flag && quality_array == nullptr) {
     throw std::runtime_error(
         "Quality output buffer is required when reading FASTQ blocks.");
+  }
+
+  if (saw_crlf != nullptr) {
+    *saw_crlf = false;
   }
 
   uint32_t reads_processed = 0;
   for (; reads_processed < num_reads; reads_processed++) {
     if (!std::getline(*input_stream, id_array[reads_processed]))
       break;
+    if (saw_crlf != nullptr && !id_array[reads_processed].empty() &&
+        id_array[reads_processed].back() == '\r') {
+      *saw_crlf = true;
+    }
     remove_CR_from_end(id_array[reads_processed]);
     if (id_crc != nullptr)
       update_record_crc(*id_crc, id_array[reads_processed]);
@@ -337,6 +345,10 @@ uint32_t read_fastq_block(std::istream *input_stream, std::string *id_array,
           "path=sequence, expected_bytes=1, actual_bytes=0, index=" +
           std::to_string(reads_processed));
       throw std::runtime_error(kInvalidFastqError);
+    }
+    if (saw_crlf != nullptr && !read_array[reads_processed].empty() &&
+        read_array[reads_processed].back() == '\r') {
+      *saw_crlf = true;
     }
     remove_CR_from_end(read_array[reads_processed]);
     if (sequence_crc != nullptr)
@@ -359,6 +371,9 @@ uint32_t read_fastq_block(std::istream *input_stream, std::string *id_array,
           std::to_string(reads_processed));
       throw std::runtime_error(kInvalidFastqError);
     }
+    if (saw_crlf != nullptr && !plus_line.empty() && plus_line.back() == '\r') {
+      *saw_crlf = true;
+    }
     if (plus_line.empty() || plus_line[0] != '+') {
       const int actual_plus_char =
           plus_line.empty() ? 0 : static_cast<unsigned char>(plus_line[0]);
@@ -374,6 +389,10 @@ uint32_t read_fastq_block(std::istream *input_stream, std::string *id_array,
           "path=quality, expected_bytes=1, actual_bytes=0, index=" +
           std::to_string(reads_processed));
       throw std::runtime_error(kInvalidFastqError);
+    }
+    if (saw_crlf != nullptr && !quality_array[reads_processed].empty() &&
+        quality_array[reads_processed].back() == '\r') {
+      *saw_crlf = true;
     }
     remove_CR_from_end(quality_array[reads_processed]);
     if (validate_quality_length && quality_array[reads_processed].size() !=

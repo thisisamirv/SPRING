@@ -1,4 +1,5 @@
 #include "assay_detector.h"
+#include "io_utils.h"
 #include <algorithm>
 #include <limits>
 #include <sstream>
@@ -53,6 +54,22 @@ uint64_t reverse_complement_code(uint64_t code, int k) {
 uint64_t canonical_kmer(uint64_t code, int k) {
   uint64_t rc = reverse_complement_code(code, k);
   return code < rc ? code : rc;
+}
+
+bool has_non_acgtn_symbol_for_sampling(const std::string &read) {
+  return std::ranges::any_of(read, [](char base) {
+    if (base == '\r' || base == '\n' || base == ' ')
+      return false;
+    return base != 'A' && base != 'C' && base != 'G' && base != 'T' &&
+           base != 'N';
+  });
+}
+
+void remove_sample_cr(std::string &line, bool &stream_saw_crlf) {
+  if (!line.empty() && line.back() == '\r') {
+    stream_saw_crlf = true;
+    line.pop_back();
+  }
 }
 
 } // namespace
@@ -135,151 +152,273 @@ bool AssayDetector::has_poly_a_tail(const std::string &seq) {
   return (a_count >= 15 || t_count >= 15);
 }
 
-void AssayDetector::process_reads(const std::string &r1_path,
-                                  const std::string &r2_path,
-                                  ReadStats &stats) {
-  auto read_file = [&](const std::string &path, bool is_r1) {
-    if (path.empty())
-      return;
-    gzFile f = gzopen(path.c_str(), "rb");
-    if (!f)
-      return;
+AssayDetector::StartupAnalysisResult AssayDetector::analyze_startup_sample(
+    const std::string &r1_path, const std::string &r2_path,
+    const std::string &r3_path, const std::string &i1_path,
+    const std::string &i2_path, const bool paired_end, const bool fasta_input) {
+  const bool explicit_sc =
+      (!r3_path.empty() || !i1_path.empty() || !i2_path.empty());
 
-    char buf[8192];
-    int line_idx = 0;
-    std::string seq;
-    std::string header;
+  load_reference();
 
-    while (gzgets(f, buf, sizeof(buf)) && stats.total_reads < kMaxReadsToScan) {
-      std::string line(buf);
-      while (!line.empty() && (line.back() == '\n' || line.back() == '\r')) {
-        line.pop_back();
+  StartupAnalysisResult result;
+  ReadStats stats;
+
+  auto record_sequence = [&](const std::string &header, const std::string &seq,
+                             const bool is_r1, const int stream_index) {
+    result.input_summary.max_read_length =
+        std::max(result.input_summary.max_read_length,
+                 static_cast<uint32_t>(seq.size()));
+    if (!result.input_summary.contains_non_acgtn_symbols &&
+        has_non_acgtn_symbol_for_sampling(seq)) {
+      result.input_summary.contains_non_acgtn_symbols = true;
+    }
+
+    if (header.find("CB:Z:") != std::string::npos) {
+      stats.headers_with_cb_tag++;
+    }
+    if (header.find("UB:Z:") != std::string::npos ||
+        header.find("UR:Z:") != std::string::npos ||
+        header.find("UMI:") != std::string::npos) {
+      stats.headers_with_umi_tag++;
+    }
+
+    if (is_r1) {
+      stats.r1_lengths.push_back(static_cast<int>(seq.length()));
+      if (seq.length() >= 16) {
+        bool is_barcode_like = true;
+        int acgt_count = 0;
+        int base_counts[4] = {0, 0, 0, 0};
+        for (int i = 0; i < 16; ++i) {
+          const char c = seq[static_cast<size_t>(i)];
+          if (c == 'A') {
+            acgt_count++;
+            base_counts[0]++;
+          } else if (c == 'C') {
+            acgt_count++;
+            base_counts[1]++;
+          } else if (c == 'G') {
+            acgt_count++;
+            base_counts[2]++;
+          } else if (c == 'T') {
+            acgt_count++;
+            base_counts[3]++;
+          } else if (c != 'N') {
+            is_barcode_like = false;
+            break;
+          }
+        }
+        if (is_barcode_like && acgt_count >= 14) {
+          const int max_base = std::max(
+              {base_counts[0], base_counts[1], base_counts[2], base_counts[3]});
+          if (max_base <= 10) {
+            stats.r1_barcode_like_prefix++;
+          }
+        }
+      }
+    } else {
+      stats.r2_lengths.push_back(static_cast<int>(seq.length()));
+    }
+
+    for (const char c : seq) {
+      if (is_r1) {
+        if (c == 'C')
+          stats.r1_C++;
+        else if (c == 'T')
+          stats.r1_T++;
+        else if (c == 'G')
+          stats.r1_G++;
+        else if (c == 'A')
+          stats.r1_A++;
+      } else {
+        if (c == 'C')
+          stats.r2_C++;
+        else if (c == 'T')
+          stats.r2_T++;
+        else if (c == 'G')
+          stats.r2_G++;
+        else if (c == 'A')
+          stats.r2_A++;
+      }
+    }
+
+    if (has_atac_adapter(seq)) {
+      stats.atac_adapters_found++;
+    }
+    if (has_poly_a_tail(seq)) {
+      stats.poly_a_tails_found++;
+    }
+
+    if (reference_loaded_ && seq.length() >= kKmerSize) {
+      for (size_t i = 0; i <= seq.length() - kKmerSize; i += 10) {
+        const uint64_t code = encode_kmer(seq, i, kKmerSize);
+        if (code == std::numeric_limits<uint64_t>::max()) {
+          continue;
+        }
+        const uint64_t can = canonical_kmer(code, kKmerSize);
+        stats.total_sampled_kmers++;
+        const auto it = kmer_index_.find(can);
+        if (it == kmer_index_.end()) {
+          continue;
+        }
+        switch (it->second) {
+        case BlockID::RNA_EXON:
+          stats.rna_hits++;
+          break;
+        case BlockID::ATAC_PROMOTER:
+          stats.atac_hits++;
+          break;
+        case BlockID::INTRON_CTRL:
+          stats.intron_hits++;
+          break;
+        case BlockID::GENOME_BACKBONE:
+          stats.genome_hits++;
+          break;
+        default:
+          break;
+        }
+      }
+    }
+
+    (void)stream_index;
+  };
+
+  if (!fasta_input) {
+    gzip_istream r1_stream(r1_path);
+    if (!r1_stream.is_open()) {
+      result.assay_result.assay = "dna";
+      result.assay_result.confidence = "low (no reads parsed)";
+      return result;
+    }
+    gzip_istream r2_stream;
+    if (paired_end) {
+      r2_stream.open(r2_path);
+      if (!r2_stream.is_open()) {
+        result.assay_result.assay = "dna";
+        result.assay_result.confidence = "low (no reads parsed)";
+        return result;
+      }
+    }
+
+    auto read_fastq_record = [](std::istream &stream, std::string &header,
+                                std::string &seq, bool &stream_saw_crlf) {
+      std::string plus_line;
+      std::string quality_line;
+      if (!std::getline(stream, header)) {
+        return false;
+      }
+      if (!std::getline(stream, seq) || !std::getline(stream, plus_line) ||
+          !std::getline(stream, quality_line)) {
+        throw std::runtime_error("Invalid FASTQ while sampling startup reads.");
+      }
+      remove_sample_cr(header, stream_saw_crlf);
+      remove_sample_cr(seq, stream_saw_crlf);
+      remove_sample_cr(plus_line, stream_saw_crlf);
+      remove_sample_cr(quality_line, stream_saw_crlf);
+      return true;
+    };
+
+    for (int sampled = 0; sampled < kMaxReadsToScan; ++sampled) {
+      std::string header_1;
+      std::string seq_1;
+      if (!read_fastq_record(r1_stream, header_1, seq_1,
+                             result.input_summary.use_crlf_by_stream[0])) {
+        break;
+      }
+      record_sequence(header_1, seq_1, true, 0);
+
+      if (paired_end) {
+        std::string header_2;
+        std::string seq_2;
+        if (!read_fastq_record(r2_stream, header_2, seq_2,
+                               result.input_summary.use_crlf_by_stream[1])) {
+          throw std::runtime_error(
+              "Paired-end input truncated during startup sampling.");
+        }
+        record_sequence(header_2, seq_2, false, 1);
       }
 
-      if (line_idx % 4 == 0) { // Header line
-        header = line;
-        // Check for single-cell indicators in header
-        if (header.find("CB:Z:") != std::string::npos) {
-          stats.headers_with_cb_tag++;
-        }
-        if (header.find("UB:Z:") != std::string::npos ||
-            header.find("UR:Z:") != std::string::npos ||
-            header.find("UMI:") != std::string::npos) {
-          stats.headers_with_umi_tag++;
-        }
-      } else if (line_idx % 4 == 1) { // Sequence line
-        seq = line;
-        if (is_r1) {
-          stats.r1_lengths.push_back(seq.length());
+      stats.total_reads++;
+      result.input_summary.sampled_fragments++;
+    }
+  } else {
+    gzip_istream r1_stream(r1_path);
+    if (!r1_stream.is_open()) {
+      result.assay_result.assay = "dna";
+      result.assay_result.confidence = "low (no reads parsed)";
+      return result;
+    }
+    gzip_istream r2_stream;
+    if (paired_end) {
+      r2_stream.open(r2_path);
+      if (!r2_stream.is_open()) {
+        result.assay_result.assay = "dna";
+        result.assay_result.confidence = "low (no reads parsed)";
+        return result;
+      }
+    }
 
-          // Check for barcode-like prefix in R1 (12-16bp mostly ACGT, low
-          // complexity)
-          if (seq.length() >= 16) {
-            bool is_barcode_like = true;
-            int acgt_count = 0;
-            int base_counts[4] = {0, 0, 0, 0}; // A, C, G, T
-            for (int i = 0; i < 16; ++i) {
-              char c = seq[i];
-              if (c == 'A') {
-                acgt_count++;
-                base_counts[0]++;
-              } else if (c == 'C') {
-                acgt_count++;
-                base_counts[1]++;
-              } else if (c == 'G') {
-                acgt_count++;
-                base_counts[2]++;
-              } else if (c == 'T') {
-                acgt_count++;
-                base_counts[3]++;
-              } else if (c != 'N') {
-                is_barcode_like = false;
+    auto read_fasta_record =
+        [](std::istream &stream, std::string &pending_header,
+           std::string &header, std::string &seq, bool &stream_saw_crlf) {
+          header.clear();
+          seq.clear();
+          std::string line;
+          if (!pending_header.empty()) {
+            header = pending_header;
+            pending_header.clear();
+          } else {
+            while (std::getline(stream, line)) {
+              remove_sample_cr(line, stream_saw_crlf);
+              if (!line.empty() && line.front() == '>') {
+                header = line;
                 break;
               }
             }
-            // Require high ACGT content (at least 14/16) AND diversity
-            // (no single base >10/16 to avoid homopolymers and bisulfite reads)
-            if (is_barcode_like && acgt_count >= 14) {
-              int max_base = std::max({base_counts[0], base_counts[1],
-                                       base_counts[2], base_counts[3]});
-              if (max_base <= 10) {
-                stats.r1_barcode_like_prefix++;
-              }
+          }
+          if (header.empty()) {
+            return false;
+          }
+          while (std::getline(stream, line)) {
+            remove_sample_cr(line, stream_saw_crlf);
+            if (!line.empty() && line.front() == '>') {
+              pending_header = line;
+              break;
             }
+            seq += line;
           }
-        } else {
-          stats.r2_lengths.push_back(seq.length());
-        }
+          return true;
+        };
 
-        for (char c : seq) {
-          if (is_r1) {
-            if (c == 'C')
-              stats.r1_C++;
-            else if (c == 'T')
-              stats.r1_T++;
-            else if (c == 'G')
-              stats.r1_G++;
-            else if (c == 'A')
-              stats.r1_A++;
-          } else {
-            if (c == 'C')
-              stats.r2_C++;
-            else if (c == 'T')
-              stats.r2_T++;
-            else if (c == 'G')
-              stats.r2_G++;
-            else if (c == 'A')
-              stats.r2_A++;
-          }
-        }
-
-        if (has_atac_adapter(seq))
-          stats.atac_adapters_found++;
-        if (has_poly_a_tail(seq))
-          stats.poly_a_tails_found++;
-
-        if (reference_loaded_ && seq.length() >= kKmerSize) {
-          for (size_t i = 0; i <= seq.length() - kKmerSize;
-               i += 10) { // Sketch sampling
-            uint64_t code = encode_kmer(seq, i, kKmerSize);
-            if (code != std::numeric_limits<uint64_t>::max()) {
-              uint64_t can = canonical_kmer(code, kKmerSize);
-              stats.total_sampled_kmers++;
-              auto it = kmer_index_.find(can);
-              if (it != kmer_index_.end()) {
-                switch (it->second) {
-                case BlockID::RNA_EXON:
-                  stats.rna_hits++;
-                  break;
-                case BlockID::ATAC_PROMOTER:
-                  stats.atac_hits++;
-                  break;
-                case BlockID::INTRON_CTRL:
-                  stats.intron_hits++;
-                  break;
-                case BlockID::GENOME_BACKBONE:
-                  stats.genome_hits++;
-                  break;
-                default:
-                  break;
-                }
-              }
-            }
-          }
-        }
-      } else if (line_idx % 4 == 3) {
-        if (is_r1 && r2_path.empty())
-          stats.total_reads++; // count per fragment
-        else if (!is_r1)
-          stats.total_reads++;
+    std::string pending_header_1;
+    std::string pending_header_2;
+    for (int sampled = 0; sampled < kMaxReadsToScan; ++sampled) {
+      std::string header_1;
+      std::string seq_1;
+      if (!read_fasta_record(r1_stream, pending_header_1, header_1, seq_1,
+                             result.input_summary.use_crlf_by_stream[0])) {
+        break;
       }
-      line_idx++;
-    }
-    gzclose(f);
-  };
+      record_sequence(header_1, seq_1, true, 0);
 
-  read_file(r1_path, true);
-  read_file(r2_path, false);
+      if (paired_end) {
+        std::string header_2;
+        std::string seq_2;
+        if (!read_fasta_record(r2_stream, pending_header_2, header_2, seq_2,
+                               result.input_summary.use_crlf_by_stream[1])) {
+          throw std::runtime_error(
+              "Paired-end FASTA input truncated during startup sampling.");
+        }
+        record_sequence(header_2, seq_2, false, 1);
+      }
+
+      stats.total_reads++;
+      result.input_summary.sampled_fragments++;
+    }
+  }
+
+  result.assay_result = evaluate_stages(stats, explicit_sc);
+  return result;
 }
 
 AssayDetector::DetectionResult
@@ -362,12 +501,15 @@ AssayDetector::evaluate_stages(const ReadStats &stats,
   // --- ATAC Evidence ---
   double atac_adapter_frac =
       static_cast<double>(stats.atac_adapters_found) / stats.total_reads;
-  if (atac_adapter_frac > 0.10) {
+  if (atac_adapter_frac > 0.05) {
     atac_score += 90.0;
-    evidence.push_back("Tn5 adapters (>10%)");
-  } else if (atac_adapter_frac > 0.03) {
+    evidence.push_back("Tn5 adapters (>5%)");
+  } else if (atac_adapter_frac > 0.01) {
     atac_score += 70.0;
     evidence.push_back("Tn5 adapters");
+  } else if (atac_adapter_frac > 0.003) {
+    atac_score += 35.0;
+    evidence.push_back("Tn5 adapters (weak)");
   }
 
   // Reference alignment to ATAC promoters
@@ -522,14 +664,9 @@ AssayDetector::DetectionResult
 AssayDetector::detect(const std::string &r1_path, const std::string &r2_path,
                       const std::string &r3_path, const std::string &i1_path,
                       const std::string &i2_path) {
-  bool explicit_sc = (!r3_path.empty() || !i1_path.empty() || !i2_path.empty());
-
-  load_reference();
-
-  ReadStats stats;
-  process_reads(r1_path, r2_path, stats);
-
-  return evaluate_stages(stats, explicit_sc);
+  return analyze_startup_sample(r1_path, r2_path, r3_path, i1_path, i2_path,
+                                !r2_path.empty(), false)
+      .assay_result;
 }
 
 } // namespace spring

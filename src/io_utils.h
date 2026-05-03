@@ -69,15 +69,13 @@ private:
 std::string gzip_compress_string(const std::string &input, int level);
 
 // FASTQ block helpers.
-uint32_t read_fastq_block(std::istream *input_stream, std::string *id_array,
-                          std::string *read_array, std::string *quality_array,
-                          const uint32_t &num_reads, const bool &fasta_flag,
-                          uint32_t *read_lengths = nullptr,
-                          uint8_t *read_contains_n = nullptr,
-                          uint32_t *sequence_crc = nullptr,
-                          uint32_t *quality_crc = nullptr,
-                          uint32_t *id_crc = nullptr,
-                          bool validate_quality_length = false);
+uint32_t read_fastq_block(
+    std::istream *input_stream, std::string *id_array, std::string *read_array,
+    std::string *quality_array, const uint32_t &num_reads,
+    const bool &fasta_flag, uint32_t *read_lengths = nullptr,
+    uint8_t *read_contains_n = nullptr, uint32_t *sequence_crc = nullptr,
+    uint32_t *quality_crc = nullptr, uint32_t *id_crc = nullptr,
+    bool validate_quality_length = false, bool *saw_crlf = nullptr);
 
 void write_fastq_block(std::ofstream &output_stream, std::string *id_array,
                        std::string *read_array,

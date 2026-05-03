@@ -489,6 +489,17 @@ void cleanup_prepared_compression_inputs(
   }
 }
 
+void recreate_compression_workdir(const std::string &temp_dir) {
+  std::error_code ec;
+  std::filesystem::remove_all(temp_dir, ec);
+  ec.clear();
+  std::filesystem::create_directories(temp_dir, ec);
+  if (ec) {
+    throw std::runtime_error("Failed to recreate compression workdir: " +
+                             temp_dir);
+  }
+}
+
 bool is_fastq_extension(const std::string &path) {
   const std::string lowercase_path = to_ascii_lowercase(path);
   return has_suffix(lowercase_path, ".fastq") ||
@@ -937,7 +948,7 @@ void compress_standard(const std::string &temp_dir,
   const compression_io_config io_config =
       resolve_compression_io(input_paths, output_paths);
   validate_compression_target(input_paths, io_config.archive_path);
-  const prepared_compression_inputs prepared_inputs =
+  prepared_compression_inputs prepared_inputs =
       prepare_compression_inputs(io_config, temp_dir, num_thr);
   const input_record_format input_format_1 =
       detect_input_format(prepared_inputs.input_path_1);
@@ -957,24 +968,35 @@ void compress_standard(const std::string &temp_dir,
   const bool preserve_id = !no_ids_flag;
   const bool preserve_quality = !no_quality_flag && !fasta_input;
 
-  std::array<bool, 2> use_crlf_by_stream = {false, false};
-  bool contains_non_acgtn_symbols = false;
-  const uint32_t max_read_length = detect_max_read_length(
-      prepared_inputs.input_path_1, prepared_inputs.input_path_2,
-      io_config.paired_end, fasta_input, use_crlf_by_stream,
-      contains_non_acgtn_symbols);
-  const bool use_crlf =
-      use_crlf_by_stream[0] || (io_config.paired_end && use_crlf_by_stream[1]);
-  const bool long_flag =
-      (max_read_length > MAX_READ_LEN) || contains_non_acgtn_symbols;
+  SPRING_LOG_INFO(
+      "Analyzing first 10,000 fragments for startup properties and assay...");
+  AssayDetector detector;
+  const AssayDetector::StartupAnalysisResult startup_sample =
+      detector.analyze_startup_sample(
+          prepared_inputs.input_path_1,
+          io_config.paired_end ? prepared_inputs.input_path_2 : "", r3_path,
+          i1_path, i2_path, io_config.paired_end, fasta_input);
+
+  input_detection_summary detected_input = startup_sample.input_summary;
+  if (detected_input.requires_long_mode()) {
+    SPRING_LOG_INFO("Startup sample indicates long-read mode; running full "
+                    "input pre-scan.");
+    detected_input = detect_input_properties(prepared_inputs.input_path_1,
+                                             prepared_inputs.input_path_2,
+                                             io_config.paired_end, fasta_input);
+  }
+
+  const bool use_crlf = detected_input.use_crlf();
+  bool long_flag = detected_input.requires_long_mode();
   SPRING_LOG_DEBUG(
-      "Detected maximum read length=" + std::to_string(max_read_length) +
-      ", use_crlf=" + std::string(use_crlf ? "true" : "false") +
-      ", non_acgtn_symbols=" +
-      std::string(contains_non_acgtn_symbols ? "true" : "false") +
+      "Detected maximum read length=" +
+      std::to_string(detected_input.max_read_length) + ", use_crlf=" +
+      std::string(use_crlf ? "true" : "false") + ", non_acgtn_symbols=" +
+      std::string(detected_input.contains_non_acgtn_symbols ? "true"
+                                                            : "false") +
       ", long_mode=" + std::string(long_flag ? "true" : "false"));
 
-  if (contains_non_acgtn_symbols) {
+  if (detected_input.contains_non_acgtn_symbols) {
     SPRING_LOG_INFO("Detected non-ACGTN symbols in read sequences; "
                     "switching to long-read mode to preserve sequence "
                     "alphabet losslessly.");
@@ -993,9 +1015,9 @@ void compress_standard(const std::string &temp_dir,
   cp.encoding.preserve_id = preserve_id;
   cp.encoding.long_flag = long_flag;
   cp.encoding.use_crlf = use_crlf;
-  cp.encoding.use_crlf_by_stream[0] = use_crlf_by_stream[0];
+  cp.encoding.use_crlf_by_stream[0] = detected_input.use_crlf_by_stream[0];
   cp.encoding.use_crlf_by_stream[1] =
-      io_config.paired_end ? use_crlf_by_stream[1] : false;
+      io_config.paired_end ? detected_input.use_crlf_by_stream[1] : false;
   cp.encoding.num_reads_per_block = NUM_READS_PER_BLOCK;
   cp.encoding.num_reads_per_block_long = NUM_READS_PER_BLOCK_LONG;
   cp.encoding.num_thr = num_thr;
@@ -1005,13 +1027,7 @@ void compress_standard(const std::string &temp_dir,
   std::string final_assay = assay_type;
   std::string final_confidence = "N/A";
   if (assay_type == "auto") {
-    SPRING_LOG_INFO(
-        "Running auto-detection for assay type on first 10,000 reads...");
-    AssayDetector detector;
-    AssayDetector::DetectionResult res = detector.detect(
-        prepared_inputs.input_path_1,
-        io_config.paired_end ? prepared_inputs.input_path_2 : "", r3_path,
-        i1_path, i2_path);
+    const AssayDetector::DetectionResult &res = startup_sample.assay_result;
     final_assay = res.assay;
     final_confidence = res.confidence;
 
@@ -1112,11 +1128,61 @@ void compress_standard(const std::string &temp_dir,
   ProgressBar dummy_progress(true);
   auto &progress = progress_ptr ? *progress_ptr : dummy_progress;
 
-  run_timed_step("Preprocessing ...", "Preprocessing", [&] {
-    progress.set_stage("Preprocessing", 0.0F, 0.25F);
-    preprocess(prepared_inputs.input_path_1, prepared_inputs.input_path_2,
-               temp_dir, cp, fasta_input, &progress);
-  });
+  const compression_params preprocess_seed_cp = cp;
+  input_detection_summary preprocess_seed_summary = detected_input;
+  const bool validate_sample_during_preprocess =
+      !startup_sample.input_summary.requires_long_mode();
+
+  for (int preprocess_attempt = 0;; ++preprocess_attempt) {
+    compression_params attempt_cp = preprocess_seed_cp;
+    attempt_cp.encoding.long_flag =
+        preprocess_seed_summary.requires_long_mode();
+    attempt_cp.encoding.use_crlf = preprocess_seed_summary.use_crlf();
+    attempt_cp.encoding.use_crlf_by_stream[0] =
+        preprocess_seed_summary.use_crlf_by_stream[0];
+    attempt_cp.encoding.use_crlf_by_stream[1] =
+        io_config.paired_end ? preprocess_seed_summary.use_crlf_by_stream[1]
+                             : false;
+
+    try {
+      run_timed_step("Preprocessing ...", "Preprocessing", [&] {
+        progress.set_stage("Preprocessing", 0.0F, 0.25F);
+        preprocess(prepared_inputs.input_path_1, prepared_inputs.input_path_2,
+                   temp_dir, attempt_cp, fasta_input, &progress,
+                   validate_sample_during_preprocess ? &preprocess_seed_summary
+                                                     : nullptr);
+      });
+      cp = std::move(attempt_cp);
+      long_flag = cp.encoding.long_flag;
+      break;
+    } catch (const preprocess_retry_exception &retry) {
+      if (preprocess_attempt >= 1) {
+        throw;
+      }
+
+      preprocess_seed_summary = retry.updated_summary();
+      if (preprocess_seed_summary.requires_long_mode()) {
+        SPRING_LOG_INFO(
+            "Preprocessing found long-read properties outside the startup "
+            "sample; running full input pre-scan before retry.");
+      } else {
+        SPRING_LOG_INFO(
+            "Preprocessing found startup metadata outside the startup sample; "
+            "retrying with updated properties.");
+      }
+
+      cleanup_prepared_compression_inputs(prepared_inputs, pairing_only_flag);
+      recreate_compression_workdir(temp_dir);
+      prepared_inputs =
+          prepare_compression_inputs(io_config, temp_dir, num_thr);
+
+      if (preprocess_seed_summary.requires_long_mode()) {
+        preprocess_seed_summary = detect_input_properties(
+            prepared_inputs.input_path_1, prepared_inputs.input_path_2,
+            io_config.paired_end, fasta_input);
+      }
+    }
+  }
   cleanup_prepared_compression_inputs(prepared_inputs, pairing_only_flag);
   print_temp_dir_size(temp_dir);
 

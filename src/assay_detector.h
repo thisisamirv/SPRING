@@ -1,6 +1,8 @@
 #ifndef SPRING_ASSAY_DETECTOR_H_
 #define SPRING_ASSAY_DETECTOR_H_
 
+#include "preprocess.h"
+
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -20,11 +22,22 @@ public:
     char depleted_base = 'N';
   };
 
+  struct StartupAnalysisResult {
+    input_detection_summary input_summary;
+    DetectionResult assay_result;
+  };
+
   // Runs the 5-stage heuristic detection on the provided FASTQ files.
   // Returns the final predicted assay type and stats.
   DetectionResult detect(const std::string &r1_path, const std::string &r2_path,
                          const std::string &r3_path, const std::string &i1_path,
                          const std::string &i2_path);
+
+  StartupAnalysisResult
+  analyze_startup_sample(const std::string &r1_path, const std::string &r2_path,
+                         const std::string &r3_path, const std::string &i1_path,
+                         const std::string &i2_path, bool paired_end,
+                         bool fasta_input);
 
 private:
   struct ReadStats {
