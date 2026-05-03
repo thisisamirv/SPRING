@@ -7,7 +7,6 @@
 #include "bits_util.hpp"
 #include "essentials.hpp"
 
-
 namespace bits {
 
 struct bit_vector {
@@ -22,11 +21,14 @@ struct bit_vector {
       m_cur_word = nullptr;
     }
 
-    void fill(bool init = 0) { boost::range::fill(m_data, uint64_t(-init)); }
+    void fill(bool init = 0) {
+      boost::range::fill(m_data, init ? ~uint64_t(0) : uint64_t(0));
+    }
 
     void resize(uint64_t num_bits, bool init = 0) {
       m_num_bits = num_bits;
-      m_data.resize(essentials::words_for<uint64_t>(num_bits), uint64_t(-init));
+      m_data.resize(essentials::words_for<uint64_t>(num_bits),
+                    init ? ~uint64_t(0) : uint64_t(0));
       if (num_bits) {
         m_cur_word = &m_data.back();
         if (init && (num_bits & 63)) {

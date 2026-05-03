@@ -208,7 +208,7 @@ inline std::pair<Header, Error> readHeader(gzip::BitReader &bitReader) {
     }
 
     if ((flags & (1U << 1U)) != 0) {
-      header.crc16 = bitReader.read<16>();
+      header.crc16 = static_cast<uint16_t>(bitReader.read<16>());
     }
   } catch (const gzip::BitReader::EndOfFileReached &) {
     return {header, Error::INCOMPLETE_GZIP_HEADER};

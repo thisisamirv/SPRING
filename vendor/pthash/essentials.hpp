@@ -2,6 +2,7 @@
 #define PTHASH_EXTERNAL_BITS_ESSENTIALS_HPP
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
@@ -122,7 +123,9 @@ static uint64_t words_for(uint64_t bits) {
 }
 
 template <typename T> static inline void do_not_optimize_away(T value) {
-  asm volatile("" : "+r"(value));
+  std::atomic_signal_fence(std::memory_order_seq_cst);
+  (void)*reinterpret_cast<char const volatile *>(&value);
+  std::atomic_signal_fence(std::memory_order_seq_cst);
 }
 
 [[maybe_unused]] static uint64_t maxrss_in_bytes() {

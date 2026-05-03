@@ -108,11 +108,21 @@ if(WIN32 AND CMAKE_C_COMPILER_ID STREQUAL "Clang"
     AND (MSVC OR CMAKE_C_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"
          OR CMAKE_C_SIMULATE_ID STREQUAL "MSVC"))
     target_compile_options(isal PRIVATE
+        -Wno-cast-align
+        -Wno-cast-qual
+        -Wno-conditional-uninitialized
         -Wno-declaration-after-statement
         -Wno-implicit-fallthrough
+        -Wno-implicit-int-conversion
+        -Wno-microsoft-enum-value
+        -Wno-missing-prototypes
+        -Wno-missing-variable-declarations
+        -Wno-reserved-identifier
+        -Wno-reserved-macro-identifier
         -Wno-shorten-64-to-32
         -Wno-sign-conversion
         -Wno-switch-default
+        -Wno-unreachable-code
         -Wno-unsafe-buffer-usage
         -Wno-unused-macros
     )

@@ -70,7 +70,9 @@ template <unsigned int SLICE_SIZE>
 
   constexpr const auto &LUT = CRC32_SLICE_BY_N_LUT;
 
+#if defined(__GNUC__) || defined(__clang__)
 #pragma GCC unroll 8
+#endif
   for (size_t i = 0; i + SLICE_SIZE <= size; i += SLICE_SIZE) {
     uint32_t firstDoubleWord{0};
     std::memcpy(&firstDoubleWord, data + i, sizeof(uint32_t));
@@ -83,7 +85,9 @@ template <unsigned int SLICE_SIZE>
 
     uint32_t result = 0;
 
+#if defined(__GNUC__) || defined(__clang__)
 #pragma GCC unroll 16
+#endif
     for (size_t j = 0; j < SLICE_SIZE; ++j) {
       result ^= LUT[j][chunk[SLICE_SIZE - 1 - j]];
     }

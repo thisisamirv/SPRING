@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <chrono>
+#include <cstdint>
 #include <random>
 
 #if defined(_WIN32)
@@ -47,7 +48,20 @@ constexpr float b = 0.3;
 } // namespace constants
 
 static inline uint64_t mul_high(const uint64_t x, const uint64_t y) {
-  return (uint64_t)(((__uint128_t)x * (__uint128_t)y) >> 64);
+  const uint64_t x_low = static_cast<uint32_t>(x);
+  const uint64_t x_high = x >> 32U;
+  const uint64_t y_low = static_cast<uint32_t>(y);
+  const uint64_t y_high = y >> 32U;
+
+  const uint64_t low_low = x_low * y_low;
+  const uint64_t low_high = x_low * y_high;
+  const uint64_t high_low = x_high * y_low;
+  const uint64_t high_high = x_high * y_high;
+
+  const uint64_t cross = (low_low >> 32U) + static_cast<uint32_t>(low_high) +
+                         static_cast<uint32_t>(high_low);
+
+  return high_high + (low_high >> 32U) + (high_low >> 32U) + (cross >> 32U);
 }
 
 static inline uint64_t remap128(const uint64_t hash, const uint64_t n) {

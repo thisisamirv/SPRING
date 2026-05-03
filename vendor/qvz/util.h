@@ -16,7 +16,11 @@
 #endif
 
 #ifndef restrict
+#if defined(_MSC_VER)
+#define restrict __restrict
+#else
 #define restrict __restrict__
+#endif
 #endif
 
 namespace spring {

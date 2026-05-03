@@ -21,3 +21,8 @@ set_target_properties(libbsc PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(TARGET OpenMP::OpenMP_CXX)
     target_link_libraries(libbsc PUBLIC OpenMP::OpenMP_CXX)
 endif()
+if(WIN32 AND CMAKE_C_COMPILER_ID STREQUAL "Clang"
+    AND (MSVC OR CMAKE_C_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"
+         OR CMAKE_C_SIMULATE_ID STREQUAL "MSVC"))
+    target_compile_options(libbsc PRIVATE -Wno-unused-variable)
+endif()

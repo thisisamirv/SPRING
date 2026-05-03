@@ -562,7 +562,7 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
     // Claim an initial seed read from a shared cursor. Keep trying until we
     // either reserve an unclaimed read or exhaust the input.
     while (!done) {
-#pragma omp atomic capture
+#pragma omp critical(spring_reorder_seed_claim)
       {
         scan_slot = first_read;
         first_read += 1;
@@ -668,7 +668,9 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
           if (!omp_test_lock(
                   dict_locks[detail::lock_shard(bucket_start_index)].get())) {
             pending_bin_deletions[dictionary_index].push_back(
-                std::make_pair(current_read_id, bucket_start_index));
+                std::pair<uint32_t, uint64_t>{
+                    static_cast<uint32_t>(current_read_id),
+                    bucket_start_index});
             continue;
           }
           dict[dictionary_index].findpos(bucket_range, bucket_start_index);

@@ -1253,7 +1253,8 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
       if (cp.encoding.paired_end && (stream_index == 1)) {
         if (paired_id_match)
           for (int thread_id = 0; thread_id < cp.encoding.num_thr; thread_id++)
-            paired_id_match &= paired_id_match_array[thread_id];
+            paired_id_match =
+                paired_id_match && (paired_id_match_array[thread_id] != 0);
         if (!paired_id_match)
           paired_id_code = 0;
       }
