@@ -8,6 +8,13 @@
 
 namespace spring {
 
+struct tar_archive_source {
+  std::string archive_path;
+  std::string disk_path;
+  std::string contents;
+  bool from_memory = false;
+};
+
 size_t get_directory_size(const std::string &temp_dir);
 
 bool safe_remove_file(const std::string &path) noexcept;
@@ -20,6 +27,9 @@ void copy_stream_buffered(std::istream &input_stream,
 
 void create_tar_archive(const std::string &archive_path,
                         const std::string &source_dir);
+void create_tar_archive_from_sources(
+    const std::string &archive_path,
+    const std::vector<tar_archive_source> &sources);
 void extract_tar_archive(const std::string &archive_path,
                          const std::string &target_dir);
 

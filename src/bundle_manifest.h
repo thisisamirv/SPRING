@@ -146,13 +146,8 @@ inline bundle_manifest read_bundle_manifest(const std::string &manifest_path) {
   return read_bundle_manifest_from_string(content.str());
 }
 
-inline void write_bundle_manifest(const std::string &manifest_path,
-                                  const bundle_manifest &manifest) {
-  std::ofstream output(manifest_path, std::ios::binary);
-  if (!output.is_open()) {
-    throw std::runtime_error("Unable to write bundle manifest: " +
-                             manifest_path);
-  }
+inline std::string serialize_bundle_manifest(const bundle_manifest &manifest) {
+  std::ostringstream output;
   output << "version=" << manifest.version << "\n";
   output << "read_archive=" << manifest.read_archive_name << "\n";
   output << "has_r3=" << (manifest.has_r3 ? "1" : "0") << "\n";
@@ -166,6 +161,17 @@ inline void write_bundle_manifest(const std::string &manifest_path,
   output << "r3_name=" << manifest.r3_name << "\n";
   output << "i1_name=" << manifest.i1_name << "\n";
   output << "i2_name=" << manifest.i2_name << "\n";
+  return output.str();
+}
+
+inline void write_bundle_manifest(const std::string &manifest_path,
+                                  const bundle_manifest &manifest) {
+  std::ofstream output(manifest_path, std::ios::binary);
+  if (!output.is_open()) {
+    throw std::runtime_error("Unable to write bundle manifest: " +
+                             manifest_path);
+  }
+  output << serialize_bundle_manifest(manifest);
 }
 
 } // namespace spring

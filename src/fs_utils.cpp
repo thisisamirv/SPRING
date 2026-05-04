@@ -32,6 +32,64 @@ namespace spring {
 
 namespace {
 
+void validate_archive_entry_name(const std::string &entry_name) {
+  if (entry_name.empty()) {
+    throw std::runtime_error("Archive contains an entry with an empty path.");
+  }
+
+  const std::filesystem::path entry_path(entry_name);
+  if (entry_path.is_absolute() || entry_path.has_root_name() ||
+      entry_path.has_root_directory()) {
+    throw std::runtime_error("Archive entry path must be relative: " +
+                             entry_path.generic_string());
+  }
+
+  for (const auto &part : entry_path) {
+    if (part == "..") {
+      throw std::runtime_error("Archive entry path escapes root: " +
+                               entry_path.generic_string());
+    }
+  }
+}
+
+void write_archive_memory_entry(struct archive *archive_writer,
+                                const std::string &entry_path,
+                                const std::string &contents) {
+  validate_archive_entry_name(entry_path);
+
+  struct archive_entry *entry = archive_entry_new();
+  if (entry == nullptr) {
+    throw std::runtime_error("Failed to allocate archive entry for: " +
+                             entry_path);
+  }
+
+  archive_entry_set_pathname(entry, entry_path.c_str());
+  archive_entry_set_size(entry, static_cast<la_int64_t>(contents.size()));
+  archive_entry_set_filetype(entry, AE_IFREG);
+  archive_entry_set_perm(entry, 0644);
+  if (archive_write_header(archive_writer, entry) != ARCHIVE_OK) {
+    const char *message = archive_error_string(archive_writer);
+    archive_entry_free(entry);
+    throw std::runtime_error(
+        "Failed to write archive header for '" + entry_path + "'" +
+        (message ? ": " + std::string(message) : std::string()));
+  }
+
+  if (!contents.empty()) {
+    const la_ssize_t written =
+        archive_write_data(archive_writer, contents.data(), contents.size());
+    if (written < 0 || written != static_cast<la_ssize_t>(contents.size())) {
+      const char *message = archive_error_string(archive_writer);
+      archive_entry_free(entry);
+      throw std::runtime_error(
+          "Failed to write archive data for '" + entry_path + "'" +
+          (message ? ": " + std::string(message) : std::string()));
+    }
+  }
+
+  archive_entry_free(entry);
+}
+
 bool path_is_within_directory(const std::filesystem::path &root,
                               const std::filesystem::path &candidate) {
   auto root_it = root.begin();
@@ -310,6 +368,78 @@ void create_tar_archive(const std::string &archive_path,
 
   SPRING_LOG_DEBUG(
       "create_tar_archive complete: files=" +
+      std::to_string(archived_file_count) +
+      ", total_input_bytes=" + std::to_string(archived_total_bytes));
+}
+
+void create_tar_archive_from_sources(
+    const std::string &archive_path,
+    const std::vector<tar_archive_source> &sources) {
+  struct archive *archive_writer = archive_write_new();
+  uint64_t archived_file_count = 0;
+  uint64_t archived_total_bytes = 0;
+
+  auto close_archive = [&]() noexcept {
+    if (archive_writer != nullptr) {
+      archive_write_close(archive_writer);
+      archive_write_free(archive_writer);
+      archive_writer = nullptr;
+    }
+  };
+
+  try {
+    archive_write_set_format_pax_restricted(archive_writer);
+    if (archive_write_open_filename(archive_writer, archive_path.c_str()) !=
+        ARCHIVE_OK) {
+      const char *message = archive_error_string(archive_writer);
+      throw std::runtime_error(
+          "Failed to open archive for writing" +
+          (message ? ": " + std::string(message) : std::string()));
+    }
+
+    for (const tar_archive_source &source : sources) {
+      if (source.from_memory) {
+        write_archive_memory_entry(archive_writer, source.archive_path,
+                                   source.contents);
+        archived_file_count++;
+        archived_total_bytes += static_cast<uint64_t>(source.contents.size());
+        continue;
+      }
+
+      std::ifstream input(source.disk_path, std::ios::binary);
+      if (!input.is_open()) {
+        throw std::runtime_error("Failed to open archive input '" +
+                                 source.disk_path + "'.");
+      }
+
+      std::ostringstream content;
+      content << input.rdbuf();
+      if (!input.good() && !input.eof()) {
+        throw std::runtime_error("Failed reading archive input '" +
+                                 source.disk_path + "'.");
+      }
+
+      const std::string bytes = content.str();
+      write_archive_memory_entry(archive_writer, source.archive_path, bytes);
+      archived_file_count++;
+      archived_total_bytes += static_cast<uint64_t>(bytes.size());
+    }
+
+    if (archive_write_close(archive_writer) != ARCHIVE_OK) {
+      const char *message = archive_error_string(archive_writer);
+      throw std::runtime_error(
+          "Failed to finalize archive" +
+          (message ? ": " + std::string(message) : std::string()));
+    }
+    archive_write_free(archive_writer);
+    archive_writer = nullptr;
+  } catch (...) {
+    close_archive();
+    throw;
+  }
+
+  SPRING_LOG_DEBUG(
+      "create_tar_archive_from_sources complete: files=" +
       std::to_string(archived_file_count) +
       ", total_input_bytes=" + std::to_string(archived_total_bytes));
 }

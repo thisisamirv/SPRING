@@ -1320,13 +1320,19 @@ void compress(const std::string &temp_dir,
     const std::string read_archive_name = "reads_group.sp";
     const std::string read3_archive_name = "read3_group.sp";
     const std::string index_archive_name = "index_group.sp";
-    const std::string bundle_dir = temp_dir + "/bundle";
+    const std::string read_archive_path = temp_dir + "/" + read_archive_name;
+    const std::string read3_archive_path = temp_dir + "/" + read3_archive_name;
+    const std::string index_archive_path = temp_dir + "/" + index_archive_name;
     const std::string read_work_dir = temp_dir + "/bundle_read_work";
     const std::string read3_work_dir = temp_dir + "/bundle_read3_work";
     const std::string index_work_dir = temp_dir + "/bundle_index_work";
 
     std::error_code cleanup_ec;
-    std::filesystem::remove_all(bundle_dir, cleanup_ec);
+    std::filesystem::remove(read_archive_path, cleanup_ec);
+    cleanup_ec.clear();
+    std::filesystem::remove(read3_archive_path, cleanup_ec);
+    cleanup_ec.clear();
+    std::filesystem::remove(index_archive_path, cleanup_ec);
     cleanup_ec.clear();
     std::filesystem::remove_all(read_work_dir, cleanup_ec);
     cleanup_ec.clear();
@@ -1334,7 +1340,6 @@ void compress(const std::string &temp_dir,
     cleanup_ec.clear();
     std::filesystem::remove_all(index_work_dir, cleanup_ec);
 
-    std::filesystem::create_directories(bundle_dir);
     std::filesystem::create_directories(read_work_dir);
     if (has_r3) {
       std::filesystem::create_directories(read3_work_dir);
@@ -1361,16 +1366,14 @@ void compress(const std::string &temp_dir,
 
     // Compress R1/R2 as a regular SPRING archive.
     // I1 path is passed so CB extraction can use it during preprocessing.
-    compress_standard(read_work_dir, read_inputs,
-                      {bundle_dir + "/" + read_archive_name}, num_thr,
+    compress_standard(read_work_dir, read_inputs, {read_archive_path}, num_thr,
                       pairing_only_flag, no_quality_flag, no_ids_flag,
                       quality_options, compression_level, note, verbosity_level,
                       audit_flag, "", i1_path, "", assay_type, i1_path, cb_len);
 
     const std::string grouped_assay =
-        (assay_type == "auto")
-            ? assay_from_archive_metadata(bundle_dir + "/" + read_archive_name)
-            : assay_type;
+        (assay_type == "auto") ? assay_from_archive_metadata(read_archive_path)
+                               : assay_type;
 
     std::string read3_alias_source;
     if (has_r3) {
@@ -1379,21 +1382,21 @@ void compress(const std::string &temp_dir,
       } else if (paths_refer_to_same_file(r3_path, input_paths[1])) {
         read3_alias_source = "R2";
       } else {
-        compress_standard(
-            read3_work_dir, read3_inputs,
-            {bundle_dir + "/" + read3_archive_name}, num_thr, pairing_only_flag,
-            no_quality_flag, no_ids_flag, quality_options, compression_level,
-            note.empty() ? std::string("read3-group")
-                         : (note + " | read3-group"),
-            verbosity_level, audit_flag, "", "", "", grouped_assay, "", cb_len);
+        compress_standard(read3_work_dir, read3_inputs, {read3_archive_path},
+                          num_thr, pairing_only_flag, no_quality_flag,
+                          no_ids_flag, quality_options, compression_level,
+                          note.empty() ? std::string("read3-group")
+                                       : (note + " | read3-group"),
+                          verbosity_level, audit_flag, "", "", "",
+                          grouped_assay, "", cb_len);
       }
     }
 
     if (has_i1) {
       compress_standard(
-          index_work_dir, index_inputs, {bundle_dir + "/" + index_archive_name},
-          num_thr, pairing_only_flag, no_quality_flag, no_ids_flag,
-          quality_options, compression_level,
+          index_work_dir, index_inputs, {index_archive_path}, num_thr,
+          pairing_only_flag, no_quality_flag, no_ids_flag, quality_options,
+          compression_level,
           note.empty() ? std::string("index-group") : (note + " | index-group"),
           verbosity_level, audit_flag, "", "", "", grouped_assay, "", cb_len);
     }
@@ -1428,13 +1431,41 @@ void compress(const std::string &temp_dir,
                           : std::string(),
         .i2_name = has_i2 ? std::filesystem::path(i2_path).filename().string()
                           : std::string()};
-    write_bundle_manifest(bundle_dir + "/" + kBundleManifestName, manifest);
+    std::vector<tar_archive_source> bundle_sources;
+    bundle_sources.push_back({.archive_path = read_archive_name,
+                              .disk_path = read_archive_path,
+                              .contents = std::string(),
+                              .from_memory = false});
+    if (has_r3 && read3_alias_source.empty()) {
+      bundle_sources.push_back({.archive_path = read3_archive_name,
+                                .disk_path = read3_archive_path,
+                                .contents = std::string(),
+                                .from_memory = false});
+    }
+    if (has_i1) {
+      bundle_sources.push_back({.archive_path = index_archive_name,
+                                .disk_path = index_archive_path,
+                                .contents = std::string(),
+                                .from_memory = false});
+    }
+    bundle_sources.push_back({.archive_path = kBundleManifestName,
+                              .disk_path = std::string(),
+                              .contents = serialize_bundle_manifest(manifest),
+                              .from_memory = true});
 
     run_timed_step("Creating grouped bundle archive ...", "Tar archive", [&] {
       progress.set_stage("Creating archive", 0.95F, 1.0F);
-      create_tar_archive(output_archive_path, bundle_dir);
+      create_tar_archive_from_sources(output_archive_path, bundle_sources);
     });
     SPRING_LOG_DEBUG("Grouped archive created at: " + output_archive_path);
+
+    safe_remove_file(read_archive_path);
+    if (has_r3 && read3_alias_source.empty()) {
+      safe_remove_file(read3_archive_path);
+    }
+    if (has_i1) {
+      safe_remove_file(index_archive_path);
+    }
 
     if (audit_flag) {
       SPRING_LOG_DEBUG("Running post-compression audit for grouped archive.");
