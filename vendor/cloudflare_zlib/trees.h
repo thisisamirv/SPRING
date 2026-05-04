@@ -74,6 +74,8 @@ local const ct_data static_dtree[D_CODES] = {
     {{5}, {5}},  {{21}, {5}}, {{13}, {5}}, {{29}, {5}}, {{3}, {5}},
     {{19}, {5}}, {{11}, {5}}, {{27}, {5}}, {{7}, {5}},  {{23}, {5}}};
 
+// Generated lookup table definition, included only by trees.c.
+// NOLINTNEXTLINE(misc-definitions-in-headers)
 const uint8_t ZLIB_INTERNAL _dist_code[DIST_CODE_LEN] = {
     0,  1,  2,  3,  4,  4,  5,  5,  6,  6,  6,  6,  7,  7,  7,  7,  8,  8,  8,
     8,  8,  8,  8,  8,  9,  9,  9,  9,  9,  9,  9,  9,  10, 10, 10, 10, 10, 10,
@@ -103,6 +105,8 @@ const uint8_t ZLIB_INTERNAL _dist_code[DIST_CODE_LEN] = {
     29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29,
     29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29, 29};
 
+// Generated lookup table definition, included only by trees.c.
+// NOLINTNEXTLINE(misc-definitions-in-headers)
 const uint8_t ZLIB_INTERNAL _length_code[MAX_MATCH - MIN_MATCH + 1] = {
     0,  1,  2,  3,  4,  5,  6,  7,  8,  8,  9,  9,  10, 10, 11, 11, 12, 12, 12,
     12, 13, 13, 13, 13, 14, 14, 14, 14, 15, 15, 15, 15, 16, 16, 16, 16, 16, 16,
