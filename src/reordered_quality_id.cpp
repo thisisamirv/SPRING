@@ -12,7 +12,6 @@
 #include <vector>
 
 #include "core_utils.h"
-#include "fs_utils.h"
 #include "io_utils.h"
 #include "libbsc/bsc.h"
 #include "params.h"
@@ -152,13 +151,12 @@ void load_partitioned_batch_from_bytes(
   }
 }
 
-void compress_block_batch(const std::string &input_path,
-                          const reorder_compress_mode mode,
-                          compression_params &cp,
-                          std::vector<std::string> &reordered_strings,
-                          const batch_range &batch,
-                          const uint32_t num_reads_per_block,
-                          const int num_threads) {
+void compress_block_batch(
+    const std::string &input_path, const reorder_compress_mode mode,
+    compression_params &cp, std::vector<std::string> &reordered_strings,
+    const batch_range &batch, const uint32_t num_reads_per_block,
+    const int num_threads,
+    std::vector<std::vector<char>> *id_block_outputs = nullptr) {
   const char *mode_name =
       (mode == reorder_compress_mode::id) ? "id" : "quality";
   SPRING_LOG_DEBUG(
@@ -190,13 +188,21 @@ void compress_block_batch(const std::string &input_path,
       const uint64_t global_block_idx = block_offset + block_index;
 
       if (mode == reorder_compress_mode::id) {
-        compress_id_block(output_path.c_str(),
-                          reordered_strings.data() + block_begin,
-                          reads_in_block, cp.encoding.compression_level);
+        if (id_block_outputs != nullptr) {
+          (*id_block_outputs)[block_index] = compress_id_block_bytes(
+              reordered_strings.data() + block_begin, reads_in_block,
+              cp.encoding.compression_level);
+        } else {
+          compress_id_block(output_path.c_str(),
+                            reordered_strings.data() + block_begin,
+                            reads_in_block, cp.encoding.compression_level);
+        }
         if (global_block_idx <
             compression_params::ReadMetadata::kFileLenThrSize) {
           cp.read_info.file_len_id_thr[global_block_idx] =
-              std::filesystem::file_size(output_path);
+              (id_block_outputs != nullptr)
+                  ? (*id_block_outputs)[block_index].size()
+                  : std::filesystem::file_size(output_path);
           SPRING_LOG_DEBUG(
               "block_id=id-block-" + std::to_string(global_block_idx) +
               ", Compressed id block=" + std::to_string(global_block_idx) +
@@ -289,7 +295,8 @@ void reorder_compress_from_buffer(
     const uint32_t num_reads_per_block,
     std::vector<std::string> &reordered_strings, const uint32_t batch_size,
     const std::vector<uint32_t> &reordered_positions,
-    const reorder_compress_mode mode, compression_params &cp) {
+    const reorder_compress_mode mode, compression_params &cp,
+    std::vector<char> *merged_id_block_bytes = nullptr) {
   std::vector<std::string> batch_buffers;
   partition_reordered_batches_from_buffer(
       input_path, input_bytes, reordered_positions, batch_size, batch_buffers);
@@ -305,10 +312,25 @@ void reorder_compress_from_buffer(
     if (batch.begin >= batch.end)
       break;
 
+    const uint32_t blocks_in_batch =
+        (batch.end - batch.begin + num_reads_per_block - 1) /
+        num_reads_per_block;
     load_partitioned_batch_from_bytes(
         batch_buffers[batch_index], batch.end - batch.begin, reordered_strings);
-    compress_block_batch(input_path, mode, cp, reordered_strings, batch,
-                         num_reads_per_block, num_thr);
+    std::vector<std::vector<char>> batch_id_block_outputs;
+    if (merged_id_block_bytes != nullptr && mode == reorder_compress_mode::id) {
+      batch_id_block_outputs.resize(blocks_in_batch);
+    }
+    compress_block_batch(
+        input_path, mode, cp, reordered_strings, batch, num_reads_per_block,
+        num_thr,
+        batch_id_block_outputs.empty() ? nullptr : &batch_id_block_outputs);
+    if (!batch_id_block_outputs.empty()) {
+      for (std::vector<char> &block_bytes : batch_id_block_outputs) {
+        merged_id_block_bytes->insert(merged_id_block_bytes->end(),
+                                      block_bytes.begin(), block_bytes.end());
+      }
+    }
     batch_buffers[batch_index].clear();
     batch_buffers[batch_index].shrink_to_fit();
     SPRING_LOG_DEBUG("block_id=reorder-batch-" + std::to_string(batch_index) +
@@ -400,10 +422,12 @@ void reorder_compress_quality_id(
           ", path=" + id_paths[stream_index] + ", paired_id_match=" +
           std::string(paired_id_match ? "true" : "false"));
       const uint32_t file_read_count = reads_per_file(num_reads, paired_end);
+      std::vector<char> merged_packed_id_blocks;
       reorder_compress_from_buffer(
           id_paths[stream_index], artifact.raw_id_streams[stream_index],
           file_read_count, num_thr, num_reads_per_block, reordered_strings,
-          batch_size, reordered_positions, reorder_compress_mode::id, cp);
+          batch_size, reordered_positions, reorder_compress_mode::id, cp,
+          paired_end ? nullptr : &merged_packed_id_blocks);
 
       if (paired_end) {
         SPRING_LOG_DEBUG("block_id=id-stream-" + std::to_string(stream_index) +
@@ -412,7 +436,6 @@ void reorder_compress_quality_id(
         continue;
       }
 
-      // Monolithic ID merge phase: Merge blocks into one file and BSC compress.
       const uint32_t num_blocks =
           (file_read_count + num_reads_per_block - 1) / num_reads_per_block;
       if (num_blocks > compression_params::ReadMetadata::kFileLenThrSize) {
@@ -422,36 +445,15 @@ void reorder_compress_quality_id(
             "). Increase array size in params.h.");
       }
       const std::string monolithic_path = id_paths[stream_index] + ".bsc";
-      std::vector<char> merged_packed_bytes;
-
-      for (uint32_t b = 0; b < num_blocks; b++) {
-        const std::string block_path =
-            block_file_path(id_paths[stream_index], b);
-        std::ifstream block_in(block_path, std::ios::binary);
-        if (block_in) {
-          block_in.seekg(0, std::ios::end);
-          const std::streamsize block_size = block_in.tellg();
-          block_in.seekg(0, std::ios::beg);
-          const size_t old_size = merged_packed_bytes.size();
-          merged_packed_bytes.resize(old_size +
-                                     static_cast<size_t>(block_size));
-          if (block_size > 0 &&
-              !block_in.read(merged_packed_bytes.data() + old_size,
-                             block_size)) {
-            throw std::runtime_error("Failed to read packed ID block: " +
-                                     block_path);
-          }
-          block_in.close();
-          safe_remove_file(block_path);
-        }
-      }
       write_binary_file(monolithic_path,
-                        bsc_compress_bytes(merged_packed_bytes));
+                        bsc_compress_bytes(merged_packed_id_blocks));
       SPRING_LOG_DEBUG(
           "block_id=id-merge-stream-" + std::to_string(stream_index) +
-          ", Monolithic ID block merge/compress complete: stream=" +
-          std::to_string(stream_index) + ", blocks=" +
-          std::to_string(num_blocks) + ", output=" + monolithic_path);
+          ", Monolithic ID block merge/compress complete from memory: stream=" +
+          std::to_string(stream_index) +
+          ", blocks=" + std::to_string(num_blocks) +
+          ", packed_bytes=" + std::to_string(merged_packed_id_blocks.size()) +
+          ", output=" + monolithic_path);
     }
   }
 

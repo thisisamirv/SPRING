@@ -529,37 +529,27 @@ void write_bgzf_fastq_block(std::ofstream &output_stream, std::string *id_array,
   }
 }
 
-void compress_id_block(const char *output_path, std::string *id_array,
-                       const uint32_t &num_ids, const int &compression_level,
-                       bool pack_only) {
+std::vector<char> compress_id_block_bytes(std::string *id_array,
+                                          const uint32_t &num_ids,
+                                          const int &compression_level,
+                                          bool pack_only) {
   (void)compression_level;
   if (num_ids == 0)
-    return;
-
-  SPRING_LOG_DEBUG(
-      "block_id=io-utils:id-compress, compress_id_block start: output=" +
-      std::string(output_path) + ", num_ids=" + std::to_string(num_ids) +
-      ", pack_only=" + std::string(pack_only ? "true" : "false"));
+    return {};
 
   if (pack_only) {
-    std::ofstream output(output_path, std::ios::binary);
-    if (!output) {
-      SPRING_LOG_DEBUG("block_id=io-utils:id-compress, compress_id_block open "
-                       "failure: path=" +
-                       std::string(output_path) +
-                       ", expected_bytes=1, actual_bytes=0, index=0");
-      throw std::runtime_error("Failed to open raw ID output file.");
-    }
+    std::vector<char> output_bytes;
+    size_t total_size = 0;
     for (uint32_t i = 0; i < num_ids; i++) {
-      output.write(id_array[i].data(),
-                   static_cast<std::streamsize>(id_array[i].size()));
-      output.put('\n');
+      total_size += id_array[i].size() + 1;
     }
-    output.close();
-    SPRING_LOG_DEBUG("block_id=io-utils:id-compress, compress_id_block "
-                     "pack-only done: output=" +
-                     std::string(output_path));
-    return;
+    output_bytes.reserve(total_size);
+    for (uint32_t i = 0; i < num_ids; i++) {
+      output_bytes.insert(output_bytes.end(), id_array[i].begin(),
+                          id_array[i].end());
+      output_bytes.push_back('\n');
+    }
+    return output_bytes;
   }
 
   std::vector<std::string> alpha_cols;
@@ -710,32 +700,47 @@ void compress_id_block(const char *output_path, std::string *id_array,
                   new_alpha_cols[i].end());
   }
 
+  return bsc_compress_bytes(buffer);
+}
+
+void compress_id_block(const char *output_path, std::string *id_array,
+                       const uint32_t &num_ids, const int &compression_level,
+                       bool pack_only) {
+  SPRING_LOG_DEBUG(
+      "block_id=io-utils:id-compress, compress_id_block start: output=" +
+      std::string(output_path) + ", num_ids=" + std::to_string(num_ids) +
+      ", pack_only=" + std::string(pack_only ? "true" : "false"));
+
   try {
-    const std::vector<char> compressed_bytes = bsc_compress_bytes(buffer);
+    const std::vector<char> output_bytes = compress_id_block_bytes(
+        id_array, num_ids, compression_level, pack_only);
     std::ofstream out(output_path, std::ios::binary | std::ios::trunc);
     if (!out) {
       SPRING_LOG_DEBUG("block_id=io-utils:id-compress, compress_id_block open "
                        "failure: path=" +
                        std::string(output_path) +
                        ", expected_bytes=1, actual_bytes=0, index=0");
-      throw std::runtime_error("Failed to open compressed ID output file.");
+      throw std::runtime_error(
+          pack_only ? "Failed to open raw ID output file."
+                    : "Failed to open compressed ID output file.");
     }
-    if (!compressed_bytes.empty()) {
-      out.write(compressed_bytes.data(),
-                static_cast<std::streamsize>(compressed_bytes.size()));
+    if (!output_bytes.empty()) {
+      out.write(output_bytes.data(),
+                static_cast<std::streamsize>(output_bytes.size()));
     }
     out.close();
     SPRING_LOG_DEBUG(
-        "block_id=io-utils:id-compress, compress_id_block bsc done: output=" +
+        "block_id=io-utils:id-compress, compress_id_block done: output=" +
         std::string(output_path) +
-        ", encoded_bytes=" + std::to_string(buffer.size()) +
-        ", compressed_bytes=" + std::to_string(compressed_bytes.size()));
+        ", bytes=" + std::to_string(output_bytes.size()) +
+        ", pack_only=" + std::string(pack_only ? "true" : "false"));
   } catch (const std::exception &e) {
-    SPRING_LOG_DEBUG("block_id=io-utils:id-compress, compress_id_block bsc "
+    SPRING_LOG_DEBUG("block_id=io-utils:id-compress, compress_id_block "
                      "failure: output_path=" +
-                     std::string(output_path) +
-                     ", encoded_bytes=" + std::to_string(buffer.size()));
-    throw std::runtime_error(std::string("BSC compression failed: ") +
+                     std::string(output_path));
+    throw std::runtime_error(std::string(pack_only
+                                             ? "Raw ID write failed: "
+                                             : "BSC compression failed: ") +
                              e.what());
   }
 }
