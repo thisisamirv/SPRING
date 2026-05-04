@@ -16,7 +16,7 @@ add_library(libbsc STATIC
     qlfc_model.cpp
     st.cpp
 )
-target_include_directories(libbsc PUBLIC . .. ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(libbsc PUBLIC . .. ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/src/common)
 set_target_properties(libbsc PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(TARGET OpenMP::OpenMP_CXX)
     target_link_libraries(libbsc PUBLIC OpenMP::OpenMP_CXX)

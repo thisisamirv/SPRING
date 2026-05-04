@@ -23,6 +23,7 @@
 
 ### Changed
 
+- Refactored source code into a more modular structure.
 - Changed the compression CLI to require `-R1/--R1` for read 1 and accept optional `-R2/--R2` for paired-end mode; compression no longer uses `-i/--input`.
 - Removed the obsolete working-directory CLI flag `-w/--tmp-dir` now that runtime working-directory use has been fully eliminated.
 - Changed reordering algorithm to use deterministic matching.

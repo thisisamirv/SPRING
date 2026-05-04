@@ -1,9 +1,9 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include "decompress/archive_stream_reader.h"
 #include "doctest.h"
 #include "fs_utils.h"
 #include "io_utils.h"
 #include "params.h"
-#include "spring_reader.h"
 #include <archive.h>
 #include <archive_entry.h>
 #include <filesystem>

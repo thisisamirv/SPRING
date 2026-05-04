@@ -357,7 +357,7 @@ endif()
 
 # Emit a matching clangd configuration so editor diagnostics see the same
 # compiler include path and OpenMP flags as the CMake build.
-set(SPRING_CLANGD_FLAGS "\"-fopenmp\", \"-I${include_dir}\", \"-I${vendor_dir}\", \"-I${vendor_dir}/zstd\"")
+set(SPRING_CLANGD_FLAGS "\"-fopenmp\", \"-I${include_dir}\", \"-I${source_dir}/assays\", \"-I${source_dir}/common\", \"-I${source_dir}/decompress\", \"-I${source_dir}/encode\", \"-I${source_dir}/preprocess\", \"-I${source_dir}/reorder\", \"-I${source_dir}/workflow\", \"-I${vendor_dir}\", \"-I${vendor_dir}/zstd\", \"-I${build_vendor_dir}/cloudflare_zlib\", \"-I${build_vendor_dir}/libarchive\"")
 string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/pthash\"")
 string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/qvz\"")
 string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/libbsc\"")
@@ -368,7 +368,7 @@ string(APPEND SPRING_CLANGD_FLAGS ", \"-I${build_vendor_dir}/indexed_bzip2/isa-l
 foreach(openmp_include_dir IN LISTS SPRING_OPENMP_INCLUDE_DIRS)
     string(APPEND SPRING_CLANGD_FLAGS ", \"-I${openmp_include_dir}\"")
 endforeach()
-set(CLANGD_CONTENT "CompileFlags:\n  Add: [${SPRING_CLANGD_FLAGS}, \"-Wno-empty-translation-unit\"]\n---\nIf:\n  PathMatch: ['.*\\.(hpp|cpp|cc|cxx)$', 'src/.*\\.h$']\nCompileFlags:\n  Add: [\"-std=c++20\"]\n")
+set(CLANGD_CONTENT "CompileFlags:\n  Add: [${SPRING_CLANGD_FLAGS}, \"-Wno-empty-translation-unit\"]\n  Remove: [\"-Winvalid-pch\", \"-include\", \"-include-pch\"]\n---\nIf:\n  PathMatch: ['.*\\.(hpp|cpp|cc|cxx)$', 'src/.*\\.h$']\nCompileFlags:\n  Add: [\"-std=c++20\"]\n")
 
 
 
@@ -477,26 +477,53 @@ add_custom_command(
 )
 
 set(core_source_files
-    ${source_dir}/spring.cpp
-    ${source_dir}/params.cpp
-    ${source_dir}/parse_utils.cpp
-    ${source_dir}/dna_utils.cpp
-    ${source_dir}/fs_utils.cpp
-    ${source_dir}/io_utils.cpp
-    ${source_dir}/bitset_dictionary.cpp
-    ${source_dir}/preprocess.cpp
-    ${source_dir}/encoder.cpp
-    ${source_dir}/reordered_streams.cpp
-    ${source_dir}/paired_end_order.cpp
-    ${source_dir}/reordered_quality_id.cpp
-    ${source_dir}/decompress.cpp
-    ${source_dir}/template_dispatch.cpp
-    ${source_dir}/spring_reader.cpp
-    ${source_dir}/progress.cpp
-    ${source_dir}/bgzf.cpp
-    ${source_dir}/assay_detector.cpp
-    ${source_dir}/preview_main.cpp
+    ${source_dir}/workflow/workflow_shared.cpp
+    ${source_dir}/common/params.cpp
+    ${source_dir}/common/parse_utils.cpp
+    ${source_dir}/common/dna_utils.cpp
+    ${source_dir}/common/fs_utils.cpp
+    ${source_dir}/common/io_utils.cpp
+    ${source_dir}/common/bitset_dictionary.cpp
+    ${source_dir}/assays/assay_rna.cpp
+    ${source_dir}/assays/assay_atac.cpp
+    ${source_dir}/assays/assay_sc_atac.cpp
+    ${source_dir}/assays/assay_bisulfite.cpp
+    ${source_dir}/assays/assay_sc_bisulfite.cpp
+    ${source_dir}/assays/assay_sc_rna.cpp
+    ${source_dir}/preprocess/preprocess_artifacts.cpp
+    ${source_dir}/preprocess/input_preparation.cpp
+    ${source_dir}/encode/encoder.cpp
+    ${source_dir}/reorder/stream_reordering.cpp
+    ${source_dir}/reorder/paired_end_mate_ordering.cpp
+    ${source_dir}/reorder/quality_id_reordering.cpp
+    ${source_dir}/decompress/decompress_archive_io.cpp
+    ${source_dir}/decompress/archive_record_reconstruction.cpp
+    ${source_dir}/workflow/compression_workflow.cpp
+    ${source_dir}/workflow/decompression_workflow.cpp
+    ${source_dir}/workflow/spring_audit.cpp
+    ${source_dir}/encode/template_dispatch.cpp
+    ${source_dir}/decompress/archive_stream_reader.cpp
+    ${source_dir}/common/progress.cpp
+    ${source_dir}/common/bgzf.cpp
+    ${source_dir}/assays/assay_detector.cpp
+    ${source_dir}/workflow/archive_preview.cpp
     ${REFERENCE_GENERATED}
+)
+
+set(spring_src_include_dirs
+    ${source_dir}
+    ${source_dir}/assays
+    ${source_dir}/common
+    ${source_dir}/decompress
+    ${source_dir}/encode
+    ${source_dir}/preprocess
+    ${source_dir}/reorder
+    ${source_dir}/workflow
+)
+
+set(spring_vendor_src_include_dirs
+    ${source_dir}
+    ${source_dir}/common
 )
 
 
@@ -529,10 +556,9 @@ endif()
 
 # Spring headers live in src/, while vendor/ exposes bundled libraries such
 # as BBHash, libbsc, id_compression, qvz, and the vendored libdeflate sources.
-target_include_directories(spring2 PRIVATE ${include_dir})
+target_include_directories(spring2 PRIVATE ${include_dir} ${spring_src_include_dirs})
 
 if(WIN32)
-    target_include_directories(spring2 PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_compile_definitions(spring2 PRIVATE LIBARCHIVE_STATIC)
 endif()
 
@@ -762,7 +788,7 @@ add_executable(spring2-tests tests/unit_tests.cpp ${core_source_files})
 if(SPRING_ENABLE_PRECOMPILED_HEADERS)
     target_precompile_headers(spring2-tests PRIVATE ${source_dir}/pch.h)
 endif()
-target_include_directories(spring2-tests PRIVATE ${include_dir} ${vendor_dir} tests)
+target_include_directories(spring2-tests PRIVATE ${include_dir} ${vendor_dir} tests ${spring_src_include_dirs})
 if(WIN32)
     target_compile_definitions(spring2-tests PRIVATE LIBARCHIVE_STATIC)
 endif()
@@ -779,7 +805,7 @@ add_executable(integration-tests tests/integration_tests.cpp ${core_source_files
 if(SPRING_ENABLE_PRECOMPILED_HEADERS)
     target_precompile_headers(integration-tests PRIVATE ${source_dir}/pch.h)
 endif()
-target_include_directories(integration-tests PRIVATE ${include_dir} ${vendor_dir} tests)
+target_include_directories(integration-tests PRIVATE ${include_dir} ${vendor_dir} tests ${spring_src_include_dirs})
 if(WIN32)
     target_compile_definitions(integration-tests PRIVATE LIBARCHIVE_STATIC)
 endif()

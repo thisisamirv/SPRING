@@ -3,10 +3,9 @@
 
 #include "params.h"
 #include "parse_utils.h"
-#include "preview.h"
 #include "progress.h"
-#include "spring.h"
 #include "version.h"
+#include "workflow_api.h"
 #include <algorithm>
 #include <cmath>
 #include <csignal>
