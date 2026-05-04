@@ -4,7 +4,7 @@
 #include "encoder.h"
 #include "core_utils.h"
 #include "fs_utils.h"
-#include "libbsc/bsc.h"
+#include "io_utils.h"
 #include "progress.h"
 #include <array>
 #include <cstdint>
@@ -179,68 +179,60 @@ void pack_compress_seq(
   }
   SPRING_LOG_DEBUG("block_id=enc-pack-main, per-thread packing complete.");
 
-  // Concatenate all thread-local packed files and compress as one monolithic
-  // block.
-  std::string monolithic_packed_path = encoder_state.outfile_seq + ".packed";
   std::string monolithic_compressed_path = encoder_state.outfile_seq + ".bsc";
-  std::ofstream monolithic_out(monolithic_packed_path, std::ios::binary);
-  if (!monolithic_out.is_open()) {
-    throw std::runtime_error(
-        "Failed to open monolithic packed sequence file: " +
-        monolithic_packed_path);
+  size_t packed_size = 0;
+  for (int tid = 0; tid < encoder_state.num_thr; tid++) {
+    const std::vector<char> &chunk = packed_chunks[static_cast<size_t>(tid)];
+    packed_size += sizeof(uint64_t) + chunk.size();
   }
-  std::vector<char> copy_buffer(1 << 20);
+  std::vector<char> monolithic_packed_bytes;
+  monolithic_packed_bytes.reserve(packed_size);
   for (int tid = 0; tid < encoder_state.num_thr; tid++) {
     const std::vector<char> &chunk = packed_chunks[static_cast<size_t>(tid)];
     const uint64_t chunk_size = static_cast<uint64_t>(chunk.size());
-    monolithic_out.write(reinterpret_cast<const char *>(&chunk_size),
-                         sizeof(uint64_t));
-    size_t offset = 0;
-    while (offset < chunk.size()) {
-      const size_t bytes_to_write =
-          (std::min)(copy_buffer.size(), chunk.size() - offset);
-      std::memcpy(copy_buffer.data(), chunk.data() + offset, bytes_to_write);
-      monolithic_out.write(copy_buffer.data(),
-                           static_cast<std::streamsize>(bytes_to_write));
-      offset += bytes_to_write;
+    const size_t old_size = monolithic_packed_bytes.size();
+    monolithic_packed_bytes.resize(old_size + sizeof(uint64_t) + chunk.size());
+    std::memcpy(monolithic_packed_bytes.data() + old_size, &chunk_size,
+                sizeof(uint64_t));
+    if (!chunk.empty()) {
+      std::memcpy(monolithic_packed_bytes.data() + old_size + sizeof(uint64_t),
+                  chunk.data(), chunk.size());
     }
   }
-  monolithic_out.close();
   SPRING_LOG_DEBUG(
-      "block_id=enc-pack-main, monolithic packed file assembled: path=" +
-      monolithic_packed_path);
+      "block_id=enc-pack-main, monolithic packed buffer assembled: "
+      "bytes=" +
+      std::to_string(monolithic_packed_bytes.size()));
 
-  {
-    std::ifstream packed_size_check(monolithic_packed_path,
-                                    std::ios::binary | std::ios::ate);
-    if (!packed_size_check.is_open()) {
-      throw std::runtime_error(
-          "Failed to reopen monolithic packed sequence file: " +
-          monolithic_packed_path);
+  if (monolithic_packed_bytes.empty()) {
+    std::ofstream empty_out(monolithic_compressed_path,
+                            std::ios::binary | std::ios::trunc);
+    if (!empty_out.is_open()) {
+      throw std::runtime_error("Failed to create empty compressed sequence "
+                               "file: " +
+                               monolithic_compressed_path);
     }
-    if (packed_size_check.tellg() <= 0) {
-      packed_size_check.close();
-      std::ofstream empty_out(monolithic_compressed_path,
-                              std::ios::binary | std::ios::trunc);
-      if (!empty_out.is_open()) {
-        throw std::runtime_error(
-            "Failed to create empty compressed sequence file: " +
-            monolithic_compressed_path);
-      }
-      empty_out.close();
-      safe_remove_file(monolithic_packed_path);
-      return;
-    }
-    packed_size_check.close();
+    return;
   }
 
-  SPRING_LOG_DEBUG("block_id=enc-pack-main, invoking BSC_compress: input=" +
-                   monolithic_packed_path +
-                   ", output=" + monolithic_compressed_path);
-  bsc::BSC_compress(monolithic_packed_path.c_str(),
-                    monolithic_compressed_path.c_str());
-  SPRING_LOG_DEBUG("block_id=enc-pack-main, BSC_compress complete.");
-  safe_remove_file(monolithic_packed_path);
+  const std::vector<char> compressed_bytes =
+      bsc_compress_bytes(monolithic_packed_bytes);
+  std::ofstream compressed_out(monolithic_compressed_path,
+                               std::ios::binary | std::ios::trunc);
+  if (!compressed_out.is_open()) {
+    throw std::runtime_error("Failed to create compressed sequence file: " +
+                             monolithic_compressed_path);
+  }
+  compressed_out.write(compressed_bytes.data(),
+                       static_cast<std::streamsize>(compressed_bytes.size()));
+  if (!compressed_out.good()) {
+    throw std::runtime_error("Failed while writing compressed sequence file: " +
+                             monolithic_compressed_path);
+  }
+  SPRING_LOG_DEBUG("block_id=enc-pack-main, in-memory BSC_compress complete: "
+                   "output=" +
+                   monolithic_compressed_path +
+                   ", bytes=" + std::to_string(compressed_bytes.size()));
 }
 
 void rewrite_thread_order_file(

@@ -1413,7 +1413,6 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
       ", encoding_threads=" + std::to_string(encoding_thread_count) +
       ", decoding_threads=" + std::to_string(decoding_thread_count));
   const std::string monolithic_compressed_path = packed_seq_base_path + ".bsc";
-  const std::string monolithic_packed_path = packed_seq_base_path + ".packed";
 
   if (std::filesystem::exists(monolithic_compressed_path) &&
       std::filesystem::file_size(monolithic_compressed_path) == 0) {
@@ -1421,16 +1420,32 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
     return;
   }
 
-  // Decompress the monolithic archive block into raw packed sequence data.
-  safe_bsc_decompress(monolithic_compressed_path, monolithic_packed_path);
+  std::ifstream compressed_input(monolithic_compressed_path,
+                                 std::ios::binary | std::ios::ate);
+  if (!compressed_input.is_open()) {
+    throw std::runtime_error("Can't open compressed monolithic sequence file.");
+  }
+  const std::streamsize compressed_size = compressed_input.tellg();
+  if (compressed_size < 0) {
+    throw std::runtime_error(
+        "Can't determine compressed monolithic sequence size.");
+  }
+  compressed_input.seekg(0, std::ios::beg);
+  std::vector<char> compressed_bytes(static_cast<size_t>(compressed_size));
+  if (compressed_size > 0 &&
+      !compressed_input.read(compressed_bytes.data(), compressed_size)) {
+    throw std::runtime_error("Can't read compressed monolithic sequence file.");
+  }
+  compressed_input.close();
+
+  // Decompress the monolithic archive block into raw packed sequence bytes.
+  std::vector<char> monolithic_packed_bytes =
+      bsc_decompress_bytes(compressed_bytes);
   safe_remove_file(monolithic_compressed_path);
 
-  // Slice the monolithic raw file into the parallelized chunks expected by
+  // Slice the monolithic raw bytes into the parallelized chunks expected by
   // callers.
-  std::ifstream monolithic_in(monolithic_packed_path, std::ios::binary);
-  if (!monolithic_in.is_open()) {
-    throw std::runtime_error("Can't open unpacked monolithic sequence file.");
-  }
+  size_t monolithic_cursor = 0;
 
   if (std::cmp_greater(encoding_thread_count,
                        compression_params::ReadMetadata::kFileLenThrSize)) {
@@ -1446,14 +1461,21 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
     const std::string chunk_path =
         packed_seq_base_path + '.' + std::to_string(tid);
     std::ofstream chunk_out(chunk_path, std::ios::binary);
+    if (!chunk_out.is_open()) {
+      throw std::runtime_error("Can't create unpacked sequence chunk: " +
+                               chunk_path);
+    }
 
-    uint64_t chunk_bytes;
-    if (!monolithic_in.read(reinterpret_cast<char *>(&chunk_bytes),
-                            sizeof(uint64_t))) {
+    uint64_t chunk_bytes = 0;
+    if (monolithic_cursor + sizeof(uint64_t) > monolithic_packed_bytes.size()) {
       throw std::runtime_error(
           "Corrupt archive: failed reading packed chunk size header for tid=" +
           std::to_string(tid));
     }
+    std::memcpy(&chunk_bytes,
+                monolithic_packed_bytes.data() + monolithic_cursor,
+                sizeof(uint64_t));
+    monolithic_cursor += sizeof(uint64_t);
     SPRING_LOG_DEBUG("Slicing chunk tid=" + std::to_string(tid) +
                      ", packed_size=" + std::to_string(chunk_bytes));
 
@@ -1463,22 +1485,25 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
     while (bytes_remaining > 0) {
       uint64_t bytes_to_read =
           std::min(bytes_remaining, static_cast<uint64_t>(buffer.size()));
-      monolithic_in.read(buffer.data(),
-                         static_cast<std::streamsize>(bytes_to_read));
-      const uint64_t bytes_read = static_cast<uint64_t>(monolithic_in.gcount());
-      if (bytes_read != bytes_to_read) {
+      if (monolithic_cursor + bytes_to_read > monolithic_packed_bytes.size()) {
         throw std::runtime_error(
             "Corrupt archive: truncated packed sequence stream while "
             "slicing monolithic data");
       }
+      std::memcpy(buffer.data(),
+                  monolithic_packed_bytes.data() + monolithic_cursor,
+                  static_cast<size_t>(bytes_to_read));
       chunk_out.write(buffer.data(),
                       static_cast<std::streamsize>(bytes_to_read));
+      monolithic_cursor += bytes_to_read;
       bytes_remaining -= bytes_to_read;
     }
     chunk_out.close();
   }
-  monolithic_in.close();
-  safe_remove_file(monolithic_packed_path);
+  if (monolithic_cursor != monolithic_packed_bytes.size()) {
+    throw std::runtime_error(
+        "Corrupt archive: trailing bytes after packed sequence chunks.");
+  }
   SPRING_LOG_DEBUG(
       "decompress_unpack_seq slicing complete; starting per-chunk decode.");
 

@@ -3,6 +3,8 @@
 #include "core_utils.h"
 #include "integrity_utils.h"
 #include "libbsc/bsc.h"
+#include "libbsc/filters.h"
+#include "libbsc/libbsc.h"
 #include "omp.h"
 #include "parse_utils.h"
 #include "progress.h"
@@ -12,6 +14,7 @@
 #include <cstring>
 #include <filesystem>
 #include <libdeflate.h>
+#include <mutex>
 #include <stdexcept>
 #include <vector>
 #include <zstd.h>
@@ -169,6 +172,33 @@ uint64_t zigzag_encode64(const int64_t value) {
 
 int64_t zigzag_decode64(const uint64_t value) {
   return static_cast<int64_t>(value >> 1) ^ -static_cast<int64_t>(value & 1U);
+}
+
+#pragma pack(push, 1)
+struct bsc_archive_block_header {
+  long long block_offset;
+  signed char record_size;
+  signed char sorting_contexts;
+};
+#pragma pack(pop)
+
+constexpr size_t kBscArchiveBlockSize = 25U * 1024U * 1024U;
+
+void ensure_libbsc_ready() {
+  static std::once_flag init_once;
+  std::call_once(init_once, []() {
+    const int init_result = bsc_init(LIBBSC_DEFAULT_FEATURES);
+    if (init_result != LIBBSC_NO_ERROR) {
+      throw std::runtime_error("Failed to initialize libbsc.");
+    }
+  });
+}
+
+template <typename T>
+void append_binary(std::vector<char> &buffer, const T &value) {
+  const size_t old_size = buffer.size();
+  buffer.resize(old_size + sizeof(T));
+  std::memcpy(buffer.data() + old_size, &value, sizeof(T));
 }
 
 } // namespace
@@ -948,6 +978,183 @@ void quantize_quality_qvz(std::string *quality_array, const uint32_t &num_lines,
   qvz::encode(&opts, static_cast<uint32_t>(max_readlen), num_lines,
               quality_array, str_len_array);
   SPRING_LOG_DEBUG("block_id=io-utils:qvz, quantize_quality_qvz done");
+}
+
+std::vector<char> bsc_compress_bytes(const std::vector<char> &input_bytes) {
+  if (input_bytes.empty()) {
+    return {};
+  }
+
+  ensure_libbsc_ready();
+
+  if (input_bytes.size() >
+      static_cast<size_t>(std::numeric_limits<int>::max()) *
+          compression_params::ReadMetadata::kFileLenThrSize) {
+    throw std::runtime_error("Input too large for in-memory BSC compression.");
+  }
+
+  const size_t nblocks =
+      (input_bytes.size() + kBscArchiveBlockSize - 1) / kBscArchiveBlockSize;
+  if (nblocks > static_cast<size_t>(std::numeric_limits<int>::max())) {
+    throw std::runtime_error("Too many blocks for in-memory BSC archive.");
+  }
+
+  std::vector<char> output_bytes;
+  output_bytes.reserve(sizeof(int) + input_bytes.size());
+  append_binary(output_bytes, static_cast<int>(nblocks));
+
+  size_t block_offset = 0;
+  while (block_offset < input_bytes.size()) {
+    const int data_size = static_cast<int>(
+        (std::min)(kBscArchiveBlockSize, input_bytes.size() - block_offset));
+    std::vector<unsigned char> compressed(static_cast<size_t>(data_size) +
+                                          LIBBSC_HEADER_SIZE);
+    int block_size =
+        bsc_compress(reinterpret_cast<const unsigned char *>(
+                         input_bytes.data() + block_offset),
+                     compressed.data(), data_size, 0, 0, LIBBSC_BLOCKSORTER_BWT,
+                     LIBBSC_CODER_QLFC_STATIC, LIBBSC_DEFAULT_FEATURES);
+    if (block_size == LIBBSC_NOT_COMPRESSIBLE) {
+      block_size =
+          bsc_store(reinterpret_cast<const unsigned char *>(input_bytes.data() +
+                                                            block_offset),
+                    compressed.data(), data_size, LIBBSC_DEFAULT_FEATURES);
+    }
+    if (block_size < LIBBSC_NO_ERROR) {
+      throw std::runtime_error("libbsc compression failed for in-memory data.");
+    }
+
+    const bsc_archive_block_header header = {
+        static_cast<long long>(block_offset),
+        static_cast<signed char>(1),
+        static_cast<signed char>(LIBBSC_CONTEXTS_FOLLOWING),
+    };
+    append_binary(output_bytes, header);
+    const size_t old_size = output_bytes.size();
+    output_bytes.resize(old_size + static_cast<size_t>(block_size));
+    std::memcpy(output_bytes.data() + old_size, compressed.data(),
+                static_cast<size_t>(block_size));
+    block_offset += static_cast<size_t>(data_size);
+  }
+
+  return output_bytes;
+}
+
+std::vector<char> bsc_decompress_bytes(const std::vector<char> &input_bytes) {
+  if (input_bytes.empty()) {
+    return {};
+  }
+
+  ensure_libbsc_ready();
+
+  if (input_bytes.size() < sizeof(int)) {
+    throw std::runtime_error("Compressed BSC byte stream is too small.");
+  }
+
+  size_t cursor = 0;
+  int nblocks = 0;
+  std::memcpy(&nblocks, input_bytes.data(), sizeof(int));
+  cursor += sizeof(int);
+  if (nblocks < 0) {
+    throw std::runtime_error(
+        "Compressed BSC byte stream has invalid block count.");
+  }
+
+  std::vector<char> output_bytes;
+  int parsed_blocks = 0;
+  while (cursor < input_bytes.size()) {
+    if (cursor + sizeof(bsc_archive_block_header) > input_bytes.size()) {
+      throw std::runtime_error(
+          "Corrupt BSC byte stream: truncated block header.");
+    }
+
+    bsc_archive_block_header header{};
+    std::memcpy(&header, input_bytes.data() + cursor,
+                sizeof(bsc_archive_block_header));
+    cursor += sizeof(bsc_archive_block_header);
+
+    if (header.record_size < 1) {
+      throw std::runtime_error("Corrupt BSC byte stream: invalid record size.");
+    }
+    if (header.sorting_contexts != LIBBSC_CONTEXTS_FOLLOWING &&
+        header.sorting_contexts != LIBBSC_CONTEXTS_PRECEDING) {
+      throw std::runtime_error(
+          "Corrupt BSC byte stream: invalid sorting context.");
+    }
+    if (header.block_offset < 0) {
+      throw std::runtime_error(
+          "Corrupt BSC byte stream: negative block offset.");
+    }
+    if (cursor + LIBBSC_HEADER_SIZE > input_bytes.size()) {
+      throw std::runtime_error(
+          "Corrupt BSC byte stream: truncated libbsc block header.");
+    }
+
+    int block_size = 0;
+    int data_size = 0;
+    if (bsc_block_info(reinterpret_cast<const unsigned char *>(
+                           input_bytes.data() + cursor),
+                       LIBBSC_HEADER_SIZE, &block_size, &data_size,
+                       LIBBSC_DEFAULT_FEATURES) != LIBBSC_NO_ERROR) {
+      throw std::runtime_error(
+          "Corrupt BSC byte stream: invalid libbsc block metadata.");
+    }
+    if (block_size < LIBBSC_HEADER_SIZE || data_size < 0) {
+      throw std::runtime_error("Corrupt BSC byte stream: invalid block sizes.");
+    }
+    if (cursor + static_cast<size_t>(block_size) > input_bytes.size()) {
+      throw std::runtime_error(
+          "Corrupt BSC byte stream: truncated compressed block.");
+    }
+
+    std::vector<unsigned char> block_bytes(
+        static_cast<size_t>((std::max)(block_size, data_size)));
+    std::memcpy(block_bytes.data(), input_bytes.data() + cursor,
+                static_cast<size_t>(block_size));
+    cursor += static_cast<size_t>(block_size);
+
+    const int decompress_result =
+        bsc_decompress(block_bytes.data(), block_size, block_bytes.data(),
+                       data_size, LIBBSC_DEFAULT_FEATURES);
+    if (decompress_result < LIBBSC_NO_ERROR) {
+      throw std::runtime_error(
+          "libbsc decompression failed for in-memory data.");
+    }
+
+    if (header.sorting_contexts == LIBBSC_CONTEXTS_PRECEDING) {
+      const int reverse_result = bsc_reverse_block(
+          block_bytes.data(), data_size, LIBBSC_DEFAULT_FEATURES);
+      if (reverse_result != LIBBSC_NO_ERROR) {
+        throw std::runtime_error(
+            "libbsc reverse-block failed for in-memory data.");
+      }
+    }
+
+    if (header.record_size > 1) {
+      const int reorder_result =
+          bsc_reorder_reverse(block_bytes.data(), data_size, header.record_size,
+                              LIBBSC_DEFAULT_FEATURES);
+      if (reorder_result != LIBBSC_NO_ERROR) {
+        throw std::runtime_error(
+            "libbsc reorder-reverse failed for in-memory data.");
+      }
+    }
+
+    const size_t output_offset = static_cast<size_t>(header.block_offset);
+    if (output_offset + static_cast<size_t>(data_size) > output_bytes.size()) {
+      output_bytes.resize(output_offset + static_cast<size_t>(data_size));
+    }
+    std::memcpy(output_bytes.data() + output_offset, block_bytes.data(),
+                static_cast<size_t>(data_size));
+    parsed_blocks++;
+  }
+
+  if (parsed_blocks != nblocks) {
+    throw std::runtime_error(
+        "Corrupt BSC byte stream: block count does not match archive header.");
+  }
+
+  return output_bytes;
 }
 
 void safe_bsc_decompress(const std::string &input_path,

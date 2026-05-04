@@ -6,6 +6,7 @@
 #include <istream>
 #include <streambuf>
 #include <string>
+#include <vector>
 #include <zlib.h>
 
 namespace spring {
@@ -116,6 +117,10 @@ void generate_binary_binning_table(char *binary_binning_table,
                                    const unsigned int low);
 
 // Reliability helpers.
+std::vector<char> bsc_compress_bytes(const std::vector<char> &input_bytes);
+
+std::vector<char> bsc_decompress_bytes(const std::vector<char> &input_bytes);
+
 void safe_bsc_decompress(const std::string &input_path,
                          const std::string &output_path);
 
