@@ -47,23 +47,6 @@ struct batch_partition_file {
 
 constexpr size_t kBatchIoBufferSize = 1 << 20;
 
-std::string read_binary_file(const std::string &path) {
-  std::ifstream input(path, std::ios::binary | std::ios::ate);
-  if (!input.is_open()) {
-    throw std::runtime_error("Failed to open side-stream file: " + path);
-  }
-  const std::streamsize file_size = input.tellg();
-  if (file_size < 0) {
-    throw std::runtime_error("Failed to determine side-stream size: " + path);
-  }
-  input.seekg(0, std::ios::beg);
-  std::string bytes(static_cast<size_t>(file_size), '\0');
-  if (file_size > 0 && !input.read(bytes.data(), file_size)) {
-    throw std::runtime_error("Failed to read side-stream file: " + path);
-  }
-  return bytes;
-}
-
 void write_binary_file(const std::string &path,
                        const std::vector<char> &bytes) {
   std::ofstream output(path, std::ios::binary | std::ios::trunc);
@@ -406,41 +389,6 @@ void generate_order_se(const std::vector<uint32_t> &read_order_entries,
     if (corrected >= num_reads) {
       return;
     }
-  }
-}
-
-void reorder_compress(const std::string &input_path,
-                      const uint32_t num_reads_per_file, const int num_thr,
-                      const uint32_t num_reads_per_block,
-                      std::vector<std::string> &reordered_strings,
-                      const uint32_t batch_size,
-                      const std::vector<uint32_t> &reordered_positions,
-                      const reorder_compress_mode mode,
-                      compression_params &cp) {
-  std::vector<std::string> batch_paths;
-  partition_reordered_batches(input_path, reordered_positions, batch_size,
-                              batch_paths);
-  SPRING_LOG_DEBUG(
-      "block_id=reorder-stream, Reorder/compress stream start: path=" +
-      input_path + ", total_reads=" + std::to_string(num_reads_per_file) +
-      ", batches=" + std::to_string(batch_paths.size()));
-
-  for (uint32_t batch_index = 0;; batch_index++) {
-    const batch_range batch =
-        batch_read_range(batch_index, batch_size, num_reads_per_file);
-    if (batch.begin >= batch.end)
-      break;
-
-    load_partitioned_batch(batch_paths[batch_index], batch.end - batch.begin,
-                           reordered_strings);
-    compress_block_batch(input_path, mode, cp, reordered_strings, batch,
-                         num_reads_per_block, num_thr);
-    safe_remove_file(batch_paths[batch_index]);
-    SPRING_LOG_DEBUG("block_id=reorder-batch-" + std::to_string(batch_index) +
-                     ", Reorder/compress batch done: path=" + input_path +
-                     ", batch_index=" + std::to_string(batch_index) +
-                     ", begin=" + std::to_string(batch.begin) +
-                     ", end=" + std::to_string(batch.end));
   }
 }
 

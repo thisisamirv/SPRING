@@ -284,19 +284,6 @@ std::vector<char> build_read_length_block_bytes(const uint32_t *read_lengths,
   return output_bytes;
 }
 
-void write_raw_string_block(const std::string &output_path,
-                            std::string *strings, const uint32_t string_count,
-                            const uint32_t *string_lengths) {
-  std::ofstream output(output_path, std::ios::binary);
-  if (!output.is_open()) {
-    throw std::runtime_error("Failed to open raw string block output: " +
-                             output_path);
-  }
-  for (uint32_t i = 0; i < string_count; i++) {
-    output.write(strings[i].data(), string_lengths[i]);
-  }
-}
-
 void open_input_stream(std::ifstream &file_stream, std::istream *&input_stream,
                        std::unique_ptr<gzip_istream> &gzip_stream,
                        const std::string &path, const bool gzip_enabled) {
