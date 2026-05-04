@@ -83,7 +83,8 @@ public:
                         const compression_params &cp,
                         const int (&compression_levels)[2],
                         const bool (&should_gzip)[2],
-                        const bool (&should_bgzf)[2]);
+                        const bool (&should_bgzf)[2],
+                        const bool (&write_enabled)[2]);
   ~FileDecompressionSink() override;
 
   void consume_step(std::string *id_buffer, std::string *read_buffer,
@@ -95,6 +96,7 @@ private:
   bool should_gzip[2];
   bool should_bgzf[2];
   bool use_crlf_[2];
+  bool write_enabled_[2];
   bool fasta_mode;
   bool quality_header_has_id_[2];
   int compression_level_[2];

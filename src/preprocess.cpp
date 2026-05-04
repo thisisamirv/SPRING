@@ -321,14 +321,15 @@ void close_input_stream(std::ifstream &file_stream, std::istream *&input_stream,
 preprocess_paths build_preprocess_paths(const std::string &input_path_1,
                                         const std::string &input_path_2,
                                         const std::string &temp_dir) {
+  const std::string base_dir = temp_dir.empty() ? "in-memory" : temp_dir;
   preprocess_paths paths;
   paths.input_paths = {input_path_1, input_path_2};
-  paths.id_output_paths = {temp_dir + "/id_1", temp_dir + "/id_2"};
-  paths.quality_output_paths = {temp_dir + "/quality_1",
-                                temp_dir + "/quality_2"};
-  paths.read_block_paths = {temp_dir + "/read_1", temp_dir + "/read_2"};
-  paths.read_length_paths = {temp_dir + "/readlength_1",
-                             temp_dir + "/readlength_2"};
+  paths.id_output_paths = {base_dir + "/id_1", base_dir + "/id_2"};
+  paths.quality_output_paths = {base_dir + "/quality_1",
+                                base_dir + "/quality_2"};
+  paths.read_block_paths = {base_dir + "/read_1", base_dir + "/read_2"};
+  paths.read_length_paths = {base_dir + "/readlength_1",
+                             base_dir + "/readlength_2"};
   return paths;
 }
 

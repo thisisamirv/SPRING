@@ -321,14 +321,7 @@ void cleanup_prepared_compression_inputs(
     bool /*pairing_only_flag*/) {}
 
 void recreate_compression_workdir(const std::string &temp_dir) {
-  std::error_code ec;
-  std::filesystem::remove_all(temp_dir, ec);
-  ec.clear();
-  std::filesystem::create_directories(temp_dir, ec);
-  if (ec) {
-    throw std::runtime_error("Failed to recreate compression workdir: " +
-                             temp_dir);
-  }
+  (void)temp_dir;
 }
 
 bool is_fastq_extension(const std::string &path) {
@@ -561,11 +554,17 @@ void configure_quality_options(compression_params &compression_params,
 
 void print_temp_dir_size(const std::string &temp_dir,
                          const char *label = "Temporary directory size") {
+  if (temp_dir.empty()) {
+    return;
+  }
   SPRING_LOG_INFO(std::string(label) + ": " +
                   std::to_string(get_directory_size(temp_dir)));
 }
 
 void print_compressed_stream_sizes(const std::string &temp_dir) {
+  if (temp_dir.empty()) {
+    return;
+  }
   namespace fs = std::filesystem;
 
   uint64_t size_read = 0;
@@ -1428,10 +1427,11 @@ void decompress_archive_artifact(const decompression_archive_artifact &artifact,
     }
   }
 
+  const bool write_enabled[2] = {true, true};
   std::unique_ptr<DecompressionSink> sink =
       std::make_unique<FileDecompressionSink>(
           io_config.output_path_1, io_config.output_path_2, cp,
-          compression_levels, should_gzip, should_bgzf);
+          compression_levels, should_gzip, should_bgzf, write_enabled);
 
   if (cp.encoding.long_flag) {
     decompress_long(artifact, *sink, cp, decoding_num_thr);
@@ -1499,10 +1499,10 @@ void decompress_standard(const std::string &temp_dir,
                          const log_level /*verbosity_level*/,
                          const bool unzip_flag, const bool untar_first = true) {
   (void)untar_first;
+  (void)temp_dir;
   decompression_archive_artifact artifact;
   artifact.files = read_all_files_from_tar_memory(input_paths[0]);
-  artifact.scratch_dir = temp_dir;
-  std::filesystem::create_directories(artifact.scratch_dir);
+  artifact.scratch_dir.clear();
   decompress_archive_artifact(artifact, input_paths, output_paths, num_thr,
                               unzip_flag);
 }
@@ -1513,12 +1513,12 @@ void decompress_standard_from_memory(
     const std::vector<std::string> &output_paths, const int num_thr,
     const int compression_level, const log_level verbosity_level,
     const bool unzip_flag) {
+  (void)temp_dir;
   (void)compression_level;
   (void)verbosity_level;
   decompression_archive_artifact artifact;
   artifact.files = read_all_files_from_tar_bytes(archive_contents);
-  artifact.scratch_dir = temp_dir;
-  std::filesystem::create_directories(artifact.scratch_dir);
+  artifact.scratch_dir.clear();
   decompress_archive_artifact(artifact, {archive_label}, output_paths, num_thr,
                               unzip_flag);
 }
@@ -1529,24 +1529,83 @@ void materialize_aliased_group_output_from_memory(
     const std::string &alias_output_path, const int num_thr,
     const int compression_level, const log_level verbosity_level,
     const bool unzip_flag) {
-  const std::string alias_temp_dir = temp_dir + "/decompress_read3_alias";
-  const std::string unused_output =
-      alias_temp_dir +
-      (alias_source == "R2" ? "/unused_R1.fastq" : "/unused_R2.fastq");
+  (void)temp_dir;
+  (void)compression_level;
+  (void)verbosity_level;
 
-  if (alias_source == "R2") {
-    decompress_standard_from_memory(
-        alias_temp_dir, read_archive_contents, read_archive_label,
-        {unused_output, alias_output_path}, num_thr, compression_level,
-        verbosity_level, unzip_flag);
-  } else {
-    decompress_standard_from_memory(
-        alias_temp_dir, read_archive_contents, read_archive_label,
-        {alias_output_path, unused_output}, num_thr, compression_level,
-        verbosity_level, unzip_flag);
+  decompression_archive_artifact artifact;
+  artifact.files = read_all_files_from_tar_bytes(read_archive_contents);
+  artifact.scratch_dir.clear();
+
+  compression_params cp{};
+  std::istringstream compression_params_input(artifact.require("cp.bin"),
+                                              std::ios::binary);
+  read_compression_params(compression_params_input, cp);
+  if (!compression_params_input.good()) {
+    throw std::runtime_error("Can't read compression parameters.");
   }
 
-  safe_remove_file(unused_output);
+  const int decoding_num_thr = (num_thr > 0) ? num_thr : cp.encoding.num_thr;
+  const int selected_stream = (alias_source == "R2") ? 1 : 0;
+  bool should_gzip[2] = {false, false};
+  bool should_bgzf[2] = {false, false};
+  bool write_enabled[2] = {false, false};
+  int compression_levels[2] = {cp.encoding.compression_level,
+                               cp.encoding.compression_level};
+  write_enabled[selected_stream] = true;
+  if (!unzip_flag && alias_output_path.ends_with(".gz")) {
+    should_gzip[selected_stream] = true;
+    should_bgzf[selected_stream] = cp.gzip.streams[selected_stream].is_bgzf;
+    compression_levels[selected_stream] = gzip_output_compression_level(
+        cp.gzip.streams[selected_stream], cp.encoding.compression_level);
+  }
+
+  const std::string output_path_1 =
+      (selected_stream == 0) ? alias_output_path : std::string();
+  const std::string output_path_2 =
+      (selected_stream == 1) ? alias_output_path : std::string();
+  FileDecompressionSink sink(output_path_1, output_path_2, cp,
+                             compression_levels, should_gzip, should_bgzf,
+                             write_enabled);
+  if (cp.encoding.long_flag) {
+    decompress_long(artifact, sink, cp, decoding_num_thr);
+  } else {
+    decompress_short(artifact, sink, cp, decoding_num_thr);
+  }
+
+  const bool is_lossless = cp.encoding.preserve_order &&
+                           cp.encoding.preserve_quality &&
+                           cp.encoding.preserve_id && !cp.quality.qvz_flag &&
+                           !cp.quality.ill_bin_flag && !cp.quality.bin_thr_flag;
+  if (is_lossless) {
+    uint32_t seq_crc[2], qual_crc[2], id_crc[2];
+    sink.get_digests(seq_crc, qual_crc, id_crc);
+    bool mismatch = false;
+    for (int i = 0; i < (cp.encoding.paired_end ? 2 : 1); ++i) {
+      if (cp.read_info.sequence_crc[i] != 0 &&
+          seq_crc[i] != cp.read_info.sequence_crc[i]) {
+        Logger::log_error("Stream " + std::to_string(i + 1) +
+                          " sequence digest mismatch.");
+        mismatch = true;
+      }
+      if (cp.read_info.quality_crc[i] != 0 &&
+          qual_crc[i] != cp.read_info.quality_crc[i]) {
+        Logger::log_error("Stream " + std::to_string(i + 1) +
+                          " quality digest mismatch.");
+        mismatch = true;
+      }
+      if (cp.read_info.id_crc[i] != 0 && id_crc[i] != cp.read_info.id_crc[i]) {
+        Logger::log_error("Stream " + std::to_string(i + 1) +
+                          " ID digest mismatch.");
+        mismatch = true;
+      }
+    }
+    if (mismatch) {
+      throw std::runtime_error(
+          "ARCHIVE INTEGRITY CHECK FAILED: Reconstructed data does not match "
+          "original digests. The archive may be corrupted.");
+    }
+  }
 }
 
 void decompress(const std::string &temp_dir,
@@ -1635,9 +1694,9 @@ void decompress(const std::string &temp_dir,
         require_group_member(manifest.read_archive_name);
 
     decompress_standard_from_memory(
-        temp_dir + "/decompress_reads", read_archive_contents,
-        manifest.read_archive_name, {resolved_outputs[0], resolved_outputs[1]},
-        num_thr, compression_level, verbosity_level, unzip_flag);
+        temp_dir, read_archive_contents, manifest.read_archive_name,
+        {resolved_outputs[0], resolved_outputs[1]}, num_thr, compression_level,
+        verbosity_level, unzip_flag);
 
     size_t next_output_index = 2;
     if (manifest.has_r3) {
@@ -1648,8 +1707,7 @@ void decompress(const std::string &temp_dir,
             num_thr, compression_level, verbosity_level, unzip_flag);
       } else {
         decompress_standard_from_memory(
-            temp_dir + "/decompress_read3",
-            require_group_member(manifest.read3_archive_name),
+            temp_dir, require_group_member(manifest.read3_archive_name),
             manifest.read3_archive_name, {resolved_outputs[next_output_index]},
             num_thr, compression_level, verbosity_level, unzip_flag);
       }
@@ -1661,16 +1719,15 @@ void decompress(const std::string &temp_dir,
           require_group_member(manifest.index_archive_name);
       if (manifest.has_i2) {
         decompress_standard_from_memory(
-            temp_dir + "/decompress_index", index_archive_contents,
-            manifest.index_archive_name,
+            temp_dir, index_archive_contents, manifest.index_archive_name,
             {resolved_outputs[next_output_index],
              resolved_outputs[next_output_index + 1]},
             num_thr, compression_level, verbosity_level, unzip_flag);
       } else {
         decompress_standard_from_memory(
-            temp_dir + "/decompress_index", index_archive_contents,
-            manifest.index_archive_name, {resolved_outputs[next_output_index]},
-            num_thr, compression_level, verbosity_level, unzip_flag);
+            temp_dir, index_archive_contents, manifest.index_archive_name,
+            {resolved_outputs[next_output_index]}, num_thr, compression_level,
+            verbosity_level, unzip_flag);
       }
     }
 

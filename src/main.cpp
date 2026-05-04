@@ -18,7 +18,6 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <system_error>
 #include <thread>
 #include <vector>
 
@@ -65,118 +64,6 @@ struct command_line_options {
   bool unzip_flag = false;
 };
 
-class SpringContext {
-public:
-  // Disallow copying and moving to manage lifetime of temporary directories.
-  SpringContext(const SpringContext &) = delete;
-  SpringContext &operator=(const SpringContext &) = delete;
-  SpringContext(SpringContext &&) = delete;
-  SpringContext &operator=(SpringContext &&) = delete;
-
-  explicit SpringContext(const std::string &working_dir) {
-    const std::filesystem::path working_dir_path(working_dir);
-    const bool working_dir_exists = std::filesystem::exists(working_dir_path);
-    if (!working_dir_exists) {
-      std::filesystem::create_directories(working_dir_path);
-    }
-    working_dir_ = working_dir_path;
-    remove_working_dir_ = !working_dir_exists;
-
-    temp_dir_ = create_temp_dir(working_dir_path);
-    SPRING_LOG_INFO("Temporary directory: " + temp_dir_.generic_string());
-  }
-
-  ~SpringContext() { cleanup(); }
-
-  void cleanup() noexcept {
-    if (!temp_dir_.empty()) {
-      SPRING_LOG_INFO("Deleting temporary directory: " +
-                      temp_dir_.generic_string());
-      std::error_code ec;
-      // Safety guard: only allow cleanup inside the configured working
-      // directory. This prevents accidental recursive deletes if state gets
-      // corrupted.
-      std::filesystem::path canonical_working_dir =
-          std::filesystem::weakly_canonical(working_dir_, ec);
-      if (ec) {
-        std::cerr << "Warning: Failed to canonicalize working directory '"
-                  << working_dir_.generic_string()
-                  << "' during cleanup: " << ec.message() << "\n";
-        ec.clear();
-      }
-
-      std::filesystem::path canonical_temp_dir =
-          std::filesystem::weakly_canonical(temp_dir_, ec);
-      if (ec) {
-        std::cerr << "Warning: Failed to canonicalize temporary directory '"
-                  << temp_dir_.generic_string()
-                  << "' during cleanup: " << ec.message() << "\n";
-        ec.clear();
-      }
-
-      bool path_is_safe = true;
-      if (!canonical_working_dir.empty() && !canonical_temp_dir.empty()) {
-        const std::string working_prefix =
-            canonical_working_dir.generic_string();
-        const std::string temp_path = canonical_temp_dir.generic_string();
-        path_is_safe = temp_path.starts_with(working_prefix);
-      }
-
-      if (!path_is_safe) {
-        std::cerr << "Warning: Refusing to delete temporary directory outside "
-                  << "working directory boundary: "
-                  << temp_dir_.generic_string() << "\n";
-      } else {
-        const std::uintmax_t removed_count =
-            std::filesystem::remove_all(temp_dir_, ec);
-        if (ec) {
-          std::cerr << "Warning: Failed to delete temporary directory '"
-                    << temp_dir_.generic_string() << "': " << ec.message()
-                    << "\n";
-        } else {
-          SPRING_LOG_DEBUG("Temporary cleanup removed " +
-                           std::to_string(removed_count) +
-                           " filesystem "
-                           "entries.");
-        }
-      }
-      temp_dir_.clear();
-    }
-    if (remove_working_dir_ && !working_dir_.empty()) {
-      std::error_code ec;
-      if (std::filesystem::is_directory(working_dir_, ec) &&
-          std::filesystem::is_empty(working_dir_, ec)) {
-        SPRING_LOG_INFO("Deleting working directory...");
-        std::filesystem::remove(working_dir_, ec);
-      }
-      remove_working_dir_ = false;
-    }
-  }
-
-  [[nodiscard]] std::string temp_dir_path() const {
-    return temp_dir_.generic_string() + '/';
-  }
-
-private:
-  std::filesystem::path temp_dir_;
-  std::filesystem::path working_dir_;
-  bool remove_working_dir_ = false;
-
-  static std::filesystem::path
-  create_temp_dir(const std::filesystem::path &working_dir_path) {
-    while (true) {
-      const std::string random_str = "tmp." + spring::random_string(10);
-      const std::filesystem::path temp_dir_path = working_dir_path / random_str;
-      if (!std::filesystem::exists(temp_dir_path) &&
-          std::filesystem::create_directory(temp_dir_path)) {
-        return temp_dir_path;
-      }
-    }
-  }
-};
-
-SpringContext *g_context = nullptr;
-
 int print_invalid_mode_and_exit(const std::string &options_description) {
   std::cout << "Exactly one of compress, decompress, or preview needs to be "
                "specified \n";
@@ -204,9 +91,10 @@ std::string build_options_description() {
       << "                                      is specified, two output files "
          "will be created\n"
       << "                                      by suffixing .1 and .2\n"
-      << "  -w [ --tmp-dir ] arg (=.)       directory to create temporary "
-         "files (default\n"
-      << "                                  current directory)\n"
+      << "  -w [ --tmp-dir ] arg (=.)       reserved for compatibility; no "
+         "internal temp\n"
+      << "                                  working-directory files are "
+         "created\n"
       << "  -t [ --threads ] arg            number of threads (default:\n"
       << "                                  min(max(1, hw_threads - 1), 16))\n"
       << "  -m [ --memory ] arg (=0)        approximate memory budget in GB; "
@@ -643,8 +531,6 @@ int print_unexpected_error_and_exit(const std::string &options_description,
                                     const std::string &error_message) {
   (void)options_description;
   std::cout << error_message << "\n";
-  if (g_context)
-    g_context->cleanup();
   return 1;
 }
 
@@ -708,9 +594,6 @@ void log_options_for_debugging(const command_line_options &options) {
 void signalHandler(int signum) {
   std::cout << "Interrupt signal (" << signum << ") received.\n";
   std::cout << "Program terminated unexpectedly\n";
-  if (g_context) {
-    g_context->cleanup();
-  }
   std::exit(signum);
 }
 
@@ -789,14 +672,10 @@ int main(int argc, char **argv) {
     return 0;
   }
 
-  // Isolate intermediate artifacts so cleanup is one directory removal.
   apply_memory_cap(options);
   log_options_for_debugging(options);
-  SpringContext context(options.working_dir);
-  g_context = &context;
-
   try {
-    run_requested_mode(options, context.temp_dir_path());
+    run_requested_mode(options, "");
   } catch (const std::runtime_error &e) {
     return print_unexpected_error_and_exit(
         options_description,
@@ -810,7 +689,5 @@ int main(int argc, char **argv) {
     return print_unexpected_error_and_exit(options_description,
                                            "Program terminated unexpectedly");
   }
-
-  g_context = nullptr;
   return 0;
 }

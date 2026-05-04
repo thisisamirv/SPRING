@@ -10,7 +10,6 @@
 #include "progress.h"
 #include <chrono>
 #include <condition_variable>
-#include <filesystem>
 #include <mutex>
 #include <queue>
 #include <sstream>
@@ -172,22 +171,8 @@ public:
 
   Impl(std::string archive_path, int num_thr, std::string work_dir)
       : archive_path_(std::move(archive_path)), user_num_thr_(num_thr) {
-
-    // Setup temporary directory
-    if (work_dir.empty()) {
-      std::filesystem::path temp_base = std::filesystem::temp_directory_path();
-      temp_dir_ =
-          (temp_base /
-           ("spring_reader_" +
-            std::to_string(
-                std::chrono::steady_clock::now().time_since_epoch().count())))
-              .string();
-    } else {
-      temp_dir_ = std::move(work_dir);
-    }
-    std::filesystem::create_directories(temp_dir_);
-
-    artifact_.scratch_dir = temp_dir_;
+    temp_dir_ = std::move(work_dir);
+    artifact_.scratch_dir.clear();
     const auto manifest_contents =
         read_files_from_tar_memory(archive_path_, {kBundleManifestName});
     if (manifest_contents.contains(kBundleManifestName)) {
@@ -284,10 +269,6 @@ public:
     cv_.notify_all();
     if (worker_thread_.joinable())
       worker_thread_.join();
-
-    // Cleanup temp dir
-    std::error_code ec;
-    std::filesystem::remove_all(temp_dir_, ec);
   }
 
   bool next(ReadRecord &mate1, ReadRecord *mate2) {

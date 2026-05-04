@@ -484,13 +484,16 @@ FileDecompressionSink::FileDecompressionSink(const std::string &outfile_1,
                                              const compression_params &cp,
                                              const int (&compression_levels)[2],
                                              const bool (&gzip)[2],
-                                             const bool (&bgzf)[2])
+                                             const bool (&bgzf)[2],
+                                             const bool (&write_enabled)[2])
     : fasta_mode(cp.encoding.fasta_mode), num_thr(cp.encoding.num_thr),
       paired_end(cp.encoding.paired_end) {
   should_gzip[0] = gzip[0];
   should_gzip[1] = gzip[1];
   should_bgzf[0] = bgzf[0];
   should_bgzf[1] = bgzf[1];
+  write_enabled_[0] = write_enabled[0];
+  write_enabled_[1] = write_enabled[1];
   compression_level_[0] = compression_levels[0];
   compression_level_[1] = compression_levels[1];
   use_crlf_[0] = cp.encoding.use_crlf_by_stream[0];
@@ -498,10 +501,12 @@ FileDecompressionSink::FileDecompressionSink(const std::string &outfile_1,
   quality_header_has_id_[0] = cp.read_info.quality_header_has_id_by_stream[0];
   quality_header_has_id_[1] = cp.read_info.quality_header_has_id_by_stream[1];
 
-  output_streams[0].open(outfile_1, std::ios::binary);
-  if (!output_streams[0])
-    throw std::runtime_error("Failed to open output file: " + outfile_1);
-  if (paired_end) {
+  if (write_enabled_[0]) {
+    output_streams[0].open(outfile_1, std::ios::binary);
+    if (!output_streams[0])
+      throw std::runtime_error("Failed to open output file: " + outfile_1);
+  }
+  if (paired_end && write_enabled_[1]) {
     output_streams[1].open(outfile_2, std::ios::binary);
     if (!output_streams[1])
       throw std::runtime_error("Failed to open output file: " + outfile_2);
@@ -520,6 +525,9 @@ void FileDecompressionSink::consume_step(std::string *id_buffer,
       update_record_crc(quality_crc_[stream_index], quality_buffer[i]);
     }
     update_record_crc(id_crc_[stream_index], id_buffer[i]);
+  }
+  if (!write_enabled_[stream_index]) {
+    return;
   }
   write_fastq_block(output_streams[stream_index], id_buffer, read_buffer,
                     quality_buffer, count, num_thr, should_gzip[stream_index],

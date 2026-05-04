@@ -17,23 +17,7 @@
 
 namespace spring {
 
-namespace {
-
-std::filesystem::path
-create_preview_temp_dir(const std::filesystem::path &working_dir) {
-  std::filesystem::create_directories(working_dir);
-
-  while (true) {
-    const std::filesystem::path temp_dir =
-        working_dir / (std::string("tmp_preview_") + random_string(10));
-    if (!std::filesystem::exists(temp_dir) &&
-        std::filesystem::create_directory(temp_dir)) {
-      return temp_dir;
-    }
-  }
-}
-
-} // namespace
+namespace {} // namespace
 
 // Helper function to print gzip compression info for a single file
 void print_gzip_compression_info(int idx, const std::string &filename,
@@ -96,25 +80,9 @@ void print_gzip_compression_info(int idx, const std::string &filename,
 
 void preview_single(const std::string &archive_path, bool audit_only,
                     const std::filesystem::path &working_dir) {
+  (void)working_dir;
   if (audit_only) {
-    const std::filesystem::path temp_dir = create_preview_temp_dir(working_dir);
-    try {
-      perform_audit(archive_path, temp_dir.generic_string());
-    } catch (const std::exception &e) {
-      std::error_code ec;
-      std::filesystem::remove_all(temp_dir, ec);
-      if (ec) {
-        std::cerr << "Warning: Could not completely remove temp dir: "
-                  << ec.message() << "\n";
-      }
-      throw;
-    }
-    std::error_code ec;
-    std::filesystem::remove_all(temp_dir, ec);
-    if (ec) {
-      std::cerr << "Warning: Could not completely remove temp dir: "
-                << ec.message() << "\n";
-    }
+    perform_audit(archive_path, "");
     return;
   }
 
