@@ -61,6 +61,17 @@ std::string compressed_block_file_path(const std::string &base_path,
   return block_file_path(base_path, block_num) + ".bsc";
 }
 
+void write_binary_file(const std::string &path,
+                       const std::vector<char> &bytes) {
+  std::ofstream output(path, std::ios::binary | std::ios::trunc);
+  if (!output.is_open()) {
+    throw std::runtime_error("Failed to open binary output: " + path);
+  }
+  if (!bytes.empty()) {
+    output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+  }
+}
+
 uint32_t block_count(const uint64_t num_reads,
                      const uint32_t num_reads_per_block) {
   if (num_reads == 0)
@@ -808,16 +819,9 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   bool grouped_index_id_suffix_strip_decided =
       !maybe_strip_grouped_index_id_suffix;
 
-  std::ofstream cb_seq_output, cb_qual_output;
+  std::string cb_seq_bytes;
+  std::string cb_qual_bytes;
   if (apply_cb_strip) {
-    cb_seq_output.open(temp_dir + "/cb_prefix.dna", std::ios::binary);
-    if (!cb_seq_output)
-      throw std::runtime_error("Failed to open cb_prefix.dna for writing");
-    if (cp.encoding.preserve_quality) {
-      cb_qual_output.open(temp_dir + "/cb_prefix.qual", std::ios::binary);
-      if (!cb_qual_output)
-        throw std::runtime_error("Failed to open cb_prefix.qual for writing");
-    }
     SPRING_LOG_DEBUG(
         "Single-cell R1 prefix stripping enabled (assay=" + cp.read_info.assay +
         ", cb_len=" + std::to_string(cp.encoding.cb_len) + " bp)");
@@ -1101,16 +1105,9 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
           // Update read length to reflect stripped read.
           read_lengths_array[ri] = static_cast<uint16_t>(read_array[ri].size());
         }
-        // Write CB data to output files.
-        if (!cb_seq_buffer.empty()) {
-          cb_seq_output.write(
-              cb_seq_buffer.data(),
-              static_cast<std::streamsize>(cb_seq_buffer.size()));
-        }
-        if (cp.encoding.preserve_quality && !cb_qual_buffer.empty()) {
-          cb_qual_output.write(
-              cb_qual_buffer.data(),
-              static_cast<std::streamsize>(cb_qual_buffer.size()));
+        cb_seq_bytes.append(cb_seq_buffer);
+        if (cp.encoding.preserve_quality) {
+          cb_qual_bytes.append(cb_qual_buffer);
         }
         cp.encoding.cb_prefix_stripped = true;
         cp.encoding.cb_prefix_len = cp.encoding.cb_len;
@@ -1399,26 +1396,16 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   }
 
   (void)0;
-  // Close CB prefix streams before other cleanup.
   if (apply_cb_strip) {
-    if (cb_seq_output.is_open())
-      cb_seq_output.close();
-    if (cb_qual_output.is_open())
-      cb_qual_output.close();
+    if (cp.encoding.cb_prefix_stripped) {
+      const std::vector<char> compressed_cb_seq = bsc_compress_bytes(
+          std::vector<char>(cb_seq_bytes.begin(), cb_seq_bytes.end()));
+      write_binary_file(temp_dir + "/cb_prefix.dna.bsc", compressed_cb_seq);
 
-    // Compress CB files with BSC to reduce archive size.
-    const std::string cb_seq_path = temp_dir + "/cb_prefix.dna";
-    const std::string cb_seq_compressed = cb_seq_path + ".bsc";
-    if (std::filesystem::exists(cb_seq_path)) {
-      bsc::BSC_compress(cb_seq_path.c_str(), cb_seq_compressed.c_str());
-      remove(cb_seq_path.c_str());
-    }
-    if (cp.encoding.preserve_quality) {
-      const std::string cb_qual_path = temp_dir + "/cb_prefix.qual";
-      const std::string cb_qual_compressed = cb_qual_path + ".bsc";
-      if (std::filesystem::exists(cb_qual_path)) {
-        bsc::BSC_compress(cb_qual_path.c_str(), cb_qual_compressed.c_str());
-        remove(cb_qual_path.c_str());
+      if (cp.encoding.preserve_quality) {
+        const std::vector<char> compressed_cb_qual = bsc_compress_bytes(
+            std::vector<char>(cb_qual_bytes.begin(), cb_qual_bytes.end()));
+        write_binary_file(temp_dir + "/cb_prefix.qual.bsc", compressed_cb_qual);
       }
     }
   }

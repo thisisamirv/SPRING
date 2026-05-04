@@ -63,6 +63,23 @@ std::runtime_error file_error(const std::string &prefix,
                             std::string(strerror(errno)));
 }
 
+std::vector<char> read_binary_file(const std::string &path) {
+  std::ifstream input(path, std::ios::binary | std::ios::ate);
+  if (!input.is_open()) {
+    throw std::runtime_error("Failed to open binary input: " + path);
+  }
+  const std::streamsize file_size = input.tellg();
+  if (file_size < 0) {
+    throw std::runtime_error("Failed to determine binary input size: " + path);
+  }
+  input.seekg(0, std::ios::beg);
+  std::vector<char> bytes(static_cast<size_t>(file_size));
+  if (file_size > 0 && !input.read(bytes.data(), file_size)) {
+    throw std::runtime_error("Failed to read binary input: " + path);
+  }
+  return bytes;
+}
+
 void open_reference_chunk(reference_chunk &chunk) {
 #ifdef _WIN32
   if (chunk.size == 0) {
@@ -785,32 +802,28 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
     }
   }
 
-  // Open CB prefix files if CB prefix stripping was used during compression.
-  std::ifstream f_cb_seq, f_cb_qual;
+  // Load CB prefix streams into memory if prefix stripping was used during
+  // compression.
+  std::vector<char> cb_seq_bytes;
+  std::vector<char> cb_qual_bytes;
+  size_t cb_seq_cursor = 0;
+  size_t cb_qual_cursor = 0;
   if (cb_prefix_stripped) {
-    // Decompress BSC files first.
     const std::string cb_seq_compressed = temp_dir + "/cb_prefix.dna.bsc";
-    const std::string cb_seq_path = temp_dir + "/cb_prefix.dna";
-    if (std::filesystem::exists(cb_seq_compressed)) {
-      bsc::BSC_decompress(cb_seq_compressed.c_str(), cb_seq_path.c_str());
+    if (!std::filesystem::exists(cb_seq_compressed)) {
+      throw std::runtime_error(
+          "cb_prefix_stripped set but cb_prefix.dna.bsc not found");
     }
+    cb_seq_bytes = bsc_decompress_bytes(read_binary_file(cb_seq_compressed));
+
     if (preserve_quality) {
       const std::string cb_qual_compressed = temp_dir + "/cb_prefix.qual.bsc";
-      const std::string cb_qual_path = temp_dir + "/cb_prefix.qual";
-      if (std::filesystem::exists(cb_qual_compressed)) {
-        bsc::BSC_decompress(cb_qual_compressed.c_str(), cb_qual_path.c_str());
-      }
-    }
-
-    f_cb_seq.open(cb_seq_path, std::ios::binary);
-    if (!f_cb_seq)
-      throw std::runtime_error(
-          "cb_prefix_stripped set but cb_prefix.dna not found");
-    if (preserve_quality) {
-      f_cb_qual.open(temp_dir + "/cb_prefix.qual", std::ios::binary);
-      if (!f_cb_qual)
+      if (!std::filesystem::exists(cb_qual_compressed)) {
         throw std::runtime_error(
-            "cb_prefix_stripped set but cb_prefix.qual not found");
+            "cb_prefix_stripped set but cb_prefix.qual.bsc not found");
+      }
+      cb_qual_bytes =
+          bsc_decompress_bytes(read_binary_file(cb_qual_compressed));
     }
   }
 
@@ -1162,17 +1175,23 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
         std::string *quality_buf_ptr =
             preserve_quality ? quality_buffer.data() : nullptr;
         for (uint32_t i = 0; i < num_reads_cur_step; ++i) {
-          // Read CB sequence (raw ASCII, cb_prefix_len bytes).
-          std::string cb_seq(cb_prefix_len, '\0');
-          f_cb_seq.read(&cb_seq[0], cb_prefix_len);
-          // Prepend CB sequence to the read.
-          read_buffer_ptr[i] = cb_seq + read_buffer_ptr[i];
+          if (cb_seq_cursor + cb_prefix_len > cb_seq_bytes.size()) {
+            throw std::runtime_error(
+                "Corrupt archive: truncated CB prefix sequence stream");
+          }
+          read_buffer_ptr[i].insert(0, cb_seq_bytes.data() + cb_seq_cursor,
+                                    cb_prefix_len);
+          cb_seq_cursor += cb_prefix_len;
           read_lengths_buffer_1[i] += cb_prefix_len;
-          // Prepend CB quality if present.
+
           if (quality_buf_ptr) {
-            std::string cb_qual(cb_prefix_len, '\0');
-            f_cb_qual.read(&cb_qual[0], cb_prefix_len);
-            quality_buf_ptr[i] = cb_qual + quality_buf_ptr[i];
+            if (cb_qual_cursor + cb_prefix_len > cb_qual_bytes.size()) {
+              throw std::runtime_error(
+                  "Corrupt archive: truncated CB prefix quality stream");
+            }
+            quality_buf_ptr[i].insert(0, cb_qual_bytes.data() + cb_qual_cursor,
+                                      cb_prefix_len);
+            cb_qual_cursor += cb_prefix_len;
           }
         }
       }
@@ -1231,6 +1250,16 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
       progress->update(static_cast<float>(num_reads_done) / num_reads);
     }
     num_blocks_done += archive_encoding_thread_count;
+  }
+  if (cb_prefix_stripped) {
+    if (cb_seq_cursor != cb_seq_bytes.size()) {
+      throw std::runtime_error(
+          "Corrupt archive: trailing CB prefix sequence bytes remain");
+    }
+    if (preserve_quality && cb_qual_cursor != cb_qual_bytes.size()) {
+      throw std::runtime_error(
+          "Corrupt archive: trailing CB prefix quality bytes remain");
+    }
   }
   SPRING_LOG_DEBUG("decompress_short complete: total_reads_done=" +
                    std::to_string(num_reads_done));
