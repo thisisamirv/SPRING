@@ -1175,7 +1175,15 @@ void compress_standard(const std::string &temp_dir,
 
   if (!long_flag) {
     reorder_encoder_artifact reorder_artifact;
+    post_encode_side_stream_artifact post_encode_side_streams;
     reordered_stream_artifact reordered_streams_artifact;
+    const bool needs_post_encode_side_streams =
+        !preserve_order &&
+        (preserve_quality || preserve_id || cp.encoding.poly_at_stripped ||
+         cp.encoding.atac_adapter_stripped);
+    if (needs_post_encode_side_streams) {
+      post_encode_side_streams = capture_post_encode_side_streams(temp_dir, cp);
+    }
 
     // Run overlap-based reordering for all assays.
     run_timed_step("Reordering ...", "Reordering", [&] {
@@ -1192,10 +1200,12 @@ void compress_standard(const std::string &temp_dir,
 
     print_temp_dir_size(temp_dir);
 
-    if (!preserve_order && (preserve_quality || preserve_id)) {
+    if (needs_post_encode_side_streams) {
       run_timed_step("Reordering and compressing quality and/or ids ...",
-                     "Reordering and compressing quality and/or ids",
-                     [&] { reorder_compress_quality_id(temp_dir, cp); });
+                     "Reordering and compressing quality and/or ids", [&] {
+                       reorder_compress_quality_id(
+                           temp_dir, post_encode_side_streams, cp);
+                     });
       print_temp_dir_size(temp_dir);
     }
 

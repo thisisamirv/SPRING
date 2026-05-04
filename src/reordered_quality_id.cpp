@@ -47,6 +47,23 @@ struct batch_partition_file {
 
 constexpr size_t kBatchIoBufferSize = 1 << 20;
 
+std::string read_binary_file(const std::string &path) {
+  std::ifstream input(path, std::ios::binary | std::ios::ate);
+  if (!input.is_open()) {
+    throw std::runtime_error("Failed to open side-stream file: " + path);
+  }
+  const std::streamsize file_size = input.tellg();
+  if (file_size < 0) {
+    throw std::runtime_error("Failed to determine side-stream size: " + path);
+  }
+  input.seekg(0, std::ios::beg);
+  std::string bytes(static_cast<size_t>(file_size), '\0');
+  if (file_size > 0 && !input.read(bytes.data(), file_size)) {
+    throw std::runtime_error("Failed to read side-stream file: " + path);
+  }
+  return bytes;
+}
+
 std::string block_file_path(const std::string &base_path,
                             const uint64_t block_num) {
   return base_path + "." + std::to_string(block_num);
@@ -143,6 +160,71 @@ void partition_reordered_batches(
                         .string_length =
                             static_cast<uint32_t>(current_string.size())};
     append_batch_record(batch_files[batch_index], record, current_string);
+  }
+
+  for (batch_partition_file &batch_file : batch_files) {
+    flush_batch_partition_file(batch_file);
+    batch_file.output.close();
+  }
+}
+
+void partition_reordered_batches_from_buffer(
+    const std::string &input_path, const std::string &input_bytes,
+    const std::vector<uint32_t> &reordered_positions, const uint32_t batch_size,
+    std::vector<std::string> &batch_paths) {
+  const uint32_t num_batches = batch_count_for_reads(
+      static_cast<uint32_t>(reordered_positions.size()), batch_size);
+  SPRING_LOG_DEBUG("block_id=reorder-partition, Partitioning reordered stream "
+                   "from memory: path=" +
+                   input_path +
+                   ", reads=" + std::to_string(reordered_positions.size()) +
+                   ", batch_size=" + std::to_string(batch_size) +
+                   ", num_batches=" + std::to_string(num_batches));
+  batch_paths.resize(num_batches);
+  std::vector<batch_partition_file> batch_files;
+  batch_files.reserve(num_batches);
+
+  for (uint32_t batch_index = 0; batch_index < num_batches; batch_index++) {
+    batch_paths[batch_index] = batch_temp_path(input_path, batch_index);
+    batch_files.push_back(
+        {.path = batch_paths[batch_index],
+         .output = std::ofstream(batch_paths[batch_index], std::ios::binary),
+         .buffer = {}});
+    batch_files.back().buffer.reserve(kBatchIoBufferSize);
+  }
+
+  size_t cursor = 0;
+  uint32_t read_index = 0;
+  while (cursor <= input_bytes.size() &&
+         read_index < reordered_positions.size()) {
+    const size_t line_end = input_bytes.find('\n', cursor);
+    const size_t value_end =
+        (line_end == std::string::npos) ? input_bytes.size() : line_end;
+    const bool has_trailing_cr =
+        value_end > cursor && input_bytes[value_end - 1] == '\r';
+    const size_t current_length =
+        value_end - cursor - (has_trailing_cr ? 1U : 0U);
+    std::string current_string = input_bytes.substr(cursor, current_length);
+
+    const uint32_t reordered_position = reordered_positions[read_index];
+    const uint32_t batch_index = reordered_position / batch_size;
+    batch_record record{.relative_position = reordered_position % batch_size,
+                        .string_length =
+                            static_cast<uint32_t>(current_string.size())};
+    append_batch_record(batch_files[batch_index], record, current_string);
+
+    read_index++;
+    if (line_end == std::string::npos) {
+      cursor = input_bytes.size() + 1;
+    } else {
+      cursor = line_end + 1;
+    }
+  }
+
+  if (read_index != reordered_positions.size()) {
+    throw std::runtime_error(
+        "Side-stream line count does not match expected read count for " +
+        input_path);
   }
 
   for (batch_partition_file &batch_file : batch_files) {
@@ -411,10 +493,90 @@ void reorder_compress(const std::string &input_path,
   }
 }
 
+void reorder_compress_from_buffer(
+    const std::string &input_path, const std::string &input_bytes,
+    const uint32_t num_reads_per_file, const int num_thr,
+    const uint32_t num_reads_per_block,
+    std::vector<std::string> &reordered_strings, const uint32_t batch_size,
+    const std::vector<uint32_t> &reordered_positions,
+    const reorder_compress_mode mode, compression_params &cp) {
+  std::vector<std::string> batch_paths;
+  partition_reordered_batches_from_buffer(
+      input_path, input_bytes, reordered_positions, batch_size, batch_paths);
+  SPRING_LOG_DEBUG("block_id=reorder-stream, Reorder/compress stream start "
+                   "from memory: path=" +
+                   input_path +
+                   ", total_reads=" + std::to_string(num_reads_per_file) +
+                   ", batches=" + std::to_string(batch_paths.size()));
+
+  for (uint32_t batch_index = 0;; batch_index++) {
+    const batch_range batch =
+        batch_read_range(batch_index, batch_size, num_reads_per_file);
+    if (batch.begin >= batch.end)
+      break;
+
+    load_partitioned_batch(batch_paths[batch_index], batch.end - batch.begin,
+                           reordered_strings);
+    compress_block_batch(input_path, mode, cp, reordered_strings, batch,
+                         num_reads_per_block, num_thr);
+    safe_remove_file(batch_paths[batch_index]);
+    SPRING_LOG_DEBUG("block_id=reorder-batch-" + std::to_string(batch_index) +
+                     ", Reorder/compress batch done: path=" + input_path +
+                     ", batch_index=" + std::to_string(batch_index) +
+                     ", begin=" + std::to_string(batch.begin) +
+                     ", end=" + std::to_string(batch.end));
+  }
+}
+
 } // namespace
 
-void reorder_compress_quality_id(const std::string &temp_dir,
-                                 compression_params &cp) {
+post_encode_side_stream_artifact
+capture_post_encode_side_streams(const std::string &temp_dir,
+                                 const compression_params &cp) {
+  post_encode_side_stream_artifact artifact;
+
+  for (int stream_index = 0; stream_index < 2; stream_index++) {
+    if (stream_index == 1 && !cp.encoding.paired_end)
+      continue;
+
+    const std::string id_path =
+        temp_dir + "/id_" + std::to_string(stream_index + 1);
+    if (std::filesystem::exists(id_path)) {
+      artifact.raw_id_streams[stream_index] = read_binary_file(id_path);
+      safe_remove_file(id_path);
+    }
+
+    const std::string quality_path =
+        temp_dir + "/quality_" + std::to_string(stream_index + 1);
+    if (std::filesystem::exists(quality_path)) {
+      artifact.raw_quality_streams[stream_index] =
+          read_binary_file(quality_path);
+      safe_remove_file(quality_path);
+    }
+
+    const std::string tail_path =
+        temp_dir + "/tail_" + std::to_string(stream_index + 1) + ".bin";
+    if (std::filesystem::exists(tail_path)) {
+      artifact.raw_tail_streams[stream_index] = read_binary_file(tail_path);
+      safe_remove_file(tail_path);
+    }
+
+    const std::string adapter_path = temp_dir + "/atac_adapter_" +
+                                     std::to_string(stream_index + 1) +
+                                     ".bin.bsc";
+    if (std::filesystem::exists(adapter_path)) {
+      artifact.compressed_atac_adapter_streams[stream_index] =
+          read_binary_file(adapter_path);
+      safe_remove_file(adapter_path);
+    }
+  }
+
+  return artifact;
+}
+
+void reorder_compress_quality_id(
+    const std::string &temp_dir,
+    const post_encode_side_stream_artifact &artifact, compression_params &cp) {
   const uint32_t num_reads = cp.read_info.num_reads;
   const int num_thr = cp.encoding.num_thr;
   const bool preserve_id = cp.encoding.preserve_id;
@@ -464,10 +626,11 @@ void reorder_compress_quality_id(const std::string &temp_dir,
           ", Quality stream selected: index=" + std::to_string(stream_index) +
           ", path=" + quality_paths[stream_index]);
       const uint32_t file_read_count = reads_per_file(num_reads, paired_end);
-      reorder_compress(quality_paths[stream_index], file_read_count, num_thr,
-                       num_reads_per_block, reordered_strings, batch_size,
-                       reordered_positions, reorder_compress_mode::quality, cp);
-      remove(quality_paths[stream_index].c_str());
+      reorder_compress_from_buffer(
+          quality_paths[stream_index],
+          artifact.raw_quality_streams[stream_index], file_read_count, num_thr,
+          num_reads_per_block, reordered_strings, batch_size,
+          reordered_positions, reorder_compress_mode::quality, cp);
     }
   }
   if (preserve_id) {
@@ -481,15 +644,15 @@ void reorder_compress_quality_id(const std::string &temp_dir,
           ", path=" + id_paths[stream_index] + ", paired_id_match=" +
           std::string(paired_id_match ? "true" : "false"));
       const uint32_t file_read_count = reads_per_file(num_reads, paired_end);
-      reorder_compress(id_paths[stream_index], file_read_count, num_thr,
-                       num_reads_per_block, reordered_strings, batch_size,
-                       reordered_positions, reorder_compress_mode::id, cp);
+      reorder_compress_from_buffer(
+          id_paths[stream_index], artifact.raw_id_streams[stream_index],
+          file_read_count, num_thr, num_reads_per_block, reordered_strings,
+          batch_size, reordered_positions, reorder_compress_mode::id, cp);
 
       if (paired_end) {
         SPRING_LOG_DEBUG("block_id=id-stream-" + std::to_string(stream_index) +
                          ", Skipping monolithic ID merge for paired-end mode; "
                          "keeping per-block compressed ID files.");
-        safe_remove_file(id_paths[stream_index]);
         continue;
       }
 
@@ -528,7 +691,6 @@ void reorder_compress_quality_id(const std::string &temp_dir,
           std::to_string(stream_index) + ", blocks=" +
           std::to_string(num_blocks) + ", output=" + monolithic_path);
       safe_remove_file(merged_packed_path);
-      safe_remove_file(id_paths[stream_index]);
     }
   }
 
@@ -539,7 +701,7 @@ void reorder_compress_quality_id(const std::string &temp_dir,
         continue;
       std::string tail_path =
           base_dir + "/tail_" + std::to_string(stream_index + 1) + ".bin";
-      if (!std::filesystem::exists(tail_path))
+      if (artifact.raw_tail_streams[stream_index].empty())
         continue;
 
       const uint32_t file_read_count = reads_per_file(num_reads, paired_end);
@@ -548,18 +710,32 @@ void reorder_compress_quality_id(const std::string &temp_dir,
         std::string qual;
       };
       std::vector<TailRecord> tails(file_read_count);
-      std::ifstream tail_in(tail_path, std::ios::binary);
+      size_t tail_cursor = 0;
       for (uint32_t i = 0; i < file_read_count; i++) {
         uint16_t info = 0;
-        tail_in.read(reinterpret_cast<char *>(&info), sizeof(uint16_t));
+        if (tail_cursor + sizeof(uint16_t) >
+            artifact.raw_tail_streams[stream_index].size()) {
+          throw std::runtime_error("Truncated poly-A/T tail stream: " +
+                                   tail_path);
+        }
+        std::memcpy(
+            &info, artifact.raw_tail_streams[stream_index].data() + tail_cursor,
+            sizeof(uint16_t));
+        tail_cursor += sizeof(uint16_t);
         tails[i].info = info;
         const uint32_t tail_len = info >> 1;
         if (tail_len > 0) {
-          tails[i].qual.resize(tail_len);
-          tail_in.read(&tails[i].qual[0], tail_len);
+          if (tail_cursor + tail_len >
+              artifact.raw_tail_streams[stream_index].size()) {
+            throw std::runtime_error("Truncated poly-A/T tail payload: " +
+                                     tail_path);
+          }
+          tails[i].qual.assign(artifact.raw_tail_streams[stream_index].data() +
+                                   tail_cursor,
+                               tail_len);
+          tail_cursor += tail_len;
         }
       }
-      tail_in.close();
 
       std::vector<TailRecord> reordered_tails(file_read_count);
       for (uint32_t i = 0; i < file_read_count; i++) {
@@ -585,7 +761,7 @@ void reorder_compress_quality_id(const std::string &temp_dir,
         continue;
       std::string adapter_path = base_dir + "/atac_adapter_" +
                                  std::to_string(stream_index + 1) + ".bin";
-      if (!std::filesystem::exists(adapter_path))
+      if (artifact.compressed_atac_adapter_streams[stream_index].empty())
         continue;
 
       const uint32_t file_read_count = reads_per_file(num_reads, paired_end);
@@ -594,34 +770,56 @@ void reorder_compress_quality_id(const std::string &temp_dir,
         std::string qual;
       };
       std::vector<AdapterRecord> adapters(file_read_count);
-      std::ifstream adapter_in(adapter_path, std::ios::binary);
+      const std::vector<char> adapter_bytes =
+          bsc_decompress_bytes(std::vector<char>(
+              artifact.compressed_atac_adapter_streams[stream_index].begin(),
+              artifact.compressed_atac_adapter_streams[stream_index].end()));
+      size_t adapter_cursor = 0;
       for (uint32_t i = 0; i < file_read_count; i++) {
         uint8_t info = 0;
-        adapter_in.read(reinterpret_cast<char *>(&info), sizeof(uint8_t));
+        if (adapter_cursor + sizeof(uint8_t) > adapter_bytes.size()) {
+          throw std::runtime_error("Truncated ATAC adapter stream: " +
+                                   adapter_path);
+        }
+        std::memcpy(&info, adapter_bytes.data() + adapter_cursor,
+                    sizeof(uint8_t));
+        adapter_cursor += sizeof(uint8_t);
         adapters[i].info = info;
         const uint32_t overlap = info >> 1;
         if (overlap > 0) {
-          adapters[i].qual.resize(overlap);
-          adapter_in.read(&adapters[i].qual[0], overlap);
+          if (adapter_cursor + overlap > adapter_bytes.size()) {
+            throw std::runtime_error("Truncated ATAC adapter payload: " +
+                                     adapter_path);
+          }
+          adapters[i].qual.assign(adapter_bytes.data() + adapter_cursor,
+                                  overlap);
+          adapter_cursor += overlap;
         }
       }
-      adapter_in.close();
 
       std::vector<AdapterRecord> reordered_adapters(file_read_count);
       for (uint32_t i = 0; i < file_read_count; i++) {
         reordered_adapters[reordered_positions[i]] = std::move(adapters[i]);
       }
 
-      std::ofstream adapter_out(adapter_path, std::ios::binary);
+      std::string reordered_adapter_bytes;
+      reordered_adapter_bytes.reserve(adapter_bytes.size());
       for (uint32_t i = 0; i < file_read_count; i++) {
-        adapter_out.write(
-            reinterpret_cast<const char *>(&reordered_adapters[i].info),
-            sizeof(uint8_t));
+        reordered_adapter_bytes.push_back(
+            static_cast<char>(reordered_adapters[i].info));
         const uint32_t overlap = reordered_adapters[i].info >> 1;
         if (overlap > 0) {
-          adapter_out.write(reordered_adapters[i].qual.data(), overlap);
+          reordered_adapter_bytes.append(reordered_adapters[i].qual);
         }
       }
+      const std::vector<char> compressed_adapter_bytes =
+          bsc_compress_bytes(std::vector<char>(reordered_adapter_bytes.begin(),
+                                               reordered_adapter_bytes.end()));
+      std::ofstream adapter_out(adapter_path + ".bsc",
+                                std::ios::binary | std::ios::trunc);
+      adapter_out.write(
+          compressed_adapter_bytes.data(),
+          static_cast<std::streamsize>(compressed_adapter_bytes.size()));
     }
   }
 }
