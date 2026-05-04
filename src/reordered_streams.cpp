@@ -4,15 +4,13 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
-#include <fstream>
-#include <iostream>
 #include <limits>
 #include <mutex>
 #include <omp.h>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
-#include "fs_utils.h"
 #include "libbsc/libbsc.h"
 #include "params.h"
 #include "progress.h"
@@ -81,15 +79,10 @@ void ensure_libbsc_ready() {
   });
 }
 
-void compress_block_buffer(const std::vector<char> &input_bytes,
-                           const std::string &output_path) {
+std::string compress_block_buffer(const std::vector<char> &input_bytes,
+                                  const std::string &output_path) {
   if (input_bytes.empty()) {
-    std::ofstream empty_output(output_path, std::ios::binary | std::ios::trunc);
-    if (!empty_output.is_open()) {
-      throw std::runtime_error("Failed to create empty compressed block: " +
-                               output_path);
-    }
-    return;
+    return {};
   }
 
   ensure_libbsc_ready();
@@ -117,12 +110,6 @@ void compress_block_buffer(const std::vector<char> &input_bytes,
                              output_path);
   }
 
-  std::ofstream output(output_path, std::ios::binary | std::ios::trunc);
-  if (!output.is_open()) {
-    throw std::runtime_error("Failed to open compressed block output: " +
-                             output_path);
-  }
-
   const int nblocks = 1;
   const bsc_block_header header = {
       0,
@@ -130,26 +117,30 @@ void compress_block_buffer(const std::vector<char> &input_bytes,
       static_cast<signed char>(1) /* LIBBSC_CONTEXTS_FOLLOWING */,
   };
 
-  output.write(reinterpret_cast<const char *>(&nblocks),
-               static_cast<std::streamsize>(sizeof(nblocks)));
-  output.write(reinterpret_cast<const char *>(&header),
-               static_cast<std::streamsize>(sizeof(header)));
-  output.write(reinterpret_cast<const char *>(compressed.data()),
-               static_cast<std::streamsize>(compressed_size));
+  std::string output_bytes;
+  output_bytes.resize(sizeof(nblocks) + sizeof(header) + compressed_size);
+  size_t cursor = 0;
+  std::memcpy(output_bytes.data() + cursor, &nblocks, sizeof(nblocks));
+  cursor += sizeof(nblocks);
+  std::memcpy(output_bytes.data() + cursor, &header, sizeof(header));
+  cursor += sizeof(header);
+  std::memcpy(output_bytes.data() + cursor, compressed.data(), compressed_size);
+  return output_bytes;
 }
 
 reordered_stream_paths
 build_reordered_stream_paths(const std::string &temp_dir) {
-  return {.flag_path = temp_dir + "/read_flag.txt",
-          .position_path = temp_dir + "/read_pos.bin",
-          .mate_position_path = temp_dir + "/read_pos_pair.bin",
-          .orientation_path = temp_dir + "/read_rev.txt",
-          .mate_orientation_path = temp_dir + "/read_rev_pair.txt",
-          .read_length_path = temp_dir + "/read_lengths.bin",
-          .unaligned_path = temp_dir + "/read_unaligned.txt",
-          .noise_path = temp_dir + "/read_noise.txt",
-          .noise_position_path = temp_dir + "/read_noisepos.bin",
-          .order_path = temp_dir + "/read_order.bin"};
+  (void)temp_dir;
+  return {.flag_path = "read_flag.txt",
+          .position_path = "read_pos.bin",
+          .mate_position_path = "read_pos_pair.bin",
+          .orientation_path = "read_rev.txt",
+          .mate_orientation_path = "read_rev_pair.txt",
+          .read_length_path = "read_lengths.bin",
+          .unaligned_path = "read_unaligned.txt",
+          .noise_path = "read_noise.txt",
+          .noise_position_path = "read_noisepos.bin",
+          .order_path = "read_order.bin"};
 }
 
 block_range block_read_range(const uint64_t block_num,
@@ -279,52 +270,60 @@ void write_aligned_position(std::vector<char> &position_output,
   previous_position = current_position;
 }
 
-void cleanup_consumed_input_files(const reordered_stream_paths &paths) {
-  safe_remove_file(paths.order_path);
+void add_compressed_block(std::unordered_map<std::string, std::string> &members,
+                          const std::string &path,
+                          const std::vector<char> &input_bytes) {
+  members[path] = compress_block_buffer(input_bytes, path);
 }
 
-void compress_output_block(const output_block_buffers &block_buffers,
-                           const reordered_stream_paths &paths,
-                           const uint64_t block_num, const bool paired_end) {
-  compress_block_buffer(block_buffers.flag_bytes,
-                        compressed_block_file_path(paths.flag_path, block_num));
-  compress_block_buffer(
-      block_buffers.position_bytes,
-      compressed_block_file_path(paths.position_path, block_num));
-  compress_block_buffer(
-      block_buffers.noise_bytes,
-      compressed_block_file_path(paths.noise_path, block_num));
-  compress_block_buffer(
-      block_buffers.noise_position_bytes,
-      compressed_block_file_path(paths.noise_position_path, block_num));
-  compress_block_buffer(
-      block_buffers.unaligned_bytes,
-      compressed_block_file_path(paths.unaligned_path, block_num));
-  compress_block_buffer(
-      block_buffers.read_length_bytes,
-      compressed_block_file_path(paths.read_length_path, block_num));
-  compress_block_buffer(
-      block_buffers.orientation_bytes,
-      compressed_block_file_path(paths.orientation_path, block_num));
+std::unordered_map<std::string, std::string>
+compress_output_block(const output_block_buffers &block_buffers,
+                      const reordered_stream_paths &paths,
+                      const uint64_t block_num, const bool paired_end) {
+  std::unordered_map<std::string, std::string> members;
+  add_compressed_block(members,
+                       compressed_block_file_path(paths.flag_path, block_num),
+                       block_buffers.flag_bytes);
+  add_compressed_block(
+      members, compressed_block_file_path(paths.position_path, block_num),
+      block_buffers.position_bytes);
+  add_compressed_block(members,
+                       compressed_block_file_path(paths.noise_path, block_num),
+                       block_buffers.noise_bytes);
+  add_compressed_block(
+      members, compressed_block_file_path(paths.noise_position_path, block_num),
+      block_buffers.noise_position_bytes);
+  add_compressed_block(
+      members, compressed_block_file_path(paths.unaligned_path, block_num),
+      block_buffers.unaligned_bytes);
+  add_compressed_block(
+      members, compressed_block_file_path(paths.read_length_path, block_num),
+      block_buffers.read_length_bytes);
+  add_compressed_block(
+      members, compressed_block_file_path(paths.orientation_path, block_num),
+      block_buffers.orientation_bytes);
 
-  if (!paired_end) {
-    return;
+  if (paired_end) {
+    add_compressed_block(
+        members,
+        compressed_block_file_path(paths.mate_position_path, block_num),
+        block_buffers.mate_position_bytes);
+    add_compressed_block(
+        members,
+        compressed_block_file_path(paths.mate_orientation_path, block_num),
+        block_buffers.mate_orientation_bytes);
   }
 
-  compress_block_buffer(
-      block_buffers.mate_position_bytes,
-      compressed_block_file_path(paths.mate_position_path, block_num));
-  compress_block_buffer(
-      block_buffers.mate_orientation_bytes,
-      compressed_block_file_path(paths.mate_orientation_path, block_num));
+  return members;
 }
 
 } // namespace
 
-void reorder_compress_streams(
-    const std::string &temp_dir, const compression_params &cp,
-    const reordered_stream_artifact &artifact,
-    const std::vector<uint32_t> *read_order_override) {
+std::unordered_map<std::string, std::string>
+reorder_compress_streams(const std::string &temp_dir,
+                         const compression_params &cp,
+                         const reordered_stream_artifact &artifact,
+                         const std::vector<uint32_t> *read_order_override) {
   const reordered_stream_paths paths = build_reordered_stream_paths(temp_dir);
   SPRING_LOG_DEBUG(
       "reorder_compress_streams start: temp_dir=" + temp_dir +
@@ -477,8 +476,6 @@ void reorder_compress_streams(
     aligned_flags[read_order] = false;
   }
 
-  cleanup_consumed_input_files(paths);
-
   omp_set_num_threads(num_thr);
   const uint32_t num_reads_per_block = cp.encoding.num_reads_per_block;
   const uint64_t read_limit = paired_end ? half_read_count : num_reads;
@@ -491,6 +488,9 @@ void reorder_compress_streams(
                    std::to_string(read_limit) + ", num_reads_per_block=" +
                    std::to_string(num_reads_per_block) +
                    ", output_blocks=" + std::to_string(output_blocks));
+
+  std::vector<std::unordered_map<std::string, std::string>> block_members(
+      static_cast<size_t>(output_blocks));
 
 #pragma omp parallel
   {
@@ -604,13 +604,21 @@ void reorder_compress_streams(
         }
       }
 
-      compress_output_block(block_buffers, paths, block_num, paired_end);
+      block_members[static_cast<size_t>(block_num)] =
+          compress_output_block(block_buffers, paths, block_num, paired_end);
       block_num += num_thr;
     }
   }
 
   SPRING_LOG_DEBUG("reorder_compress_streams complete: blocks_written=" +
                    std::to_string(output_blocks));
+  std::unordered_map<std::string, std::string> archive_members;
+  for (std::unordered_map<std::string, std::string> &block_output :
+       block_members) {
+    archive_members.insert(std::make_move_iterator(block_output.begin()),
+                           std::make_move_iterator(block_output.end()));
+  }
+  return archive_members;
 }
 
 } // namespace spring

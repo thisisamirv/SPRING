@@ -179,6 +179,11 @@ struct bsc_archive_block_header {
   signed char record_size;
   signed char sorting_contexts;
 };
+
+struct bsc_str_array_block_header {
+  signed char record_size;
+  signed char sorting_contexts;
+};
 #pragma pack(pop)
 
 constexpr size_t kBscArchiveBlockSize = 25U * 1024U * 1024U;
@@ -249,6 +254,15 @@ void write_string_array_bytes_or_throw(const unsigned char *buffer,
     pos_in_current_str += copy_size;
     bytes_read += static_cast<int>(copy_size);
   }
+}
+
+size_t total_string_array_bytes(uint32_t num_strings,
+                                const uint32_t *string_lengths) {
+  size_t total_size = 0;
+  for (uint32_t i = 0; i < num_strings; ++i) {
+    total_size += string_lengths[i];
+  }
+  return total_size;
 }
 
 } // namespace
@@ -751,6 +765,88 @@ std::vector<char> compress_id_block_bytes(std::string *id_array,
   }
 
   return bsc_compress_bytes(buffer);
+}
+
+std::vector<char> bsc_str_array_compress_bytes(std::string *string_array,
+                                               uint32_t num_strings,
+                                               uint32_t *string_lengths) {
+  ensure_libbsc_ready();
+
+  const size_t total_input_size =
+      total_string_array_bytes(num_strings, string_lengths);
+  const int block_size =
+      static_cast<int>((std::min)(total_input_size, kBscArchiveBlockSize));
+  const int num_blocks =
+      block_size > 0
+          ? static_cast<int>((total_input_size + block_size - 1) / block_size)
+          : 0;
+
+  std::vector<char> output_bytes;
+  append_binary(output_bytes, num_blocks);
+  if (block_size == 0) {
+    return output_bytes;
+  }
+
+  std::vector<unsigned char> read_buffer(static_cast<size_t>(block_size));
+  std::vector<unsigned char> work_buffer(static_cast<size_t>(block_size) +
+                                         LIBBSC_HEADER_SIZE);
+
+  uint32_t pos_in_str_array = 0;
+  uint32_t pos_in_current_str = 0;
+  while (true) {
+    int data_size = 0;
+    while (data_size < block_size && pos_in_str_array < num_strings) {
+      if (pos_in_current_str == string_lengths[pos_in_str_array]) {
+        ++pos_in_str_array;
+        pos_in_current_str = 0;
+        continue;
+      }
+      const uint32_t remaining_in_string =
+          string_lengths[pos_in_str_array] - pos_in_current_str;
+      const int remaining_in_block = block_size - data_size;
+      const uint32_t copy_size =
+          (std::min)(remaining_in_string,
+                     static_cast<uint32_t>(remaining_in_block));
+      std::memcpy(read_buffer.data() + data_size,
+                  string_array[pos_in_str_array].data() + pos_in_current_str,
+                  copy_size);
+      pos_in_current_str += copy_size;
+      data_size += static_cast<int>(copy_size);
+    }
+
+    if (data_size == 0) {
+      break;
+    }
+
+    signed char record_size = 1;
+    signed char sorting_contexts = LIBBSC_CONTEXTS_FOLLOWING;
+    std::memcpy(work_buffer.data(), read_buffer.data(),
+                static_cast<size_t>(data_size));
+    int compressed_size =
+        bsc_compress(work_buffer.data(), work_buffer.data(), data_size, 16, 128,
+                     LIBBSC_BLOCKSORTER_BWT, LIBBSC_CODER_QLFC_STATIC,
+                     LIBBSC_DEFAULT_FEATURES);
+    if (compressed_size == LIBBSC_NOT_COMPRESSIBLE) {
+      sorting_contexts = LIBBSC_CONTEXTS_FOLLOWING;
+      record_size = 1;
+      std::memcpy(work_buffer.data(), read_buffer.data(),
+                  static_cast<size_t>(data_size));
+      compressed_size = bsc_store(work_buffer.data(), work_buffer.data(),
+                                  data_size, LIBBSC_DEFAULT_FEATURES);
+    }
+    if (compressed_size < LIBBSC_NO_ERROR) {
+      throw std::runtime_error("Failed to compress BSC string array block.");
+    }
+
+    append_binary(output_bytes,
+                  bsc_str_array_block_header{record_size, sorting_contexts});
+    const size_t old_size = output_bytes.size();
+    output_bytes.resize(old_size + static_cast<size_t>(compressed_size));
+    std::memcpy(output_bytes.data() + old_size, work_buffer.data(),
+                static_cast<size_t>(compressed_size));
+  }
+
+  return output_bytes;
 }
 
 void compress_id_block(const char *output_path, std::string *id_array,

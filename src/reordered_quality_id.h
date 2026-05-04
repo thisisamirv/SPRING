@@ -7,6 +7,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace spring {
@@ -21,10 +22,11 @@ struct post_encode_side_stream_artifact {
 };
 
 // Reorder preserved ids and qualities to match the post-reorder read layout.
-void reorder_compress_quality_id(
-    const std::string &temp_dir,
-    const post_encode_side_stream_artifact &artifact,
-    const std::vector<uint32_t> &read_order_entries, compression_params &cp);
+std::unordered_map<std::string, std::string>
+reorder_compress_quality_id(const std::string &temp_dir,
+                            const post_encode_side_stream_artifact &artifact,
+                            const std::vector<uint32_t> &read_order_entries,
+                            compression_params &cp);
 
 } // namespace spring
 

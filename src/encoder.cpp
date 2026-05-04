@@ -148,12 +148,12 @@ uint64_t write_packed_sequence(const std::string &sequence_bytes,
   return sequence_length;
 }
 
-void pack_compress_seq(
+std::string pack_compress_seq(
     const encoder_global &encoder_state,
     const std::vector<encoded_metadata_buffer> &thread_metadata_outputs,
     uint64_t *thread_sequence_lengths) {
   if (encoder_state.num_thr <= 0)
-    return;
+    return {};
   SPRING_LOG_DEBUG("block_id=enc-pack-main, pack_compress_seq start: threads=" +
                    std::to_string(encoder_state.num_thr));
   std::vector<std::vector<char>> packed_chunks(
@@ -179,7 +179,6 @@ void pack_compress_seq(
   }
   SPRING_LOG_DEBUG("block_id=enc-pack-main, per-thread packing complete.");
 
-  std::string monolithic_compressed_path = encoder_state.outfile_seq + ".bsc";
   size_t packed_size = 0;
   for (int tid = 0; tid < encoder_state.num_thr; tid++) {
     const std::vector<char> &chunk = packed_chunks[static_cast<size_t>(tid)];
@@ -205,34 +204,15 @@ void pack_compress_seq(
       std::to_string(monolithic_packed_bytes.size()));
 
   if (monolithic_packed_bytes.empty()) {
-    std::ofstream empty_out(monolithic_compressed_path,
-                            std::ios::binary | std::ios::trunc);
-    if (!empty_out.is_open()) {
-      throw std::runtime_error("Failed to create empty compressed sequence "
-                               "file: " +
-                               monolithic_compressed_path);
-    }
-    return;
+    return {};
   }
 
   const std::vector<char> compressed_bytes =
       bsc_compress_bytes(monolithic_packed_bytes);
-  std::ofstream compressed_out(monolithic_compressed_path,
-                               std::ios::binary | std::ios::trunc);
-  if (!compressed_out.is_open()) {
-    throw std::runtime_error("Failed to create compressed sequence file: " +
-                             monolithic_compressed_path);
-  }
-  compressed_out.write(compressed_bytes.data(),
-                       static_cast<std::streamsize>(compressed_bytes.size()));
-  if (!compressed_out.good()) {
-    throw std::runtime_error("Failed while writing compressed sequence file: " +
-                             monolithic_compressed_path);
-  }
   SPRING_LOG_DEBUG("block_id=enc-pack-main, in-memory BSC_compress complete: "
-                   "output=" +
-                   monolithic_compressed_path +
-                   ", bytes=" + std::to_string(compressed_bytes.size()));
+                   "bytes=" +
+                   std::to_string(compressed_bytes.size()));
+  return std::string(compressed_bytes.begin(), compressed_bytes.end());
 }
 
 void rewrite_thread_order_file(

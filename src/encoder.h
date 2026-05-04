@@ -64,7 +64,7 @@ void writecontig(const std::string &ref,
                  encoded_metadata_buffer &metadata_output,
                  const encoder_global &eg, uint64_t &abs_pos);
 
-void pack_compress_seq(
+std::string pack_compress_seq(
     const encoder_global &encoder_state,
     const std::vector<encoded_metadata_buffer> &thread_metadata_outputs,
     uint64_t *thread_sequence_lengths);

@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace spring {
@@ -21,10 +22,11 @@ struct reordered_stream_artifact {
   std::vector<uint16_t> noise_positions;
   std::vector<char> unaligned_serialized;
   uint64_t unaligned_char_count = 0;
+  std::unordered_map<std::string, std::string> archive_members;
 };
 
 // Rebuild the aligned and unaligned side streams into per-block archives.
-void reorder_compress_streams(
+std::unordered_map<std::string, std::string> reorder_compress_streams(
     const std::string &temp_dir, const compression_params &cp,
     const reordered_stream_artifact &artifact,
     const std::vector<uint32_t> *read_order_override = nullptr);

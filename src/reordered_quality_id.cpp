@@ -4,16 +4,13 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <filesystem>
-#include <fstream>
-#include <iostream>
 #include <omp.h>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "core_utils.h"
 #include "io_utils.h"
-#include "libbsc/bsc.h"
 #include "params.h"
 #include "progress.h"
 #include "reordered_quality_id.h"
@@ -38,15 +35,10 @@ struct batch_record {
   uint32_t string_length;
 };
 
-void write_binary_file(const std::string &path,
-                       const std::vector<char> &bytes) {
-  std::ofstream output(path, std::ios::binary | std::ios::trunc);
-  if (!output.is_open()) {
-    throw std::runtime_error("Failed to open side-stream output: " + path);
-  }
-  if (!bytes.empty()) {
-    output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-  }
+void add_archive_member(std::unordered_map<std::string, std::string> &members,
+                        const std::string &path,
+                        const std::vector<char> &bytes) {
+  members[path] = std::string(bytes.begin(), bytes.end());
 }
 
 std::string block_file_path(const std::string &base_path,
@@ -155,7 +147,7 @@ void compress_block_batch(
     const std::string &input_path, const reorder_compress_mode mode,
     compression_params &cp, std::vector<std::string> &reordered_strings,
     const batch_range &batch, const uint32_t num_reads_per_block,
-    const int num_threads,
+    const int num_threads, std::vector<std::vector<char>> &block_outputs,
     std::vector<std::vector<char>> *id_block_outputs = nullptr) {
   const char *mode_name =
       (mode == reorder_compress_mode::id) ? "id" : "quality";
@@ -193,16 +185,16 @@ void compress_block_batch(
               reordered_strings.data() + block_begin, reads_in_block,
               cp.encoding.compression_level);
         } else {
-          compress_id_block(output_path.c_str(),
-                            reordered_strings.data() + block_begin,
-                            reads_in_block, cp.encoding.compression_level);
+          block_outputs[block_index] = compress_id_block_bytes(
+              reordered_strings.data() + block_begin, reads_in_block,
+              cp.encoding.compression_level);
         }
         if (global_block_idx <
             compression_params::ReadMetadata::kFileLenThrSize) {
           cp.read_info.file_len_id_thr[global_block_idx] =
               (id_block_outputs != nullptr)
                   ? (*id_block_outputs)[block_index].size()
-                  : std::filesystem::file_size(output_path);
+                  : block_outputs[block_index].size();
           SPRING_LOG_DEBUG(
               "block_id=id-block-" + std::to_string(global_block_idx) +
               ", Compressed id block=" + std::to_string(global_block_idx) +
@@ -232,9 +224,9 @@ void compress_block_batch(
                            ", reads=" + std::to_string(reads_in_block) +
                            ", ratio=" + std::to_string(cp.quality.qvz_ratio));
         }
-        bsc::BSC_str_array_compress(output_path.c_str(),
-                                    reordered_strings.data() + block_begin,
-                                    reads_in_block, read_lengths.data());
+        block_outputs[block_index] =
+            bsc_str_array_compress_bytes(reordered_strings.data() + block_begin,
+                                         reads_in_block, read_lengths.data());
         SPRING_LOG_DEBUG(
             "block_id=quality-block-" + std::to_string(global_block_idx) +
             ", Compressed quality block=" + std::to_string(global_block_idx) +
@@ -296,6 +288,7 @@ void reorder_compress_from_buffer(
     std::vector<std::string> &reordered_strings, const uint32_t batch_size,
     const std::vector<uint32_t> &reordered_positions,
     const reorder_compress_mode mode, compression_params &cp,
+    std::unordered_map<std::string, std::string> &archive_members,
     std::vector<char> *merged_id_block_bytes = nullptr) {
   std::vector<std::string> batch_buffers;
   partition_reordered_batches_from_buffer(
@@ -317,14 +310,25 @@ void reorder_compress_from_buffer(
         num_reads_per_block;
     load_partitioned_batch_from_bytes(
         batch_buffers[batch_index], batch.end - batch.begin, reordered_strings);
+    std::vector<std::vector<char>> batch_block_outputs(blocks_in_batch);
     std::vector<std::vector<char>> batch_id_block_outputs;
     if (merged_id_block_bytes != nullptr && mode == reorder_compress_mode::id) {
       batch_id_block_outputs.resize(blocks_in_batch);
     }
     compress_block_batch(
         input_path, mode, cp, reordered_strings, batch, num_reads_per_block,
-        num_thr,
+        num_thr, batch_block_outputs,
         batch_id_block_outputs.empty() ? nullptr : &batch_id_block_outputs);
+    const uint64_t block_offset = batch.begin / num_reads_per_block;
+    for (uint32_t block_index = 0; block_index < blocks_in_batch;
+         ++block_index) {
+      if (!batch_block_outputs[block_index].empty()) {
+        add_archive_member(
+            archive_members,
+            block_file_path(input_path, block_offset + block_index),
+            batch_block_outputs[block_index]);
+      }
+    }
     if (!batch_id_block_outputs.empty()) {
       for (std::vector<char> &block_bytes : batch_id_block_outputs) {
         merged_id_block_bytes->insert(merged_id_block_bytes->end(),
@@ -343,10 +347,13 @@ void reorder_compress_from_buffer(
 
 } // namespace
 
-void reorder_compress_quality_id(
-    const std::string &temp_dir,
-    const post_encode_side_stream_artifact &artifact,
-    const std::vector<uint32_t> &read_order_entries, compression_params &cp) {
+std::unordered_map<std::string, std::string>
+reorder_compress_quality_id(const std::string &temp_dir,
+                            const post_encode_side_stream_artifact &artifact,
+                            const std::vector<uint32_t> &read_order_entries,
+                            compression_params &cp) {
+  (void)temp_dir;
+  std::unordered_map<std::string, std::string> archive_members;
   const uint32_t num_reads = cp.read_info.num_reads;
   const int num_thr = cp.encoding.num_thr;
   const bool preserve_id = cp.encoding.preserve_id;
@@ -355,14 +362,12 @@ void reorder_compress_quality_id(
   const uint32_t num_reads_per_block = cp.encoding.num_reads_per_block;
   const bool paired_id_match = cp.read_info.paired_id_match;
 
-  const std::string base_dir = temp_dir;
-
   std::string id_paths[2];
   std::string quality_paths[2];
-  id_paths[0] = base_dir + "/id_1";
-  id_paths[1] = base_dir + "/id_2";
-  quality_paths[0] = base_dir + "/quality_1";
-  quality_paths[1] = base_dir + "/quality_2";
+  id_paths[0] = "id_1";
+  id_paths[1] = "id_2";
+  quality_paths[0] = "quality_1";
+  quality_paths[1] = "quality_2";
 
   std::vector<uint32_t> reordered_positions;
   if (paired_end) {
@@ -408,7 +413,8 @@ void reorder_compress_quality_id(
           quality_paths[stream_index],
           artifact.raw_quality_streams[stream_index], file_read_count, num_thr,
           num_reads_per_block, reordered_strings, batch_size,
-          reordered_positions, reorder_compress_mode::quality, cp);
+          reordered_positions, reorder_compress_mode::quality, cp,
+          archive_members);
     }
   }
   if (preserve_id) {
@@ -427,7 +433,7 @@ void reorder_compress_quality_id(
           id_paths[stream_index], artifact.raw_id_streams[stream_index],
           file_read_count, num_thr, num_reads_per_block, reordered_strings,
           batch_size, reordered_positions, reorder_compress_mode::id, cp,
-          paired_end ? nullptr : &merged_packed_id_blocks);
+          archive_members, paired_end ? nullptr : &merged_packed_id_blocks);
 
       if (paired_end) {
         SPRING_LOG_DEBUG("block_id=id-stream-" + std::to_string(stream_index) +
@@ -445,8 +451,8 @@ void reorder_compress_quality_id(
             "). Increase array size in params.h.");
       }
       const std::string monolithic_path = id_paths[stream_index] + ".bsc";
-      write_binary_file(monolithic_path,
-                        bsc_compress_bytes(merged_packed_id_blocks));
+      add_archive_member(archive_members, monolithic_path,
+                         bsc_compress_bytes(merged_packed_id_blocks));
       SPRING_LOG_DEBUG(
           "block_id=id-merge-stream-" + std::to_string(stream_index) +
           ", Monolithic ID block merge/compress complete from memory: stream=" +
@@ -463,7 +469,7 @@ void reorder_compress_quality_id(
       if (stream_index == 1 && !paired_end)
         continue;
       std::string tail_path =
-          base_dir + "/tail_" + std::to_string(stream_index + 1) + ".bin";
+          "tail_" + std::to_string(stream_index + 1) + ".bin";
       if (artifact.raw_tail_streams[stream_index].empty())
         continue;
 
@@ -505,15 +511,18 @@ void reorder_compress_quality_id(
         reordered_tails[reordered_positions[i]] = std::move(tails[i]);
       }
 
-      std::ofstream tail_out(tail_path, std::ios::binary);
+      std::string tail_bytes;
+      tail_bytes.reserve(artifact.raw_tail_streams[stream_index].size());
       for (uint32_t i = 0; i < file_read_count; i++) {
-        tail_out.write(reinterpret_cast<const char *>(&reordered_tails[i].info),
-                       sizeof(uint16_t));
+        tail_bytes.append(
+            reinterpret_cast<const char *>(&reordered_tails[i].info),
+            sizeof(uint16_t));
         const uint32_t tail_len = reordered_tails[i].info >> 1;
         if (tail_len > 0) {
-          tail_out.write(reordered_tails[i].qual.data(), tail_len);
+          tail_bytes.append(reordered_tails[i].qual);
         }
       }
+      archive_members[tail_path] = std::move(tail_bytes);
     }
   }
 
@@ -522,11 +531,10 @@ void reorder_compress_quality_id(
     for (int stream_index = 0; stream_index < 2; stream_index++) {
       if (stream_index == 1 && !paired_end)
         continue;
-      std::string adapter_path = base_dir + "/atac_adapter_" +
-                                 std::to_string(stream_index + 1) + ".bin";
+      std::string adapter_path =
+          "atac_adapter_" + std::to_string(stream_index + 1) + ".bin";
       if (artifact.compressed_atac_adapter_streams[stream_index].empty()) {
-        std::ofstream empty_adapter(adapter_path,
-                                    std::ios::binary | std::ios::trunc);
+        archive_members[adapter_path] = std::string();
         continue;
       }
 
@@ -581,13 +589,12 @@ void reorder_compress_quality_id(
       const std::vector<char> compressed_adapter_bytes =
           bsc_compress_bytes(std::vector<char>(reordered_adapter_bytes.begin(),
                                                reordered_adapter_bytes.end()));
-      std::ofstream adapter_out(adapter_path + ".bsc",
-                                std::ios::binary | std::ios::trunc);
-      adapter_out.write(
-          compressed_adapter_bytes.data(),
-          static_cast<std::streamsize>(compressed_adapter_bytes.size()));
+      add_archive_member(archive_members, adapter_path + ".bsc",
+                         compressed_adapter_bytes);
     }
   }
+
+  return archive_members;
 }
 
 } // namespace spring

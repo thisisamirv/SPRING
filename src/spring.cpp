@@ -595,6 +595,62 @@ void print_compressed_stream_sizes(const std::string &temp_dir) {
   SPRING_LOG_INFO("ID:         " + std::to_string(size_id) + " bytes");
 }
 
+void print_compressed_stream_sizes(
+    const std::unordered_map<std::string, std::string> &archive_members) {
+  uint64_t size_read = 0;
+  uint64_t size_quality = 0;
+  uint64_t size_id = 0;
+  for (const auto &[name, contents] : archive_members) {
+    if (name.empty()) {
+      continue;
+    }
+    switch (name[0]) {
+    case 'r':
+      size_read += contents.size();
+      break;
+    case 'q':
+      size_quality += contents.size();
+      break;
+    case 'i':
+      size_id += contents.size();
+      break;
+    }
+  }
+
+  SPRING_LOG_INFO("");
+  SPRING_LOG_INFO("Sizes of streams after compression: ");
+  SPRING_LOG_INFO("Reads:      " + std::to_string(size_read) + " bytes");
+  SPRING_LOG_INFO("Quality:    " + std::to_string(size_quality) + " bytes");
+  SPRING_LOG_INFO("ID:         " + std::to_string(size_id) + " bytes");
+}
+
+void merge_archive_members(
+    std::unordered_map<std::string, std::string> &archive_members,
+    std::unordered_map<std::string, std::string> new_members) {
+  archive_members.insert(std::make_move_iterator(new_members.begin()),
+                         std::make_move_iterator(new_members.end()));
+}
+
+std::string serialize_compression_params(const compression_params &cp) {
+  std::ostringstream output(std::ios::binary);
+  write_compression_params(output, cp);
+  return output.str();
+}
+
+std::vector<tar_archive_source> build_archive_sources(
+    const std::unordered_map<std::string, std::string> &archive_members) {
+  std::vector<tar_archive_source> sources;
+  sources.reserve(archive_members.size());
+  for (const auto &[name, contents] : archive_members) {
+    tar_archive_source source;
+    source.archive_path = name;
+    source.contents = contents;
+    source.from_memory = true;
+    sources.push_back(std::move(source));
+  }
+  return sources;
+}
+
 decompression_io_config
 resolve_decompression_io(const string_list &input_paths,
                          const string_list &output_paths,
@@ -640,135 +696,138 @@ resolve_decompression_io(const string_list &input_paths,
 
 } // namespace
 
+namespace {
+
+void perform_audit_standard_artifact(
+    const decompression_archive_artifact &artifact,
+    const std::string &archive_label) {
+  SPRING_LOG_DEBUG("Audit (standard) started for archive: " + archive_label +
+                   " (in-memory)");
+
+  std::istringstream compression_params_input(artifact.require("cp.bin"),
+                                              std::ios::binary);
+
+  compression_params cp{};
+  read_compression_params(compression_params_input, cp);
+  if (!compression_params_input.good()) {
+    throw std::runtime_error("Can't read parameter file in audit.");
+  }
+
+  NullDecompressionSink sink;
+  if (cp.encoding.long_flag) {
+    decompress_long(artifact, sink, cp, cp.encoding.num_thr);
+  } else {
+    decompress_short(artifact, sink, cp, cp.encoding.num_thr);
+  }
+
+  const bool is_lossless = cp.encoding.preserve_order &&
+                           cp.encoding.preserve_quality &&
+                           cp.encoding.preserve_id && !cp.quality.qvz_flag &&
+                           !cp.quality.ill_bin_flag && !cp.quality.bin_thr_flag;
+
+  if (is_lossless) {
+    uint32_t seq_crc[2], qual_crc[2], id_crc[2];
+    sink.get_digests(seq_crc, qual_crc, id_crc);
+
+    bool mismatch = false;
+    for (int i = 0; i < (cp.encoding.paired_end ? 2 : 1); ++i) {
+      if (cp.read_info.sequence_crc[i] != 0 &&
+          seq_crc[i] != cp.read_info.sequence_crc[i]) {
+        Logger::log_error("Stream " + std::to_string(i + 1) +
+                          " sequence digest mismatch: expected=" +
+                          std::to_string(cp.read_info.sequence_crc[i]) +
+                          " actual=" + std::to_string(seq_crc[i]));
+        std::cerr << "Stream " << (i + 1) << " sequence digest mismatch!\n";
+        mismatch = true;
+      }
+      if (cp.read_info.quality_crc[i] != 0 &&
+          qual_crc[i] != cp.read_info.quality_crc[i]) {
+        Logger::log_error("Stream " + std::to_string(i + 1) +
+                          " quality digest mismatch: expected=" +
+                          std::to_string(cp.read_info.quality_crc[i]) +
+                          " actual=" + std::to_string(qual_crc[i]));
+        std::cerr << "Stream " << (i + 1) << " quality digest mismatch!\n";
+        mismatch = true;
+      }
+      if (cp.read_info.id_crc[i] != 0 && id_crc[i] != cp.read_info.id_crc[i]) {
+        Logger::log_error("Stream " + std::to_string(i + 1) +
+                          " ID digest mismatch: expected=" +
+                          std::to_string(cp.read_info.id_crc[i]) +
+                          " actual=" + std::to_string(id_crc[i]));
+        std::cerr << "Stream " << (i + 1) << " ID digest mismatch!\n";
+        mismatch = true;
+      }
+    }
+    if (mismatch)
+      throw std::runtime_error("Archive integrity audit failed!");
+  }
+
+  std::cout << "Audit successful: " << archive_label << " is valid."
+            << std::endl;
+}
+
+void perform_audit_standard_bytes(const std::string &archive_contents,
+                                  const std::string &archive_label) {
+  decompression_archive_artifact artifact;
+  artifact.files = read_all_files_from_tar_bytes(archive_contents);
+  artifact.scratch_dir.clear();
+  perform_audit_standard_artifact(artifact, archive_label);
+}
+
+} // namespace
+
 void perform_audit_standard(const std::string &archive_path,
                             const std::string &temp_dir) {
-  std::string audit_dir = temp_dir + "/audit_extract";
-  std::filesystem::create_directories(audit_dir);
-  SPRING_LOG_DEBUG("Audit (standard) started for archive: " + archive_path +
-                   " (scratch dir: " + audit_dir + ")");
-
-  try {
-    decompression_archive_artifact artifact;
-    artifact.files = read_all_files_from_tar_memory(archive_path);
-    artifact.scratch_dir = audit_dir;
-
-    std::istringstream compression_params_input(artifact.require("cp.bin"),
-                                                std::ios::binary);
-
-    compression_params cp{};
-    read_compression_params(compression_params_input, cp);
-    if (!compression_params_input.good()) {
-      throw std::runtime_error("Can't read parameter file in audit.");
-    }
-
-    NullDecompressionSink sink;
-    if (cp.encoding.long_flag) {
-      decompress_long(artifact, sink, cp, cp.encoding.num_thr);
-    } else {
-      decompress_short(artifact, sink, cp, cp.encoding.num_thr);
-    }
-
-    const bool is_lossless =
-        cp.encoding.preserve_order && cp.encoding.preserve_quality &&
-        cp.encoding.preserve_id && !cp.quality.qvz_flag &&
-        !cp.quality.ill_bin_flag && !cp.quality.bin_thr_flag;
-
-    if (is_lossless) {
-      uint32_t seq_crc[2], qual_crc[2], id_crc[2];
-      sink.get_digests(seq_crc, qual_crc, id_crc);
-
-      bool mismatch = false;
-      for (int i = 0; i < (cp.encoding.paired_end ? 2 : 1); ++i) {
-        if (cp.read_info.sequence_crc[i] != 0 &&
-            seq_crc[i] != cp.read_info.sequence_crc[i]) {
-          Logger::log_error("Stream " + std::to_string(i + 1) +
-                            " sequence digest mismatch: expected=" +
-                            std::to_string(cp.read_info.sequence_crc[i]) +
-                            " actual=" + std::to_string(seq_crc[i]));
-          std::cerr << "Stream " << (i + 1) << " sequence digest mismatch!\n";
-          mismatch = true;
-        }
-        if (cp.read_info.quality_crc[i] != 0 &&
-            qual_crc[i] != cp.read_info.quality_crc[i]) {
-          Logger::log_error("Stream " + std::to_string(i + 1) +
-                            " quality digest mismatch: expected=" +
-                            std::to_string(cp.read_info.quality_crc[i]) +
-                            " actual=" + std::to_string(qual_crc[i]));
-          std::cerr << "Stream " << (i + 1) << " quality digest mismatch!\n";
-          mismatch = true;
-        }
-        if (cp.read_info.id_crc[i] != 0 &&
-            id_crc[i] != cp.read_info.id_crc[i]) {
-          Logger::log_error("Stream " + std::to_string(i + 1) +
-                            " ID digest mismatch: expected=" +
-                            std::to_string(cp.read_info.id_crc[i]) +
-                            " actual=" + std::to_string(id_crc[i]));
-          std::cerr << "Stream " << (i + 1) << " ID digest mismatch!\n";
-          mismatch = true;
-        }
-      }
-      if (mismatch)
-        throw std::runtime_error("Archive integrity audit failed!");
-    }
-
-    std::cout << "Audit successful: " << archive_path << " is valid."
-              << std::endl;
-    std::filesystem::remove_all(audit_dir);
-  } catch (...) {
-    std::error_code ec;
-    std::filesystem::remove_all(audit_dir, ec);
-    throw;
-  }
+  (void)temp_dir;
+  decompression_archive_artifact artifact;
+  artifact.files = read_all_files_from_tar_memory(archive_path);
+  artifact.scratch_dir.clear();
+  perform_audit_standard_artifact(artifact, archive_path);
 }
 
 void perform_audit(const std::string &archive_path,
                    const std::string &temp_dir) {
-  // Create a sub-directory for the audit untar to avoid clobbering existing
-  // temp files
-  std::string audit_dir = temp_dir + "/audit_extract";
-  std::filesystem::create_directories(audit_dir);
+  (void)temp_dir;
   SPRING_LOG_DEBUG("Audit started for archive: " + archive_path +
-                   " (extract dir: " + audit_dir + ")");
+                   " (in-memory)");
 
-  try {
-    extract_tar_archive(archive_path, audit_dir);
+  const std::unordered_map<std::string, std::string> top_level_files =
+      read_all_files_from_tar_memory(archive_path);
+  auto manifest_it = top_level_files.find(kBundleManifestName);
+  if (manifest_it != top_level_files.end()) {
+    const bundle_manifest manifest =
+        read_bundle_manifest_from_string(manifest_it->second);
 
-    const std::string manifest_path = audit_dir + "/" + kBundleManifestName;
-    if (std::filesystem::exists(manifest_path)) {
-      const bundle_manifest manifest = read_bundle_manifest(manifest_path);
-      const std::string read_archive_path =
-          audit_dir + "/" + manifest.read_archive_name;
-      const std::string index_archive_path =
-          manifest.has_index ? (audit_dir + "/" + manifest.index_archive_name)
-                             : std::string();
-      const std::string read3_archive_path =
-          (manifest.has_r3 && manifest.read3_alias_source.empty())
-              ? (audit_dir + "/" + manifest.read3_archive_name)
-              : std::string();
-
-      perform_audit_standard(read_archive_path, temp_dir + "/audit_read_group");
-      if (!read3_archive_path.empty()) {
-        perform_audit_standard(read3_archive_path,
-                               temp_dir + "/audit_read3_group");
+    auto require_member =
+        [&](const std::string &member_name) -> const std::string & {
+      auto member_it = top_level_files.find(member_name);
+      if (member_it == top_level_files.end()) {
+        throw std::runtime_error(
+            "Grouped archive is missing required member: " + member_name);
       }
-      if (!index_archive_path.empty()) {
-        perform_audit_standard(index_archive_path,
-                               temp_dir + "/audit_index_group");
-      }
+      return member_it->second;
+    };
 
-      std::cout << "Audit successful: grouped archive members are valid."
-                << std::endl;
-      std::filesystem::remove_all(audit_dir);
-      return;
+    perform_audit_standard_bytes(require_member(manifest.read_archive_name),
+                                 manifest.read_archive_name);
+    if (manifest.has_r3 && manifest.read3_alias_source.empty()) {
+      perform_audit_standard_bytes(require_member(manifest.read3_archive_name),
+                                   manifest.read3_archive_name);
+    }
+    if (manifest.has_index) {
+      perform_audit_standard_bytes(require_member(manifest.index_archive_name),
+                                   manifest.index_archive_name);
     }
 
-    std::filesystem::remove_all(audit_dir);
-    perform_audit_standard(archive_path, temp_dir);
-  } catch (...) {
-    std::error_code ec;
-    std::filesystem::remove_all(audit_dir, ec);
-    throw;
+    std::cout << "Audit successful: grouped archive members are valid."
+              << std::endl;
+    return;
   }
+
+  decompression_archive_artifact artifact;
+  artifact.files = top_level_files;
+  artifact.scratch_dir.clear();
+  perform_audit_standard_artifact(artifact, archive_path);
 }
 
 void compress_standard(const std::string &temp_dir,
@@ -1012,6 +1071,9 @@ void compress_standard(const std::string &temp_dir,
   cleanup_prepared_compression_inputs(prepared_inputs, pairing_only_flag);
   print_temp_dir_size(temp_dir);
 
+  std::unordered_map<std::string, std::string> archive_members =
+      std::move(preprocess_output.archive_members);
+
   if (!long_flag) {
     reorder_encoder_artifact reorder_artifact;
     post_encode_side_stream_artifact post_encode_side_streams;
@@ -1044,9 +1106,12 @@ void compress_standard(const std::string &temp_dir,
     if (needs_post_encode_side_streams) {
       run_timed_step("Reordering and compressing quality and/or ids ...",
                      "Reordering and compressing quality and/or ids", [&] {
-                       reorder_compress_quality_id(
-                           temp_dir, post_encode_side_streams,
-                           reordered_streams_artifact.read_order_entries, cp);
+                       merge_archive_members(
+                           archive_members,
+                           reorder_compress_quality_id(
+                               temp_dir, post_encode_side_streams,
+                               reordered_streams_artifact.read_order_entries,
+                               cp));
                      });
       print_temp_dir_size(temp_dir);
     }
@@ -1063,27 +1128,32 @@ void compress_standard(const std::string &temp_dir,
     run_timed_step("Reordering and compressing streams ...",
                    "Reordering and compressing streams", [&] {
                      progress.set_stage("Compressing streams", 0.85F, 0.95F);
-                     reorder_compress_streams(
-                         temp_dir, cp, reordered_streams_artifact,
-                         &reordered_streams_artifact.read_order_entries);
+                     merge_archive_members(
+                         archive_members,
+                         reordered_streams_artifact.archive_members);
+                     merge_archive_members(
+                         archive_members,
+                         reorder_compress_streams(
+                             temp_dir, cp, reordered_streams_artifact,
+                             &reordered_streams_artifact.read_order_entries));
                    });
     print_temp_dir_size(temp_dir);
   }
 
-  std::string compression_params_path = temp_dir + "/cp.bin";
-  std::ofstream compression_params_output(compression_params_path,
-                                          std::ios::binary);
-  write_compression_params(compression_params_output, cp);
-  compression_params_output.close();
+  archive_members["cp.bin"] = serialize_compression_params(cp);
 
-  print_compressed_stream_sizes(temp_dir);
+  print_compressed_stream_sizes(archive_members);
+
+  const std::vector<tar_archive_source> archive_sources =
+      build_archive_sources(archive_members);
 
   run_timed_step("Creating tar archive ...", "Tar archive", [&] {
     progress.set_stage("Creating archive", 0.95F, 1.0F);
     if (archive_bytes_output != nullptr) {
-      *archive_bytes_output = create_tar_archive_bytes(temp_dir);
+      *archive_bytes_output =
+          create_tar_archive_from_sources_bytes(archive_sources);
     } else {
-      create_tar_archive(io_config.archive_path, temp_dir);
+      create_tar_archive_from_sources(io_config.archive_path, archive_sources);
     }
   });
   if (archive_bytes_output != nullptr) {
@@ -1171,24 +1241,6 @@ void compress(const std::string &temp_dir,
     const std::string read_archive_name = "reads_group.sp";
     const std::string read3_archive_name = "read3_group.sp";
     const std::string index_archive_name = "index_group.sp";
-    const std::string read_work_dir = temp_dir + "/bundle_read_work";
-    const std::string read3_work_dir = temp_dir + "/bundle_read3_work";
-    const std::string index_work_dir = temp_dir + "/bundle_index_work";
-
-    std::error_code cleanup_ec;
-    std::filesystem::remove_all(read_work_dir, cleanup_ec);
-    cleanup_ec.clear();
-    std::filesystem::remove_all(read3_work_dir, cleanup_ec);
-    cleanup_ec.clear();
-    std::filesystem::remove_all(index_work_dir, cleanup_ec);
-
-    std::filesystem::create_directories(read_work_dir);
-    if (has_r3) {
-      std::filesystem::create_directories(read3_work_dir);
-    }
-    if (has_i1) {
-      std::filesystem::create_directories(index_work_dir);
-    }
 
     const string_list read_inputs = {input_paths[0], input_paths[1]};
     string_list read3_inputs;
@@ -1212,10 +1264,10 @@ void compress(const std::string &temp_dir,
 
     // Compress R1/R2 as a regular SPRING archive.
     // I1 path is passed so CB extraction can use it during preprocessing.
-    compress_standard(read_work_dir, read_inputs, {}, num_thr,
-                      pairing_only_flag, no_quality_flag, no_ids_flag,
-                      quality_options, compression_level, note, verbosity_level,
-                      false, "", i1_path, "", assay_type, i1_path, cb_len,
+    compress_standard(temp_dir, read_inputs, {}, num_thr, pairing_only_flag,
+                      no_quality_flag, no_ids_flag, quality_options,
+                      compression_level, note, verbosity_level, false, "",
+                      i1_path, "", assay_type, i1_path, cb_len,
                       &read_archive_bytes);
 
     const std::string grouped_assay =
@@ -1230,7 +1282,7 @@ void compress(const std::string &temp_dir,
       } else if (paths_refer_to_same_file(r3_path, input_paths[1])) {
         read3_alias_source = "R2";
       } else {
-        compress_standard(read3_work_dir, read3_inputs, {}, num_thr,
+        compress_standard(temp_dir, read3_inputs, {}, num_thr,
                           pairing_only_flag, no_quality_flag, no_ids_flag,
                           quality_options, compression_level,
                           note.empty() ? std::string("read3-group")
@@ -1242,22 +1294,11 @@ void compress(const std::string &temp_dir,
 
     if (has_i1) {
       compress_standard(
-          index_work_dir, index_inputs, {}, num_thr, pairing_only_flag,
+          temp_dir, index_inputs, {}, num_thr, pairing_only_flag,
           no_quality_flag, no_ids_flag, quality_options, compression_level,
           note.empty() ? std::string("index-group") : (note + " | index-group"),
           verbosity_level, false, "", "", "", grouped_assay, "", cb_len,
           &index_archive_bytes);
-    }
-
-    std::error_code ec;
-    std::filesystem::remove_all(read_work_dir, ec);
-    ec.clear();
-    if (has_r3) {
-      std::filesystem::remove_all(read3_work_dir, ec);
-      ec.clear();
-    }
-    if (has_i1) {
-      std::filesystem::remove_all(index_work_dir, ec);
     }
 
     const bundle_manifest manifest{

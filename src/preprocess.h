@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 
 namespace spring {
 
@@ -48,6 +49,7 @@ private:
 struct preprocess_artifact {
   reorder_input_artifact reorder_inputs;
   post_encode_side_stream_artifact post_encode_side_streams;
+  std::unordered_map<std::string, std::string> archive_members;
 };
 
 // Normalize input reads into Spring's temporary block files and side streams.

@@ -793,18 +793,13 @@ encoder_main(const std::string &temp_dir,
   if (total_seq_bases == 0) {
     SPRING_LOG_DEBUG("block_id=enc-main, Skipping sequence packing: no "
                      "sequence bases to compress.");
-    std::ofstream empty_seq_output(eg.outfile_seq + ".bsc",
-                                   std::ios::binary | std::ios::trunc);
-    if (!empty_seq_output.is_open()) {
-      throw std::runtime_error("Failed to create empty sequence archive: " +
-                               eg.outfile_seq + ".bsc");
-    }
-    empty_seq_output.close();
+    artifact.archive_members["read_seq.bin.bsc"] = std::string();
     return artifact;
   }
 
   // Generate per-thread .bsc sequence blocks as expected by the decompressor.
-  pack_compress_seq(eg, thread_metadata_outputs, file_len_seq_thr.data());
+  artifact.archive_members["read_seq.bin.bsc"] =
+      pack_compress_seq(eg, thread_metadata_outputs, file_len_seq_thr.data());
 
   // Update metadata with final exact base counts after packing.
   for (int tid = 0; tid < cp.encoding.num_thr; tid++) {

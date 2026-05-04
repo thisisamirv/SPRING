@@ -113,6 +113,10 @@ void decompress_id_block_bytes(std::string_view input_bytes,
                                bool pack_only = false);
 
 // Quality helpers.
+std::vector<char> bsc_str_array_compress_bytes(std::string *string_array,
+                                               uint32_t num_strings,
+                                               uint32_t *string_lengths);
+
 void quantize_quality(std::string *quality_array, const uint32_t &num_lines,
                       char *quantization_table);
 

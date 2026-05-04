@@ -18,11 +18,7 @@
 #include <string_view>
 #include <vector>
 
-#include "core_utils.h"
-
-#include "fs_utils.h"
 #include "io_utils.h"
-#include "libbsc/bsc.h"
 #include "params.h"
 #include "parse_utils.h"
 
@@ -63,15 +59,10 @@ std::string compressed_block_file_path(const std::string &base_path,
   return block_file_path(base_path, block_num) + ".bsc";
 }
 
-void write_binary_file(const std::string &path,
-                       const std::vector<char> &bytes) {
-  std::ofstream output(path, std::ios::binary | std::ios::trunc);
-  if (!output.is_open()) {
-    throw std::runtime_error("Failed to open binary output: " + path);
-  }
-  if (!bytes.empty()) {
-    output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-  }
+void add_archive_member(std::unordered_map<std::string, std::string> &members,
+                        const std::string &path,
+                        const std::vector<char> &bytes) {
+  members[path] = std::string(bytes.begin(), bytes.end());
 }
 
 uint32_t block_count(const uint64_t num_reads,
@@ -477,17 +468,17 @@ void append_n_order_bytes(std::string &output_bytes,
   }
 }
 
-void remove_redundant_mate_ids(const preprocess_paths &paths,
-                               const compression_params &compression_params,
-                               const bool paired_id_match,
-                               const std::array<uint64_t, 2> &num_reads,
-                               const uint32_t num_reads_per_block) {
+void remove_redundant_mate_ids(
+    const preprocess_paths &paths, const compression_params &compression_params,
+    const bool paired_id_match,
+    std::unordered_map<std::string, std::string> &archive_members,
+    const std::array<uint64_t, 2> &num_reads,
+    const uint32_t num_reads_per_block) {
   if (!compression_params.encoding.paired_end || !paired_id_match)
     return;
 
   if (!compression_params.encoding.long_flag &&
       !compression_params.encoding.preserve_order) {
-    spring::safe_remove_file(paths.id_output_paths[1]);
     return;
   }
 
@@ -497,7 +488,8 @@ void remove_redundant_mate_ids(const preprocess_paths &paths,
         compression_params.encoding.long_flag
             ? compressed_block_file_path(paths.id_output_paths[1], block_index)
             : block_file_path(paths.id_output_paths[1], block_index);
-    spring::safe_remove_file(block_path);
+    archive_members.erase(
+        std::filesystem::path(block_path).filename().string());
   }
 }
 
@@ -1081,6 +1073,8 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
         std::cerr << "Max number of reads allowed is " << MAX_NUM_READS << "\n";
         throw std::runtime_error("Too many reads.");
       }
+      std::vector<std::unordered_map<std::string, std::string>>
+          thread_archive_members(static_cast<size_t>(cp.encoding.num_thr));
 #pragma omp parallel
       {
         bool thread_done = false;
@@ -1093,13 +1087,7 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
             num_blocks_done + static_cast<uint32_t>(thread_id);
         const uint32_t thread_read_count = reads_for_thread_step(
             reads_in_step, num_reads_per_block, thread_id);
-        std::ofstream read_length_output;
         if (!thread_done) {
-          if (cp.encoding.long_flag)
-            read_length_output.open(
-                block_file_path(paths.read_length_paths[stream_index],
-                                block_num),
-                std::ios::binary);
           for (uint32_t read_index = thread_id * num_reads_per_block;
                read_index < thread_id * num_reads_per_block + thread_read_count;
                read_index++) {
@@ -1111,18 +1099,12 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
               throw std::runtime_error("Too long read length");
             }
 
-            if (cp.encoding.long_flag)
-              read_length_output.write(
-                  byte_ptr(&read_lengths_array[read_index]), sizeof(uint32_t));
-
             if (stream_index == 1 && paired_id_match_array[thread_id] &&
                 !grouped_index_id_suffix_strip_active)
               paired_id_match_array[thread_id] =
                   check_id_pattern(id_array_1[read_index],
                                    id_array_2[read_index], paired_id_code);
           }
-          if (cp.encoding.long_flag)
-            read_length_output.close();
           if (cp.encoding.preserve_quality &&
               (cp.quality.ill_bin_flag || cp.quality.bin_thr_flag))
             quantize_quality(quality_array.data() +
@@ -1139,57 +1121,77 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
           if (!cp.encoding.long_flag) {
             if (cp.encoding.preserve_order) {
               if (cp.encoding.preserve_id) {
-                std::string output_path =
-                    paths.id_output_paths[stream_index] + "." +
-                    std::to_string(num_blocks_done + thread_id);
-                compress_id_block(output_path.c_str(),
-                                  id_array + thread_id * num_reads_per_block,
-                                  thread_read_count,
-                                  cp.encoding.compression_level);
+                add_archive_member(
+                    thread_archive_members[static_cast<size_t>(thread_id)],
+                    std::filesystem::path(
+                        block_file_path(paths.id_output_paths[stream_index],
+                                        num_blocks_done + thread_id))
+                        .filename()
+                        .string(),
+                    compress_id_block_bytes(
+                        id_array + thread_id * num_reads_per_block,
+                        thread_read_count, cp.encoding.compression_level));
               }
               if (cp.encoding.preserve_quality) {
-                std::string output_path =
-                    paths.quality_output_paths[stream_index] + "." +
-                    std::to_string(num_blocks_done + thread_id);
-                bsc::BSC_str_array_compress(
-                    output_path.c_str(),
-                    quality_array.data() + thread_id * num_reads_per_block,
-                    thread_read_count,
-                    read_lengths_array.data() +
-                        thread_id * num_reads_per_block);
+                add_archive_member(
+                    thread_archive_members[static_cast<size_t>(thread_id)],
+                    std::filesystem::path(
+                        block_file_path(
+                            paths.quality_output_paths[stream_index],
+                            num_blocks_done + thread_id))
+                        .filename()
+                        .string(),
+                    bsc_str_array_compress_bytes(
+                        quality_array.data() + thread_id * num_reads_per_block,
+                        thread_read_count,
+                        read_lengths_array.data() +
+                            thread_id * num_reads_per_block));
               }
             }
           } else {
-            std::string read_length_output_path = compressed_block_file_path(
-                paths.read_length_paths[stream_index], block_num);
-            write_binary_file(
-                read_length_output_path,
+            add_archive_member(
+                thread_archive_members[static_cast<size_t>(thread_id)],
+                std::filesystem::path(
+                    compressed_block_file_path(
+                        paths.read_length_paths[stream_index], block_num))
+                    .filename()
+                    .string(),
                 bsc_compress_bytes(build_read_length_block_bytes(
                     read_lengths_array.data() + thread_id * num_reads_per_block,
                     thread_read_count)));
             if (cp.encoding.preserve_id) {
-              std::string output_path = compressed_block_file_path(
-                  paths.id_output_paths[stream_index], block_num);
-              compress_id_block(output_path.c_str(),
-                                id_array + thread_id * num_reads_per_block,
-                                thread_read_count,
-                                cp.encoding.compression_level);
+              add_archive_member(
+                  thread_archive_members[static_cast<size_t>(thread_id)],
+                  std::filesystem::path(
+                      compressed_block_file_path(
+                          paths.id_output_paths[stream_index], block_num))
+                      .filename()
+                      .string(),
+                  compress_id_block_bytes(
+                      id_array + thread_id * num_reads_per_block,
+                      thread_read_count, cp.encoding.compression_level));
             }
             if (cp.encoding.preserve_quality) {
-              std::string output_path = block_file_path(
-                  paths.quality_output_paths[stream_index], block_num);
-              write_binary_file(
-                  output_path,
+              add_archive_member(
+                  thread_archive_members[static_cast<size_t>(thread_id)],
+                  std::filesystem::path(
+                      block_file_path(paths.quality_output_paths[stream_index],
+                                      block_num))
+                      .filename()
+                      .string(),
                   bsc_compress_bytes(build_raw_string_block_bytes(
                       quality_array.data() + thread_id * num_reads_per_block,
                       thread_read_count,
                       read_lengths_array.data() +
                           thread_id * num_reads_per_block)));
             }
-            std::string output_path = compressed_block_file_path(
-                paths.read_block_paths[stream_index], block_num);
-            write_binary_file(
-                output_path,
+            add_archive_member(
+                thread_archive_members[static_cast<size_t>(thread_id)],
+                std::filesystem::path(
+                    compressed_block_file_path(
+                        paths.read_block_paths[stream_index], block_num))
+                    .filename()
+                    .string(),
                 bsc_compress_bytes(build_raw_string_block_bytes(
                     read_array.data() + thread_id * num_reads_per_block,
                     thread_read_count,
@@ -1197,6 +1199,12 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
                         thread_id * num_reads_per_block)));
           }
         }
+      }
+      for (std::unordered_map<std::string, std::string> &thread_members :
+           thread_archive_members) {
+        output_artifact.archive_members.insert(
+            std::make_move_iterator(thread_members.begin()),
+            std::make_move_iterator(thread_members.end()));
       }
       if (cp.encoding.paired_end && (stream_index == 1)) {
         if (paired_id_match)
@@ -1356,12 +1364,14 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
     if (cp.encoding.cb_prefix_stripped) {
       const std::vector<char> compressed_cb_seq = bsc_compress_bytes(
           std::vector<char>(cb_seq_bytes.begin(), cb_seq_bytes.end()));
-      write_binary_file(temp_dir + "/cb_prefix.dna.bsc", compressed_cb_seq);
+      add_archive_member(output_artifact.archive_members, "cb_prefix.dna.bsc",
+                         compressed_cb_seq);
 
       if (cp.encoding.preserve_quality) {
         const std::vector<char> compressed_cb_qual = bsc_compress_bytes(
             std::vector<char>(cb_qual_bytes.begin(), cb_qual_bytes.end()));
-        write_binary_file(temp_dir + "/cb_prefix.qual.bsc", compressed_cb_qual);
+        add_archive_member(output_artifact.archive_members,
+                           "cb_prefix.qual.bsc", compressed_cb_qual);
       }
     }
   }
@@ -1392,15 +1402,11 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
       for (int stream_index = 0; stream_index < 2; ++stream_index) {
         if (stream_index == 1 && !cp.encoding.paired_end)
           continue;
-        std::ofstream tail_out(temp_dir + "/tail_" +
-                                   std::to_string(stream_index + 1) + ".bin",
-                               std::ios::binary | std::ios::trunc);
         const std::string &tail_bytes = output_artifact.post_encode_side_streams
                                             .raw_tail_streams[stream_index];
-        if (!tail_bytes.empty()) {
-          tail_out.write(tail_bytes.data(),
-                         static_cast<std::streamsize>(tail_bytes.size()));
-        }
+        output_artifact
+            .archive_members["tail_" + std::to_string(stream_index + 1) +
+                             ".bin"] = tail_bytes;
       }
     }
 
@@ -1408,21 +1414,16 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
       for (int stream_index = 0; stream_index < 2; ++stream_index) {
         if (stream_index == 1 && !cp.encoding.paired_end)
           continue;
-        const std::string adapter_path = temp_dir + "/atac_adapter_" +
-                                         std::to_string(stream_index + 1) +
-                                         ".bin";
+        const std::string adapter_path =
+            "atac_adapter_" + std::to_string(stream_index + 1) + ".bin";
         const std::string &adapter_bytes =
             output_artifact.post_encode_side_streams
                 .compressed_atac_adapter_streams[stream_index];
         if (adapter_bytes.empty()) {
-          std::ofstream adapter_out(adapter_path,
-                                    std::ios::binary | std::ios::trunc);
+          output_artifact.archive_members[adapter_path] = std::string();
           continue;
         }
-        std::ofstream adapter_out(adapter_path + ".bsc",
-                                  std::ios::binary | std::ios::trunc);
-        adapter_out.write(adapter_bytes.data(),
-                          static_cast<std::streamsize>(adapter_bytes.size()));
+        output_artifact.archive_members[adapter_path + ".bsc"] = adapter_bytes;
       }
     }
   }
@@ -1442,7 +1443,8 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
   append_n_order_bytes(output_artifact.reorder_inputs.n_read_order_bytes,
                        n_read_orders[0]);
 
-  remove_redundant_mate_ids(paths, cp, paired_id_match, num_reads,
+  remove_redundant_mate_ids(paths, cp, paired_id_match,
+                            output_artifact.archive_members, num_reads,
                             num_reads_per_block);
   cp.read_info.paired_id_code = paired_id_code;
   cp.read_info.paired_id_match = paired_id_match;
