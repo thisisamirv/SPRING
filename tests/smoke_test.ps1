@@ -96,8 +96,8 @@ function Build-SmokeBinaries {
 # Create a temporary working directory inside tests/output
 $tempBase = Join-Path $ROOT_DIR "tests\output\smoke-test."
 $uniqueId = [System.Guid]::NewGuid().ToString().Substring(0, 8)
-$WORK_DIR = $tempBase + $uniqueId
-New-Item -ItemType Directory -Path $WORK_DIR -Force | Out-Null
+$SCRATCH_DIR = $tempBase + $uniqueId
+New-Item -ItemType Directory -Path $SCRATCH_DIR -Force | Out-Null
 
 $CURRENT_SMOKE_CASE = ""
 
@@ -203,8 +203,8 @@ function Write-SmokeDiagnostics {
 }
 
 function Remove-SmokeWorkDir {
-    if (Test-Path $WORK_DIR) {
-        Remove-Item -Recurse -Force $WORK_DIR -ErrorAction SilentlyContinue
+    if (Test-Path $SCRATCH_DIR) {
+        Remove-Item -Recurse -Force $SCRATCH_DIR -ErrorAction SilentlyContinue
     }
 }
 
@@ -384,7 +384,7 @@ try {
     }
 
 
-    Push-Location $WORK_DIR
+    Push-Location $SCRATCH_DIR
 
     Write-SmokeCase "fastq round-trip"
     Invoke-Spring -c --R1 "$ASSET_DIR\test_1.fastq" -o abcd

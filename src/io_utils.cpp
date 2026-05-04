@@ -1,3 +1,6 @@
+// Implements binary, gzip, BGZF, and libbsc I/O helpers shared across the
+// compression and decompression pipeline.
+
 #include "io_utils.h"
 #include "bgzf.h"
 #include "core_utils.h"

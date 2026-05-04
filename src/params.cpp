@@ -1,8 +1,9 @@
+// Implements compression-parameter serialization and archive metadata
+// helpers used to persist runtime settings.
+
 #include "params.h"
 #include "core_utils.h"
 #include <iostream>
-// Binary parameter serialization helpers: simple read/write helpers for
-// booleans and strings used when storing runtime parameters inside archives.
 
 namespace spring {
 

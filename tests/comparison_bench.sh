@@ -488,7 +488,7 @@ run_benchmark() {
 	local runner="$3"
 
 	local output_prefix="$TMP_OUTPUT_DIR/$INPUT_STEM.$label"
-	local work_dir="$TMP_WORK_DIR/$INPUT_STEM.$label.work"
+	local scratch_dir="$TMP_WORK_DIR/$INPUT_STEM.$label.work"
 	local compress_resource_log="$TMP_LOG_DIR/${label}_compress_resource_usage.log"
 	local decompress_resource_log="$TMP_LOG_DIR/${label}_decompress_resource_usage.log"
 	local metrics_path="$TMP_LOG_DIR/${label}.metrics"
@@ -529,8 +529,8 @@ run_benchmark() {
 	fi
 
 	mkdir -p "$TMP_INPUT_DIR" "$TMP_LOG_DIR" "$TMP_OUTPUT_DIR" "$TMP_WORK_DIR"
-	rm -rf "$work_dir"
-	mkdir -p "$work_dir"
+	rm -rf "$scratch_dir"
+	mkdir -p "$scratch_dir"
 	rm -f "${compressed_paths[@]}" "${decompressed_paths[@]}"
 	rm -f "$compress_resource_log" "$decompress_resource_log" "$metrics_path"
 	rm -f "$gzip_compress_runner" "$gzip_decompress_runner"
@@ -542,7 +542,7 @@ run_benchmark() {
 	fi
 	echo "  output:  ${compressed_paths[*]}"
 	if ! is_gzip_label "$label"; then
-		echo "  workdir: $work_dir"
+		echo "  scratch dir: $scratch_dir"
 		echo "  threads: $THREADS"
 	fi
 	echo "  max read length: $MAX_READ_LENGTH"
@@ -586,7 +586,6 @@ EOF
 			fi
 			spring_args+=(
 				-o "${compressed_paths[0]}"
-				-w "$work_dir"
 				-t "$THREADS"
 				-q lossless
 			)
@@ -597,7 +596,6 @@ EOF
 			fi
 			spring_args+=(
 				-o "${compressed_paths[0]}"
-				-w "$work_dir"
 				-t "$THREADS"
 				-q lossless
 			)
@@ -742,7 +740,7 @@ EOF
 		"checksum_status=$checksum_status" \
 		"roundtrip_status=$roundtrip_status"
 
-	remove_empty_dir_if_present "$work_dir"
+	remove_empty_dir_if_present "$scratch_dir"
 }
 
 print_comparison_summary() {

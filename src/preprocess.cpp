@@ -319,17 +319,18 @@ void close_input_stream(std::ifstream &file_stream, std::istream *&input_stream,
 }
 
 preprocess_paths build_preprocess_paths(const std::string &input_path_1,
-                                        const std::string &input_path_2,
-                                        const std::string &temp_dir) {
-  const std::string base_dir = temp_dir.empty() ? "in-memory" : temp_dir;
+                                        const std::string &input_path_2) {
+  static constexpr std::string_view kInMemoryBaseDir = "in-memory";
   preprocess_paths paths;
   paths.input_paths = {input_path_1, input_path_2};
-  paths.id_output_paths = {base_dir + "/id_1", base_dir + "/id_2"};
-  paths.quality_output_paths = {base_dir + "/quality_1",
-                                base_dir + "/quality_2"};
-  paths.read_block_paths = {base_dir + "/read_1", base_dir + "/read_2"};
-  paths.read_length_paths = {base_dir + "/readlength_1",
-                             base_dir + "/readlength_2"};
+  paths.id_output_paths = {std::string(kInMemoryBaseDir) + "/id_1",
+                           std::string(kInMemoryBaseDir) + "/id_2"};
+  paths.quality_output_paths = {std::string(kInMemoryBaseDir) + "/quality_1",
+                                std::string(kInMemoryBaseDir) + "/quality_2"};
+  paths.read_block_paths = {std::string(kInMemoryBaseDir) + "/read_1",
+                            std::string(kInMemoryBaseDir) + "/read_2"};
+  paths.read_length_paths = {std::string(kInMemoryBaseDir) + "/readlength_1",
+                             std::string(kInMemoryBaseDir) + "/readlength_2"};
   return paths;
 }
 
@@ -673,12 +674,12 @@ uint32_t detect_max_read_length(const std::string &infile_1,
 
 preprocess_artifact
 preprocess(const std::string &infile_1, const std::string &infile_2,
-           const std::string &temp_dir, compression_params &cp,
-           const bool &fasta_input, ProgressBar *progress,
+           compression_params &cp, const bool &fasta_input,
+           ProgressBar *progress,
            const input_detection_summary *expected_summary) {
   preprocess_artifact output_artifact;
   SPRING_LOG_DEBUG(
-      "Preprocess start: temp_dir=" + temp_dir + ", input1=" + infile_1 +
+      "Preprocess start: input1=" + infile_1 +
       (cp.encoding.paired_end ? (", input2=" + infile_2) : std::string()) +
       ", long_mode=" + std::string(cp.encoding.long_flag ? "true" : "false") +
       ", paired_end=" + std::string(cp.encoding.paired_end ? "true" : "false") +
@@ -689,8 +690,7 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
       ", preserve_quality=" +
       std::string(cp.encoding.preserve_quality ? "true" : "false") +
       ", fasta_input=" + std::string(fasta_input ? "true" : "false"));
-  const preprocess_paths paths =
-      build_preprocess_paths(infile_1, infile_2, temp_dir);
+  const preprocess_paths paths = build_preprocess_paths(infile_1, infile_2);
   const std::array<bool, 2> input_gzip_enabled = {
       is_gzip_input_path(infile_1),
       cp.encoding.paired_end && is_gzip_input_path(infile_2)};
@@ -1360,7 +1360,6 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
     }
   }
 
-  (void)0;
   if (apply_cb_strip) {
     if (cp.encoding.cb_prefix_stripped) {
       const std::vector<char> compressed_cb_seq = bsc_compress_bytes(

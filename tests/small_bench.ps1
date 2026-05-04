@@ -202,7 +202,7 @@ function Invoke-SingleFileBenchmark($inputPath) {
     if ($INPUT_STEM.EndsWith(".gz")) { $INPUT_STEM = [System.IO.Path]::GetFileNameWithoutExtension($INPUT_STEM) }
     $INPUT_STEM = [System.IO.Path]::GetFileNameWithoutExtension($INPUT_STEM)
 
-    $WORK_DIR = (Join-Path $WORK_ROOT_DIR "$INPUT_STEM.work").Replace("/", "\")
+    $SCRATCH_DIR = (Join-Path $WORK_ROOT_DIR "$INPUT_STEM.work").Replace("/", "\")
     $OUTPUT_FILE = (Join-Path $OUTPUT_DIR "$INPUT_STEM.sp").Replace("/", "\")
     $DECOMP_FILE = (Join-Path $OUTPUT_DIR "$INPUT_STEM.roundtrip.fastq").Replace("/", "\")
 
@@ -210,18 +210,18 @@ function Invoke-SingleFileBenchmark($inputPath) {
     Write-Host "Analyzing FASTQ..." -ForegroundColor Gray
     Get-MaxReadLength $INPUT_ABS | Out-Null
 
-    if (Test-Path $WORK_DIR) { Remove-Item $WORK_DIR -Recurse -Force }
-    New-Item -ItemType Directory -Path $WORK_DIR -Force | Out-Null
+    if (Test-Path $SCRATCH_DIR) { Remove-Item $SCRATCH_DIR -Recurse -Force }
+    New-Item -ItemType Directory -Path $SCRATCH_DIR -Force | Out-Null
     if (Test-Path $OUTPUT_FILE) { Remove-Item $OUTPUT_FILE -Force }
     if (Test-Path $DECOMP_FILE) { Remove-Item $DECOMP_FILE -Force }
 
     Write-Host "Running Spring lossless compression (auto-assay)" -ForegroundColor Cyan
-    $compArgs = "-c --R1 `"$INPUT_ABS`" -o `"$OUTPUT_FILE`" -w `"$WORK_DIR`" -t $THREADS -q lossless --assay auto"
+    $compArgs = "-c --R1 `"$INPUT_ABS`" -o `"$OUTPUT_FILE`" -t $THREADS -q lossless --assay auto"
     [void](Invoke-ResourceLoggedProcess $SPRING_BIN $compArgs)
     $actualAssay = Get-ArchiveAssayLabel $OUTPUT_FILE
 
     Write-Host "Running Spring decompression" -ForegroundColor Cyan
-    $decompArgs = "-d -i `"$OUTPUT_FILE`" -o `"$DECOMP_FILE`" -w `"$WORK_DIR`""
+    $decompArgs = "-d -i `"$OUTPUT_FILE`" -o `"$DECOMP_FILE`""
     [void](Invoke-ResourceLoggedProcess $SPRING_BIN $decompArgs)
 
     $inputSize = (Get-Item $INPUT_ABS).Length
@@ -232,7 +232,7 @@ function Invoke-SingleFileBenchmark($inputPath) {
     # For .gz files, we compare against decompressed stream
     $isIdentical = $false
     if ($INPUT_ABS.EndsWith(".gz")) {
-        $baseline = Join-Path $WORK_DIR "baseline.fastq"
+        $baseline = Join-Path $SCRATCH_DIR "baseline.fastq"
         Expand-GzipToFile $INPUT_ABS $baseline
         $hash1 = Get-FileHash $baseline -Algorithm SHA256
         $hash2 = Get-FileHash $DECOMP_FILE -Algorithm SHA256
@@ -297,7 +297,7 @@ function Invoke-AssaySuite() {
         # 1. Auto-detected assay (or explicit for test_6)
         $assay_mode = if ($s.assay -eq "sc-bisulfite") { "sc-bisulfite" } else { "auto" }
         Write-Host "  Step 1: Compression with --assay $assay_mode (expected: $($s.assay))" -ForegroundColor Cyan
-        $args_auto = "-c $base_args -o `"$out_auto`" -w `"$work_auto`" -t $THREADS -q lossless --assay $assay_mode"
+        $args_auto = "-c $base_args -o `"$out_auto`" -t $THREADS -q lossless --assay $assay_mode"
         [void](Invoke-ResourceLoggedProcess $SPRING_BIN $args_auto)
         $size_auto = (Get-Item $out_auto).Length
         $actual_auto_assay = Get-ArchiveAssayLabel $out_auto
@@ -312,7 +312,7 @@ function Invoke-AssaySuite() {
             $decomp_files += Join-Path $decomp_dir ($f.Replace(".gz", ""))
         }
         $o_args = $decomp_files | ForEach-Object { "`"$_`"" }
-        $decomp_args = "-d -i `"$out_auto`" -o $($o_args -join ' ') -w `"$work_decomp`""
+        $decomp_args = "-d -i `"$out_auto`" -o $($o_args -join ' ')"
         [void](Invoke-ResourceLoggedProcess $SPRING_BIN $decomp_args)
 
         $isIdentical = $true
@@ -339,7 +339,7 @@ function Invoke-AssaySuite() {
 
         # 3. DNA-mode comparison
         Write-Host "  Step 3: Compression with --assay dna" -ForegroundColor Cyan
-        $args_dna = "-c $base_args -o `"$out_dna`" -w `"$work_dna`" -t $THREADS -q lossless --assay dna"
+        $args_dna = "-c $base_args -o `"$out_dna`" -t $THREADS -q lossless --assay dna"
         [void](Invoke-ResourceLoggedProcess $SPRING_BIN $args_dna)
         $size_dna = (Get-Item $out_dna).Length
 

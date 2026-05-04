@@ -1,8 +1,9 @@
+// Declares grouped bundle manifest structures and serialization helpers used
+// to describe multi-member SPRING2 archives.
+
 #ifndef SPRING_BUNDLE_MANIFEST_H_
 #define SPRING_BUNDLE_MANIFEST_H_
 
-#include <fstream>
-#include <ios>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -135,17 +136,6 @@ read_bundle_manifest_from_string(const std::string &content) {
   return detail::parse_bundle_manifest_map(kv);
 }
 
-inline bundle_manifest read_bundle_manifest(const std::string &manifest_path) {
-  std::ifstream input(manifest_path, std::ios::binary);
-  if (!input.is_open()) {
-    throw std::runtime_error("Unable to read bundle manifest: " +
-                             manifest_path);
-  }
-  std::ostringstream content;
-  content << input.rdbuf();
-  return read_bundle_manifest_from_string(content.str());
-}
-
 inline std::string serialize_bundle_manifest(const bundle_manifest &manifest) {
   std::ostringstream output;
   output << "version=" << manifest.version << "\n";
@@ -162,16 +152,6 @@ inline std::string serialize_bundle_manifest(const bundle_manifest &manifest) {
   output << "i1_name=" << manifest.i1_name << "\n";
   output << "i2_name=" << manifest.i2_name << "\n";
   return output.str();
-}
-
-inline void write_bundle_manifest(const std::string &manifest_path,
-                                  const bundle_manifest &manifest) {
-  std::ofstream output(manifest_path, std::ios::binary);
-  if (!output.is_open()) {
-    throw std::runtime_error("Unable to write bundle manifest: " +
-                             manifest_path);
-  }
-  output << serialize_bundle_manifest(manifest);
 }
 
 } // namespace spring

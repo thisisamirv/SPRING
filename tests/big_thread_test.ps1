@@ -19,18 +19,16 @@ foreach ($threads in @(1, 2, 4, 8)) {
     Write-Host "`n--- Testing with $threads thread(s) ---" -ForegroundColor Yellow
     
     $archivePath = "$OUTPUT_DIR\test_t$threads.sp"
-    $workDir = "$OUTPUT_DIR\work_t$threads"
     $outPath = "$OUTPUT_DIR\out_t$threads.fastq"
     
     # Clean up previous run
     Remove-Item $archivePath -Force -ErrorAction SilentlyContinue
-    Remove-Item $workDir -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item $outPath* -Force -ErrorAction SilentlyContinue
     
     # Compress
     Write-Host "  Compressing with $threads threads..." -NoNewline
     $compStart = Get-Date
-    $compOutput = & $SPRING_BIN -v debug -c --R1 $INPUT_R1 --R2 $INPUT_R2 -o $archivePath -w $workDir -t $threads 2>&1 | Out-String
+    $compOutput = & $SPRING_BIN -v debug -c --R1 $INPUT_R1 --R2 $INPUT_R2 -o $archivePath -t $threads 2>&1 | Out-String
     $compEnd = Get-Date
     $compTime = ($compEnd - $compStart).TotalSeconds
     
@@ -56,7 +54,7 @@ foreach ($threads in @(1, 2, 4, 8)) {
     # Decompress
     Write-Host "  Decompressing..." -NoNewline
     $decompStart = Get-Date
-    $decompOutput = & $SPRING_BIN -v debug -d -i $archivePath -o $outPath -w $workDir 2>&1 | Out-String
+    $decompOutput = & $SPRING_BIN -v debug -d -i $archivePath -o $outPath 2>&1 | Out-String
     $decompEnd = Get-Date
     $decompTime = ($decompEnd - $decompStart).TotalSeconds
     $decompExitCode = $LASTEXITCODE
@@ -65,7 +63,8 @@ foreach ($threads in @(1, 2, 4, 8)) {
         Write-Host " OK ($([math]::Round($decompTime, 1))s)" -ForegroundColor Green
         $status = "PASS"
         $statusColor = "Green"
-    } else {
+    }
+    else {
         Write-Host " FAILED" -ForegroundColor Red
         $status = "FAIL"
         $statusColor = "Red"
@@ -82,17 +81,17 @@ foreach ($threads in @(1, 2, 4, 8)) {
     $archiveSize = (Get-Item $archivePath).Length / 1MB
     
     $results += [PSCustomObject]@{
-        Threads = $threads
-        Status = $status
-        CompTime = [math]::Round($compTime, 1)
-        DecompTime = [math]::Round($decompTime, 1)
+        Threads       = $threads
+        Status        = $status
+        CompTime      = [math]::Round($compTime, 1)
+        DecompTime    = [math]::Round($decompTime, 1)
         ArchiveSizeMB = [math]::Round($archiveSize, 2)
-        SeqCRC1 = $seqCrc1Comp
-        QualCRC1 = $qualCrc1Comp
-        IDCRC1 = $idCrc1Comp
-        SeqCRC2 = $seqCrc2Comp
-        QualCRC2 = $qualCrc2Comp
-        IDCRC2 = $idCrc2Comp
+        SeqCRC1       = $seqCrc1Comp
+        QualCRC1      = $qualCrc1Comp
+        IDCRC1        = $idCrc1Comp
+        SeqCRC2       = $seqCrc2Comp
+        QualCRC2      = $qualCrc2Comp
+        IDCRC2        = $idCrc2Comp
     }
 }
 
@@ -111,7 +110,8 @@ foreach ($field in $crcFields) {
         Write-Host "${field} varies: " -NoNewline -ForegroundColor Red
         Write-Host ($values -join ", ")
         $allSame = $false
-    } else {
+    }
+    else {
         Write-Host "${field}: $values" -ForegroundColor Green
     }
 }
@@ -119,7 +119,8 @@ foreach ($field in $crcFields) {
 if ($allSame) {
     Write-Host "`nCRC values are CONSISTENT across all thread counts." -ForegroundColor Green
     Write-Host "The issue is in decompression, not compression." -ForegroundColor Yellow
-} else {
+}
+else {
     Write-Host "`nCRC values VARY across thread counts!" -ForegroundColor Red
     Write-Host "This indicates a race condition during compression." -ForegroundColor Yellow
 }
@@ -134,9 +135,11 @@ Write-Host "Failed: $failCount / $($results.Count)"
 
 if ($failCount -eq 0) {
     Write-Host "`nAll tests PASSED! Issue may be intermittent." -ForegroundColor Green
-} elseif ($passCount -eq 0) {
+}
+elseif ($passCount -eq 0) {
     Write-Host "`nAll tests FAILED! Issue is systematic." -ForegroundColor Red
-} else {
+}
+else {
     Write-Host "`nMixed results. Check if failures correlate with thread count." -ForegroundColor Yellow
     $passingThreads = ($results | Where-Object { $_.Status -eq "PASS" }).Threads
     $failingThreads = ($results | Where-Object { $_.Status -eq "FAIL" }).Threads

@@ -1,3 +1,6 @@
+// Implements the templated read reordering stage that builds aligned and
+// singleton artifacts for downstream encoding.
+
 #ifndef SPRING_REORDER_IMPL_H_
 #define SPRING_REORDER_IMPL_H_
 
@@ -70,25 +73,6 @@ template <size_t bitset_size> struct reorder_global {
 };
 
 namespace detail {
-
-inline std::string thread_output_path(const std::string &base_path,
-                                      const int thread_id) {
-  return base_path + '.' + std::to_string(thread_id);
-}
-
-inline std::string thread_singleton_output_path(const std::string &base_path,
-                                                const int thread_id) {
-  return base_path + ".singleton." + std::to_string(thread_id);
-}
-
-inline void
-append_file_to_stream(std::ofstream &output_stream,
-                      const std::string &input_path,
-                      const std::ios::openmode mode = std::ios::in) {
-  std::ifstream input_stream(input_path, mode);
-  output_stream << input_stream.rdbuf();
-  output_stream.clear();
-}
 
 template <typename T>
 inline void append_binary(std::string &buffer, const T &value) {
@@ -972,13 +956,12 @@ void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
 
 template <size_t bitset_size>
 reorder_encoder_artifact
-reorder_main(const std::string &temp_dir,
-             const reorder_input_artifact &input_artifact,
+reorder_main(const reorder_input_artifact &input_artifact,
              const compression_params &cp) {
   reorder_global<bitset_size> rg(cp.read_info.max_readlen);
   rg.paired_end = cp.encoding.paired_end;
   rg.depleted_base = cp.encoding.depleted_base;
-  rg.basedir = temp_dir;
+  rg.basedir = "in-memory";
 
   rg.max_readlen = cp.read_info.max_readlen;
   rg.num_thr = cp.encoding.num_thr;

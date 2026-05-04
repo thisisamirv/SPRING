@@ -7,6 +7,7 @@
 #include <limits>
 #include <mutex>
 #include <omp.h>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -128,9 +129,7 @@ std::string compress_block_buffer(const std::vector<char> &input_bytes,
   return output_bytes;
 }
 
-reordered_stream_paths
-build_reordered_stream_paths(const std::string &temp_dir) {
-  (void)temp_dir;
+reordered_stream_paths build_reordered_stream_paths() {
   return {.flag_path = "read_flag.txt",
           .position_path = "read_pos.bin",
           .mate_position_path = "read_pos_pair.bin",
@@ -320,18 +319,16 @@ compress_output_block(const output_block_buffers &block_buffers,
 } // namespace
 
 std::unordered_map<std::string, std::string>
-reorder_compress_streams(const std::string &temp_dir,
-                         const compression_params &cp,
+reorder_compress_streams(const compression_params &cp,
                          const reordered_stream_artifact &artifact,
                          const std::vector<uint32_t> *read_order_override) {
-  const reordered_stream_paths paths = build_reordered_stream_paths(temp_dir);
-  SPRING_LOG_DEBUG(
-      "reorder_compress_streams start: temp_dir=" + temp_dir +
-      ", num_reads=" + std::to_string(cp.read_info.num_reads) +
-      ", paired_end=" + std::string(cp.encoding.paired_end ? "true" : "false") +
-      ", preserve_order=" +
-      std::string(cp.encoding.preserve_order ? "true" : "false") +
-      ", threads=" + std::to_string(cp.encoding.num_thr));
+  const reordered_stream_paths paths = build_reordered_stream_paths();
+  SPRING_LOG_DEBUG("reorder_compress_streams start: num_reads=" +
+                   std::to_string(cp.read_info.num_reads) + ", paired_end=" +
+                   std::string(cp.encoding.paired_end ? "true" : "false") +
+                   ", preserve_order=" +
+                   std::string(cp.encoding.preserve_order ? "true" : "false") +
+                   ", threads=" + std::to_string(cp.encoding.num_thr));
 
   const uint32_t num_reads = cp.read_info.num_reads;
   uint32_t aligned_read_count = 0;

@@ -395,8 +395,7 @@ TEST_CASE("Archive Integrity Verification Test") {
 
   // 1. Compress with mandatory audit
   std::string compress_cmd = std::string(SPRING2_EXECUTABLE) + " -c -a --R1 " +
-                             input_fastq + " -o " + archive_sp + " -w " +
-                             test_dir + "/work_compress -t 1";
+                             input_fastq + " -o " + archive_sp + " -t 1";
   REQUIRE(std::system(compress_cmd.c_str()) == 0);
 
   // 2. Verify (should pass)
@@ -456,13 +455,12 @@ TEST_CASE("SpringReader Integration Test") {
 
   // Compress using the spring2 binary we just built
   std::string compress_cmd = std::string(SPRING2_EXECUTABLE) + " -c --R1 " +
-                             input_fastq + " -o " + archive_spring + " -w " +
-                             test_dir + "/work_compress -t 1";
+                             input_fastq + " -o " + archive_spring + " -t 1";
   int ret = std::system(compress_cmd.c_str());
   REQUIRE(ret == 0);
 
   SUBCASE("Stream decompression (Single End)") {
-    SpringReader reader(archive_spring, 1, test_dir + "/work_reader");
+    SpringReader reader(archive_spring, 1);
 
     ReadRecord rec;
     int count = 0;
@@ -524,13 +522,13 @@ TEST_CASE("SpringReader streams grouped archives via primary read member") {
   create_dummy_fastq(r3_fastq, 120);
   create_dummy_fastq(i1_fastq, 120);
 
-  const std::string compress_cmd =
-      std::string(SPRING2_EXECUTABLE) + " -c --R1 " + r1_fastq + " --R2 " +
-      r2_fastq + " --R3 " + r3_fastq + " --I1 " + i1_fastq + " -o " +
-      archive_path + " -w " + test_dir + "/work_compress -t 1";
+  const std::string compress_cmd = std::string(SPRING2_EXECUTABLE) +
+                                   " -c --R1 " + r1_fastq + " --R2 " +
+                                   r2_fastq + " --R3 " + r3_fastq + " --I1 " +
+                                   i1_fastq + " -o " + archive_path + " -t 1";
   REQUIRE(std::system(compress_cmd.c_str()) == 0);
 
-  SpringReader reader(archive_path, 1, test_dir + "/work_reader");
+  SpringReader reader(archive_path, 1);
   ReadRecord mate1;
   ReadRecord mate2;
   int count = 0;
@@ -565,8 +563,7 @@ TEST_CASE("Multi-thread compression compatibility") {
 
     // Compress with N threads
     std::string compress_cmd = std::string(SPRING2_EXECUTABLE) + " -c --R1 " +
-                               input_fastq + " -o " + archive_sp + " -w " +
-                               work_compress + " -t " +
+                               input_fastq + " -o " + archive_sp + " -t " +
                                std::to_string(compress_threads);
     REQUIRE(std::system(compress_cmd.c_str()) == 0);
 
@@ -577,8 +574,7 @@ TEST_CASE("Multi-thread compression compatibility") {
     std::string work_decompress =
         test_dir + "/work_decompress_t" + std::to_string(compress_threads);
     std::string decompress_cmd = std::string(SPRING2_EXECUTABLE) + " -d -i " +
-                                 archive_sp + " -o " + output_fastq + " -w " +
-                                 work_decompress + " -t 1";
+                                 archive_sp + " -o " + output_fastq + " -t 1";
 
     // Exit code 0 means integrity check passed
     CHECK(std::system(decompress_cmd.c_str()) == 0);
@@ -598,12 +594,12 @@ TEST_CASE("ATAC adapter stripping round-trips and is recorded") {
 
   create_atac_like_fastq(input_fastq, 50000);
 
-  const std::string compress_atac_cmd =
-      std::string(SPRING2_EXECUTABLE) + " -c --R1 " + input_fastq + " -o " +
-      archive_atac + " -w " + test_dir + "/work_atac -t 1 -y atac";
-  const std::string decompress_atac_cmd =
-      std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_atac + " -o " +
-      output_fastq + " -w " + test_dir + "/work_roundtrip -t 1";
+  const std::string compress_atac_cmd = std::string(SPRING2_EXECUTABLE) +
+                                        " -c --R1 " + input_fastq + " -o " +
+                                        archive_atac + " -t 1 -y atac";
+  const std::string decompress_atac_cmd = std::string(SPRING2_EXECUTABLE) +
+                                          " -d -i " + archive_atac + " -o " +
+                                          output_fastq + " -t 1";
   const std::string spring2_path = SPRING2_EXECUTABLE;
   const std::string preview_cmd =
       spring2_path + " -p " + archive_atac + " > " + preview_log + " 2>&1";
@@ -647,12 +643,12 @@ TEST_CASE("Sparse ATAC read-through keeps adapter stripping disabled") {
 
   create_sparse_atac_like_fastq(input_fastq, 50000);
 
-  const std::string compress_atac_cmd =
-      std::string(SPRING2_EXECUTABLE) + " -c --R1 " + input_fastq + " -o " +
-      archive_atac + " -w " + test_dir + "/work_atac -t 1 -y atac";
-  const std::string decompress_atac_cmd =
-      std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_atac + " -o " +
-      output_fastq + " -w " + test_dir + "/work_roundtrip -t 1";
+  const std::string compress_atac_cmd = std::string(SPRING2_EXECUTABLE) +
+                                        " -c --R1 " + input_fastq + " -o " +
+                                        archive_atac + " -t 1 -y atac";
+  const std::string decompress_atac_cmd = std::string(SPRING2_EXECUTABLE) +
+                                          " -d -i " + archive_atac + " -o " +
+                                          output_fastq + " -t 1";
   const std::string spring2_path = SPRING2_EXECUTABLE;
   const std::string preview_cmd =
       spring2_path + " -p " + archive_atac + " > " + preview_log + " 2>&1";
@@ -700,11 +696,10 @@ TEST_CASE("Paired FASTQ preserves per-stream plus lines and line endings") {
 
   const std::string compress_cmd = std::string(SPRING2_EXECUTABLE) +
                                    " -c --R1 " + r1_fastq + " --R2 " +
-                                   r2_fastq + " -o " + archive_path + " -w " +
-                                   test_dir + "/work_compress -t 1";
-  const std::string decompress_cmd =
-      std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_path + " -o " +
-      out_r1 + " " + out_r2 + " -w " + test_dir + "/work_decompress -t 1";
+                                   r2_fastq + " -o " + archive_path + " -t 1";
+  const std::string decompress_cmd = std::string(SPRING2_EXECUTABLE) +
+                                     " -d -i " + archive_path + " -o " +
+                                     out_r1 + " " + out_r2 + " -t 1";
 
   REQUIRE(std::system(compress_cmd.c_str()) == 0);
   REQUIRE(std::system(decompress_cmd.c_str()) == 0);
@@ -725,12 +720,12 @@ TEST_CASE("Late overlength read escalates sampled short input into long mode") {
 
   create_late_long_fastq(input_fastq, 10000, 10032, 80, 700);
 
-  const std::string compress_cmd =
-      std::string(SPRING2_EXECUTABLE) + " -c --R1 " + input_fastq + " -o " +
-      archive_path + " -w " + test_dir + "/work_compress -t 1";
-  const std::string decompress_cmd =
-      std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_path + " -o " +
-      output_fastq + " -w " + test_dir + "/work_decompress -t 1";
+  const std::string compress_cmd = std::string(SPRING2_EXECUTABLE) +
+                                   " -c --R1 " + input_fastq + " -o " +
+                                   archive_path + " -t 1";
+  const std::string decompress_cmd = std::string(SPRING2_EXECUTABLE) +
+                                     " -d -i " + archive_path + " -o " +
+                                     output_fastq + " -t 1";
 
   REQUIRE(std::system(compress_cmd.c_str()) == 0);
   REQUIRE(std::system(decompress_cmd.c_str()) == 0);
@@ -757,9 +752,9 @@ TEST_CASE("Late CRLF updates metadata after startup sample") {
 
   create_delayed_crlf_fastq(input_fastq, 10040, 10000);
 
-  const std::string compress_cmd =
-      std::string(SPRING2_EXECUTABLE) + " -c --R1 " + input_fastq + " -o " +
-      archive_path + " -w " + test_dir + "/work_compress -t 1";
+  const std::string compress_cmd = std::string(SPRING2_EXECUTABLE) +
+                                   " -c --R1 " + input_fastq + " -o " +
+                                   archive_path + " -t 1";
   REQUIRE(std::system(compress_cmd.c_str()) == 0);
 
   auto contents = read_files_from_tar_memory(archive_path, {"cp.bin"});
@@ -789,9 +784,9 @@ TEST_CASE("Corrupt long-read archive reports a normal decompression error") {
 
   create_custom_fastq(input_fastq, 128, false, false, 700);
 
-  const std::string compress_cmd =
-      std::string(SPRING2_EXECUTABLE) + " -c --R1 " + input_fastq + " -o " +
-      archive_path + " -w " + test_dir + "/work_compress -t 1";
+  const std::string compress_cmd = std::string(SPRING2_EXECUTABLE) +
+                                   " -c --R1 " + input_fastq + " -o " +
+                                   archive_path + " -t 1";
   REQUIRE(std::system(compress_cmd.c_str()) == 0);
 
   fs::create_directories(corrupt_dir);
@@ -811,8 +806,7 @@ TEST_CASE("Corrupt long-read archive reports a normal decompression error") {
 
   const std::string decompress_cmd =
       std::string(SPRING2_EXECUTABLE) + " -d -i " + corrupted_archive + " -o " +
-      output_fastq + " -w " + test_dir + "/work_decompress > " +
-      decompress_log + " 2>&1";
+      output_fastq + " > " + decompress_log + " 2>&1";
   CHECK(std::system(decompress_cmd.c_str()) != 0);
 
   const std::string output = read_file_binary(decompress_log);
@@ -835,9 +829,9 @@ TEST_CASE("Preview and SpringReader reject truncated metadata") {
 
   create_dummy_fastq(input_fastq, 200);
 
-  const std::string compress_cmd =
-      std::string(SPRING2_EXECUTABLE) + " -c --R1 " + input_fastq + " -o " +
-      archive_path + " -w " + test_dir + "/work_compress -t 1";
+  const std::string compress_cmd = std::string(SPRING2_EXECUTABLE) +
+                                   " -c --R1 " + input_fastq + " -o " +
+                                   archive_path + " -t 1";
   REQUIRE(std::system(compress_cmd.c_str()) == 0);
 
   fs::create_directories(corrupt_dir);
@@ -858,8 +852,7 @@ TEST_CASE("Preview and SpringReader reject truncated metadata") {
                                   corrupted_archive + " > " + preview_log +
                                   " 2>&1";
   CHECK(std::system(preview_cmd.c_str()) != 0);
-  CHECK_THROWS_AS(SpringReader(corrupted_archive, 1, test_dir + "/work_reader"),
-                  std::runtime_error);
+  CHECK_THROWS_AS(SpringReader(corrupted_archive, 1), std::runtime_error);
 
   fs::remove_all(test_dir);
 }
@@ -881,22 +874,19 @@ TEST_CASE("Decompression rejects colliding output paths") {
 
   REQUIRE(
       std::system((std::string(SPRING2_EXECUTABLE) + " -c --R1 " + r1_fastq +
-                   " --R2 " + r2_fastq + " -o " + paired_archive + " -w " +
-                   test_dir + "/work_compress_paired -t 1")
+                   " --R2 " + r2_fastq + " -o " + paired_archive + " -t 1")
                       .c_str()) == 0);
   REQUIRE(std::system((std::string(SPRING2_EXECUTABLE) + " -c --R1 " +
-                       r1_fastq + " -o " + single_archive + " -w " + test_dir +
-                       "/work_compress_single -t 1")
+                       r1_fastq + " -o " + single_archive + " -t 1")
                           .c_str()) == 0);
 
-  const std::string duplicate_cmd =
-      std::string(SPRING2_EXECUTABLE) + " -d -i " + paired_archive + " -o " +
-      duplicate_output + " " + duplicate_output + " -w " + test_dir +
-      "/work_decompress_dup -t 1 > " + duplicate_log + " 2>&1";
+  const std::string duplicate_cmd = std::string(SPRING2_EXECUTABLE) +
+                                    " -d -i " + paired_archive + " -o " +
+                                    duplicate_output + " " + duplicate_output +
+                                    " -t 1 > " + duplicate_log + " 2>&1";
   const std::string overwrite_cmd =
       std::string(SPRING2_EXECUTABLE) + " -d -i " + single_archive + " -o " +
-      single_archive + " -w " + test_dir +
-      "/work_decompress_overwrite -t 1 > " + overwrite_log + " 2>&1";
+      single_archive + " -t 1 > " + overwrite_log + " 2>&1";
 
   CHECK(std::system(duplicate_cmd.c_str()) != 0);
   CHECK(std::system(overwrite_cmd.c_str()) != 0);
@@ -915,8 +905,7 @@ TEST_CASE("Compression rejects archive paths that overwrite inputs") {
 
   const std::string compress_cmd =
       std::string(SPRING2_EXECUTABLE) + " -c --R1 " + input_fastq + " -o " +
-      input_fastq + " -w " + test_dir + "/work_compress -t 1 > " +
-      collision_log + " 2>&1";
+      input_fastq + " -t 1 > " + collision_log + " 2>&1";
   CHECK(std::system(compress_cmd.c_str()) != 0);
 
   const std::string log_output = read_file_binary(collision_log);
@@ -949,11 +938,10 @@ TEST_CASE("Grouped sc-ATAC auto mode round-trips with N-containing reads") {
   const std::string compress_cmd =
       std::string(SPRING2_EXECUTABLE) + " -c --R1 " + r1_fastq + " --R2 " +
       r2_fastq + " --R3 " + r3_fastq + " --I1 " + i1_fastq + " -o " +
-      archive_path + " -w " + test_dir + "/work_compress -t 1 -y auto";
+      archive_path + " -t 1 -y auto";
   const std::string decompress_cmd =
       std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_path + " -o " +
-      out_r1 + " " + out_r2 + " " + out_r3 + " " + out_i1 + " -w " + test_dir +
-      "/work_decompress -t 1";
+      out_r1 + " " + out_r2 + " " + out_r3 + " " + out_i1 + " -t 1";
   const std::string spring2_path = SPRING2_EXECUTABLE;
   const std::string preview_cmd =
       spring2_path + " -p " + archive_path + " > " + preview_log + " 2>&1";
@@ -1015,8 +1003,7 @@ TEST_CASE(
   const std::string compress_cmd =
       std::string(SPRING2_EXECUTABLE) + " -c --R1 " + r1_fastq + " --R2 " +
       r2_fastq + " --R3 " + r3_fastq + " --I1 " + i1_fastq +
-      " -n GROUPED_TEST_NOTE -o " + archive_path + " -w " + test_dir +
-      "/work_compress -t 1 -y auto";
+      " -n GROUPED_TEST_NOTE -o " + archive_path + " -t 1 -y auto";
   const std::string preview_cmd = std::string(SPRING2_EXECUTABLE) + " -p " +
                                   archive_path + " > " + preview_log + " 2>&1";
   const std::string audit_cmd =
@@ -1101,12 +1088,11 @@ TEST_CASE("Grouped decompression accepts five explicit output files") {
   const std::string compress_cmd =
       std::string(SPRING2_EXECUTABLE) + " -c --R1 " + r1_fastq + " --R2 " +
       r2_fastq + " --R3 " + r3_fastq + " --I1 " + i1_fastq + " --I2 " +
-      i2_fastq + " -o " + archive_path + " -w " + test_dir +
-      "/work_compress -t 1 -y sc-rna";
-  const std::string decompress_cmd =
-      std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_path + " -o " +
-      out_r1 + " " + out_r2 + " " + out_r3 + " " + out_i1 + " " + out_i2 +
-      " -w " + test_dir + "/work_decompress -t 1";
+      i2_fastq + " -o " + archive_path + " -t 1 -y sc-rna";
+  const std::string decompress_cmd = std::string(SPRING2_EXECUTABLE) +
+                                     " -d -i " + archive_path + " -o " +
+                                     out_r1 + " " + out_r2 + " " + out_r3 +
+                                     " " + out_i1 + " " + out_i2 + " -t 1";
 
   REQUIRE(std::system(compress_cmd.c_str()) == 0);
   REQUIRE(std::system(decompress_cmd.c_str()) == 0);
@@ -1148,17 +1134,16 @@ TEST_CASE("Grouped decompression derives unique default output names") {
   create_dummy_fastq(r3_fastq, 120);
   create_dummy_fastq(i1_fastq, 120);
 
-  const std::string compress_cmd =
-      std::string(SPRING2_EXECUTABLE) + " -c --R1 " + r1_fastq + " --R2 " +
-      r2_fastq + " --R3 " + r3_fastq + " --I1 " + i1_fastq + " -o " +
-      archive_path + " -w " + test_dir + "/work_compress -t 1";
+  const std::string compress_cmd = std::string(SPRING2_EXECUTABLE) +
+                                   " -c --R1 " + r1_fastq + " --R2 " +
+                                   r2_fastq + " --R3 " + r3_fastq + " --I1 " +
+                                   i1_fastq + " -o " + archive_path + " -t 1";
   REQUIRE(std::system(compress_cmd.c_str()) == 0);
 
   {
     ScopedCurrentPath cwd_guard(test_dir);
-    const std::string decompress_cmd = std::string(SPRING2_EXECUTABLE) +
-                                       " -d -i " + archive_path +
-                                       " -w work_decompress -t 1";
+    const std::string decompress_cmd =
+        std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_path + " -t 1";
     REQUIRE(std::system(decompress_cmd.c_str()) == 0);
   }
 
@@ -1190,12 +1175,10 @@ TEST_CASE("Grouped aliased R3 output honors requested target format") {
 
   const std::string compress_cmd =
       std::string(SPRING2_EXECUTABLE) + " -c --R1 " + r1_fastq + " --R2 " +
-      r2_fastq + " --R3 " + r1_fastq + " -o " + archive_path + " -w " +
-      test_dir + "/work_compress -t 1";
+      r2_fastq + " --R3 " + r1_fastq + " -o " + archive_path + " -t 1";
   const std::string decompress_cmd =
       std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_path + " -o " +
-      out_r1 + " " + out_r2 + " " + out_r3 + " -w " + test_dir +
-      "/work_decompress -t 1";
+      out_r1 + " " + out_r2 + " " + out_r3 + " -t 1";
 
   REQUIRE(std::system(compress_cmd.c_str()) == 0);
   REQUIRE(std::system(decompress_cmd.c_str()) == 0);
@@ -1240,8 +1223,7 @@ TEST_CASE("Grouped decompression rejects invalid read3 alias metadata") {
 
   const std::string compress_cmd =
       std::string(SPRING2_EXECUTABLE) + " -c --R1 " + r1_fastq + " --R2 " +
-      r2_fastq + " --R3 " + r1_fastq + " -o " + archive_path + " -w " +
-      test_dir + "/work_compress -t 1";
+      r2_fastq + " --R3 " + r1_fastq + " -o " + archive_path + " -t 1";
   REQUIRE(std::system(compress_cmd.c_str()) == 0);
 
   fs::create_directories(extract_dir);
@@ -1256,8 +1238,7 @@ TEST_CASE("Grouped decompression rejects invalid read3 alias metadata") {
   const std::string decompress_cmd =
       std::string(SPRING2_EXECUTABLE) + " -d -i " + corrupted_archive + " -o " +
       test_dir + "/out_R1.fastq " + test_dir + "/out_R2.fastq " + test_dir +
-      "/out_R3.fastq -w " + test_dir + "/work_decompress -t 1 > " +
-      corrupt_log + " 2>&1";
+      "/out_R3.fastq -t 1 > " + corrupt_log + " 2>&1";
   CHECK(std::system(decompress_cmd.c_str()) != 0);
 
   fs::remove_all(test_dir);
@@ -1284,8 +1265,7 @@ TEST_CASE(
 
   const std::string compress_cmd =
       std::string(SPRING2_EXECUTABLE) + " -c --R1 " + r1_fastq + " --R2 " +
-      r2_fastq + " --I1 " + i1_fastq + " -o " + archive_path + " -w " +
-      test_dir + "/work_compress -t 1";
+      r2_fastq + " --I1 " + i1_fastq + " -o " + archive_path + " -t 1";
   REQUIRE(std::system(compress_cmd.c_str()) == 0);
 
   fs::create_directories(extract_dir);
@@ -1302,8 +1282,7 @@ TEST_CASE(
                                   corrupted_archive + " > " + preview_log +
                                   " 2>&1";
   CHECK(std::system(preview_cmd.c_str()) != 0);
-  CHECK_THROWS_AS(SpringReader(corrupted_archive, 1, test_dir + "/work_reader"),
-                  std::runtime_error);
+  CHECK_THROWS_AS(SpringReader(corrupted_archive, 1), std::runtime_error);
 
   fs::remove_all(test_dir);
 }
@@ -1328,11 +1307,10 @@ TEST_CASE("Paired gzip outputs preserve per-stream compression profile") {
 
   const std::string compress_cmd = std::string(SPRING2_EXECUTABLE) +
                                    " -c --R1 " + r1_fastq + " --R2 " +
-                                   r2_fastq + " -o " + archive_path + " -w " +
-                                   test_dir + "/work_compress -t 1";
-  const std::string decompress_cmd =
-      std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_path + " -o " +
-      out_r1 + " " + out_r2 + " -w " + test_dir + "/work_decompress -t 1";
+                                   r2_fastq + " -o " + archive_path + " -t 1";
+  const std::string decompress_cmd = std::string(SPRING2_EXECUTABLE) +
+                                     " -d -i " + archive_path + " -o " +
+                                     out_r1 + " " + out_r2 + " -t 1";
 
   REQUIRE(std::system(compress_cmd.c_str()) == 0);
 
@@ -1400,15 +1378,14 @@ TEST_CASE("Grouped sc-RNA index IDs are reconstructed from I1/I2 reads") {
   const std::string compress_auto_cmd =
       std::string(SPRING2_EXECUTABLE) + " -c --R1 " + r1_fastq + " --R2 " +
       r2_fastq + " --I1 " + i1_fastq + " --I2 " + i2_fastq + " -o " +
-      archive_auto + " -w " + test_dir + "/work_auto -t 1 -y sc-rna";
+      archive_auto + " -t 1 -y sc-rna";
   const std::string compress_dna_cmd =
       std::string(SPRING2_EXECUTABLE) + " -c --R1 " + r1_fastq + " --R2 " +
       r2_fastq + " --I1 " + i1_fastq + " --I2 " + i2_fastq + " -o " +
-      archive_dna + " -w " + test_dir + "/work_dna -t 1 -y dna";
+      archive_dna + " -t 1 -y dna";
   const std::string decompress_auto_cmd =
       std::string(SPRING2_EXECUTABLE) + " -d -i " + archive_auto + " -o " +
-      out_r1 + " " + out_r2 + " " + out_i1 + " " + out_i2 + " -w " + test_dir +
-      "/work_roundtrip -t 1";
+      out_r1 + " " + out_r2 + " " + out_i1 + " " + out_i2 + " -t 1";
   const std::string spring2_path = SPRING2_EXECUTABLE;
   const std::string preview_cmd =
       spring2_path + " -p " + archive_auto + " > " + preview_log + " 2>&1";

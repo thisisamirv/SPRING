@@ -1,3 +1,6 @@
+// Declares small parsing and string-conversion helpers used across command
+// handling and record parsing code.
+
 #ifndef SPRING_PARSE_UTILS_H_
 #define SPRING_PARSE_UTILS_H_
 

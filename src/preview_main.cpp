@@ -17,8 +17,6 @@
 
 namespace spring {
 
-namespace {} // namespace
-
 // Helper function to print gzip compression info for a single file
 void print_gzip_compression_info(int idx, const std::string &filename,
                                  bool was_gzipped, uint8_t flg, uint32_t mtime,
@@ -78,11 +76,9 @@ void print_gzip_compression_info(int idx, const std::string &filename,
   std::cout << "  Likely Origin:   " << origin << "\n";
 }
 
-void preview_single(const std::string &archive_path, bool audit_only,
-                    const std::filesystem::path &working_dir) {
-  (void)working_dir;
+void preview_single(const std::string &archive_path, bool audit_only) {
   if (audit_only) {
-    perform_audit(archive_path, "");
+    perform_audit(archive_path);
     return;
   }
 
@@ -226,10 +222,9 @@ void preview_single(const std::string &archive_path, bool audit_only,
   }
 }
 
-void preview(const std::string &archive_path, bool audit_only,
-             const std::filesystem::path &working_dir) {
+void preview(const std::string &archive_path, bool audit_only) {
   if (audit_only) {
-    preview_single(archive_path, true, working_dir);
+    preview_single(archive_path, true);
     return;
   }
 
@@ -497,7 +492,7 @@ void preview(const std::string &archive_path, bool audit_only,
     return;
   }
 
-  preview_single(archive_path, audit_only, working_dir);
+  preview_single(archive_path, audit_only);
 }
 
 } // namespace spring

@@ -1,3 +1,6 @@
+// Implements the templated overlap encoder and singleton handling pipeline
+// that produces archive-ready read streams.
+
 #ifndef SPRING_ENCODER_IMPL_H_
 #define SPRING_ENCODER_IMPL_H_
 
@@ -627,8 +630,7 @@ void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
 
 template <size_t bitset_size>
 reordered_stream_artifact
-encoder_main(const std::string &temp_dir,
-             const reorder_encoder_artifact &reorder_artifact,
+encoder_main(const reorder_encoder_artifact &reorder_artifact,
              compression_params &cp) {
   if (cp.encoding.num_thr >
       static_cast<int>(compression_params::ReadMetadata::kFileLenThrSize)) {
@@ -640,7 +642,7 @@ encoder_main(const std::string &temp_dir,
   encoder_global_b<bitset_size> egb(cp.read_info.max_readlen);
   encoder_global eg;
 
-  eg.basedir = temp_dir;
+  eg.basedir = "in-memory";
   eg.outfile_seq = eg.basedir + "/read_seq.bin";
   eg.outfile_pos = eg.basedir + "/read_pos.bin";
   eg.outfile_noise = eg.basedir + "/read_noise.txt";

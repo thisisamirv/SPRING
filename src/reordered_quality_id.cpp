@@ -175,8 +175,6 @@ void compress_block_batch(
         block_end = batch.end - batch.begin;
 
       const uint32_t reads_in_block = block_read_count(block_begin, block_end);
-      const std::string output_path =
-          block_file_path(input_path, block_offset + block_index);
       const uint64_t global_block_idx = block_offset + block_index;
 
       if (mode == reorder_compress_mode::id) {
@@ -348,11 +346,9 @@ void reorder_compress_from_buffer(
 } // namespace
 
 std::unordered_map<std::string, std::string>
-reorder_compress_quality_id(const std::string &temp_dir,
-                            const post_encode_side_stream_artifact &artifact,
+reorder_compress_quality_id(const post_encode_side_stream_artifact &artifact,
                             const std::vector<uint32_t> &read_order_entries,
                             compression_params &cp) {
-  (void)temp_dir;
   std::unordered_map<std::string, std::string> archive_members;
   const uint32_t num_reads = cp.read_info.num_reads;
   const int num_thr = cp.encoding.num_thr;

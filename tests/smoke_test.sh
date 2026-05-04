@@ -83,7 +83,7 @@ CPU_THREADS=$(detect_cpu_threads)
 SMOKE_THREADS_COMPRESS=$(cap_threads "$SMOKE_THREADS_COMPRESS" "$CPU_THREADS")
 SMOKE_THREADS_DECOMPRESS=$(cap_threads "$SMOKE_THREADS_DECOMPRESS" "$CPU_THREADS")
 mkdir -p "$ROOT_DIR/tests/output"
-WORK_DIR=$(mktemp -d "$ROOT_DIR/tests/output/smoke-test.XXXXXX")
+SCRATCH_DIR=$(mktemp -d "$ROOT_DIR/tests/output/smoke-test.XXXXXX")
 CURRENT_SMOKE_CASE=""
 
 dump_system_diagnostics() {
@@ -156,7 +156,7 @@ on_error() {
 }
 
 cleanup() {
-	rm -rf "$WORK_DIR"
+	rm -rf "$SCRATCH_DIR"
 }
 
 trap cleanup EXIT
@@ -293,7 +293,7 @@ compare_with_gzip_source() {
 	local output_path="$1"
 	local gzip_source_path="$2"
 	local expected_path
-	expected_path=$(mktemp "$WORK_DIR/expected-from-gz.XXXXXX")
+	expected_path=$(mktemp "$SCRATCH_DIR/expected-from-gz.XXXXXX")
 	gzip -dc "$gzip_source_path" >"$expected_path"
 	compare_files "$output_path" "$expected_path"
 	rm -f "$expected_path"
@@ -305,7 +305,7 @@ prepare_local_input() {
 	cp "$source_path" "$target_name"
 }
 
-cd "$WORK_DIR"
+cd "$SCRATCH_DIR"
 
 announce_case "fastq round-trip"
 run_spring -c --R1 "$ASSET_DIR/test_1.fastq" -o abcd

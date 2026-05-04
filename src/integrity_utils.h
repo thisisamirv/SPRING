@@ -1,3 +1,6 @@
+// Declares CRC and integrity-check helpers used to validate reconstructed
+// read, quality, and identifier streams.
+
 #ifndef SPRING_INTEGRITY_UTILS_H_
 #define SPRING_INTEGRITY_UTILS_H_
 

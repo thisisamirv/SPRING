@@ -1,3 +1,6 @@
+// Declares assay detection interfaces used for startup sampling and
+// automatic assay classification.
+
 #ifndef SPRING_ASSAY_DETECTOR_H_
 #define SPRING_ASSAY_DETECTOR_H_
 

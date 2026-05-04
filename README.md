@@ -71,8 +71,6 @@ Allowed options:
                                     - for paired end decompression, if only one file
                                       is specified, two output files will be created
                                       by suffixing .1 and .2
-  -w [ --tmp-dir ] arg (=.)       directory to create temporary files (default
-                                  current directory)
   -t [ --threads ] arg            number of threads (default:
                                   min(max(1, hw_threads - 1), 16))
   -m [ --memory ] arg (=0)        approximate memory budget in GB; reduces

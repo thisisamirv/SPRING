@@ -2,9 +2,7 @@
 // sequences and replaying aligned, unaligned, quality, and id streams.
 
 #include "decompress.h"
-#include "core_utils.h"
 #include "dna_utils.h"
-#include "fs_utils.h"
 #include "integrity_utils.h"
 #include "io_utils.h"
 #include "params.h"
@@ -51,23 +49,6 @@ struct reference_chunk {
   const char *data = nullptr;
 };
 
-std::vector<char> read_binary_file(const std::string &path) {
-  std::ifstream input(path, std::ios::binary | std::ios::ate);
-  if (!input.is_open()) {
-    throw std::runtime_error("Failed to open binary input: " + path);
-  }
-  const std::streamsize file_size = input.tellg();
-  if (file_size < 0) {
-    throw std::runtime_error("Failed to determine binary input size: " + path);
-  }
-  input.seekg(0, std::ios::beg);
-  std::vector<char> bytes(static_cast<size_t>(file_size));
-  if (file_size > 0 && !input.read(bytes.data(), file_size)) {
-    throw std::runtime_error("Failed to read binary input: " + path);
-  }
-  return bytes;
-}
-
 std::vector<char>
 archive_member_bytes(const decompression_archive_artifact &artifact,
                      const std::string &member_name) {
@@ -79,7 +60,7 @@ std::vector<char>
 decompress_archive_bsc_member(const decompression_archive_artifact &artifact,
                               const std::string &member_name,
                               const bool allow_raw_fallback = false) {
-  const std::vector<char> compressed_bytes =
+  std::vector<char> compressed_bytes =
       archive_member_bytes(artifact, member_name);
   if (compressed_bytes.empty()) {
     return {};
@@ -313,94 +294,6 @@ std::string compressed_block_file_path(const std::string &base_path,
   return path;
 }
 
-bool is_unaligned_block_path(const std::string &path) {
-  return path.find("read_unaligned.txt.") != std::string::npos;
-}
-
-void copy_binary_file(const std::string &input_path,
-                      const std::string &output_path) {
-  std::ifstream input(input_path, std::ios::binary);
-  if (!input.is_open()) {
-    throw std::runtime_error("Failed to open input file for copy: " +
-                             input_path);
-  }
-  std::ofstream output(output_path, std::ios::binary);
-  if (!output.is_open()) {
-    throw std::runtime_error("Failed to open output file for copy: " +
-                             output_path);
-  }
-  output << input.rdbuf();
-}
-
-void read_raw_string_block(const std::string &input_path,
-                           std::string *string_array,
-                           const uint32_t string_count,
-                           const uint32_t *string_lengths) {
-  std::ifstream input(input_path, std::ios::binary);
-  if (!input.is_open()) {
-    throw std::runtime_error("Failed to open raw string block: " + input_path);
-  }
-  for (uint32_t i = 0; i < string_count; i++) {
-    string_array[i].resize(string_lengths[i]);
-    input.read(string_array[i].data(),
-               static_cast<std::streamsize>(string_lengths[i]));
-    if (!input) {
-      throw std::runtime_error("Failed to read raw string block: " +
-                               input_path);
-    }
-  }
-}
-
-void decompress_bsc_block(const std::string &base_path,
-                          const uint32_t block_num) {
-  const std::string output_path = block_file_path(base_path, block_num);
-  const std::string input_path =
-      compressed_block_file_path(base_path, block_num);
-  if (is_unaligned_block_path(input_path)) {
-    // Backward compatibility: older archives may store unaligned blocks as raw
-    // bytes with a .bsc suffix, while newer archives store proper BSC blocks.
-    try {
-      safe_bsc_decompress(input_path, output_path);
-    } catch (const std::exception &) {
-      copy_binary_file(input_path, output_path);
-    }
-  } else {
-    safe_bsc_decompress(input_path, output_path);
-  }
-  safe_remove_file(input_path);
-}
-
-void decompress_read_length_block(const std::string &base_path,
-                                  const uint32_t block_num,
-                                  uint32_t *read_lengths_buffer,
-                                  const uint64_t buffer_offset,
-                                  const uint32_t read_count) {
-  const std::string compressed_path =
-      compressed_block_file_path(base_path, block_num);
-  const std::string output_path = block_file_path(base_path, block_num);
-  try {
-    safe_bsc_decompress(compressed_path, output_path);
-  } catch (const std::exception &) {
-    if (compressed_path.find("readlength_") != std::string::npos) {
-      // Backward compatibility: older archives used a .bsc suffix for raw
-      // read-length blocks.
-      copy_binary_file(compressed_path, output_path);
-    } else {
-      throw;
-    }
-  }
-  safe_remove_file(compressed_path);
-
-  std::ifstream read_length_input(output_path, std::ios::binary);
-  for (uint32_t read_index = 0; read_index < read_count; read_index++) {
-    read_length_input.read(
-        byte_ptr(&read_lengths_buffer[buffer_offset + read_index]),
-        sizeof(uint32_t));
-  }
-  read_length_input.close();
-  safe_remove_file(output_path);
-}
-
 uint32_t compute_thread_read_count(const uint32_t step_read_count,
                                    uint32_t num_reads_per_block,
                                    uint64_t thread_id) {
@@ -411,7 +304,6 @@ uint32_t compute_thread_read_count(const uint32_t step_read_count,
 
 } // namespace
 
-namespace {
 // Restore a stripped poly-A/T tail onto a read (and optionally its quality).
 void append_tail(std::string &read_str, std::string *quality_str,
                  uint16_t tail_info, const std::string *tail_qual) {
@@ -469,7 +361,6 @@ void append_grouped_index_suffix_to_id(std::string &id,
     id.append(*index_read_2);
   }
 }
-} // namespace
 
 void write_fastq_block(std::ostream &output_stream, std::string *id_buffer,
                        std::string *read_buffer,
@@ -612,30 +503,6 @@ std::string decode_packed_sequence_chunk_bytes(
         "Corrupt archive: sequence chunk decoded base count mismatch.");
   }
   return decoded;
-}
-
-bool is_gzip_output_path(const std::string &output_path) {
-  return has_suffix(output_path, ".gz");
-}
-
-void open_output_files(std::ofstream (&output_streams)[2],
-                       const std::string (&output_paths)[2],
-                       const bool paired_end,
-                       const bool (& /*gzip_outputs*/)[2]) {
-  for (int stream_index = 0; stream_index < 2; stream_index++) {
-    if (stream_index == 1 && !paired_end)
-      continue;
-    output_streams[stream_index].open(output_paths[stream_index],
-                                      std::ios::binary);
-  }
-}
-
-void validate_output_files(std::ofstream (&output_streams)[2],
-                           const bool paired_end) {
-  if (!output_streams[0].is_open())
-    throw std::runtime_error("Error opening output file");
-  if (paired_end && !output_streams[1].is_open())
-    throw std::runtime_error("Error opening output file");
 }
 
 uint64_t compute_num_reads_per_step(const uint32_t num_reads,

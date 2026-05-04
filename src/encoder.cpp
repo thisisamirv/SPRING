@@ -2,8 +2,6 @@
 // writes the compressed sequence, position, noise, and unaligned side streams.
 
 #include "encoder.h"
-#include "core_utils.h"
-#include "fs_utils.h"
 #include "io_utils.h"
 #include "progress.h"
 #include <array>
@@ -11,7 +9,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <fstream>
 #include <iostream>
 #include <list>
 #include <omp.h>
@@ -213,27 +210,6 @@ std::string pack_compress_seq(
                    "bytes=" +
                    std::to_string(compressed_bytes.size()));
   return std::string(compressed_bytes.begin(), compressed_bytes.end());
-}
-
-void rewrite_thread_order_file(
-    const std::string &order_path,
-    const std::vector<uint32_t> &cumulative_n_reads) {
-  const std::string order_tmp_path = order_path + ".tmp";
-  std::ifstream order_input(order_path, std::ios::binary);
-  std::ofstream order_output(order_tmp_path, std::ios::binary);
-  uint32_t read_position;
-
-  while (order_input.read(byte_ptr(&read_position), sizeof(uint32_t))) {
-    if (read_position < cumulative_n_reads.size()) {
-      read_position += cumulative_n_reads[read_position];
-    }
-    order_output.write(byte_ptr(&read_position), sizeof(uint32_t));
-  }
-  order_input.close();
-  order_output.close();
-
-  safe_remove_file(order_path);
-  safe_rename_file(order_tmp_path, order_path);
 }
 
 std::string buildcontig(std::list<contig_reads> &current_contig,

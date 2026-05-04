@@ -1,8 +1,9 @@
+// Implements small parsing and string-conversion helpers used by CLI,
+// FASTQ parsing, and metadata handling.
+
 #include "parse_utils.h"
 #include <stdexcept>
 #include <string>
-// Small parsing helpers: string utilities and parsing helpers used for
-// command-line and configuration parsing.
 
 namespace spring {
 

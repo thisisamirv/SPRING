@@ -1,3 +1,6 @@
+// Declares low-level byte-pointer helpers used by binary I/O and archive
+// serialization code throughout the project.
+
 #ifndef SPRING_CORE_UTILS_H_
 #define SPRING_CORE_UTILS_H_
 

@@ -1,7 +1,6 @@
-#include "spring_reader.h"
-#include <string>
 // Archive reading utilities and DecompressionSink implementations used to
 // stream records out of SPRING archives into consumer buffers or pipelines.
+#include "spring_reader.h"
 #include "bundle_manifest.h"
 #include "decompress.h"
 #include "fs_utils.h"
@@ -14,7 +13,9 @@
 #include <queue>
 #include <sstream>
 #include <stdexcept>
+#include <string>
 #include <thread>
+
 
 namespace spring {
 
@@ -169,9 +170,8 @@ public:
   Impl(Impl &&) = delete;
   Impl &operator=(Impl &&) = delete;
 
-  Impl(std::string archive_path, int num_thr, std::string work_dir)
+  Impl(std::string archive_path, int num_thr)
       : archive_path_(std::move(archive_path)), user_num_thr_(num_thr) {
-    temp_dir_ = std::move(work_dir);
     artifact_.scratch_dir.clear();
     const auto manifest_contents =
         read_files_from_tar_memory(archive_path_, {kBundleManifestName});
@@ -208,7 +208,7 @@ public:
 
     SPRING_LOG_DEBUG(
         "block_id=spring-reader:init, SpringReader init: archive=" +
-        archive_path_ + ", temp_dir=" + temp_dir_ + ", paired_end=" +
+        archive_path_ + ", paired_end=" +
         std::string(params_.encoding.paired_end ? "true" : "false") +
         ", long_mode=" +
         std::string(params_.encoding.long_flag ? "true" : "false") +
@@ -251,7 +251,7 @@ public:
         SPRING_LOG_DEBUG(
             "block_id=spring-reader:worker, SpringReader worker error branch: "
             "archive=" +
-            archive_path_ + ", temp_dir=" + temp_dir_ +
+            archive_path_ +
             ", queued_batches=" + std::to_string(queue_.size()) +
             ", popped_batches=" + std::to_string(queue_batches_popped_));
         worker_exception_ = std::current_exception();
@@ -360,7 +360,6 @@ public:
 
 private:
   std::string archive_path_;
-  std::string temp_dir_;
   decompression_archive_artifact artifact_;
   compression_params params_;
   int user_num_thr_;
@@ -386,9 +385,8 @@ private:
   size_t cache_pos_ = 0;
 };
 
-SpringReader::SpringReader(const std::string &archive_path, int num_thr,
-                           const std::string &work_dir)
-    : impl_(std::make_unique<Impl>(archive_path, num_thr, work_dir)) {}
+SpringReader::SpringReader(const std::string &archive_path, int num_thr)
+    : impl_(std::make_unique<Impl>(archive_path, num_thr)) {}
 
 SpringReader::~SpringReader() = default;
 

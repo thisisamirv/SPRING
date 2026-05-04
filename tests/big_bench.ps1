@@ -275,9 +275,9 @@ function Initialize-BenchmarkEnv {
     $global:DECOMP_FILE_2 = "$global:DECOMP_BASE.2"
 
     # Setup unique work directory
-    $global:WORK_DIR = Join-Path $TMP_WORK_DIR "$INPUT_STEM.work"
-    if (Test-Path $global:WORK_DIR) { Remove-Item $global:WORK_DIR -Recurse -Force }
-    New-Item -ItemType Directory -Path $global:WORK_DIR -Force | Out-Null
+    $global:SCRATCH_DIR = Join-Path $TMP_WORK_DIR "$INPUT_STEM.work"
+    if (Test-Path $global:SCRATCH_DIR) { Remove-Item $global:SCRATCH_DIR -Recurse -Force }
+    New-Item -ItemType Directory -Path $global:SCRATCH_DIR -Force | Out-Null
 }
 
 function Initialize-SpringBinary {
@@ -312,70 +312,70 @@ function Get-DecompHash($path) {
 Initialize-BenchmarkEnv
 Initialize-SpringBinary
 
-    # Cleanup previous
-    foreach ($f in @($global:OUTPUT_FILE, $global:DECOMP_FILE_1, $global:DECOMP_FILE_2)) {
-        if (Test-Path $f) { Remove-Item $f -Force }
-    }
+# Cleanup previous
+foreach ($f in @($global:OUTPUT_FILE, $global:DECOMP_FILE_1, $global:DECOMP_FILE_2)) {
+    if (Test-Path $f) { Remove-Item $f -Force }
+}
 
-    # --- Compression ---
-    Write-BigBenchLine "Running Spring paired-end compression (SRR2990433)" Cyan
-    Write-BigBenchLine "  R1:      $PATH_R1"
-    Write-BigBenchLine "  R2:      $PATH_R2"
-    Write-BigBenchLine "  threads: $THREADS"
+# --- Compression ---
+Write-BigBenchLine "Running Spring paired-end compression (SRR2990433)" Cyan
+Write-BigBenchLine "  R1:      $PATH_R1"
+Write-BigBenchLine "  R2:      $PATH_R2"
+Write-BigBenchLine "  threads: $THREADS"
 
-    $compArgs = @($SPRING_VERBOSE_ARGS + @('-c', '--R1', $PATH_R1, '--R2', $PATH_R2, '-o', $global:OUTPUT_FILE, '-w', $global:WORK_DIR, '-t', $THREADS, '-q', 'lossless', '-n', 'Big Benchmark SRR2990433'))
-    $compResults = Invoke-ResourceLoggedProcess $SPRING_BIN $compArgs
+$compArgs = @($SPRING_VERBOSE_ARGS + @('-c', '--R1', $PATH_R1, '--R2', $PATH_R2, '-o', $global:OUTPUT_FILE, '-t', $THREADS, '-q', 'lossless', '-n', 'Big Benchmark SRR2990433'))
+$compResults = Invoke-ResourceLoggedProcess $SPRING_BIN $compArgs
 
-    # --- Decompression ---
-    Write-BigBenchLine ""
-    Write-BigBenchLine "Running Spring decompression" Cyan
-    $decompArgs = @($SPRING_VERBOSE_ARGS + @('-d', '-i', $global:OUTPUT_FILE, '-o', $global:DECOMP_BASE, '-w', $global:WORK_DIR))
-    $decompResults = Invoke-ResourceLoggedProcess $SPRING_BIN $decompArgs
+# --- Decompression ---
+Write-BigBenchLine ""
+Write-BigBenchLine "Running Spring decompression" Cyan
+$decompArgs = @($SPRING_VERBOSE_ARGS + @('-d', '-i', $global:OUTPUT_FILE, '-o', $global:DECOMP_BASE))
+$decompResults = Invoke-ResourceLoggedProcess $SPRING_BIN $decompArgs
 
-    # --- Results ---
-    $inputSize = (Get-Item $PATH_R1).Length + (Get-Item $PATH_R2).Length
-    $outputSize = (Get-Item $global:OUTPUT_FILE).Length
-    $decompSize = (Get-Item $global:DECOMP_FILE_1).Length + (Get-Item $global:DECOMP_FILE_2).Length
+# --- Results ---
+$inputSize = (Get-Item $PATH_R1).Length + (Get-Item $PATH_R2).Length
+$outputSize = (Get-Item $global:OUTPUT_FILE).Length
+$decompSize = (Get-Item $global:DECOMP_FILE_1).Length + (Get-Item $global:DECOMP_FILE_2).Length
 
-    $reduction = if ($inputSize -gt 0) { ($inputSize - $outputSize) * 100 / $inputSize } else { 0 }
-    $ratio = if ($outputSize -gt 0) { $inputSize / $outputSize } else { 0 }
+$reduction = if ($inputSize -gt 0) { ($inputSize - $outputSize) * 100 / $inputSize } else { 0 }
+$ratio = if ($outputSize -gt 0) { $inputSize / $outputSize } else { 0 }
 
-    # Integrity Check
-    Write-BigBenchLine ""
-    Write-BigBenchLine "Verifying integrity..." Gray
-    $hash_orig_1 = Get-DecompHash $PATH_R1
-    $hash_orig_2 = Get-DecompHash $PATH_R2
-    $hash_decomp_1 = Get-DecompHash $global:DECOMP_FILE_1
-    $hash_decomp_2 = Get-DecompHash $global:DECOMP_FILE_2
+# Integrity Check
+Write-BigBenchLine ""
+Write-BigBenchLine "Verifying integrity..." Gray
+$hash_orig_1 = Get-DecompHash $PATH_R1
+$hash_orig_2 = Get-DecompHash $PATH_R2
+$hash_decomp_1 = Get-DecompHash $global:DECOMP_FILE_1
+$hash_decomp_2 = Get-DecompHash $global:DECOMP_FILE_2
 
-    $status1 = if ($hash_orig_1 -eq $hash_decomp_1) { "match" } else { "mismatch" }
-    $status2 = if ($hash_orig_2 -eq $hash_decomp_2) { "match" } else { "mismatch" }
+$status1 = if ($hash_orig_1 -eq $hash_decomp_1) { "match" } else { "mismatch" }
+$status2 = if ($hash_orig_2 -eq $hash_decomp_2) { "match" } else { "mismatch" }
 
-    # Reporting
-    Write-BigBenchLine ""
-    Write-BigBenchLine "Benchmark result (Paired-End combined)"
-    Write-BigBenchLine ("  original bytes:   {0:N0}" -f $inputSize)
-    Write-BigBenchLine ("  compressed bytes: {0:N0}" -f $outputSize)
-    Write-BigBenchLine ("  decompressed bytes: {0:N0}" -f $decompSize)
-    Write-BigBenchLine ("  compression pass time:    {0:N3}s" -f $compResults.elapsed_seconds)
-    Write-BigBenchLine ("  decompression pass time:  {0:N3}s" -f $decompResults.elapsed_seconds)
-    Write-BigBenchLine ("  size reduction:   {0:N2}%" -f $reduction)
-    Write-BigBenchLine ("  compression ratio {0:N3}x" -f $ratio)
+# Reporting
+Write-BigBenchLine ""
+Write-BigBenchLine "Benchmark result (Paired-End combined)"
+Write-BigBenchLine ("  original bytes:   {0:N0}" -f $inputSize)
+Write-BigBenchLine ("  compressed bytes: {0:N0}" -f $outputSize)
+Write-BigBenchLine ("  decompressed bytes: {0:N0}" -f $decompSize)
+Write-BigBenchLine ("  compression pass time:    {0:N3}s" -f $compResults.elapsed_seconds)
+Write-BigBenchLine ("  decompression pass time:  {0:N3}s" -f $decompResults.elapsed_seconds)
+Write-BigBenchLine ("  size reduction:   {0:N2}%" -f $reduction)
+Write-BigBenchLine ("  compression ratio {0:N3}x" -f $ratio)
 
-    Write-BigBenchLine ""
-    Write-BigBenchLine "Compression resources"
-    Write-BigBenchLine ("  elapsed time:     {0:N3}s" -f $compResults.elapsed_seconds)
-    Write-BigBenchLine ("  peak memory:      {0} KB ({1:N2} MB RSS)" -f $compResults.max_rss_kb, ($compResults.max_rss_kb / 1024))
+Write-BigBenchLine ""
+Write-BigBenchLine "Compression resources"
+Write-BigBenchLine ("  elapsed time:     {0:N3}s" -f $compResults.elapsed_seconds)
+Write-BigBenchLine ("  peak memory:      {0} KB ({1:N2} MB RSS)" -f $compResults.max_rss_kb, ($compResults.max_rss_kb / 1024))
 
-    Write-BigBenchLine ""
-    Write-BigBenchLine "Decompression resources"
-    Write-BigBenchLine ("  elapsed time:     {0:N3}s" -f $decompResults.elapsed_seconds)
-    Write-BigBenchLine ("  peak memory:      {0} KB ({1:N2} MB RSS)" -f $decompResults.max_rss_kb, ($decompResults.max_rss_kb / 1024))
+Write-BigBenchLine ""
+Write-BigBenchLine "Decompression resources"
+Write-BigBenchLine ("  elapsed time:     {0:N3}s" -f $decompResults.elapsed_seconds)
+Write-BigBenchLine ("  peak memory:      {0} KB ({1:N2} MB RSS)" -f $decompResults.max_rss_kb, ($decompResults.max_rss_kb / 1024))
 
-    Write-BigBenchLine ""
-    Write-BigBenchLine "Round-trip check"
-    Write-BigBenchLine "  Read 1 status: $status1"
-    Write-BigBenchLine "  Read 2 status: $status2"
-    Write-BigBenchLine "  Overall status: $(if ($status1 -eq 'match' -and $status2 -eq 'match') { 'PASSED' } else { 'FAILED' })"
+Write-BigBenchLine ""
+Write-BigBenchLine "Round-trip check"
+Write-BigBenchLine "  Read 1 status: $status1"
+Write-BigBenchLine "  Read 2 status: $status2"
+Write-BigBenchLine "  Overall status: $(if ($status1 -eq 'match' -and $status2 -eq 'match') { 'PASSED' } else { 'FAILED' })"
 
 Show-StepTimingSummary $BIG_BENCH_LOG

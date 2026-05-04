@@ -17,8 +17,6 @@ public:
   static bool is_info_enabled();
   static bool is_debug_enabled();
 
-  template <typename T> static void log(const T &msg);
-
   static void log_info(const std::string &msg);
   static void log_debug(const std::string &msg);
   static void log_warning(const std::string &msg);

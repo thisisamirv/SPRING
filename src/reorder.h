@@ -67,8 +67,7 @@ void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
                  const bool deterministic_mode);
 
 template <size_t bitset_size>
-reorder_encoder_artifact reorder_main(const std::string &temp_dir,
-                                      const reorder_input_artifact &artifact,
+reorder_encoder_artifact reorder_main(const reorder_input_artifact &artifact,
                                       const compression_params &cp);
 
 } // namespace spring

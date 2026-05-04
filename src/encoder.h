@@ -1,3 +1,6 @@
+// Declares encoder interfaces and shared state used by the overlap-based
+// read encoding stage.
+
 #ifndef SPRING_ENCODER_H_
 #define SPRING_ENCODER_H_
 
@@ -101,8 +104,7 @@ void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
                     const encoder_global_b<bitset_size> &egb);
 
 template <size_t bitset_size>
-reordered_stream_artifact encoder_main(const std::string &temp_dir,
-                                       const reorder_encoder_artifact &artifact,
+reordered_stream_artifact encoder_main(const reorder_encoder_artifact &artifact,
                                        compression_params &cp);
 
 } // namespace spring

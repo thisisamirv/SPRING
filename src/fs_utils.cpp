@@ -1,7 +1,7 @@
+// Implements filesystem and tar-archive helpers used for archive assembly,
+// extraction, and in-memory member loading.
+
 #include "fs_utils.h"
-#include <string>
-// Filesystem helpers: path manipulation, temporary-directory utilities, and
-// cross-platform file operations used throughout the project.
 #include "progress.h"
 #include <archive.h>
 #include <archive_entry.h>
@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <string>
 #include <sys/stat.h>
 #include <system_error>
 #include <unordered_set>
@@ -90,36 +91,6 @@ void write_archive_memory_entry(struct archive *archive_writer,
   }
 
   archive_entry_free(entry);
-}
-
-std::vector<tar_archive_source>
-build_tar_sources_from_directory(const std::string &source_dir,
-                                 uint64_t &archived_total_bytes) {
-  std::vector<tar_archive_source> sources;
-  archived_total_bytes = 0;
-  const std::filesystem::path root(source_dir);
-  for (const auto &dir_entry :
-       std::filesystem::recursive_directory_iterator(root)) {
-    if (!dir_entry.is_regular_file())
-      continue;
-
-    const std::string full_path = dir_entry.path().string();
-    const std::string rel_path =
-        std::filesystem::relative(dir_entry.path(), root).generic_string();
-    std::error_code file_ec;
-    archived_total_bytes +=
-        std::filesystem::file_size(dir_entry.path(), file_ec);
-    if (file_ec) {
-      throw std::runtime_error("Failed to stat archive input '" + full_path +
-                               "': " + file_ec.message());
-    }
-
-    sources.push_back({.archive_path = rel_path,
-                       .disk_path = full_path,
-                       .contents = std::string(),
-                       .from_memory = false});
-  }
-  return sources;
 }
 
 int archive_memory_open_callback(struct archive * /*archive_writer*/,
@@ -352,43 +323,6 @@ read_files_from_tar_impl(struct archive *archive_reader,
 
 } // namespace
 
-void copy_stream_buffered(std::istream &input_stream,
-                          std::ostream &output_stream, size_t buffer_size) {
-  std::vector<char> buffer(buffer_size);
-  while (input_stream.read(buffer.data(),
-                           static_cast<std::streamsize>(buffer.size()))) {
-    output_stream.write(buffer.data(), input_stream.gcount());
-  }
-  if (input_stream.gcount() > 0) {
-    output_stream.write(buffer.data(), input_stream.gcount());
-  }
-  output_stream.clear();
-}
-
-size_t get_directory_size(const std::string &temp_dir) {
-  namespace fs = std::filesystem;
-  size_t size = 0;
-  std::error_code ec;
-  fs::path p{temp_dir};
-
-  if (p.has_relative_path() && !p.has_filename()) {
-    p = p.parent_path();
-  }
-
-  if (!fs::exists(p, ec))
-    return 0;
-
-  for (const auto &entry : fs::recursive_directory_iterator(p, ec)) {
-    if (ec)
-      break;
-    std::error_code size_ec;
-    if (fs::is_regular_file(entry.path(), size_ec)) {
-      size += fs::file_size(entry.path(), size_ec);
-    }
-  }
-  return size;
-}
-
 std::string shell_quote(const std::string &value) {
 #ifdef _WIN32
   std::string quoted = "\"";
@@ -429,43 +363,6 @@ bool safe_remove_file(const std::string &path) noexcept {
     return false;
   }
   return true;
-}
-
-bool safe_rename_file(const std::string &old_path,
-                      const std::string &new_path) noexcept {
-  if (old_path.empty() || new_path.empty()) {
-    Logger::log_warning("safe_rename_file called with empty path");
-    return false;
-  }
-  std::error_code ec;
-  std::filesystem::rename(old_path, new_path, ec);
-  if (!ec)
-    return true;
-
-  Logger::log_warning("Failed to rename file: " + old_path + " -> " + new_path +
-                      ": " + ec.message());
-  return false;
-}
-
-void create_tar_archive(const std::string &archive_path,
-                        const std::string &source_dir) {
-  uint64_t archived_total_bytes = 0;
-  const std::vector<tar_archive_source> sources =
-      build_tar_sources_from_directory(source_dir, archived_total_bytes);
-  SPRING_LOG_DEBUG("create_tar_archive start: source_dir=" + source_dir +
-                   ", archive_path=" + archive_path);
-  (void)archived_total_bytes;
-  create_tar_archive_from_sources_impl(sources, false, &archive_path);
-}
-
-std::string create_tar_archive_bytes(const std::string &source_dir) {
-  uint64_t archived_total_bytes = 0;
-  const std::vector<tar_archive_source> sources =
-      build_tar_sources_from_directory(source_dir, archived_total_bytes);
-  SPRING_LOG_DEBUG(
-      "create_tar_archive_bytes start: source_dir=" + source_dir +
-      ", total_input_bytes=" + std::to_string(archived_total_bytes));
-  return create_tar_archive_from_sources_impl(sources, true, nullptr);
 }
 
 void create_tar_archive_from_sources(
@@ -577,111 +474,6 @@ void extract_tar_archive(const std::string &archive_path,
     throw;
   }
   SPRING_LOG_DEBUG("extract_tar_archive complete: entries=" +
-                   std::to_string(extracted_entry_count) +
-                   ", extracted_bytes=" + std::to_string(extracted_data_bytes));
-}
-
-void extract_tar_archive_from_memory(const std::string &archive_contents,
-                                     const std::string &target_dir) {
-  struct archive *a;
-  struct archive *ext;
-  struct archive_entry *entry;
-  int flags;
-  int r;
-  uint64_t extracted_entry_count = 0;
-  uint64_t extracted_data_bytes = 0;
-
-  SPRING_LOG_DEBUG(
-      "extract_tar_archive_from_memory start: target_dir=" + target_dir +
-      ", archive_bytes=" + std::to_string(archive_contents.size()));
-
-  flags = ARCHIVE_EXTRACT_PERM;
-  flags |= ARCHIVE_EXTRACT_SECURE_NODOTDOT;
-  flags |= ARCHIVE_EXTRACT_SECURE_SYMLINKS;
-
-  a = archive_read_new();
-  archive_read_support_filter_gzip(a);
-  archive_read_support_filter_xz(a);
-  archive_read_support_filter_zstd(a);
-  archive_read_support_filter_none(a);
-  archive_read_support_format_tar(a);
-  archive_read_support_format_empty(a);
-
-  ext = archive_write_disk_new();
-  archive_write_disk_set_options(ext, flags);
-
-  auto close_archives = [&]() noexcept {
-    if (a != nullptr) {
-      archive_read_close(a);
-      archive_read_free(a);
-      a = nullptr;
-    }
-    if (ext != nullptr) {
-      archive_write_close(ext);
-      archive_write_free(ext);
-      ext = nullptr;
-    }
-  };
-
-  try {
-    r = archive_read_open_memory(a, archive_contents.data(),
-                                 archive_contents.size());
-    if (r != ARCHIVE_OK) {
-      throw std::runtime_error(
-          "Failed to open in-memory archive for reading: " +
-          std::string(archive_error_string(a)));
-    }
-
-    std::filesystem::create_directories(target_dir);
-    const std::filesystem::path target_root =
-        std::filesystem::weakly_canonical(std::filesystem::path(target_dir));
-
-    for (;;) {
-      r = archive_read_next_header(a, &entry);
-      if (r == ARCHIVE_EOF)
-        break;
-      if (r < ARCHIVE_WARN) {
-        throw std::runtime_error("Error reading archive header: " +
-                                 std::string(archive_error_string(a)));
-      }
-
-      const std::filesystem::path dest_path =
-          validated_archive_entry_destination(target_root,
-                                              archive_entry_pathname(entry));
-      archive_entry_set_pathname(entry, dest_path.string().c_str());
-
-      r = archive_write_header(ext, entry);
-      extracted_entry_count++;
-      if (r >= ARCHIVE_OK && archive_entry_size(entry) > 0) {
-        const void *buff;
-        size_t size;
-        la_int64_t offset;
-        while (true) {
-          r = archive_read_data_block(a, &buff, &size, &offset);
-          if (r == ARCHIVE_EOF)
-            break;
-          if (r < ARCHIVE_OK)
-            throw std::runtime_error("Error reading archive data: " +
-                                     std::string(archive_error_string(a)));
-          r = archive_write_data_block(ext, buff, size, offset);
-          extracted_data_bytes += static_cast<uint64_t>(size);
-          if (r < ARCHIVE_OK)
-            throw std::runtime_error("Error writing disk data: " +
-                                     std::string(archive_error_string(ext)));
-        }
-      }
-      r = archive_write_finish_entry(ext);
-      if (r < ARCHIVE_OK)
-        throw std::runtime_error("Error finishing disk entry: " +
-                                 std::string(archive_error_string(ext)));
-    }
-
-    close_archives();
-  } catch (...) {
-    close_archives();
-    throw;
-  }
-  SPRING_LOG_DEBUG("extract_tar_archive_from_memory complete: entries=" +
                    std::to_string(extracted_entry_count) +
                    ", extracted_bytes=" + std::to_string(extracted_data_bytes));
 }

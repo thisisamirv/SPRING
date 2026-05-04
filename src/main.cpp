@@ -1,5 +1,5 @@
-// Implements the Spring command-line entrypoint, including option parsing,
-// temporary-directory management, and dispatch to compress/decompress modes.
+// Implements the Spring command-line entrypoint, including option parsing
+// and dispatch to compress/decompress modes.
 
 #include "params.h"
 #include "parse_utils.h"
@@ -52,7 +52,6 @@ struct command_line_options {
   std::vector<std::string> input_paths;
   std::vector<std::string> output_paths;
   std::vector<std::string> quality_options;
-  std::string working_dir = ".";
   int num_threads = default_num_threads();
   bool num_threads_was_explicit = false;
   double memory_cap_gb = 0.0;
@@ -91,10 +90,6 @@ std::string build_options_description() {
       << "                                      is specified, two output files "
          "will be created\n"
       << "                                      by suffixing .1 and .2\n"
-      << "  -w [ --tmp-dir ] arg (=.)       reserved for compatibility; no "
-         "internal temp\n"
-      << "                                  working-directory files are "
-         "created\n"
       << "  -t [ --threads ] arg            number of threads (default:\n"
       << "                                  min(max(1, hw_threads - 1), 16))\n"
       << "  -m [ --memory ] arg (=0)        approximate memory budget in GB; "
@@ -252,9 +247,6 @@ void parse_command_line(int argc, char **argv, command_line_options &options) {
                                    "' in --strip. Valid are: i, o, q.");
         }
       }
-    } else if (arg == "-w" || arg == "--tmp-dir") {
-      require_value(args, index, "--tmp-dir");
-      options.working_dir = args[index++];
     } else if (arg == "-t" || arg == "--threads") {
       require_value(args, index, "--threads");
       options.num_threads = spring::parse_int_or_throw(
@@ -534,28 +526,26 @@ int print_unexpected_error_and_exit(const std::string &options_description,
   return 1;
 }
 
-void run_requested_mode(const command_line_options &options,
-                        const std::string &temp_dir) {
+void run_requested_mode(const command_line_options &options) {
   if (options.preview_flag) {
-    spring::preview(options.input_paths.front(), options.audit_flag,
-                    options.working_dir);
+    spring::preview(options.input_paths.front(), options.audit_flag);
     return;
   }
 
   if (options.compress_flag) {
     spring::compress(
-        temp_dir, options.input_paths, options.output_paths,
-        options.num_threads, options.pairing_only_flag, options.no_quality_flag,
-        options.no_ids_flag, options.quality_options, options.compression_level,
-        options.note, options.log_level, options.audit_flag, options.r3_path,
-        options.i1_path, options.i2_path, options.assay,
+        options.input_paths, options.output_paths, options.num_threads,
+        options.pairing_only_flag, options.no_quality_flag, options.no_ids_flag,
+        options.quality_options, options.compression_level, options.note,
+        options.log_level, options.audit_flag, options.r3_path, options.i1_path,
+        options.i2_path, options.assay,
         options
             .i1_path, // cb_source_path: use I1 lane for SC barcode extraction
         options.cb_len);
     return;
   }
 
-  spring::decompress(temp_dir, options.input_paths, options.output_paths,
+  spring::decompress(options.input_paths, options.output_paths,
                      options.num_threads, options.compression_level,
                      options.log_level, options.unzip_flag);
 }
@@ -585,8 +575,7 @@ void log_options_for_debugging(const command_line_options &options) {
 
   SPRING_LOG_DEBUG(
       "CLI paths: inputs=" + std::to_string(options.input_paths.size()) +
-      ", outputs=" + std::to_string(options.output_paths.size()) +
-      ", tmp_dir=" + options.working_dir);
+      ", outputs=" + std::to_string(options.output_paths.size()));
 }
 
 } // namespace
@@ -654,7 +643,7 @@ int main(int argc, char **argv) {
 
   if (options.preview_flag) {
     try {
-      run_requested_mode(options, "");
+      run_requested_mode(options);
     } catch (const std::runtime_error &e) {
       return print_unexpected_error_and_exit(
           options_description,
@@ -675,7 +664,7 @@ int main(int argc, char **argv) {
   apply_memory_cap(options);
   log_options_for_debugging(options);
   try {
-    run_requested_mode(options, "");
+    run_requested_mode(options);
   } catch (const std::runtime_error &e) {
     return print_unexpected_error_and_exit(
         options_description,

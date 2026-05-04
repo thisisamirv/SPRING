@@ -27,8 +27,7 @@ struct reordered_stream_artifact {
 
 // Rebuild the aligned and unaligned side streams into per-block archives.
 std::unordered_map<std::string, std::string> reorder_compress_streams(
-    const std::string &temp_dir, const compression_params &cp,
-    const reordered_stream_artifact &artifact,
+    const compression_params &cp, const reordered_stream_artifact &artifact,
     const std::vector<uint32_t> *read_order_override = nullptr);
 
 } // namespace spring

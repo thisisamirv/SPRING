@@ -4,7 +4,6 @@
 #ifndef SPRING_SPRING_H_
 #define SPRING_SPRING_H_
 
-#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -17,11 +16,11 @@ using string_list = std::vector<std::string>;
 using read_range = std::vector<uint64_t>;
 
 // Top-level compression and decompression entry points used by the CLI.
-void compress(const std::string &temp_dir, const string_list &input_paths,
-              const string_list &output_paths, const int num_thr,
-              const bool pairing_only_flag, const bool no_quality_flag,
-              const bool no_ids_flag, const string_list &quality_options,
-              const int compression_level, const std::string &note,
+void compress(const string_list &input_paths, const string_list &output_paths,
+              const int num_thr, const bool pairing_only_flag,
+              const bool no_quality_flag, const bool no_ids_flag,
+              const string_list &quality_options, const int compression_level,
+              const std::string &note,
               const log_level verbosity_level = log_level::info,
               const bool audit_flag = false,
               const std::string &r3_path = std::string(),
@@ -31,16 +30,12 @@ void compress(const std::string &temp_dir, const string_list &input_paths,
               const std::string &cb_source_path = std::string(),
               uint32_t cb_len = 16);
 
-void decompress(const std::string &temp_dir, const string_list &input_paths,
-                const string_list &output_paths, const int num_thr,
-                const int compression_level,
+void decompress(const string_list &input_paths, const string_list &output_paths,
+                const int num_thr, const int compression_level,
                 const log_level verbosity_level = log_level::info,
                 const bool unzip_flag = false);
 
-void perform_audit(const std::string &archive_path,
-                   const std::string &temp_dir);
-
-std::string random_string(size_t length);
+void perform_audit(const std::string &archive_path);
 
 } // namespace spring
 

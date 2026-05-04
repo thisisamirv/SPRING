@@ -1,3 +1,6 @@
+// Declares binary and compressed I/O helpers used across preprocessing,
+// archive assembly, and decompression.
+
 #ifndef SPRING_IO_UTILS_H_
 #define SPRING_IO_UTILS_H_
 

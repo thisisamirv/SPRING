@@ -1,3 +1,6 @@
+// Declares the SpringReader streaming decompression API used by library-style
+// consumers of SPRING2 archives.
+
 #ifndef SPRING_READER_H_
 #define SPRING_READER_H_
 
@@ -23,11 +26,8 @@ public:
    * @param archive_path Path to the .sp archive.
    * @param num_thr Number of threads to use for background decompression (0 for
    * auto).
-   * @param work_dir Optional custom temporary directory for intermediate
-   * streams.
    */
-  explicit SpringReader(const std::string &archive_path, int num_thr = 0,
-                        const std::string &work_dir = "");
+  explicit SpringReader(const std::string &archive_path, int num_thr = 0);
 
   ~SpringReader();
 

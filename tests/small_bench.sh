@@ -151,7 +151,7 @@ run_single_file_benchmark() {
 	INPUT_ABS=$(realpath -m -- "$input_path")
 	INPUT_BASENAME=$(basename -- "$INPUT_ABS")
 	INPUT_STEM=${INPUT_BASENAME%.*}
-	WORK_DIR="$WORK_ROOT_DIR/$INPUT_STEM.work"
+	SCRATCH_DIR="$WORK_ROOT_DIR/$INPUT_STEM.work"
 	OUTPUT_FILE="$OUTPUT_DIR/$INPUT_STEM.sp"
 	DECOMPRESSED_OUTPUT_FILE="$OUTPUT_DIR/$INPUT_STEM.roundtrip.fastq"
 
@@ -160,8 +160,8 @@ run_single_file_benchmark() {
 	MAX_READ_LENGTH=$(awk 'NR % 4 == 2 { if (length($0) > max_len) max_len = length($0) } END { print max_len + 0 }' "$INPUT_ABS")
 
 	mkdir -p "$INPUT_DIR" "$LOG_DIR" "$OUTPUT_DIR" "$WORK_ROOT_DIR"
-	rm -rf "$WORK_DIR"
-	mkdir -p "$WORK_DIR"
+	rm -rf "$SCRATCH_DIR"
+	mkdir -p "$SCRATCH_DIR"
 	rm -f "$OUTPUT_FILE"
 	rm -f "$DECOMPRESSED_OUTPUT_FILE"
 
@@ -170,7 +170,6 @@ run_single_file_benchmark() {
 		-c
 		--R1 "$INPUT_ABS"
 		-o "$OUTPUT_FILE"
-		-w "$WORK_DIR"
 		-t "$THREADS"
 		-q lossless
 		--assay auto
@@ -183,7 +182,6 @@ run_single_file_benchmark() {
 		-d
 		-i "$OUTPUT_FILE"
 		-o "$DECOMPRESSED_OUTPUT_FILE"
-		-w "$WORK_DIR"
 	)
 	run_with_resource_log "$DECOMPRESS_RESOURCE_LOG" "$SPRING_BIN" "${decompress_args[@]}"
 
@@ -246,7 +244,7 @@ run_assay_suite() {
 		assay_mode="auto"
 		[[ "$assay" == "sc-bisulfite" ]] && assay_mode="sc-bisulfite"
 		echo "  Step 1: Compression with --assay $assay_mode (expected: $assay)"
-		"$SPRING_BIN" -c "${base_args[@]}" -o "$out_auto" -w "$work" -t "$THREADS" -q lossless --assay "$assay_mode"
+		"$SPRING_BIN" -c "${base_args[@]}" -o "$out_auto" -t "$THREADS" -q lossless --assay "$assay_mode"
 		size_auto=$(stat -c%s "$out_auto")
 		actual_auto_assay=$(get_archive_assay_label "$out_auto")
 		echo "    Archive metadata assay: $actual_auto_assay"
@@ -259,7 +257,7 @@ run_assay_suite() {
 		for f in "${files[@]}"; do
 			decomp_files+=("$decomp_dir/${f%.gz}")
 		done
-		"$SPRING_BIN" -d -i "$out_auto" -o "${decomp_files[@]}" -w "$work"
+		"$SPRING_BIN" -d -i "$out_auto" -o "${decomp_files[@]}"
 
 		all_identical=true
 		for i in "${!files[@]}"; do
@@ -279,7 +277,7 @@ run_assay_suite() {
 
 		# 3. DNA-mode comparison
 		echo "  Step 3: Compression with --assay dna"
-		"$SPRING_BIN" -c "${base_args[@]}" -o "$out_dna" -w "$work" -t "$THREADS" -q lossless --assay dna
+		"$SPRING_BIN" -c "${base_args[@]}" -o "$out_dna" -t "$THREADS" -q lossless --assay dna
 		size_dna=$(stat -c%s "$out_dna")
 
 		# 4. Results

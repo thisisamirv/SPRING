@@ -41,7 +41,6 @@ and optional `<prefix>.I2`.
 
 - `-t, --threads arg`: Number of threads to use. Defaults to `min(max(1, hw_threads - 1), 16)`.
 - `-m, --memory arg`: Approximate memory budget in GB. This is a safety knob that reduces the effective worker-thread count using an approximate budget of about 1 GB per worker thread. Set to `0` to disable.
-- `-w, --tmp-dir arg`: Directory to create temporary files. Defaults to the current directory.
 
 ### Data Manipulation
 

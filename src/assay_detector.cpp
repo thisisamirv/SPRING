@@ -1,3 +1,6 @@
+// Implements assay detection heuristics and startup sampling used for
+// automatic assay classification during compression.
+
 #include "assay_detector.h"
 #include "io_utils.h"
 #include <algorithm>
