@@ -21,31 +21,19 @@
 
 namespace spring {
 
-struct sequence_pack_paths {
-  std::string input_path;
-  std::string packed_path;
-  std::string tail_path;
-  std::string compressed_path;
-};
-
 std::string thread_file_path(const std::string &base_path, const int thread_id,
                              const char *suffix = "") {
   return base_path + '.' + std::to_string(thread_id) + suffix;
 }
 
-sequence_pack_paths make_sequence_pack_paths(const std::string &base_path,
-                                             const int thread_id) {
-  sequence_pack_paths paths;
-  paths.input_path = thread_file_path(base_path, thread_id);
-  paths.packed_path = thread_file_path(base_path, thread_id, ".tmp");
-  paths.tail_path = thread_file_path(base_path, thread_id, ".tail");
-  paths.compressed_path = thread_file_path(base_path, thread_id, ".bsc");
-  return paths;
+template <typename T> void append_binary(std::string &buffer, const T &value) {
+  const size_t old_size = buffer.size();
+  buffer.resize(old_size + sizeof(T));
+  std::memcpy(buffer.data() + old_size, &value, sizeof(T));
 }
 
-uint64_t write_packed_sequence(const std::string &sequence_path,
-                               const std::string &packed_path,
-                               const std::string &tail_path,
+uint64_t write_packed_sequence(const std::string &sequence_bytes,
+                               std::vector<char> &packed_bytes,
                                bool bisulfite_ternary) {
   static const std::array<uint8_t, 128> base_to_int = []() {
     std::array<uint8_t, 128> table{};
@@ -60,44 +48,28 @@ uint64_t write_packed_sequence(const std::string &sequence_path,
     return table;
   }();
 
-  std::ifstream sequence_input(sequence_path, std::ios::binary);
-  std::ofstream packed_output(packed_path, std::ios::binary);
-  std::ofstream tail_output(tail_path, std::ios::binary);
-  if (!sequence_input.is_open()) {
-    throw std::runtime_error("Failed to open sequence chunk for packing: " +
-                             sequence_path);
-  }
-  if (!packed_output.is_open()) {
-    throw std::runtime_error("Failed to open packed sequence output: " +
-                             packed_path);
-  }
-  if (!tail_output.is_open()) {
-    throw std::runtime_error("Failed to open sequence tail output: " +
-                             tail_path);
-  }
-  std::vector<char> packed_buffer;
-  packed_buffer.reserve(1 << 16);
+  packed_bytes.clear();
+  packed_bytes.reserve(std::max<size_t>(sequence_bytes.size() / 2, 1));
   std::array<char, 5> trailing_bases{};
   uint64_t sequence_length = 0;
   size_t trailing_count = 0;
   const size_t bases_per_byte = bisulfite_ternary ? 5 : 4;
 
-  auto flush_packed_buffer = [&]() {
-    if (!packed_buffer.empty()) {
-      packed_output.write(packed_buffer.data(),
-                          static_cast<std::streamsize>(packed_buffer.size()));
-      packed_buffer.clear();
+  size_t cursor = 0;
+  while (cursor < sequence_bytes.size()) {
+    if (cursor + sizeof(uint32_t) > sequence_bytes.size()) {
+      throw std::runtime_error(
+          "Corrupted sequence buffer: truncated read length header.");
     }
-  };
-
-  uint32_t record_len;
-  while (sequence_input.read(reinterpret_cast<char *>(&record_len),
-                             sizeof(uint32_t))) {
-    std::string dna(record_len, '\0');
-    if (!sequence_input.read(&dna[0], record_len)) {
-      throw std::runtime_error("Corrupted sequence chunk: failed to read " +
-                               std::to_string(record_len) + " bases");
+    uint32_t record_len = 0;
+    std::memcpy(&record_len, sequence_bytes.data() + cursor, sizeof(uint32_t));
+    cursor += sizeof(uint32_t);
+    if (cursor + record_len > sequence_bytes.size()) {
+      throw std::runtime_error(
+          "Corrupted sequence buffer: truncated read payload.");
     }
+    const char *dna = sequence_bytes.data() + cursor;
+    cursor += record_len;
 
     sequence_length += record_len;
     for (uint32_t input_index = 0; input_index < record_len; input_index++) {
@@ -107,7 +79,7 @@ uint64_t write_packed_sequence(const std::string &sequence_path,
       }
 
       if (!bisulfite_ternary) {
-        packed_buffer.push_back(
+        packed_bytes.push_back(
             static_cast<char>(64 * base_to_int[(uint8_t)trailing_bases[3]] +
                               16 * base_to_int[(uint8_t)trailing_bases[2]] +
                               4 * base_to_int[(uint8_t)trailing_bases[1]] +
@@ -130,27 +102,22 @@ uint64_t write_packed_sequence(const std::string &sequence_path,
             packed += val * p3;
             p3 *= 3;
           }
-          packed_buffer.push_back(static_cast<char>(packed));
+          packed_bytes.push_back(static_cast<char>(packed));
         } else {
-          packed_buffer.push_back(static_cast<char>(243));
-          flush_packed_buffer();
+          packed_bytes.push_back(static_cast<char>(243));
           uint16_t escape = 0;
           for (int k = 0; k < 5; k++) {
             uint8_t val = base_to_int[static_cast<uint8_t>(trailing_bases[k])];
             escape |= (val << (2 * k));
           }
-          packed_output.write(reinterpret_cast<const char *>(&escape),
-                              sizeof(uint16_t));
+          const size_t old_size = packed_bytes.size();
+          packed_bytes.resize(old_size + sizeof(uint16_t));
+          std::memcpy(packed_bytes.data() + old_size, &escape,
+                      sizeof(uint16_t));
         }
-      }
-
-      if (packed_buffer.size() >= (1 << 15)) {
-        flush_packed_buffer();
       }
       trailing_count = 0;
     }
-
-    flush_packed_buffer();
   }
 
   if (trailing_count > 0) {
@@ -159,78 +126,56 @@ uint64_t write_packed_sequence(const std::string &sequence_path,
       for (size_t i = 0; i < trailing_count; ++i) {
         packed_byte |= (base_to_int[(uint8_t)trailing_bases[i]] << (2 * i));
       }
-      packed_output.write(reinterpret_cast<const char *>(&packed_byte), 1);
+      packed_bytes.push_back(static_cast<char>(packed_byte));
     } else {
-      packed_output.put(static_cast<char>(243));
+      packed_bytes.push_back(static_cast<char>(243));
       uint16_t escape = 0;
       for (size_t i = 0; i < trailing_count; ++i) {
         uint8_t val = base_to_int[static_cast<uint8_t>(trailing_bases[i])];
         escape |= (val << (2 * i));
       }
-      packed_output.write(reinterpret_cast<const char *>(&escape),
-                          sizeof(uint16_t));
+      const size_t old_size = packed_bytes.size();
+      packed_bytes.resize(old_size + sizeof(uint16_t));
+      std::memcpy(packed_bytes.data() + old_size, &escape, sizeof(uint16_t));
     }
   }
 
-  if (!packed_output.good() || !tail_output.good()) {
-    throw std::runtime_error("Failed while writing packed sequence chunk: " +
-                             packed_path);
+  if (cursor != sequence_bytes.size()) {
+    throw std::runtime_error(
+        "Corrupted sequence buffer: trailing bytes after expected records.");
   }
 
   return sequence_length;
 }
 
-void pack_sequence_chunk(const encoder_global &encoder_state,
-                         const int thread_id,
-                         uint64_t *thread_sequence_lengths) {
-  const sequence_pack_paths paths =
-      make_sequence_pack_paths(encoder_state.outfile_seq, thread_id);
-  SPRING_LOG_DEBUG("block_id=enc-pack-chunk-" + std::to_string(thread_id) +
-                   ", pack_sequence_chunk start: input=" + paths.input_path +
-                   ", packed=" + paths.packed_path);
-
-  const uint64_t sequence_length =
-      write_packed_sequence(paths.input_path, paths.packed_path,
-                            paths.tail_path, encoder_state.bisulfite_ternary);
-  thread_sequence_lengths[thread_id] = sequence_length;
-  SPRING_LOG_DEBUG("block_id=enc-pack-chunk-" + std::to_string(thread_id) +
-                   ", pack_sequence_chunk done: seq_bases=" +
-                   std::to_string(sequence_length));
-  safe_remove_file(paths.input_path);
-}
-
-void calculate_sequence_lengths(const encoder_global &encoder_state,
-                                uint64_t *thread_sequence_lengths) {
-  for (int tid = 0; tid < encoder_state.num_thr; tid++) {
-    std::string thread_seq_path =
-        encoder_state.outfile_seq + '.' + std::to_string(tid);
-    std::ifstream seq_in(thread_seq_path, std::ios::binary);
-    if (!seq_in.is_open()) {
-      thread_sequence_lengths[tid] = 0;
-      continue;
-    }
-
-    uint64_t total_bases = 0;
-    uint32_t record_len;
-    while (
-        seq_in.read(reinterpret_cast<char *>(&record_len), sizeof(uint32_t))) {
-      total_bases += record_len;
-      seq_in.seekg(record_len, std::ios::cur);
-    }
-    thread_sequence_lengths[tid] = total_bases;
-    seq_in.close();
-  }
-}
-
-void pack_compress_seq(const encoder_global &encoder_state,
-                       uint64_t *thread_sequence_lengths) {
+void pack_compress_seq(
+    const encoder_global &encoder_state,
+    const std::vector<encoded_metadata_buffer> &thread_metadata_outputs,
+    uint64_t *thread_sequence_lengths) {
   if (encoder_state.num_thr <= 0)
     return;
   SPRING_LOG_DEBUG("block_id=enc-pack-main, pack_compress_seq start: threads=" +
                    std::to_string(encoder_state.num_thr));
+  std::vector<std::vector<char>> packed_chunks(
+      static_cast<size_t>(encoder_state.num_thr));
 #pragma omp parallel for schedule(static)
   for (int tid = 0; tid < encoder_state.num_thr; tid++) {
-    pack_sequence_chunk(encoder_state, tid, thread_sequence_lengths);
+    SPRING_LOG_DEBUG(
+        "block_id=enc-pack-chunk-" + std::to_string(tid) +
+        ", pack_sequence_chunk start: bytes=" +
+        std::to_string(thread_metadata_outputs[tid].sequence_bytes.size()));
+    const uint64_t sequence_length =
+        write_packed_sequence(thread_metadata_outputs[tid].sequence_bytes,
+                              packed_chunks[static_cast<size_t>(tid)],
+                              encoder_state.bisulfite_ternary);
+    thread_sequence_lengths[tid] = sequence_length;
+    if (sequence_length != thread_metadata_outputs[tid].sequence_base_count) {
+      throw std::runtime_error(
+          "Sequence base count mismatch while packing encoder output.");
+    }
+    SPRING_LOG_DEBUG("block_id=enc-pack-chunk-" + std::to_string(tid) +
+                     ", pack_sequence_chunk done: seq_bases=" +
+                     std::to_string(sequence_length));
   }
   SPRING_LOG_DEBUG("block_id=enc-pack-main, per-thread packing complete.");
 
@@ -246,27 +191,18 @@ void pack_compress_seq(const encoder_global &encoder_state,
   }
   std::vector<char> copy_buffer(1 << 20);
   for (int tid = 0; tid < encoder_state.num_thr; tid++) {
-    const sequence_pack_paths paths =
-        make_sequence_pack_paths(encoder_state.outfile_seq, tid);
-    std::ifstream chunk_in(paths.packed_path, std::ios::binary | std::ios::ate);
-    if (chunk_in.is_open()) {
-      const uint64_t chunk_size = static_cast<uint64_t>(chunk_in.tellg());
-      chunk_in.seekg(0);
-      monolithic_out.write(reinterpret_cast<const char *>(&chunk_size),
-                           sizeof(uint64_t));
-      while (chunk_in.read(copy_buffer.data(), copy_buffer.size())) {
-        const std::streamsize bytes = chunk_in.gcount();
-        monolithic_out.write(copy_buffer.data(), bytes);
-      }
-      const std::streamsize tail_bytes = chunk_in.gcount();
-      if (tail_bytes > 0) {
-        monolithic_out.write(copy_buffer.data(), tail_bytes);
-      }
-      chunk_in.close();
-      safe_remove_file(paths.packed_path);
-    } else {
-      throw std::runtime_error("Failed to open packed sequence chunk: " +
-                               paths.packed_path);
+    const std::vector<char> &chunk = packed_chunks[static_cast<size_t>(tid)];
+    const uint64_t chunk_size = static_cast<uint64_t>(chunk.size());
+    monolithic_out.write(reinterpret_cast<const char *>(&chunk_size),
+                         sizeof(uint64_t));
+    size_t offset = 0;
+    while (offset < chunk.size()) {
+      const size_t bytes_to_write =
+          (std::min)(copy_buffer.size(), chunk.size() - offset);
+      std::memcpy(copy_buffer.data(), chunk.data() + offset, bytes_to_write);
+      monolithic_out.write(copy_buffer.data(),
+                           static_cast<std::streamsize>(bytes_to_write));
+      offset += bytes_to_write;
     }
   }
   monolithic_out.close();
@@ -407,12 +343,13 @@ std::string buildcontig(std::list<contig_reads> &current_contig,
 }
 
 void writecontig(const std::string &ref,
-                 std::list<contig_reads> &current_contig, std::ofstream &f_seq,
+                 std::list<contig_reads> &current_contig,
                  encoded_metadata_buffer &metadata_output,
                  const encoder_global &eg, uint64_t &abs_pos) {
   uint32_t ref_len = static_cast<uint32_t>(ref.size());
-  f_seq.write(reinterpret_cast<const char *>(&ref_len), sizeof(uint32_t));
-  f_seq << ref;
+  append_binary(metadata_output.sequence_bytes, ref_len);
+  metadata_output.sequence_bytes.append(ref);
+  metadata_output.sequence_base_count += ref.size();
   uint16_t pos_var;
   size_t previous_noise_offset = 0;
   auto current_contig_it = current_contig.begin();

@@ -196,21 +196,9 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
     int thread_id = omp_get_thread_num();
     const std::string block_id =
         std::string("enc-thread-") + std::to_string(thread_id);
-    const std::string seq_out_path =
-        eg.outfile_seq + '.' + std::to_string(thread_id);
-    std::ofstream sequence_output(seq_out_path, std::ios::binary);
     encoded_metadata_buffer thread_metadata;
-    if (!sequence_output.is_open()) {
-      std::string error_msg = std::string("Thread ") +
-                              std::to_string(thread_id) +
-                              ": Failed to open sequence output in encoder. "
-                              "Working directory: " +
-                              eg.basedir;
-      open_stream_errors[static_cast<size_t>(thread_id)] = error_msg;
-      done = true;
-    }
-    if (!done && static_cast<size_t>(thread_id) >=
-                     reorder_artifact.aligned_shards.size()) {
+    if (static_cast<size_t>(thread_id) >=
+        reorder_artifact.aligned_shards.size()) {
       open_stream_errors[static_cast<size_t>(thread_id)] =
           std::string("Thread ") + std::to_string(thread_id) +
           ": Missing in-memory reorder shard.";
@@ -493,8 +481,8 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
           current_contig.sort([](const contig_reads &a, const contig_reads &b) {
             return a.pos < b.pos;
           });
-          writecontig(reference_contig, current_contig, sequence_output,
-                      thread_metadata, eg, abs_pos);
+          writecontig(reference_contig, current_contig, thread_metadata, eg,
+                      abs_pos);
         }
         if (!done) {
           current_contig = {{current_read, relative_position, orientation,
@@ -508,7 +496,6 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
         contig_read_count++;
       }
     }
-    sequence_output.close();
     thread_metadata_outputs[static_cast<size_t>(thread_id)] =
         std::move(thread_metadata);
     SPRING_LOG_DEBUG(
@@ -750,9 +737,10 @@ encoder_main(const std::string &temp_dir,
   std::vector<uint64_t> thread_sequence_bases(static_cast<size_t>(eg.num_thr),
                                               0);
   uint64_t abs_pos = 0;
-  uint64_t abs_pos_thr;
-
-  calculate_sequence_lengths(eg, file_len_seq_thr.data());
+  for (int tid = 0; tid < eg.num_thr; tid++) {
+    file_len_seq_thr[static_cast<size_t>(tid)] =
+        thread_metadata_outputs[static_cast<size_t>(tid)].sequence_base_count;
+  }
 
   for (int tid = 0; tid < eg.num_thr; tid++) {
     thread_sequence_bases[static_cast<size_t>(tid)] = abs_pos;
@@ -810,25 +798,6 @@ encoder_main(const std::string &temp_dir,
       std::to_string(remaining_singleton_reads) +
       ", N_reads=" + std::to_string(remaining_n_reads) +
       ", unaligned_bases=" + std::to_string(len_unaligned));
-
-  abs_pos = 0;
-
-  std::ofstream fout_pos(eg.outfile_pos, std::ios::binary);
-  for (int tid = 0; tid < eg.num_thr; tid++) {
-    std::ifstream fin_pos(eg.outfile_pos + '.' + std::to_string(tid),
-                          std::ios::binary);
-    uint64_t max_pos_in_shard = 0;
-    while (fin_pos.read(byte_ptr(&abs_pos_thr), sizeof(uint64_t))) {
-      if (abs_pos_thr > max_pos_in_shard)
-        max_pos_in_shard = abs_pos_thr;
-      abs_pos_thr += abs_pos;
-      fout_pos.write(byte_ptr(&abs_pos_thr), sizeof(uint64_t));
-    }
-    fin_pos.close();
-    safe_remove_file(eg.outfile_pos + '.' + std::to_string(tid));
-    abs_pos += file_len_seq_thr[tid];
-  }
-  fout_pos.close();
   for (int tid = 0; tid < cp.encoding.num_thr; tid++) {
     if (static_cast<size_t>(tid) >=
         compression_params::ReadMetadata::kFileLenThrSize) {
@@ -863,7 +832,7 @@ encoder_main(const std::string &temp_dir,
   }
 
   // Generate per-thread .bsc sequence blocks as expected by the decompressor.
-  pack_compress_seq(eg, file_len_seq_thr.data());
+  pack_compress_seq(eg, thread_metadata_outputs, file_len_seq_thr.data());
 
   // Update metadata with final exact base counts after packing.
   for (int tid = 0; tid < cp.encoding.num_thr; tid++) {

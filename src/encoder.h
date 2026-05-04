@@ -7,7 +7,6 @@
 #include "reordered_streams.h"
 #include <bitset>
 #include <cstdint>
-#include <fstream>
 #include <list>
 #include <omp.h>
 #include <string>
@@ -55,6 +54,8 @@ struct contig_reads {
 };
 
 struct encoded_metadata_buffer {
+  std::string sequence_bytes;
+  uint64_t sequence_base_count = 0;
   std::vector<uint64_t> position_entries;
   std::string noise_serialized;
   std::vector<uint16_t> noise_positions;
@@ -68,15 +69,14 @@ std::string buildcontig(std::list<contig_reads> &current_contig,
                         const uint32_t &list_size);
 
 void writecontig(const std::string &ref,
-                 std::list<contig_reads> &current_contig, std::ofstream &f_seq,
+                 std::list<contig_reads> &current_contig,
                  encoded_metadata_buffer &metadata_output,
                  const encoder_global &eg, uint64_t &abs_pos);
 
-void pack_compress_seq(const encoder_global &encoder_state,
-                       uint64_t *thread_sequence_lengths);
-
-void calculate_sequence_lengths(const encoder_global &encoder_state,
-                                uint64_t *thread_sequence_lengths);
+void pack_compress_seq(
+    const encoder_global &encoder_state,
+    const std::vector<encoded_metadata_buffer> &thread_metadata_outputs,
+    uint64_t *thread_sequence_lengths);
 
 void getDataParams(encoder_global &eg, const compression_params &cp,
                    const reorder_encoder_artifact &reorder_artifact);
