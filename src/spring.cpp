@@ -14,6 +14,7 @@
 #include <iostream>
 #include <omp.h>
 #include <random>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -625,29 +626,27 @@ void perform_audit_standard(const std::string &archive_path,
   std::string audit_dir = temp_dir + "/audit_extract";
   std::filesystem::create_directories(audit_dir);
   SPRING_LOG_DEBUG("Audit (standard) started for archive: " + archive_path +
-                   " (extract dir: " + audit_dir + ")");
+                   " (scratch dir: " + audit_dir + ")");
 
   try {
-    extract_tar_archive(archive_path, audit_dir);
+    decompression_archive_artifact artifact;
+    artifact.files = read_all_files_from_tar_memory(archive_path);
+    artifact.scratch_dir = audit_dir;
 
-    std::string compression_params_path = audit_dir + "/cp.bin";
-    std::ifstream compression_params_input(compression_params_path,
-                                           std::ios::binary);
-    if (!compression_params_input.is_open())
-      throw std::runtime_error("Can't open parameter file in audit.");
+    std::istringstream compression_params_input(artifact.require("cp.bin"),
+                                                std::ios::binary);
 
     compression_params cp{};
     read_compression_params(compression_params_input, cp);
     if (!compression_params_input.good()) {
       throw std::runtime_error("Can't read parameter file in audit.");
     }
-    compression_params_input.close();
 
     NullDecompressionSink sink;
     if (cp.encoding.long_flag) {
-      decompress_long(audit_dir, sink, cp, cp.encoding.num_thr);
+      decompress_long(artifact, sink, cp, cp.encoding.num_thr);
     } else {
-      decompress_short(audit_dir, sink, cp, cp.encoding.num_thr);
+      decompress_short(artifact, sink, cp, cp.encoding.num_thr);
     }
 
     const bool is_lossless =
@@ -1301,25 +1300,21 @@ void compress(const std::string &temp_dir,
                     cb_source_path, cb_len);
 }
 
-void decompress_extracted_archive(const std::string &temp_dir,
-                                  const std::vector<std::string> &input_paths,
-                                  const std::vector<std::string> &output_paths,
-                                  const int num_thr, const bool unzip_flag) {
+void decompress_archive_artifact(const decompression_archive_artifact &artifact,
+                                 const std::vector<std::string> &input_paths,
+                                 const std::vector<std::string> &output_paths,
+                                 const int num_thr, const bool unzip_flag) {
   const auto decompression_start = clock_type::now();
   auto *progress_ptr = ProgressBar::GlobalInstance();
   ProgressBar dummy_progress(true);
   auto &progress = progress_ptr ? *progress_ptr : dummy_progress;
   compression_params cp{};
 
-  std::string compression_params_path = temp_dir + "/cp.bin";
-  std::ifstream compression_params_input(compression_params_path,
-                                         std::ios::binary);
-  if (!compression_params_input.is_open())
-    throw std::runtime_error("Can't open parameter file.");
+  std::istringstream compression_params_input(artifact.require("cp.bin"),
+                                              std::ios::binary);
   read_compression_params(compression_params_input, cp);
   if (!compression_params_input.good())
     throw std::runtime_error("Can't read compression parameters.");
-  compression_params_input.close();
   // IMPORTANT: cp.encoding.num_thr is the *encoding* thread count and controls
   // how many packed sequence chunks exist in the archive. DO NOT override it
   // with the user-specified decoding parallelism, or the decompressor will
@@ -1375,9 +1370,9 @@ void decompress_extracted_archive(const std::string &temp_dir,
           compression_levels, should_gzip, should_bgzf);
 
   if (cp.encoding.long_flag) {
-    decompress_long(temp_dir, *sink, cp, decoding_num_thr);
+    decompress_long(artifact, *sink, cp, decoding_num_thr);
   } else {
-    decompress_short(temp_dir, *sink, cp, decoding_num_thr);
+    decompress_short(artifact, *sink, cp, decoding_num_thr);
   }
 
   run_timed_step("Verifying integrity ...", "Integrity check", [&] {
@@ -1439,12 +1434,13 @@ void decompress_standard(const std::string &temp_dir,
                          const int num_thr, const int /*compression_level*/,
                          const log_level /*verbosity_level*/,
                          const bool unzip_flag, const bool untar_first = true) {
-  if (untar_first) {
-    std::filesystem::create_directories(temp_dir);
-    extract_tar_archive(input_paths[0], temp_dir);
-  }
-  decompress_extracted_archive(temp_dir, input_paths, output_paths, num_thr,
-                               unzip_flag);
+  (void)untar_first;
+  decompression_archive_artifact artifact;
+  artifact.files = read_all_files_from_tar_memory(input_paths[0]);
+  artifact.scratch_dir = temp_dir;
+  std::filesystem::create_directories(artifact.scratch_dir);
+  decompress_archive_artifact(artifact, input_paths, output_paths, num_thr,
+                              unzip_flag);
 }
 
 void decompress_standard_from_memory(
@@ -1455,10 +1451,12 @@ void decompress_standard_from_memory(
     const bool unzip_flag) {
   (void)compression_level;
   (void)verbosity_level;
-  std::filesystem::create_directories(temp_dir);
-  extract_tar_archive_from_memory(archive_contents, temp_dir);
-  decompress_extracted_archive(temp_dir, {archive_label}, output_paths, num_thr,
-                               unzip_flag);
+  decompression_archive_artifact artifact;
+  artifact.files = read_all_files_from_tar_bytes(archive_contents);
+  artifact.scratch_dir = temp_dir;
+  std::filesystem::create_directories(artifact.scratch_dir);
+  decompress_archive_artifact(artifact, {archive_label}, output_paths, num_thr,
+                              unzip_flag);
 }
 
 void materialize_aliased_group_output_from_memory(
@@ -1616,13 +1614,11 @@ void decompress(const std::string &temp_dir,
     return;
   }
 
-  run_timed_step("Untarring tar archive ...", "Untarring archive", [&] {
-    progress.set_stage("Untarring", 0.0F, 0.10F);
-    extract_tar_archive(input_paths[0], temp_dir);
+  run_timed_step("Loading archive into memory ...", "Loading archive", [&] {
+    progress.set_stage("Loading archive", 0.0F, 0.10F);
+    decompress_standard(temp_dir, input_paths, output_paths, num_thr,
+                        compression_level, verbosity_level, unzip_flag, false);
   });
-
-  decompress_standard(temp_dir, input_paths, output_paths, num_thr,
-                      compression_level, verbosity_level, unzip_flag, false);
   ProgressBar::SetGlobalInstance(nullptr);
 }
 

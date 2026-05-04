@@ -8,10 +8,28 @@
 #include <cstdint>
 #include <fstream>
 #include <string>
+#include <unordered_map>
 
 namespace spring {
 
 struct compression_params;
+
+struct decompression_archive_artifact {
+  std::unordered_map<std::string, std::string> files;
+  std::string scratch_dir;
+
+  [[nodiscard]] bool contains(const std::string &path) const {
+    return files.contains(path);
+  }
+
+  [[nodiscard]] const std::string &require(const std::string &path) const {
+    auto it = files.find(path);
+    if (it == files.end()) {
+      throw std::runtime_error("Archive is missing required member: " + path);
+    }
+    return it->second;
+  }
+};
 
 /**
  * @brief Represents a single genomic record (from FASTA or FASTQ).
@@ -104,18 +122,21 @@ public:
 };
 
 // Short-read archives reconstruct aligned and unaligned records separately.
-void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
-                      compression_params &cp, int decoding_num_thr);
+void decompress_short(const decompression_archive_artifact &artifact,
+                      DecompressionSink &sink, compression_params &cp,
+                      int decoding_num_thr);
 
 // Long-read archives store read streams directly, without reference-based
 // reconstruction.
-void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
-                     compression_params &cp, int decoding_num_thr);
+void decompress_long(const decompression_archive_artifact &artifact,
+                     DecompressionSink &sink, compression_params &cp,
+                     int decoding_num_thr);
 
 // Packed reference chunks are decoded once, then concatenated by callers.
-void decompress_unpack_seq(const std::string &packed_seq_base_path,
-                           int encoding_thread_count, int decoding_thread_count,
-                           const compression_params &cp);
+std::vector<std::string> decompress_unpack_seq_chunks(
+    const decompression_archive_artifact &artifact,
+    const std::string &packed_seq_base_path, int encoding_thread_count,
+    int decoding_thread_count, const compression_params &cp);
 
 } // namespace spring
 

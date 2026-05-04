@@ -7,14 +7,12 @@
 #include "fs_utils.h"
 #include "integrity_utils.h"
 #include "io_utils.h"
-#include "libbsc/bsc.h"
 #include "params.h"
 #include "parse_utils.h"
 #include "progress.h"
 #ifndef _WIN32
 #include "raii.h"
 #endif
-#include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -33,9 +31,11 @@
 #include <array>
 #include <iterator>
 #include <omp.h>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
+
 
 namespace spring {
 
@@ -49,19 +49,9 @@ struct thread_range {
 struct reference_chunk {
   uint64_t start_offset;
   uint64_t size;
-  std::string path;
-#ifndef _WIN32
-  MmapView mmap;
-#endif
   std::string owned_data;
   const char *data = nullptr;
 };
-
-std::runtime_error file_error(const std::string &prefix,
-                              const std::string &path) {
-  return std::runtime_error(prefix + ": " + path + ": " +
-                            std::string(strerror(errno)));
-}
 
 std::vector<char> read_binary_file(const std::string &path) {
   std::ifstream input(path, std::ios::binary | std::ios::ate);
@@ -80,49 +70,168 @@ std::vector<char> read_binary_file(const std::string &path) {
   return bytes;
 }
 
-void open_reference_chunk(reference_chunk &chunk) {
-#ifdef _WIN32
-  if (chunk.size == 0) {
-    chunk.owned_data.clear();
-    chunk.data = nullptr;
-    return;
+void write_binary_bytes(const std::string &path, const std::string &bytes) {
+  std::ofstream output(path, std::ios::binary | std::ios::trunc);
+  if (!output.is_open()) {
+    throw std::runtime_error("Failed to open binary output: " + path);
   }
-
-  std::ifstream input(chunk.path, std::ios::binary);
-  if (!input.is_open()) {
-    throw file_error("Error opening decoded reference chunk", chunk.path);
+  if (!bytes.empty()) {
+    output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
   }
-
-  chunk.owned_data.resize(static_cast<size_t>(chunk.size));
-  input.read(chunk.owned_data.data(),
-             static_cast<std::streamsize>(chunk.owned_data.size()));
-  if (!input ||
-      input.gcount() != static_cast<std::streamsize>(chunk.owned_data.size())) {
-    throw std::runtime_error("Error reading decoded reference chunk: " +
-                             chunk.path);
-  }
-
-  chunk.data = chunk.owned_data.data();
-#else
-  try {
-    chunk.mmap.mapFromPath(chunk.path, static_cast<size_t>(chunk.size));
-    chunk.data = chunk.mmap.data();
-  } catch (const std::exception &e) {
-    throw std::runtime_error(
-        std::string("Error mapping decoded reference chunk: ") + e.what());
-  }
-#endif
 }
 
-void close_reference_chunk(reference_chunk &chunk) {
-#ifdef _WIN32
-  chunk.owned_data.clear();
-  chunk.data = nullptr;
-#else
-  chunk.mmap.unmap();
-  chunk.data = nullptr;
-#endif
+std::string sanitize_scratch_member_name(const std::string &member_name) {
+  std::string sanitized = member_name;
+  std::replace(sanitized.begin(), sanitized.end(), '/', '_');
+  std::replace(sanitized.begin(), sanitized.end(), '\\', '_');
+  return sanitized;
+}
+
+std::string
+materialize_archive_member(const decompression_archive_artifact &artifact,
+                           const std::string &member_name) {
+  if (artifact.scratch_dir.empty()) {
+    throw std::runtime_error("Archive scratch directory is not configured.");
+  }
+  std::filesystem::create_directories(artifact.scratch_dir);
+  const std::string output_path =
+      artifact.scratch_dir + "/" + sanitize_scratch_member_name(member_name);
+  write_binary_bytes(output_path, artifact.require(member_name));
+  return output_path;
+}
+
+std::string
+materialize_archive_bytes(const decompression_archive_artifact &artifact,
+                          const std::string &member_name,
+                          const std::string &contents) {
+  if (artifact.scratch_dir.empty()) {
+    throw std::runtime_error("Archive scratch directory is not configured.");
+  }
+  std::filesystem::create_directories(artifact.scratch_dir);
+  const std::string output_path =
+      artifact.scratch_dir + "/" + sanitize_scratch_member_name(member_name);
+  write_binary_bytes(output_path, contents);
+  return output_path;
+}
+
+std::vector<char>
+archive_member_bytes(const decompression_archive_artifact &artifact,
+                     const std::string &member_name) {
+  const std::string &contents = artifact.require(member_name);
+  return std::vector<char>(contents.begin(), contents.end());
+}
+
+std::vector<char>
+decompress_archive_bsc_member(const decompression_archive_artifact &artifact,
+                              const std::string &member_name,
+                              const bool allow_raw_fallback = false) {
+  const std::vector<char> compressed_bytes =
+      archive_member_bytes(artifact, member_name);
+  if (compressed_bytes.empty()) {
+    return {};
+  }
+  try {
+    return bsc_decompress_bytes(compressed_bytes);
+  } catch (const std::exception &) {
+    if (!allow_raw_fallback) {
+      throw;
+    }
+    return compressed_bytes;
+  }
+}
+
+class memory_cursor {
+public:
+  explicit memory_cursor(const std::vector<char> &bytes) : bytes_(bytes) {}
+
+  template <typename T> T read(const std::string &label) {
+    if (offset_ + sizeof(T) > bytes_.size()) {
+      throw std::runtime_error("Corrupt archive: truncated " + label);
+    }
+    T value{};
+    std::memcpy(&value, bytes_.data() + offset_, sizeof(T));
+    offset_ += sizeof(T);
+    return value;
+  }
+
+  char read_char(const std::string &label) { return read<char>(label); }
+
+  void read_bytes(char *destination, size_t count, const std::string &label) {
+    if (offset_ + count > bytes_.size()) {
+      throw std::runtime_error("Corrupt archive: truncated " + label);
+    }
+    if (count > 0) {
+      std::memcpy(destination, bytes_.data() + offset_, count);
+      offset_ += count;
+    }
+  }
+
+  [[nodiscard]] std::string read_line(const std::string &label) {
+    if (offset_ > bytes_.size()) {
+      throw std::runtime_error("Corrupt archive: truncated " + label);
+    }
+    const char *begin = bytes_.data() + offset_;
+    const size_t remaining = bytes_.size() - offset_;
+    const void *newline_ptr = std::memchr(begin, '\n', remaining);
+    const size_t line_len =
+        newline_ptr == nullptr
+            ? remaining
+            : static_cast<size_t>(static_cast<const char *>(newline_ptr) -
+                                  begin);
+    std::string line(begin, line_len);
+    offset_ += line_len;
+    if (newline_ptr != nullptr) {
+      offset_ += 1;
+    }
+    return line;
+  }
+
+private:
+  const std::vector<char> &bytes_;
+  size_t offset_ = 0;
 };
+
+std::vector<std::string> slice_monolithic_id_blocks(
+    const decompression_archive_artifact &artifact,
+    const std::string &member_name, const uint64_t *file_len_thr,
+    const uint32_t num_reads, const uint32_t num_reads_per_block) {
+  if (!artifact.contains(member_name)) {
+    return {};
+  }
+
+  const std::vector<char> packed_bytes =
+      decompress_archive_bsc_member(artifact, member_name);
+  const uint32_t num_blocks =
+      (num_reads + num_reads_per_block - 1) / num_reads_per_block;
+  if (num_blocks > compression_params::ReadMetadata::kFileLenThrSize) {
+    throw std::runtime_error(
+        std::string("Archive contains too many ID blocks (") +
+        std::to_string(num_blocks) + ") for metadata array size (" +
+        std::to_string(compression_params::ReadMetadata::kFileLenThrSize) +
+        "). Increase array size in params.h.");
+  }
+
+  std::vector<std::string> blocks(static_cast<size_t>(num_blocks));
+  size_t cursor = 0;
+  for (uint32_t block_index = 0; block_index < num_blocks; ++block_index) {
+    const uint64_t block_len = file_len_thr[block_index];
+    if (block_len == 0) {
+      continue;
+    }
+    if (cursor + block_len > packed_bytes.size()) {
+      throw std::runtime_error(
+          "Corrupt archive: truncated monolithic ID payload.");
+    }
+    blocks[block_index].assign(packed_bytes.data() + cursor,
+                               static_cast<size_t>(block_len));
+    cursor += static_cast<size_t>(block_len);
+  }
+  if (cursor != packed_bytes.size()) {
+    throw std::runtime_error(
+        "Corrupt archive: trailing bytes in monolithic ID payload.");
+  }
+  return blocks;
+}
 
 std::string make_decompress_step_log_message(const char *label,
                                              const uint32_t num_reads_done,
@@ -145,37 +254,34 @@ public:
   reference_sequence_store(reference_sequence_store &&) = delete;
   reference_sequence_store &operator=(reference_sequence_store &&) = delete;
 
-  reference_sequence_store(const std::string &packed_seq_path,
+  reference_sequence_store(const decompression_archive_artifact &artifact,
+                           const std::string &packed_seq_path,
                            const int encoding_thread_count,
                            const int decode_thread_count,
                            const compression_params &cp) {
-    decompress_unpack_seq(packed_seq_path, encoding_thread_count,
-                          decode_thread_count, cp);
+    std::vector<std::string> decoded_chunks = decompress_unpack_seq_chunks(
+        artifact, packed_seq_path, encoding_thread_count, decode_thread_count,
+        cp);
 
     chunks_.reserve(static_cast<size_t>(encoding_thread_count));
     uint64_t next_start_offset = 0;
     for (int encoding_thread_id = 0; encoding_thread_id < encoding_thread_count;
          encoding_thread_id++) {
       reference_chunk chunk;
-      chunk.path = packed_seq_path + '.' + std::to_string(encoding_thread_id);
-
       chunk.size = cp.read_info.file_len_seq_thr[encoding_thread_id];
       chunk.start_offset = next_start_offset;
       next_start_offset += chunk.size;
-
-      open_reference_chunk(chunk);
+      if (static_cast<size_t>(encoding_thread_id) < decoded_chunks.size()) {
+        chunk.owned_data = std::move(decoded_chunks[encoding_thread_id]);
+      }
       start_offsets_.push_back(chunk.start_offset);
       chunks_.push_back(std::move(chunk));
+      chunks_.back().data = chunks_.back().owned_data.data();
       total_size_ = next_start_offset;
     }
   }
 
-  ~reference_sequence_store() {
-    for (reference_chunk &chunk : chunks_) {
-      close_reference_chunk(chunk);
-      safe_remove_file(chunk.path);
-    }
-  }
+  ~reference_sequence_store() = default;
 
   [[nodiscard]] std::string read(uint64_t start_offset,
                                  uint32_t read_length) const {
@@ -482,59 +588,32 @@ void write_step_output(std::ofstream &output_stream, std::string *id_buffer,
                     quality_header_has_id);
 }
 
-void decode_packed_sequence_chunk(const std::string &packed_seq_base_path,
-                                  const int encoding_thread_id,
-                                  const uint64_t num_bases,
-                                  bool bisulfite_ternary) {
+std::string decode_packed_sequence_chunk_bytes(
+    const std::vector<char> &packed_bytes, const int encoding_thread_id,
+    const uint64_t num_bases, bool bisulfite_ternary) {
   SPRING_LOG_DEBUG("decode_packed_sequence_chunk start: chunk=" +
                    std::to_string(encoding_thread_id) +
                    ", num_bases=" + std::to_string(num_bases) +
                    ", ternary=" + (bisulfite_ternary ? "yes" : "no"));
-  const std::string chunk_base_path =
-      packed_seq_base_path + '.' + std::to_string(encoding_thread_id);
-  const std::string temporary_output_path = chunk_base_path + ".tmp";
   static const char base_lookup[4] = {'A', 'G', 'C', 'T'};
 
-  std::ofstream unpacked_output(temporary_output_path, std::ios::binary);
-  if (!unpacked_output.is_open())
-    throw std::runtime_error("Cannot open temporary output: " +
-                             temporary_output_path);
-  std::ifstream packed_input(chunk_base_path, std::ios::binary);
-  if (!packed_input.is_open())
-    throw std::runtime_error("Cannot open packed input: " + chunk_base_path);
-
-  std::vector<char> unpacked_buffer;
-  unpacked_buffer.reserve(1U << 18);
+  std::string decoded;
+  decoded.reserve(static_cast<size_t>(num_bases));
   uint64_t bases_decoded = 0;
+  size_t packed_offset = 0;
 
   if (!bisulfite_ternary) {
-    std::vector<uint8_t> packed_buffer(1U << 16);
-    while (packed_input && bases_decoded < num_bases) {
-      packed_input.read(reinterpret_cast<char *>(packed_buffer.data()),
-                        static_cast<std::streamsize>(packed_buffer.size()));
-      const std::streamsize packed_bytes_read = packed_input.gcount();
-      if (packed_bytes_read <= 0)
-        break;
-
-      unpacked_buffer.clear();
-      for (std::streamsize packed_index = 0; packed_index < packed_bytes_read;
-           packed_index++) {
-        uint8_t byte = packed_buffer[packed_index];
-        for (int i = 0; i < 4 && bases_decoded < num_bases; i++) {
-          unpacked_buffer.push_back(base_lookup[byte & 3]);
-          byte >>= 2;
-          bases_decoded++;
-        }
+    while (packed_offset < packed_bytes.size() && bases_decoded < num_bases) {
+      uint8_t byte = static_cast<uint8_t>(packed_bytes[packed_offset++]);
+      for (int i = 0; i < 4 && bases_decoded < num_bases; i++) {
+        decoded.push_back(base_lookup[byte & 3]);
+        byte >>= 2;
+        bases_decoded++;
       }
-      unpacked_output.write(
-          unpacked_buffer.data(),
-          static_cast<std::streamsize>(unpacked_buffer.size()));
     }
   } else {
-    while (packed_input && bases_decoded < num_bases) {
-      uint8_t byte;
-      if (!packed_input.read(reinterpret_cast<char *>(&byte), 1))
-        break;
+    while (packed_offset < packed_bytes.size() && bases_decoded < num_bases) {
+      uint8_t byte = static_cast<uint8_t>(packed_bytes[packed_offset++]);
 
       if (byte < 243) {
         // Standard ternary: 5 bases per byte
@@ -542,33 +621,35 @@ void decode_packed_sequence_chunk(const std::string &packed_seq_base_path,
           uint8_t val = byte % 3;
           byte /= 3;
           static constexpr char kBases[3] = {'A', 'G', 'T'};
-          unpacked_output.put(kBases[val]);
+          decoded.push_back(kBases[val]);
           bases_decoded++;
         }
       } else {
         // Escape: 2 bits per base, 5 bases in uint16_t
-        uint16_t escape;
-        if (!packed_input.read(reinterpret_cast<char *>(&escape),
-                               sizeof(uint16_t)))
-          break;
+        if (packed_offset + sizeof(uint16_t) > packed_bytes.size()) {
+          throw std::runtime_error(
+              "Corrupt archive: truncated bisulfite sequence escape block.");
+        }
+        uint16_t escape = 0;
+        std::memcpy(&escape, packed_bytes.data() + packed_offset,
+                    sizeof(uint16_t));
+        packed_offset += sizeof(uint16_t);
         for (int k = 0; k < 5 && bases_decoded < num_bases; k++) {
           uint8_t val = (escape >> (2 * k)) & 3;
-          unpacked_output.put(base_lookup[val]);
+          decoded.push_back(base_lookup[val]);
           bases_decoded++;
         }
       }
     }
   }
-
-  packed_input.close();
-  unpacked_output.close();
   SPRING_LOG_DEBUG("decode_packed_sequence_chunk done: chunk=" +
                    std::to_string(encoding_thread_id) +
                    ", bases=" + std::to_string(bases_decoded));
-  safe_remove_file(chunk_base_path);
-  if (!safe_rename_file(temporary_output_path, chunk_base_path))
-    throw std::runtime_error("Failed to rename decoded chunk " +
-                             std::to_string(encoding_thread_id));
+  if (bases_decoded != num_bases) {
+    throw std::runtime_error(
+        "Corrupt archive: sequence chunk decoded base count mismatch.");
+  }
+  return decoded;
 }
 
 bool is_gzip_output_path(const std::string &output_path) {
@@ -645,55 +726,14 @@ int resolve_archive_encoding_thread_count(const compression_params &cp) {
   return resolved;
 }
 
-bool decompress_and_slice_id(const std::string &temp_path_bsc,
-                             const std::string &base_id_path,
-                             const uint64_t *file_len_thr,
-                             const uint32_t num_reads,
-                             const uint32_t num_reads_per_block) {
-  const std::string packed_path = base_id_path + ".packed";
-  if (!std::filesystem::exists(temp_path_bsc))
-    return false;
-
-  safe_bsc_decompress(temp_path_bsc, packed_path);
-
-  std::ifstream packed_in(packed_path, std::ios::binary);
-  if (!packed_in)
-    throw std::runtime_error("Failed to open packed ID file for slicing.");
-
-  const uint32_t num_blocks =
-      (num_reads + num_reads_per_block - 1) / num_reads_per_block;
-  if (num_blocks > compression_params::ReadMetadata::kFileLenThrSize) {
-    throw std::runtime_error(
-        std::string("Archive contains too many ID blocks (") +
-        std::to_string(num_blocks) + ") for metadata array size (" +
-        std::to_string(compression_params::ReadMetadata::kFileLenThrSize) +
-        "). Increase array size in params.h.");
-  }
-  for (uint32_t b = 0; b < num_blocks; b++) {
-    const uint64_t block_len = file_len_thr[b];
-    if (block_len == 0)
-      continue;
-
-    const std::string block_path = block_file_path(base_id_path, b);
-    std::ofstream block_out(block_path, std::ios::binary);
-    if (!block_out)
-      throw std::runtime_error("Failed to open ID block file for slicing.");
-
-    std::vector<char> buffer(block_len);
-    packed_in.read(buffer.data(), block_len);
-    block_out.write(buffer.data(), block_len);
-  }
-  packed_in.close();
-  std::filesystem::remove(packed_path);
-  return true;
-}
-
 void set_dec_noise_array(std::array<std::array<char, 128>, 128> &dec_noise);
 
-void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
-                      compression_params &cp, int decoding_num_thr) {
+void decompress_short(const decompression_archive_artifact &artifact,
+                      DecompressionSink &sink, compression_params &cp,
+                      int decoding_num_thr) {
+  (void)decoding_num_thr;
   SPRING_LOG_DEBUG(
-      "decompress_short start: temp_dir=" + temp_dir +
+      "decompress_short start: scratch_dir=" + artifact.scratch_dir +
       ", num_reads=" + std::to_string(cp.read_info.num_reads) +
       ", paired_end=" + std::string(cp.encoding.paired_end ? "true" : "false") +
       ", preserve_order=" +
@@ -702,55 +742,29 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
       std::string(cp.encoding.preserve_id ? "true" : "false") +
       ", preserve_quality=" +
       std::string(cp.encoding.preserve_quality ? "true" : "false"));
-  std::string base_dir = temp_dir;
 
-  std::string file_seq = base_dir + "/read_seq.bin";
-  std::string file_flag = base_dir + "/read_flag.txt";
-  std::string file_pos = base_dir + "/read_pos.bin";
-  std::string file_pos_pair = base_dir + "/read_pos_pair.bin";
-  std::string file_RC = base_dir + "/read_rev.txt";
-  std::string file_RC_pair = base_dir + "/read_rev_pair.txt";
-  std::string file_readlength = base_dir + "/read_lengths.bin";
-  std::string file_unaligned = base_dir + "/read_unaligned.txt";
-  std::string file_noise = base_dir + "/read_noise.txt";
-  std::string file_noisepos = base_dir + "/read_noisepos.bin";
-  std::string input_quality_paths[2];
-  std::string input_id_paths[2];
+  const std::string file_seq = "read_seq.bin";
+  const std::string file_flag = "read_flag.txt";
+  const std::string file_pos = "read_pos.bin";
+  const std::string file_pos_pair = "read_pos_pair.bin";
+  const std::string file_rc = "read_rev.txt";
+  const std::string file_rc_pair = "read_rev_pair.txt";
+  const std::string file_readlength = "read_lengths.bin";
+  const std::string file_unaligned = "read_unaligned.txt";
+  const std::string file_noise = "read_noise.txt";
+  const std::string file_noisepos = "read_noisepos.bin";
+  const std::array<std::string, 2> input_quality_paths = {"quality_1",
+                                                          "quality_2"};
+  const std::array<std::string, 2> input_id_paths = {"id_1", "id_2"};
 
-  input_quality_paths[0] = base_dir + "/quality_1";
-  input_quality_paths[1] = base_dir + "/quality_2";
-  input_id_paths[0] = base_dir + "/id_1";
-  input_id_paths[1] = base_dir + "/id_2";
-
-  bool monolithic_id[2] = {false, false};
-  if (cp.encoding.preserve_id) {
-    const uint32_t file_read_count = (cp.encoding.paired_end)
-                                         ? (cp.read_info.num_reads / 2)
-                                         : cp.read_info.num_reads;
-    monolithic_id[0] =
-        decompress_and_slice_id(input_id_paths[0] + ".bsc", input_id_paths[0],
-                                cp.read_info.file_len_id_thr, file_read_count,
-                                cp.encoding.num_reads_per_block);
-    if (cp.encoding.paired_end && !cp.read_info.paired_id_match) {
-      monolithic_id[1] =
-          decompress_and_slice_id(input_id_paths[1] + ".bsc", input_id_paths[1],
-                                  cp.read_info.file_len_id_thr, file_read_count,
-                                  cp.encoding.num_reads_per_block);
-    }
-  }
-  SPRING_LOG_DEBUG("decompress_short ID block mode: stream1_monolithic=" +
-                   std::string(monolithic_id[0] ? "true" : "false") +
-                   ", stream2_monolithic=" +
-                   std::string(monolithic_id[1] ? "true" : "false"));
-
-  uint32_t num_reads = cp.read_info.num_reads;
-  uint8_t paired_id_code = cp.read_info.paired_id_code;
-  bool paired_id_match = cp.read_info.paired_id_match;
-  uint32_t num_reads_per_block = cp.encoding.num_reads_per_block;
-  bool paired_end = cp.encoding.paired_end;
-  bool preserve_id = cp.encoding.preserve_id;
-  bool preserve_quality = cp.encoding.preserve_quality;
-  bool preserve_order = cp.encoding.preserve_order;
+  const uint32_t num_reads = cp.read_info.num_reads;
+  const uint8_t paired_id_code = cp.read_info.paired_id_code;
+  const bool paired_id_match = cp.read_info.paired_id_match;
+  const uint32_t num_reads_per_block = cp.encoding.num_reads_per_block;
+  const bool paired_end = cp.encoding.paired_end;
+  const bool preserve_id = cp.encoding.preserve_id;
+  const bool preserve_quality = cp.encoding.preserve_quality;
+  const bool preserve_order = cp.encoding.preserve_order;
   const bool poly_at_stripped = cp.encoding.poly_at_stripped;
   const bool atac_adapter_stripped = cp.encoding.atac_adapter_stripped;
   const bool cb_prefix_stripped = cp.encoding.cb_prefix_stripped;
@@ -760,70 +774,63 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
   const int archive_encoding_thread_count =
       resolve_archive_encoding_thread_count(cp);
 
-  // Open tail files if poly-A/T stripping was used during compression.
-  std::ifstream f_tail_1, f_tail_2;
+  std::array<std::vector<std::string>, 2> monolithic_id_blocks;
+  bool monolithic_id[2] = {false, false};
+  if (preserve_id) {
+    const uint32_t file_read_count = paired_end ? (num_reads / 2) : num_reads;
+    monolithic_id_blocks[0] = slice_monolithic_id_blocks(
+        artifact, input_id_paths[0] + ".bsc", cp.read_info.file_len_id_thr,
+        file_read_count, num_reads_per_block);
+    monolithic_id[0] = !monolithic_id_blocks[0].empty();
+    if (paired_end && !paired_id_match) {
+      monolithic_id_blocks[1] = slice_monolithic_id_blocks(
+          artifact, input_id_paths[1] + ".bsc", cp.read_info.file_len_id_thr,
+          file_read_count, num_reads_per_block);
+      monolithic_id[1] = !monolithic_id_blocks[1].empty();
+    }
+  }
+
+  std::vector<char> tail_bytes_1;
+  std::vector<char> tail_bytes_2;
+  memory_cursor *tail_cursor_1 = nullptr;
+  memory_cursor *tail_cursor_2 = nullptr;
+  std::optional<memory_cursor> tail_cursor_storage_1;
+  std::optional<memory_cursor> tail_cursor_storage_2;
   if (poly_at_stripped) {
-    f_tail_1.open(temp_dir + "/tail_1.bin", std::ios::binary);
-    if (!f_tail_1)
-      throw std::runtime_error("poly_at_stripped set but tail_1.bin not found");
+    tail_bytes_1 = archive_member_bytes(artifact, "tail_1.bin");
+    tail_cursor_storage_1.emplace(tail_bytes_1);
+    tail_cursor_1 = &*tail_cursor_storage_1;
     if (paired_end) {
-      f_tail_2.open(temp_dir + "/tail_2.bin", std::ios::binary);
-      if (!f_tail_2)
-        throw std::runtime_error(
-            "poly_at_stripped set but tail_2.bin not found");
+      tail_bytes_2 = archive_member_bytes(artifact, "tail_2.bin");
+      tail_cursor_storage_2.emplace(tail_bytes_2);
+      tail_cursor_2 = &*tail_cursor_storage_2;
     }
   }
 
-  std::ifstream f_atac_adapter_1, f_atac_adapter_2;
+  std::vector<char> adapter_bytes_1;
+  std::vector<char> adapter_bytes_2;
+  std::optional<memory_cursor> adapter_cursor_1;
+  std::optional<memory_cursor> adapter_cursor_2;
   if (atac_adapter_stripped) {
-    const std::string atac_adapter_1_compressed =
-        temp_dir + "/atac_adapter_1.bin.bsc";
-    if (std::filesystem::exists(atac_adapter_1_compressed)) {
-      bsc::BSC_decompress(atac_adapter_1_compressed.c_str(),
-                          (temp_dir + "/atac_adapter_1.bin").c_str());
-    }
-    f_atac_adapter_1.open(temp_dir + "/atac_adapter_1.bin", std::ios::binary);
-    if (!f_atac_adapter_1) {
-      throw std::runtime_error(
-          "atac_adapter_stripped set but atac_adapter_1.bin not found");
-    }
+    adapter_bytes_1 =
+        decompress_archive_bsc_member(artifact, "atac_adapter_1.bin.bsc");
+    adapter_cursor_1.emplace(adapter_bytes_1);
     if (paired_end) {
-      const std::string atac_adapter_2_compressed =
-          temp_dir + "/atac_adapter_2.bin.bsc";
-      if (std::filesystem::exists(atac_adapter_2_compressed)) {
-        bsc::BSC_decompress(atac_adapter_2_compressed.c_str(),
-                            (temp_dir + "/atac_adapter_2.bin").c_str());
-      }
-      f_atac_adapter_2.open(temp_dir + "/atac_adapter_2.bin", std::ios::binary);
-      if (!f_atac_adapter_2) {
-        throw std::runtime_error(
-            "atac_adapter_stripped set but atac_adapter_2.bin not found");
-      }
+      adapter_bytes_2 =
+          decompress_archive_bsc_member(artifact, "atac_adapter_2.bin.bsc");
+      adapter_cursor_2.emplace(adapter_bytes_2);
     }
   }
 
-  // Load CB prefix streams into memory if prefix stripping was used during
-  // compression.
   std::vector<char> cb_seq_bytes;
   std::vector<char> cb_qual_bytes;
   size_t cb_seq_cursor = 0;
   size_t cb_qual_cursor = 0;
   if (cb_prefix_stripped) {
-    const std::string cb_seq_compressed = temp_dir + "/cb_prefix.dna.bsc";
-    if (!std::filesystem::exists(cb_seq_compressed)) {
-      throw std::runtime_error(
-          "cb_prefix_stripped set but cb_prefix.dna.bsc not found");
-    }
-    cb_seq_bytes = bsc_decompress_bytes(read_binary_file(cb_seq_compressed));
-
+    cb_seq_bytes = decompress_archive_bsc_member(artifact, "cb_prefix.dna.bsc");
     if (preserve_quality) {
-      const std::string cb_qual_compressed = temp_dir + "/cb_prefix.qual.bsc";
-      if (!std::filesystem::exists(cb_qual_compressed)) {
-        throw std::runtime_error(
-            "cb_prefix_stripped set but cb_prefix.qual.bsc not found");
-      }
       cb_qual_bytes =
-          bsc_decompress_bytes(read_binary_file(cb_qual_compressed));
+          decompress_archive_bsc_member(artifact, "cb_prefix.qual.bsc");
     }
   }
 
@@ -834,295 +841,254 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
   std::vector<std::string> read_buffer_1(
       static_cast<size_t>(num_reads_per_step));
   std::vector<std::string> read_buffer_2;
-  if (paired_end)
+  if (paired_end) {
     read_buffer_2.resize(static_cast<size_t>(num_reads_per_step));
+  }
   std::vector<std::string> id_buffer(static_cast<size_t>(num_reads_per_step));
   std::vector<std::string> quality_buffer;
-  if (preserve_quality)
+  if (preserve_quality) {
     quality_buffer.resize(static_cast<size_t>(num_reads_per_step));
+  }
   std::vector<uint32_t> read_lengths_buffer_1(
       static_cast<size_t>(num_reads_per_step));
   std::vector<uint32_t> read_lengths_buffer_2;
-  if (paired_end)
+  if (paired_end) {
     read_lengths_buffer_2.resize(static_cast<size_t>(num_reads_per_step));
+  }
   std::array<std::array<char, 128>, 128> decoded_noise_table;
   set_dec_noise_array(decoded_noise_table);
 
-  // Must use archive thread count to ensure all blocks are processed.
-  // Each OpenMP thread processes one block per step, and the archive
-  // contains archive_encoding_thread_count blocks per step.
   omp_set_num_threads(archive_encoding_thread_count);
-
-  // Rebuild the packed reference sequence once before block processing.
-  reference_sequence_store seq(file_seq, archive_encoding_thread_count,
+  reference_sequence_store seq(artifact, file_seq,
+                               archive_encoding_thread_count,
                                archive_encoding_thread_count, cp);
 
-  bool done = false;
   uint32_t num_blocks_done = 0;
   uint32_t num_reads_done = 0;
-  while (!done) {
-    uint32_t num_reads_cur_step = compute_num_reads_cur_step(
+  for (;;) {
+    const uint32_t num_reads_cur_step = compute_num_reads_cur_step(
         num_reads, num_reads_done, num_reads_per_step, paired_end);
-    if (num_reads_cur_step == 0)
+    if (num_reads_cur_step == 0) {
       break;
+    }
     SPRING_LOG_DEBUG(make_decompress_step_log_message(
         "decompress_short step: num_reads_done=", num_reads_done,
         num_reads_cur_step, num_blocks_done));
-    for (int stream_index = 0; stream_index < 2; stream_index++) {
-      if (stream_index == 1 && !paired_end)
+
+    for (int stream_index = 0; stream_index < 2; ++stream_index) {
+      if (stream_index == 1 && !paired_end) {
         continue;
+      }
+
       std::exception_ptr omp_exception;
 #pragma omp parallel
       {
         try {
-          uint64_t thread_id = omp_get_thread_num();
+          const uint64_t thread_id = omp_get_thread_num();
           if (thread_id * num_reads_per_block < num_reads_cur_step) {
             const uint32_t thread_read_count = compute_thread_read_count(
                 num_reads_cur_step, num_reads_per_block, thread_id);
             const uint64_t buffer_offset = thread_id * num_reads_per_block;
+            const uint32_t block_num =
+                num_blocks_done + static_cast<uint32_t>(thread_id);
 
             if (stream_index == 0) {
-              // Read decompression done when stream_index = 0 (even for PE)
-              const uint32_t block_num = num_blocks_done + thread_id;
-
-              decompress_bsc_block(file_flag, block_num);
-              decompress_bsc_block(file_pos, block_num);
-              decompress_bsc_block(file_noise, block_num);
-              decompress_bsc_block(file_noisepos, block_num);
-              decompress_bsc_block(file_unaligned, block_num);
-              decompress_bsc_block(file_readlength, block_num);
-              decompress_bsc_block(file_RC, block_num);
-
+              const std::vector<char> flag_bytes =
+                  decompress_archive_bsc_member(
+                      artifact,
+                      compressed_block_file_path(file_flag, block_num));
+              const std::vector<char> noise_bytes =
+                  decompress_archive_bsc_member(
+                      artifact,
+                      compressed_block_file_path(file_noise, block_num));
+              const std::vector<char> noisepos_bytes =
+                  decompress_archive_bsc_member(
+                      artifact,
+                      compressed_block_file_path(file_noisepos, block_num));
+              const std::vector<char> pos_bytes = decompress_archive_bsc_member(
+                  artifact, compressed_block_file_path(file_pos, block_num));
+              const std::vector<char> rc_bytes = decompress_archive_bsc_member(
+                  artifact, compressed_block_file_path(file_rc, block_num));
+              const std::vector<char> unaligned_bytes =
+                  decompress_archive_bsc_member(
+                      artifact,
+                      compressed_block_file_path(file_unaligned, block_num),
+                      true);
+              const std::vector<char> readlength_bytes =
+                  decompress_archive_bsc_member(
+                      artifact,
+                      compressed_block_file_path(file_readlength, block_num));
+              memory_cursor flag_cursor(flag_bytes);
+              memory_cursor noise_cursor(noise_bytes);
+              memory_cursor noisepos_cursor(noisepos_bytes);
+              memory_cursor pos_cursor(pos_bytes);
+              memory_cursor rc_cursor(rc_bytes);
+              memory_cursor unaligned_cursor(unaligned_bytes);
+              memory_cursor readlength_cursor(readlength_bytes);
+              std::optional<memory_cursor> pos_pair_cursor;
+              std::optional<memory_cursor> rc_pair_cursor;
+              std::optional<std::vector<char>> pos_pair_bytes;
+              std::optional<std::vector<char>> rc_pair_bytes;
               if (paired_end) {
-                decompress_bsc_block(file_pos_pair, block_num);
-                decompress_bsc_block(file_RC_pair, block_num);
+                pos_pair_bytes.emplace(decompress_archive_bsc_member(
+                    artifact,
+                    compressed_block_file_path(file_pos_pair, block_num)));
+                rc_pair_bytes.emplace(decompress_archive_bsc_member(
+                    artifact,
+                    compressed_block_file_path(file_rc_pair, block_num)));
+                pos_pair_cursor.emplace(*pos_pair_bytes);
+                rc_pair_cursor.emplace(*rc_pair_bytes);
               }
 
-              // Read streams are shared between mates, so decode them once when
-              // handling the first output stream.
-              std::ifstream f_flag(block_file_path(file_flag, block_num),
-                                   std::ios::binary);
-              std::ifstream f_noise(block_file_path(file_noise, block_num),
-                                    std::ios::binary);
-              std::ifstream f_noisepos(
-                  block_file_path(file_noisepos, block_num), std::ios::binary);
-              std::ifstream f_pos(block_file_path(file_pos, block_num),
-                                  std::ios::binary);
-              std::ifstream f_RC(block_file_path(file_RC, block_num),
-                                 std::ios::binary);
-              std::ifstream f_unaligned(
-                  block_file_path(file_unaligned, block_num), std::ios::binary);
-              std::ifstream f_readlength(
-                  block_file_path(file_readlength, block_num),
-                  std::ios::binary);
-              std::ifstream f_pos_pair;
-              std::ifstream f_RC_pair;
-              if (paired_end) {
-                f_pos_pair.open(block_file_path(file_pos_pair, block_num),
-                                std::ios::binary);
-                f_RC_pair.open(block_file_path(file_RC_pair, block_num));
-              }
-
-              char read_flag;
-              uint64_t read_1_position;
-              uint64_t read_2_position;
-              uint64_t previous_position;
-              bool read_1_is_singleton;
-              bool read_2_is_singleton;
-              char read_1_orientation;
-              char read_2_orientation;
-              uint16_t read_length;
-              uint16_t position_delta_16;
+              uint64_t previous_position = 0;
               bool first_read_of_block = true;
-              for (uint32_t i = buffer_offset;
-                   i < buffer_offset + thread_read_count; i++) {
-                f_flag >> read_flag;
-                f_readlength.read(byte_ptr(&read_length), sizeof(uint16_t));
+              for (uint32_t i = static_cast<uint32_t>(buffer_offset);
+                   i < buffer_offset + thread_read_count; ++i) {
+                const char read_flag = flag_cursor.read_char("read flag");
+                const uint16_t read_length =
+                    readlength_cursor.read<uint16_t>("read length");
                 read_lengths_buffer_1[i] = read_length;
-                read_1_is_singleton = (read_flag == '2') || (read_flag == '4');
+                const bool read_1_is_singleton =
+                    (read_flag == '2') || (read_flag == '4');
+
+                uint64_t read_1_position = 0;
+                char read_1_orientation = 'd';
                 if (!read_1_is_singleton) {
                   if (preserve_order) {
-                    f_pos.read(byte_ptr(&read_1_position), sizeof(uint64_t));
-                    if (!f_pos)
-                      throw std::runtime_error(
-                          "Corrupt archive: failed reading position");
+                    read_1_position =
+                        pos_cursor.read<uint64_t>("read position");
+                  } else if (first_read_of_block) {
+                    first_read_of_block = false;
+                    read_1_position =
+                        pos_cursor.read<uint64_t>("first block position");
+                    previous_position = read_1_position;
                   } else {
-                    if (first_read_of_block) {
-                      // Non-order-preserving mode stores the first absolute
-                      // position in each block and then deltas afterward.
-                      first_read_of_block = false;
-                      f_pos.read(byte_ptr(&read_1_position), sizeof(uint64_t));
-                      if (!f_pos)
-                        throw std::runtime_error(
-                            "Corrupt archive: failed reading first position of "
-                            "block");
-                      previous_position = read_1_position;
+                    const uint16_t position_delta_16 =
+                        pos_cursor.read<uint16_t>("position delta");
+                    if (position_delta_16 == 65535) {
+                      read_1_position =
+                          pos_cursor.read<uint64_t>("absolute position");
                     } else {
-                      f_pos.read(byte_ptr(&position_delta_16),
-                                 sizeof(uint16_t));
-                      if (!f_pos)
-                        throw std::runtime_error(
-                            "Corrupt archive: failed reading position delta");
-                      if (position_delta_16 == 65535) {
-                        f_pos.read(byte_ptr(&read_1_position),
-                                   sizeof(uint64_t));
-                        if (!f_pos)
-                          throw std::runtime_error(
-                              "Corrupt archive: failed reading fallback 64-bit "
-                              "position");
-                      } else {
-                        read_1_position = previous_position + position_delta_16;
-                      }
-                      previous_position = read_1_position;
+                      read_1_position = previous_position + position_delta_16;
                     }
+                    previous_position = read_1_position;
                   }
-                  if (!(f_RC >> read_1_orientation))
-                    throw std::runtime_error(
-                        "Corrupt archive: failed reading orientation");
+
+                  read_1_orientation = rc_cursor.read_char("read orientation");
                   std::string read =
                       seq.read(read_1_position, read_lengths_buffer_1[i]);
-                  std::string noise_codes;
-                  uint16_t noise_position_delta;
+                  const std::string noise_codes =
+                      noise_cursor.read_line("noise code stream");
                   uint16_t previous_noise_position = 0;
-                  std::getline(f_noise, noise_codes);
-                  for (uint16_t k = 0; k < noise_codes.size(); k++) {
-                    f_noisepos.read(byte_ptr(&noise_position_delta),
-                                    sizeof(uint16_t));
+                  for (char noise_code : noise_codes) {
+                    uint16_t noise_position_delta =
+                        noisepos_cursor.read<uint16_t>("noise position delta");
                     noise_position_delta += previous_noise_position;
                     read[noise_position_delta] =
-                        decoded_noise_table[(uint8_t)read[noise_position_delta]]
-                                           [(uint8_t)noise_codes[k]];
+                        decoded_noise_table[static_cast<uint8_t>(
+                            read[noise_position_delta])]
+                                           [static_cast<uint8_t>(noise_code)];
                     previous_noise_position = noise_position_delta;
                   }
-                  if (read_1_orientation == 'd')
-                    read_buffer_1[i] = read;
-                  else
-                    read_buffer_1[i] =
-                        reverse_complement(read, read_lengths_buffer_1[i]);
+                  read_buffer_1[i] =
+                      (read_1_orientation == 'd')
+                          ? read
+                          : reverse_complement(read, read_lengths_buffer_1[i]);
                 } else {
                   read_buffer_1[i].resize(read_lengths_buffer_1[i]);
-                  f_unaligned.read(&read_buffer_1[i][0],
-                                   read_lengths_buffer_1[i]);
+                  unaligned_cursor.read_bytes(read_buffer_1[i].data(),
+                                              read_lengths_buffer_1[i],
+                                              "unaligned read");
                 }
 
                 if (paired_end) {
-                  int16_t mate_position_delta_16;
-                  read_2_is_singleton =
+                  const bool read_2_is_singleton =
                       (read_flag == '2') || (read_flag == '3');
-                  f_readlength.read(byte_ptr(&read_length), sizeof(uint16_t));
-                  read_lengths_buffer_2[i] = read_length;
+                  read_lengths_buffer_2[i] =
+                      readlength_cursor.read<uint16_t>("mate read length");
                   if (!read_2_is_singleton) {
+                    uint64_t read_2_position = 0;
+                    char read_2_orientation = 'd';
                     if (read_flag == '1' || read_flag == '4') {
-                      f_pos.read(byte_ptr(&read_2_position), sizeof(uint64_t));
-                      if (!f_pos)
-                        throw std::runtime_error(
-                            "Corrupt archive: failed reading mate 2 position");
-                      if (!(f_RC >> read_2_orientation))
-                        throw std::runtime_error("Corrupt archive: failed "
-                                                 "reading mate 2 orientation");
+                      read_2_position =
+                          pos_cursor.read<uint64_t>("mate position");
+                      read_2_orientation =
+                          rc_cursor.read_char("mate orientation");
                     } else {
-                      // Mate 2 can be stored relative to mate 1 inside the same
-                      // block.
-                      char relative_orientation_flag;
-                      f_pos_pair.read(byte_ptr(&mate_position_delta_16),
-                                      sizeof(int16_t));
-                      if (!f_pos_pair)
-                        throw std::runtime_error("Corrupt archive: failed "
-                                                 "reading mate position delta");
+                      const int16_t mate_position_delta =
+                          pos_pair_cursor->read<int16_t>("mate position delta");
                       const int64_t mate_position_signed =
                           static_cast<int64_t>(read_1_position) +
-                          static_cast<int64_t>(mate_position_delta_16);
+                          static_cast<int64_t>(mate_position_delta);
                       if (mate_position_signed < 0) {
                         throw std::runtime_error(
                             "Corrupt archive: negative mate position");
                       }
                       read_2_position =
                           static_cast<uint64_t>(mate_position_signed);
-                      if (!(f_RC_pair >> relative_orientation_flag))
-                        throw std::runtime_error(
-                            "Corrupt archive: failed reading relative mate "
-                            "orientation");
-                      if (relative_orientation_flag == '0')
-                        read_2_orientation =
-                            (read_1_orientation == 'd') ? 'r' : 'd';
-                      else
-                        read_2_orientation =
-                            (read_1_orientation == 'd') ? 'd' : 'r';
+                      const char relative_orientation_flag =
+                          rc_pair_cursor->read_char(
+                              "relative mate orientation");
+                      read_2_orientation =
+                          (relative_orientation_flag == '0')
+                              ? ((read_1_orientation == 'd') ? 'r' : 'd')
+                              : ((read_1_orientation == 'd') ? 'd' : 'r');
                     }
+
                     std::string read =
                         seq.read(read_2_position, read_lengths_buffer_2[i]);
-                    std::string noise_codes;
-                    uint16_t noise_position_delta;
+                    const std::string noise_codes =
+                        noise_cursor.read_line("mate noise code stream");
                     uint16_t previous_noise_position = 0;
-                    std::getline(f_noise, noise_codes);
-                    for (uint16_t k = 0; k < noise_codes.size(); k++) {
-                      f_noisepos.read(byte_ptr(&noise_position_delta),
-                                      sizeof(uint16_t));
+                    for (char noise_code : noise_codes) {
+                      uint16_t noise_position_delta =
+                          noisepos_cursor.read<uint16_t>(
+                              "mate noise position delta");
                       noise_position_delta += previous_noise_position;
                       read[noise_position_delta] =
-                          decoded_noise_table[(
-                              uint8_t)read[noise_position_delta]]
-                                             [(uint8_t)noise_codes[k]];
+                          decoded_noise_table[static_cast<uint8_t>(
+                              read[noise_position_delta])]
+                                             [static_cast<uint8_t>(noise_code)];
                       previous_noise_position = noise_position_delta;
                     }
-                    if (read_2_orientation == 'd')
-                      read_buffer_2[i] = read;
-                    else
-                      read_buffer_2[i] =
-                          reverse_complement(read, read_lengths_buffer_2[i]);
+                    read_buffer_2[i] =
+                        (read_2_orientation == 'd')
+                            ? read
+                            : reverse_complement(read,
+                                                 read_lengths_buffer_2[i]);
                   } else {
                     read_buffer_2[i].resize(read_lengths_buffer_2[i]);
-                    f_unaligned.read(&read_buffer_2[i][0],
-                                     read_lengths_buffer_2[i]);
+                    unaligned_cursor.read_bytes(read_buffer_2[i].data(),
+                                                read_lengths_buffer_2[i],
+                                                "unaligned mate read");
                   }
                 }
               }
-
-              f_flag.close();
-              f_noise.close();
-              f_noisepos.close();
-              f_pos.close();
-              f_RC.close();
-              f_unaligned.close();
-              f_readlength.close();
-              if (paired_end) {
-                f_pos_pair.close();
-                f_RC_pair.close();
-              }
-
-              safe_remove_file(block_file_path(file_flag, block_num));
-              safe_remove_file(block_file_path(file_pos, block_num));
-              safe_remove_file(block_file_path(file_noise, block_num));
-              safe_remove_file(block_file_path(file_noisepos, block_num));
-              safe_remove_file(block_file_path(file_unaligned, block_num));
-              safe_remove_file(block_file_path(file_readlength, block_num));
-              safe_remove_file(block_file_path(file_RC, block_num));
-              if (paired_end) {
-                safe_remove_file(block_file_path(file_pos_pair, block_num));
-                safe_remove_file(block_file_path(file_RC_pair, block_num));
-              }
             }
-            // Decompress ids and quality
-            std::string input_path;
+
             if (preserve_quality) {
-              input_path = input_quality_paths[stream_index] + "." +
-                           std::to_string(num_blocks_done + thread_id);
+              const std::string quality_member =
+                  input_quality_paths[stream_index] + "." +
+                  std::to_string(block_num);
+              const std::string quality_path =
+                  materialize_archive_member(artifact, quality_member);
               if (stream_index == 0) {
                 safe_bsc_str_array_decompress(
-                    input_path, quality_buffer.data() + buffer_offset,
+                    quality_path, quality_buffer.data() + buffer_offset,
                     thread_read_count,
                     read_lengths_buffer_1.data() + buffer_offset);
               } else {
                 safe_bsc_str_array_decompress(
-                    input_path, quality_buffer.data() + buffer_offset,
+                    quality_path, quality_buffer.data() + buffer_offset,
                     thread_read_count,
                     read_lengths_buffer_2.data() + buffer_offset);
               }
-              safe_remove_file(input_path);
+              safe_remove_file(quality_path);
             }
+
             if (!preserve_id) {
-              for (uint32_t i = buffer_offset;
-                   i < buffer_offset + thread_read_count; i++) {
+              for (uint32_t i = static_cast<uint32_t>(buffer_offset);
+                   i < buffer_offset + thread_read_count; ++i) {
                 std::string read_id;
                 read_id.reserve(32);
                 read_id.push_back('@');
@@ -1131,35 +1097,45 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
                 read_id.append(std::to_string(stream_index + 1));
                 id_buffer[i] = std::move(read_id);
               }
-            } else {
-              if (stream_index == 1 && paired_id_match) {
-                for (uint32_t i = buffer_offset;
-                     i < buffer_offset + thread_read_count; i++)
-                  modify_id(id_buffer[i], paired_id_code);
-              } else {
-                input_path = input_id_paths[stream_index] + "." +
-                             std::to_string(num_blocks_done + thread_id);
-                decompress_id_block(input_path.c_str(),
-                                    id_buffer.data() + buffer_offset,
-                                    thread_read_count, false);
-                safe_remove_file(input_path);
+            } else if (stream_index == 1 && paired_id_match) {
+              for (uint32_t i = static_cast<uint32_t>(buffer_offset);
+                   i < buffer_offset + thread_read_count; ++i) {
+                modify_id(id_buffer[i], paired_id_code);
               }
+            } else {
+              const std::string id_member = input_id_paths[stream_index] + "." +
+                                            std::to_string(block_num);
+              std::string id_path;
+              if (monolithic_id[stream_index]) {
+                id_path = materialize_archive_bytes(
+                    artifact, id_member,
+                    monolithic_id_blocks[stream_index][block_num]);
+              } else {
+                id_path = materialize_archive_member(artifact, id_member);
+              }
+              decompress_id_block(id_path.c_str(),
+                                  id_buffer.data() + buffer_offset,
+                                  thread_read_count, false);
+              safe_remove_file(id_path);
             }
           }
         } catch (...) {
 #pragma omp critical
           {
-            omp_exception = std::current_exception();
+            if (!omp_exception) {
+              omp_exception = std::current_exception();
+            }
           }
         }
       }
+
       if (omp_exception) {
         std::rethrow_exception(omp_exception);
       }
 
       std::string *read_buffer_ptr =
           (stream_index == 0) ? read_buffer_1.data() : read_buffer_2.data();
-      const std::string *quality_ptr =
+      std::string *quality_buffer_ptr =
           preserve_quality ? quality_buffer.data() : nullptr;
 
       if (index_id_suffix_reconstructed && stream_index == 0) {
@@ -1170,10 +1146,7 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
         }
       }
 
-      // Restore CB prefix to R1 reads before tail restoration.
       if (cb_prefix_stripped && stream_index == 0) {
-        std::string *quality_buf_ptr =
-            preserve_quality ? quality_buffer.data() : nullptr;
         for (uint32_t i = 0; i < num_reads_cur_step; ++i) {
           if (cb_seq_cursor + cb_prefix_len > cb_seq_bytes.size()) {
             throw std::runtime_error(
@@ -1184,73 +1157,66 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
           cb_seq_cursor += cb_prefix_len;
           read_lengths_buffer_1[i] += cb_prefix_len;
 
-          if (quality_buf_ptr) {
+          if (quality_buffer_ptr != nullptr) {
             if (cb_qual_cursor + cb_prefix_len > cb_qual_bytes.size()) {
               throw std::runtime_error(
                   "Corrupt archive: truncated CB prefix quality stream");
             }
-            quality_buf_ptr[i].insert(0, cb_qual_bytes.data() + cb_qual_cursor,
-                                      cb_prefix_len);
+            quality_buffer_ptr[i].insert(
+                0, cb_qual_bytes.data() + cb_qual_cursor, cb_prefix_len);
             cb_qual_cursor += cb_prefix_len;
           }
         }
       }
 
-      // Restore poly-A/T tails before computing integrity CRCs in the sink.
       if (poly_at_stripped) {
-        std::ifstream &f_tail = (stream_index == 0) ? f_tail_1 : f_tail_2;
-        std::string *quality_buf_ptr =
-            preserve_quality ? quality_buffer.data() : nullptr;
+        memory_cursor &tail_cursor =
+            (stream_index == 0) ? *tail_cursor_1 : *tail_cursor_2;
         for (uint32_t i = 0; i < num_reads_cur_step; ++i) {
-          uint16_t tail_info = 0;
-          f_tail.read(reinterpret_cast<char *>(&tail_info), sizeof(uint16_t));
-          if (f_tail && tail_info != 0) {
-            const uint32_t tail_len = tail_info >> 1;
-            std::string tail_qual;
-            if (tail_len > 0) {
-              tail_qual.resize(tail_len);
-              f_tail.read(&tail_qual[0], tail_len);
-            }
-            append_tail(read_buffer_ptr[i],
-                        quality_buf_ptr ? &quality_buf_ptr[i] : nullptr,
-                        tail_info, tail_len > 0 ? &tail_qual : nullptr);
+          const uint16_t tail_info = tail_cursor.read<uint16_t>("tail info");
+          std::string tail_qual;
+          const uint32_t tail_len = tail_info >> 1;
+          if (tail_len > 0) {
+            tail_qual.resize(tail_len);
+            tail_cursor.read_bytes(tail_qual.data(), tail_len, "tail quality");
           }
+          append_tail(read_buffer_ptr[i],
+                      quality_buffer_ptr ? &quality_buffer_ptr[i] : nullptr,
+                      tail_info, tail_len > 0 ? &tail_qual : nullptr);
         }
       }
 
       if (atac_adapter_stripped) {
-        std::ifstream &f_adapter =
-            (stream_index == 0) ? f_atac_adapter_1 : f_atac_adapter_2;
-        std::string *quality_buf_ptr =
-            preserve_quality ? quality_buffer.data() : nullptr;
+        memory_cursor &adapter_cursor =
+            (stream_index == 0) ? *adapter_cursor_1 : *adapter_cursor_2;
         for (uint32_t i = 0; i < num_reads_cur_step; ++i) {
-          uint8_t adapter_info = 0;
-          f_adapter.read(reinterpret_cast<char *>(&adapter_info),
-                         sizeof(uint8_t));
-          if (f_adapter && adapter_info != 0) {
-            const uint32_t strip_len = adapter_info >> 1;
-            std::string adapter_qual;
-            if (strip_len > 0) {
-              adapter_qual.resize(strip_len);
-              f_adapter.read(&adapter_qual[0], strip_len);
-            }
-            append_atac_adapter_tail(
-                read_buffer_ptr[i],
-                quality_buf_ptr ? &quality_buf_ptr[i] : nullptr, adapter_info,
-                strip_len > 0 ? &adapter_qual : nullptr);
+          const uint8_t adapter_info =
+              adapter_cursor.read<uint8_t>("adapter info");
+          std::string adapter_qual;
+          const uint32_t strip_len = adapter_info >> 1;
+          if (strip_len > 0) {
+            adapter_qual.resize(strip_len);
+            adapter_cursor.read_bytes(adapter_qual.data(), strip_len,
+                                      "adapter quality");
           }
+          append_atac_adapter_tail(
+              read_buffer_ptr[i],
+              quality_buffer_ptr ? &quality_buffer_ptr[i] : nullptr,
+              adapter_info, strip_len > 0 ? &adapter_qual : nullptr);
         }
       }
 
-      sink.consume_step(id_buffer.data(), read_buffer_ptr, quality_ptr,
+      sink.consume_step(id_buffer.data(), read_buffer_ptr, quality_buffer_ptr,
                         num_reads_cur_step, stream_index);
     }
+
     num_reads_done += num_reads_cur_step;
     if (auto *progress = ProgressBar::GlobalInstance()) {
       progress->update(static_cast<float>(num_reads_done) / num_reads);
     }
     num_blocks_done += archive_encoding_thread_count;
   }
+
   if (cb_prefix_stripped) {
     if (cb_seq_cursor != cb_seq_bytes.size()) {
       throw std::runtime_error(
@@ -1265,37 +1231,33 @@ void decompress_short(const std::string &temp_dir, DecompressionSink &sink,
                    std::to_string(num_reads_done));
 }
 
-void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
-                     compression_params &cp, int decoding_num_thr) {
+void decompress_long(const decompression_archive_artifact &artifact,
+                     DecompressionSink &sink, compression_params &cp,
+                     int decoding_num_thr) {
+  (void)decoding_num_thr;
   SPRING_LOG_DEBUG(
-      "decompress_long start: temp_dir=" + temp_dir +
+      "decompress_long start: scratch_dir=" + artifact.scratch_dir +
       ", num_reads=" + std::to_string(cp.read_info.num_reads) +
       ", paired_end=" + std::string(cp.encoding.paired_end ? "true" : "false") +
       ", preserve_id=" +
       std::string(cp.encoding.preserve_id ? "true" : "false") +
       ", preserve_quality=" +
       std::string(cp.encoding.preserve_quality ? "true" : "false"));
-  std::string input_read_paths[2];
-  std::string input_quality_paths[2];
-  std::string input_id_paths[2];
-  std::string input_read_length_paths[2];
-  std::string base_dir = temp_dir;
-  input_read_paths[0] = base_dir + "/read_1";
-  input_read_paths[1] = base_dir + "/read_2";
-  input_quality_paths[0] = base_dir + "/quality_1";
-  input_quality_paths[1] = base_dir + "/quality_2";
-  input_id_paths[0] = base_dir + "/id_1";
-  input_id_paths[1] = base_dir + "/id_2";
-  input_read_length_paths[0] = base_dir + "/readlength_1";
-  input_read_length_paths[1] = base_dir + "/readlength_2";
 
-  uint32_t num_reads = cp.read_info.num_reads;
-  uint8_t paired_id_code = cp.read_info.paired_id_code;
-  bool paired_id_match = cp.read_info.paired_id_match;
-  uint32_t num_reads_per_block = cp.encoding.num_reads_per_block_long;
-  bool paired_end = cp.encoding.paired_end;
-  bool preserve_id = cp.encoding.preserve_id;
-  bool preserve_quality = cp.encoding.preserve_quality;
+  const std::array<std::string, 2> input_read_paths = {"read_1", "read_2"};
+  const std::array<std::string, 2> input_quality_paths = {"quality_1",
+                                                          "quality_2"};
+  const std::array<std::string, 2> input_id_paths = {"id_1", "id_2"};
+  const std::array<std::string, 2> input_read_length_paths = {"readlength_1",
+                                                              "readlength_2"};
+
+  const uint32_t num_reads = cp.read_info.num_reads;
+  const uint8_t paired_id_code = cp.read_info.paired_id_code;
+  const bool paired_id_match = cp.read_info.paired_id_match;
+  const uint32_t num_reads_per_block = cp.encoding.num_reads_per_block_long;
+  const bool paired_end = cp.encoding.paired_end;
+  const bool preserve_id = cp.encoding.preserve_id;
+  const bool preserve_quality = cp.encoding.preserve_quality;
   const int archive_encoding_thread_count =
       resolve_archive_encoding_thread_count(cp);
 
@@ -1306,72 +1268,93 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
   std::vector<std::string> read_buffer(static_cast<size_t>(num_reads_per_step));
   std::vector<std::string> id_buffer(static_cast<size_t>(num_reads_per_step));
   std::vector<std::string> quality_buffer;
-  if (preserve_quality)
+  if (preserve_quality) {
     quality_buffer.resize(static_cast<size_t>(num_reads_per_step));
+  }
   std::vector<uint32_t> read_lengths_buffer(
       static_cast<size_t>(num_reads_per_step));
 
-  // Must use archive thread count to ensure all blocks are processed.
   omp_set_num_threads(archive_encoding_thread_count);
-
-  bool done = false;
 
   uint32_t num_blocks_done = 0;
   uint32_t num_reads_done = 0;
-  while (!done) {
-    uint32_t num_reads_cur_step = compute_num_reads_cur_step(
+  for (;;) {
+    const uint32_t num_reads_cur_step = compute_num_reads_cur_step(
         num_reads, num_reads_done, num_reads_per_step, paired_end);
-    if (num_reads_cur_step == 0)
+    if (num_reads_cur_step == 0) {
       break;
+    }
     SPRING_LOG_DEBUG(make_decompress_step_log_message(
         "decompress_long step: num_reads_done=", num_reads_done,
         num_reads_cur_step, num_blocks_done));
-    for (int stream_index = 0; stream_index < 2; stream_index++) {
-      if (stream_index == 1 && !paired_end)
+
+    for (int stream_index = 0; stream_index < 2; ++stream_index) {
+      if (stream_index == 1 && !paired_end) {
         continue;
+      }
+
       std::exception_ptr omp_exception;
 #pragma omp parallel
       {
         try {
-          uint64_t thread_id = omp_get_thread_num();
+          const uint64_t thread_id = omp_get_thread_num();
           if (thread_id * num_reads_per_block < num_reads_cur_step) {
             const uint32_t thread_read_count = compute_thread_read_count(
                 num_reads_cur_step, num_reads_per_block, thread_id);
             const uint64_t buffer_offset = thread_id * num_reads_per_block;
-            const uint32_t block_num = num_blocks_done + thread_id;
+            const uint32_t block_num =
+                num_blocks_done + static_cast<uint32_t>(thread_id);
 
-            decompress_read_length_block(input_read_length_paths[stream_index],
-                                         block_num, read_lengths_buffer.data(),
-                                         buffer_offset, thread_read_count);
-
-            std::string block_base_path =
-                block_file_path(input_read_paths[stream_index], block_num);
-            const std::string compressed_read_path = compressed_block_file_path(
-                input_read_paths[stream_index], block_num);
-            if (std::filesystem::exists(compressed_read_path)) {
-              safe_bsc_decompress(compressed_read_path, block_base_path);
-              safe_remove_file(compressed_read_path);
+            const std::vector<char> read_length_bytes =
+                decompress_archive_bsc_member(
+                    artifact,
+                    compressed_block_file_path(
+                        input_read_length_paths[stream_index], block_num),
+                    true);
+            memory_cursor read_length_cursor(read_length_bytes);
+            for (uint32_t read_index = 0; read_index < thread_read_count;
+                 ++read_index) {
+              read_lengths_buffer[buffer_offset + read_index] =
+                  read_length_cursor.read<uint32_t>("read length block");
             }
-            read_raw_string_block(
-                block_base_path, read_buffer.data() + buffer_offset,
-                thread_read_count, read_lengths_buffer.data() + buffer_offset);
-            safe_remove_file(block_base_path);
+
+            const std::vector<char> read_bytes = decompress_archive_bsc_member(
+                artifact, compressed_block_file_path(
+                              input_read_paths[stream_index], block_num));
+            memory_cursor read_cursor(read_bytes);
+            for (uint32_t read_index = 0; read_index < thread_read_count;
+                 ++read_index) {
+              const uint32_t absolute_index =
+                  static_cast<uint32_t>(buffer_offset) + read_index;
+              read_buffer[absolute_index].resize(
+                  read_lengths_buffer[absolute_index]);
+              read_cursor.read_bytes(read_buffer[absolute_index].data(),
+                                     read_lengths_buffer[absolute_index],
+                                     "long read block");
+            }
 
             if (preserve_quality) {
-              std::string quality_base_path =
-                  block_file_path(input_quality_paths[stream_index], block_num);
-              const std::string quality_raw_path = quality_base_path + ".raw";
-              safe_bsc_decompress(quality_base_path, quality_raw_path);
-              read_raw_string_block(quality_raw_path,
-                                    quality_buffer.data() + buffer_offset,
-                                    thread_read_count,
-                                    read_lengths_buffer.data() + buffer_offset);
-              safe_remove_file(quality_raw_path);
-              safe_remove_file(quality_base_path);
+              const std::vector<char> quality_bytes =
+                  decompress_archive_bsc_member(
+                      artifact,
+                      block_file_path(input_quality_paths[stream_index],
+                                      block_num));
+              memory_cursor quality_cursor(quality_bytes);
+              for (uint32_t read_index = 0; read_index < thread_read_count;
+                   ++read_index) {
+                const uint32_t absolute_index =
+                    static_cast<uint32_t>(buffer_offset) + read_index;
+                quality_buffer[absolute_index].resize(
+                    read_lengths_buffer[absolute_index]);
+                quality_cursor.read_bytes(quality_buffer[absolute_index].data(),
+                                          read_lengths_buffer[absolute_index],
+                                          "quality block");
+              }
             }
+
             if (!preserve_id) {
-              for (uint32_t i = buffer_offset;
-                   i < buffer_offset + thread_read_count; i++) {
+              for (uint32_t i = static_cast<uint32_t>(buffer_offset);
+                   i < buffer_offset + thread_read_count; ++i) {
                 std::string read_id;
                 read_id.reserve(32);
                 read_id.push_back('@');
@@ -1380,36 +1363,36 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
                 read_id.append(std::to_string(stream_index + 1));
                 id_buffer[i] = std::move(read_id);
               }
-            } else {
-              if (stream_index == 1 && paired_id_match) {
-                for (uint32_t i = buffer_offset;
-                     i < buffer_offset + thread_read_count; i++)
-                  modify_id(id_buffer[i], paired_id_code);
-              } else {
-                std::string id_base_path =
-                    block_file_path(input_id_paths[stream_index], block_num);
-                const std::string compressed_id_path =
-                    compressed_block_file_path(input_id_paths[stream_index],
-                                               block_num);
-                if (std::filesystem::exists(compressed_id_path)) {
-                  decompress_id_block(compressed_id_path.c_str(),
-                                      id_buffer.data() + buffer_offset,
-                                      thread_read_count, false);
-                  safe_remove_file(compressed_id_path);
-                } else {
-                  decompress_id_block(id_base_path.c_str(),
-                                      id_buffer.data() + buffer_offset,
-                                      thread_read_count, true);
-                  safe_remove_file(id_base_path);
-                }
+            } else if (stream_index == 1 && paired_id_match) {
+              for (uint32_t i = static_cast<uint32_t>(buffer_offset);
+                   i < buffer_offset + thread_read_count; ++i) {
+                modify_id(id_buffer[i], paired_id_code);
               }
+            } else {
+              const std::string raw_member =
+                  block_file_path(input_id_paths[stream_index], block_num);
+              const std::string compressed_member = raw_member + ".bsc";
+              std::string id_path;
+              bool pack_only = false;
+              if (artifact.contains(compressed_member)) {
+                id_path =
+                    materialize_archive_member(artifact, compressed_member);
+              } else {
+                id_path = materialize_archive_member(artifact, raw_member);
+                pack_only = true;
+              }
+              decompress_id_block(id_path.c_str(),
+                                  id_buffer.data() + buffer_offset,
+                                  thread_read_count, pack_only);
+              safe_remove_file(id_path);
             }
           }
         } catch (...) {
 #pragma omp critical
           {
-            if (!omp_exception)
+            if (!omp_exception) {
               omp_exception = std::current_exception();
+            }
           }
         }
       }
@@ -1418,59 +1401,41 @@ void decompress_long(const std::string &temp_dir, DecompressionSink &sink,
         std::rethrow_exception(omp_exception);
       }
 
-      std::string *read_buffer_ptr = read_buffer.data();
-      const std::string *quality_ptr =
-          preserve_quality ? quality_buffer.data() : nullptr;
-      sink.consume_step(id_buffer.data(), read_buffer_ptr, quality_ptr,
+      sink.consume_step(id_buffer.data(), read_buffer.data(),
+                        preserve_quality ? quality_buffer.data() : nullptr,
                         num_reads_cur_step, stream_index);
     }
+
     num_reads_done += num_reads_cur_step;
     if (auto *progress = ProgressBar::GlobalInstance()) {
       progress->update(static_cast<float>(num_reads_done) / num_reads);
     }
     num_blocks_done += archive_encoding_thread_count;
   }
+
   SPRING_LOG_DEBUG("decompress_long complete: total_reads_done=" +
                    std::to_string(num_reads_done));
 }
 
-void decompress_unpack_seq(const std::string &packed_seq_base_path,
-                           int encoding_thread_count, int decoding_thread_count,
-                           const compression_params &cp) {
+std::vector<std::string> decompress_unpack_seq_chunks(
+    const decompression_archive_artifact &artifact,
+    const std::string &packed_seq_base_path, int encoding_thread_count,
+    int decoding_thread_count, const compression_params &cp) {
   SPRING_LOG_DEBUG(
       "decompress_unpack_seq start: base_path=" + packed_seq_base_path +
       ", encoding_threads=" + std::to_string(encoding_thread_count) +
       ", decoding_threads=" + std::to_string(decoding_thread_count));
   const std::string monolithic_compressed_path = packed_seq_base_path + ".bsc";
 
-  if (std::filesystem::exists(monolithic_compressed_path) &&
-      std::filesystem::file_size(monolithic_compressed_path) == 0) {
+  if (artifact.contains(monolithic_compressed_path) &&
+      artifact.require(monolithic_compressed_path).empty()) {
     SPRING_LOG_DEBUG("Skipping sequence unpack: monolithic archive is empty.");
-    return;
+    return std::vector<std::string>(static_cast<size_t>(encoding_thread_count));
   }
-
-  std::ifstream compressed_input(monolithic_compressed_path,
-                                 std::ios::binary | std::ios::ate);
-  if (!compressed_input.is_open()) {
-    throw std::runtime_error("Can't open compressed monolithic sequence file.");
-  }
-  const std::streamsize compressed_size = compressed_input.tellg();
-  if (compressed_size < 0) {
-    throw std::runtime_error(
-        "Can't determine compressed monolithic sequence size.");
-  }
-  compressed_input.seekg(0, std::ios::beg);
-  std::vector<char> compressed_bytes(static_cast<size_t>(compressed_size));
-  if (compressed_size > 0 &&
-      !compressed_input.read(compressed_bytes.data(), compressed_size)) {
-    throw std::runtime_error("Can't read compressed monolithic sequence file.");
-  }
-  compressed_input.close();
 
   // Decompress the monolithic archive block into raw packed sequence bytes.
   std::vector<char> monolithic_packed_bytes =
-      bsc_decompress_bytes(compressed_bytes);
-  safe_remove_file(monolithic_compressed_path);
+      decompress_archive_bsc_member(artifact, monolithic_compressed_path);
 
   // Slice the monolithic raw bytes into the parallelized chunks expected by
   // callers.
@@ -1486,15 +1451,9 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
         "). Increase array size in params.h or recreate archive.");
   }
 
+  std::vector<std::vector<char>> packed_chunks(
+      static_cast<size_t>(encoding_thread_count));
   for (int tid = 0; tid < encoding_thread_count; tid++) {
-    const std::string chunk_path =
-        packed_seq_base_path + '.' + std::to_string(tid);
-    std::ofstream chunk_out(chunk_path, std::ios::binary);
-    if (!chunk_out.is_open()) {
-      throw std::runtime_error("Can't create unpacked sequence chunk: " +
-                               chunk_path);
-    }
-
     uint64_t chunk_bytes = 0;
     if (monolithic_cursor + sizeof(uint64_t) > monolithic_packed_bytes.size()) {
       throw std::runtime_error(
@@ -1507,27 +1466,16 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
     monolithic_cursor += sizeof(uint64_t);
     SPRING_LOG_DEBUG("Slicing chunk tid=" + std::to_string(tid) +
                      ", packed_size=" + std::to_string(chunk_bytes));
-
-    std::vector<char> buffer(1U << 20); // 1MB buffer
-    uint64_t bytes_remaining = chunk_bytes;
-
-    while (bytes_remaining > 0) {
-      uint64_t bytes_to_read =
-          std::min(bytes_remaining, static_cast<uint64_t>(buffer.size()));
-      if (monolithic_cursor + bytes_to_read > monolithic_packed_bytes.size()) {
-        throw std::runtime_error(
-            "Corrupt archive: truncated packed sequence stream while "
-            "slicing monolithic data");
-      }
-      std::memcpy(buffer.data(),
-                  monolithic_packed_bytes.data() + monolithic_cursor,
-                  static_cast<size_t>(bytes_to_read));
-      chunk_out.write(buffer.data(),
-                      static_cast<std::streamsize>(bytes_to_read));
-      monolithic_cursor += bytes_to_read;
-      bytes_remaining -= bytes_to_read;
+    if (monolithic_cursor + chunk_bytes > monolithic_packed_bytes.size()) {
+      throw std::runtime_error(
+          "Corrupt archive: truncated packed sequence stream while slicing "
+          "monolithic data");
     }
-    chunk_out.close();
+    packed_chunks[static_cast<size_t>(tid)].assign(
+        monolithic_packed_bytes.data() + monolithic_cursor,
+        monolithic_packed_bytes.data() + monolithic_cursor +
+            static_cast<size_t>(chunk_bytes));
+    monolithic_cursor += static_cast<size_t>(chunk_bytes);
   }
   if (monolithic_cursor != monolithic_packed_bytes.size()) {
     throw std::runtime_error(
@@ -1537,6 +1485,8 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
       "decompress_unpack_seq slicing complete; starting per-chunk decode.");
 
   std::exception_ptr decode_exception;
+  std::vector<std::string> decoded_chunks(
+      static_cast<size_t>(encoding_thread_count));
 #pragma omp parallel
   {
     const int thread_id = omp_get_thread_num();
@@ -1545,10 +1495,12 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
     for (uint64_t encoding_thread_id = range.begin;
          encoding_thread_id < range.end; encoding_thread_id++) {
       try {
-        decode_packed_sequence_chunk(
-            packed_seq_base_path, encoding_thread_id,
-            cp.read_info.file_len_seq_thr[encoding_thread_id],
-            cp.encoding.bisulfite_ternary);
+        decoded_chunks[static_cast<size_t>(encoding_thread_id)] =
+            decode_packed_sequence_chunk_bytes(
+                packed_chunks[static_cast<size_t>(encoding_thread_id)],
+                static_cast<int>(encoding_thread_id),
+                cp.read_info.file_len_seq_thr[encoding_thread_id],
+                cp.encoding.bisulfite_ternary);
       } catch (...) {
 #pragma omp critical
         {
@@ -1561,6 +1513,7 @@ void decompress_unpack_seq(const std::string &packed_seq_base_path,
     std::rethrow_exception(decode_exception);
   }
   SPRING_LOG_DEBUG("decompress_unpack_seq complete.");
+  return decoded_chunks;
 }
 
 void set_dec_noise_array(std::array<std::array<char, 128>, 128> &dec_noise) {

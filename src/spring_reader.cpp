@@ -11,9 +11,9 @@
 #include <chrono>
 #include <condition_variable>
 #include <filesystem>
-#include <fstream>
 #include <mutex>
 #include <queue>
+#include <sstream>
 #include <stdexcept>
 #include <thread>
 
@@ -187,7 +187,7 @@ public:
     }
     std::filesystem::create_directories(temp_dir_);
 
-    archive_root_ = temp_dir_;
+    artifact_.scratch_dir = temp_dir_;
     const auto manifest_contents =
         read_files_from_tar_memory(archive_path_, {kBundleManifestName});
     if (manifest_contents.contains(kBundleManifestName)) {
@@ -201,33 +201,22 @@ public:
             "Failed to read grouped archive metadata: read archive not found.");
       }
 
-      archive_root_ = temp_dir_ + "/reads_member";
-      std::filesystem::create_directories(archive_root_);
-      extract_tar_archive_from_memory(read_archive_it->second, archive_root_);
+      artifact_.files = read_all_files_from_tar_bytes(read_archive_it->second);
     } else {
-      extract_tar_archive(archive_path_, temp_dir_);
+      artifact_.files = read_all_files_from_tar_memory(archive_path_);
     }
 
-    std::string cp_path = archive_root_ + "/cp.bin";
-    std::ifstream cp_in(cp_path, std::ios::binary);
+    std::istringstream cp_in(artifact_.require("cp.bin"), std::ios::binary);
     if (!cp_in) {
-      std::error_code file_ec;
-      const bool exists = std::filesystem::exists(cp_path, file_ec);
-      uint64_t actual_size = 0;
-      if (exists) {
-        actual_size = std::filesystem::file_size(cp_path, file_ec);
-      }
       SPRING_LOG_DEBUG("block_id=spring-reader:metadata, SpringReader metadata "
-                       "open failure: path=" +
-                       cp_path + ", expected_bytes=1, actual_bytes=" +
-                       std::to_string(actual_size) + ", index=0");
+                       "open failure: path=cp.bin, expected_bytes=1, "
+                       "actual_bytes=0, index=0");
       throw std::runtime_error("Failed to read archive metadata.");
     }
     read_compression_params(cp_in, params_);
     if (!cp_in.good()) {
       throw std::runtime_error("Failed to parse archive metadata.");
     }
-    cp_in.close();
 
     decode_num_thr_ =
         (user_num_thr_ > 0) ? user_num_thr_ : params_.encoding.num_thr;
@@ -248,9 +237,9 @@ public:
         BufferDecompressionSink sink(queue_, mutex_, cv_, shutdown_requested_,
                                      params_.encoding.paired_end, 2);
         if (params_.encoding.long_flag) {
-          decompress_long(archive_root_, sink, params_, decode_num_thr_);
+          decompress_long(artifact_, sink, params_, decode_num_thr_);
         } else {
-          decompress_short(archive_root_, sink, params_, decode_num_thr_);
+          decompress_short(artifact_, sink, params_, decode_num_thr_);
         }
         sink.log_summary();
         sink.copy_digests(sequence_crc_, quality_crc_, id_crc_);
@@ -391,7 +380,7 @@ public:
 private:
   std::string archive_path_;
   std::string temp_dir_;
-  std::string archive_root_;
+  decompression_archive_artifact artifact_;
   compression_params params_;
   int user_num_thr_;
   int decode_num_thr_ = 1;

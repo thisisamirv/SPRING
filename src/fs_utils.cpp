@@ -13,6 +13,7 @@
 #include <sstream>
 #include <sys/stat.h>
 #include <system_error>
+#include <unordered_set>
 #include <vector>
 
 #ifdef _WIN32
@@ -129,6 +130,67 @@ validated_archive_entry_destination(const std::filesystem::path &target_root,
   }
 
   return destination;
+}
+
+std::unordered_map<std::string, std::string>
+read_files_from_tar_impl(struct archive *archive_reader,
+                         const std::vector<std::string> *target_filenames) {
+  struct archive_entry *entry = nullptr;
+  std::unordered_map<std::string, std::string> results;
+  std::unordered_set<std::string> targets;
+  const bool read_all = target_filenames == nullptr;
+
+  if (!read_all) {
+    targets.insert(target_filenames->begin(), target_filenames->end());
+    results.reserve(targets.size());
+  }
+
+  for (;;) {
+    const int header_status = archive_read_next_header(archive_reader, &entry);
+    if (header_status == ARCHIVE_EOF) {
+      break;
+    }
+    if (header_status != ARCHIVE_OK) {
+      throw std::runtime_error(std::string("Failed to read archive header: ") +
+                               archive_error_string(archive_reader));
+    }
+
+    const char *pathname = archive_entry_pathname(entry);
+    if (pathname == nullptr) {
+      throw std::runtime_error("Archive contains an entry with no path.");
+    }
+
+    const std::string entry_name(pathname);
+    validate_archive_entry_name(entry_name);
+    if (!read_all && !targets.contains(entry_name)) {
+      archive_read_data_skip(archive_reader);
+      continue;
+    }
+
+    std::string contents;
+    constexpr size_t kBufferSize = 64U * 1024U;
+    std::vector<char> buffer(kBufferSize);
+    for (;;) {
+      const la_ssize_t bytes_read = archive_read_data(
+          archive_reader, buffer.data(), static_cast<size_t>(buffer.size()));
+      if (bytes_read == 0) {
+        break;
+      }
+      if (bytes_read < 0) {
+        throw std::runtime_error(std::string("Failed to read archive entry '") +
+                                 entry_name +
+                                 "': " + archive_error_string(archive_reader));
+      }
+      contents.append(buffer.data(), static_cast<size_t>(bytes_read));
+    }
+
+    results.emplace(entry_name, std::move(contents));
+    if (!read_all && results.size() == targets.size()) {
+      break;
+    }
+  }
+
+  return results;
 }
 
 } // namespace
@@ -656,84 +718,113 @@ void extract_tar_archive_from_memory(const std::string &archive_contents,
 std::unordered_map<std::string, std::string>
 read_files_from_tar_bytes(const std::string &archive_contents,
                           const std::vector<std::string> &target_filenames) {
-  struct archive *a;
-  struct archive_entry *entry;
-  int r;
-  std::unordered_map<std::string, std::string> contents;
+  struct archive *archive_reader = archive_read_new();
+  std::unordered_map<std::string, std::string> results;
 
-  a = archive_read_new();
-  archive_read_support_filter_gzip(a);
-  archive_read_support_filter_xz(a);
-  archive_read_support_filter_zstd(a);
-  archive_read_support_filter_none(a);
-  archive_read_support_format_tar(a);
-  archive_read_support_format_empty(a);
+  auto close_archive = [&]() noexcept {
+    if (archive_reader != nullptr) {
+      archive_read_close(archive_reader);
+      archive_read_free(archive_reader);
+      archive_reader = nullptr;
+    }
+  };
 
-  r = archive_read_open_memory(a, archive_contents.data(),
-                               archive_contents.size());
-  if (r != ARCHIVE_OK) {
-    archive_read_free(a);
-    return contents;
-  }
+  archive_read_support_filter_gzip(archive_reader);
+  archive_read_support_filter_xz(archive_reader);
+  archive_read_support_filter_zstd(archive_reader);
+  archive_read_support_filter_none(archive_reader);
+  archive_read_support_format_tar(archive_reader);
+  archive_read_support_format_empty(archive_reader);
 
-  size_t found_count = 0;
-  for (;;) {
-    r = archive_read_next_header(a, &entry);
-    if (r == ARCHIVE_EOF)
-      break;
-    if (r < ARCHIVE_WARN)
-      break;
-
-    std::string current_name = archive_entry_pathname(entry);
-    bool is_target = false;
-    for (const auto &tf : target_filenames) {
-      if (current_name == tf) {
-        is_target = true;
-        break;
-      }
+  try {
+    const int open_status = archive_read_open_memory(
+        archive_reader, archive_contents.data(), archive_contents.size());
+    if (open_status != ARCHIVE_OK) {
+      throw std::runtime_error(
+          std::string("Failed to open archive from memory: ") +
+          archive_error_string(archive_reader));
     }
 
-    if (is_target) {
-      const void *buff;
-      size_t size;
-      la_int64_t offset;
-      std::string content;
-      while (true) {
-        r = archive_read_data_block(a, &buff, &size, &offset);
-        if (r == ARCHIVE_EOF)
-          break;
-        if (r < ARCHIVE_OK)
-          break;
-        content.append(static_cast<const char *>(buff), size);
-      }
-      contents[current_name] = content;
-      found_count++;
-      if (found_count == target_filenames.size()) {
-        break;
-      }
-    }
+    results = read_files_from_tar_impl(archive_reader, &target_filenames);
+  } catch (...) {
+    close_archive();
+    throw;
   }
 
-  archive_read_close(a);
-  archive_read_free(a);
-  return contents;
+  close_archive();
+  return results;
 }
 
 std::unordered_map<std::string, std::string>
 read_files_from_tar_memory(const std::string &archive_path,
                            const std::vector<std::string> &target_filenames) {
-  std::ifstream input(archive_path, std::ios::binary);
-  if (!input.is_open()) {
-    return {};
+  std::ifstream archive_input(archive_path, std::ios::binary);
+  if (!archive_input.is_open()) {
+    throw std::runtime_error("Failed to open archive: " + archive_path);
   }
 
   std::ostringstream contents;
-  contents << input.rdbuf();
-  if (!input.good() && !input.eof()) {
-    return {};
+  contents << archive_input.rdbuf();
+  if (!archive_input.good() && !archive_input.eof()) {
+    throw std::runtime_error("Failed to read archive: " + archive_path);
   }
 
   return read_files_from_tar_bytes(contents.str(), target_filenames);
+}
+
+std::unordered_map<std::string, std::string>
+read_all_files_from_tar_bytes(const std::string &archive_contents) {
+  struct archive *archive_reader = archive_read_new();
+  std::unordered_map<std::string, std::string> results;
+
+  auto close_archive = [&]() noexcept {
+    if (archive_reader != nullptr) {
+      archive_read_close(archive_reader);
+      archive_read_free(archive_reader);
+      archive_reader = nullptr;
+    }
+  };
+
+  archive_read_support_filter_gzip(archive_reader);
+  archive_read_support_filter_xz(archive_reader);
+  archive_read_support_filter_zstd(archive_reader);
+  archive_read_support_filter_none(archive_reader);
+  archive_read_support_format_tar(archive_reader);
+  archive_read_support_format_empty(archive_reader);
+
+  try {
+    const int open_status = archive_read_open_memory(
+        archive_reader, archive_contents.data(), archive_contents.size());
+    if (open_status != ARCHIVE_OK) {
+      throw std::runtime_error(
+          std::string("Failed to open archive from memory: ") +
+          archive_error_string(archive_reader));
+    }
+
+    results = read_files_from_tar_impl(archive_reader, nullptr);
+  } catch (...) {
+    close_archive();
+    throw;
+  }
+
+  close_archive();
+  return results;
+}
+
+std::unordered_map<std::string, std::string>
+read_all_files_from_tar_memory(const std::string &archive_path) {
+  std::ifstream archive_input(archive_path, std::ios::binary);
+  if (!archive_input.is_open()) {
+    throw std::runtime_error("Failed to open archive: " + archive_path);
+  }
+
+  std::ostringstream contents;
+  contents << archive_input.rdbuf();
+  if (!archive_input.good() && !archive_input.eof()) {
+    throw std::runtime_error("Failed to read archive: " + archive_path);
+  }
+
+  return read_all_files_from_tar_bytes(contents.str());
 }
 
 } // namespace spring

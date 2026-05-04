@@ -41,6 +41,10 @@ read_files_from_tar_memory(const std::string &archive_path,
 std::unordered_map<std::string, std::string>
 read_files_from_tar_bytes(const std::string &archive_contents,
                           const std::vector<std::string> &target_filenames);
+std::unordered_map<std::string, std::string>
+read_all_files_from_tar_memory(const std::string &archive_path);
+std::unordered_map<std::string, std::string>
+read_all_files_from_tar_bytes(const std::string &archive_contents);
 
 } // namespace spring
 
