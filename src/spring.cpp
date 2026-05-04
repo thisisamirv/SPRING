@@ -21,9 +21,6 @@
 #include <utility>
 #include <vector>
 
-#include <ParallelGzipReader.hpp>
-#include <Standard.hpp>
-
 #include "assay_detector.h"
 #include "bundle_manifest.h"
 #include "decompress.h"
@@ -239,12 +236,7 @@ struct prepared_compression_inputs {
   std::string input_path_2;
   bool input_1_was_gzipped;
   bool input_2_was_gzipped;
-  bool input_1_actual_was_gzipped = false;
-  bool input_2_actual_was_gzipped = false;
 };
-
-void decompress_gzip_input_file(const std::string &input_path,
-                                const std::string &output_path, int num_thr);
 
 enum class input_record_format : uint8_t { fastq, fasta };
 
@@ -289,192 +281,24 @@ std::string strip_gzip_suffix(const std::string &input_path) {
   return input_path.substr(0, input_path.size() - 3);
 }
 
-std::string decompressed_input_path(const std::string &temp_dir,
-                                    const std::string &input_path,
-                                    const int input_index) {
-  const std::filesystem::path stripped_input_path(
-      strip_gzip_suffix(input_path));
-  const std::string filename = stripped_input_path.filename().string();
-  return temp_dir + "/compression_input_" + std::to_string(input_index) + "." +
-         filename;
-}
-
-void decompress_gzip_input_file_with_rapidgzip(const std::string &input_path,
-                                               const std::string &output_path,
-                                               const int num_thr) {
-  SPRING_LOG_DEBUG("Using built-in rapidgzip to decompress staged input: " +
-                   input_path + " -> " + output_path);
-
-  rapidgzip::ParallelGzipReader<> reader(
-      std::make_unique<rapidgzip::StandardFileReader>(input_path),
-      num_thr > 0 ? static_cast<size_t>(num_thr) : size_t(0));
-  std::ofstream output(output_path, std::ios::binary);
-  if (!output) {
-    throw std::runtime_error(
-        "Failed to open staged output file for rapidgzip decompression");
-  }
-
-  std::vector<char> buffer(1 << 20);
-  while (true) {
-    const size_t bytes_read = reader.read(buffer.data(), buffer.size());
-    if (bytes_read == 0) {
-      break;
-    }
-    output.write(buffer.data(), static_cast<std::streamsize>(bytes_read));
-    if (!output) {
-      throw std::runtime_error(
-          "Failed writing staged output during rapidgzip decompression");
-    }
-  }
-}
-
-void decompress_gzip_input_file_with_zlib(const std::string &input_path,
-                                          const std::string &output_path) {
-  SPRING_LOG_DEBUG("Using zlib fallback to decompress staged input: " +
-                   input_path + " -> " + output_path);
-  std::ifstream fin(input_path, std::ios::binary);
-  std::ofstream fout(output_path, std::ios::binary);
-  if (!fin || !fout) {
-    throw std::runtime_error("Failed to open files for staging decompression");
-  }
-
-  z_stream strm;
-  std::memset(&strm, 0, sizeof(strm));
-  if (inflateInit2(&strm, 15 + 16) != Z_OK) {
-    throw std::runtime_error("Failed to initialize zlib");
-  }
-
-  std::vector<uint8_t> in_buf(1 << 16);
-  std::vector<uint8_t> out_buf(1 << 16);
-
-  while (true) {
-    if (strm.avail_in == 0) {
-      fin.read(reinterpret_cast<char *>(in_buf.data()), in_buf.size());
-      strm.avail_in = static_cast<uInt>(fin.gcount());
-      strm.next_in = in_buf.data();
-      if (strm.avail_in == 0 && fin.eof()) {
-        break;
-      }
-    }
-
-    strm.avail_out = static_cast<uInt>(out_buf.size());
-    strm.next_out = out_buf.data();
-
-    int ret = inflate(&strm, Z_NO_FLUSH);
-
-    if (strm.avail_out < out_buf.size()) {
-      fout.write(reinterpret_cast<char *>(out_buf.data()),
-                 out_buf.size() - strm.avail_out);
-    }
-
-    if (ret == Z_STREAM_END) {
-      inflateReset(&strm);
-    } else if (ret != Z_OK && ret != Z_BUF_ERROR) {
-      // Data error or junk. Scan for next GZIP header (1F 8B 08)
-      bool found = false;
-      while (!found) {
-        if (strm.avail_in >= 3) {
-          if (strm.next_in[0] == 0x1f && strm.next_in[1] == 0x8b &&
-              strm.next_in[2] == 0x08) {
-            found = true;
-          } else {
-            strm.next_in++;
-            strm.avail_in--;
-          }
-        } else {
-          // Need more data to scan
-          if (strm.avail_in > 0) {
-            std::memmove(in_buf.data(), strm.next_in, strm.avail_in);
-          }
-          fin.read(reinterpret_cast<char *>(in_buf.data() + strm.avail_in),
-                   in_buf.size() - strm.avail_in);
-          size_t read = static_cast<size_t>(fin.gcount());
-          if (read == 0 && fin.eof()) {
-            return;
-          }
-          strm.avail_in += static_cast<uInt>(read);
-          strm.next_in = in_buf.data();
-        }
-      }
-      inflateReset(&strm);
-    }
-  }
-
-  inflateEnd(&strm);
-}
-
-void decompress_gzip_input_file(const std::string &input_path,
-                                const std::string &output_path,
-                                const int num_thr) {
-  try {
-    decompress_gzip_input_file_with_rapidgzip(input_path, output_path, num_thr);
-    return;
-  } catch (const std::exception &e) {
-    SPRING_LOG_DEBUG(
-        std::string(
-            "Built-in rapidgzip staging failed; falling back to zlib: ") +
-        e.what());
-  }
-
-  decompress_gzip_input_file_with_zlib(input_path, output_path);
-}
-
 prepared_compression_inputs
 prepare_compression_inputs(const compression_io_config &io_config,
-                           const std::string &temp_dir, const int num_thr) {
-  SPRING_LOG_DEBUG("Preparing compression inputs in temp directory: " +
+                           const std::string &temp_dir, const int /*num_thr*/) {
+  SPRING_LOG_DEBUG("Preparing compression inputs for direct streaming in: " +
                    temp_dir);
   prepared_compression_inputs prepared_inputs{
       .input_path_1 = io_config.input_path_1,
       .input_path_2 = io_config.input_path_2,
-      .input_1_was_gzipped = false,
-      .input_2_was_gzipped = false,
-      .input_1_actual_was_gzipped = false,
-      .input_2_actual_was_gzipped = false};
-
-  const bool input_1_is_gzipped = is_gzip_input_path(io_config.input_path_1);
-  if (input_1_is_gzipped) {
-    prepared_inputs.input_path_1 =
-        decompressed_input_path(temp_dir, io_config.input_path_1, 1);
-    SPRING_LOG_DEBUG("Input 1 is gzip-compressed; staging to: " +
-                     prepared_inputs.input_path_1);
-    decompress_gzip_input_file(io_config.input_path_1,
-                               prepared_inputs.input_path_1, num_thr);
-    prepared_inputs.input_1_actual_was_gzipped = true;
-  }
-
-  if (io_config.paired_end) {
-    const bool input_2_is_gzipped = is_gzip_input_path(io_config.input_path_2);
-    if (input_2_is_gzipped) {
-      prepared_inputs.input_path_2 =
-          decompressed_input_path(temp_dir, io_config.input_path_2, 2);
-      SPRING_LOG_DEBUG("Input 2 is gzip-compressed; staging to: " +
-                       prepared_inputs.input_path_2);
-      decompress_gzip_input_file(io_config.input_path_2,
-                                 prepared_inputs.input_path_2, num_thr);
-      prepared_inputs.input_2_actual_was_gzipped = true;
-    }
-  }
+      .input_1_was_gzipped = is_gzip_input_path(io_config.input_path_1),
+      .input_2_was_gzipped =
+          io_config.paired_end && is_gzip_input_path(io_config.input_path_2)};
 
   return prepared_inputs;
 }
 
 void cleanup_prepared_compression_inputs(
-    const prepared_compression_inputs &prepared_inputs,
-    bool pairing_only_flag) {
-  if (!pairing_only_flag) {
-    if (prepared_inputs.input_1_actual_was_gzipped) {
-      SPRING_LOG_DEBUG("Removing staged input 1 file: " +
-                       prepared_inputs.input_path_1);
-      safe_remove_file(prepared_inputs.input_path_1);
-    }
-    if (prepared_inputs.input_2_actual_was_gzipped) {
-      SPRING_LOG_DEBUG("Removing staged input 2 file: " +
-                       prepared_inputs.input_path_2);
-      safe_remove_file(prepared_inputs.input_path_2);
-    }
-  }
-}
+    const prepared_compression_inputs & /*prepared_inputs*/,
+    bool /*pairing_only_flag*/) {}
 
 void recreate_compression_workdir(const std::string &temp_dir) {
   std::error_code ec;
@@ -503,11 +327,12 @@ bool is_fasta_extension(const std::string &path) {
 input_record_format
 detect_input_format_from_extension(const std::string &input_path,
                                    bool &detected) {
-  if (is_fastq_extension(input_path)) {
+  const std::string normalized_path = strip_gzip_suffix(input_path);
+  if (is_fastq_extension(normalized_path)) {
     detected = true;
     return input_record_format::fastq;
   }
-  if (is_fasta_extension(input_path)) {
+  if (is_fasta_extension(normalized_path)) {
     detected = true;
     return input_record_format::fasta;
   }
@@ -519,14 +344,24 @@ detect_input_format_from_extension(const std::string &input_path,
 input_record_format
 detect_input_format_from_content(const std::string &input_path,
                                  bool &detected) {
-  std::ifstream input_stream(input_path);
-  if (!input_stream.is_open()) {
+  std::ifstream plain_stream;
+  std::istream *input_stream = nullptr;
+  std::unique_ptr<gzip_istream> gzip_stream;
+  const bool gzip_enabled = is_gzip_input_path(input_path);
+  if (gzip_enabled) {
+    gzip_stream = std::make_unique<gzip_istream>(input_path);
+    input_stream = gzip_stream.get();
+  } else {
+    plain_stream.open(input_path);
+    input_stream = &plain_stream;
+  }
+  if (input_stream == nullptr || !(*input_stream)) {
     throw std::runtime_error("Error opening input file: " + input_path);
   }
 
   std::vector<std::string> non_empty_lines;
   std::string line;
-  while (non_empty_lines.size() < 3 && std::getline(input_stream, line)) {
+  while (non_empty_lines.size() < 3 && std::getline(*input_stream, line)) {
     remove_CR_from_end(line);
     if (!line.empty())
       non_empty_lines.push_back(line);
@@ -1057,15 +892,6 @@ void compress_standard(const std::string &temp_dir,
       cp.gzip.streams[0].is_bgzf, cp.gzip.streams[0].bgzf_block_size,
       cp.gzip.streams[0].uncompressed_size, cp.gzip.streams[0].compressed_size,
       cp.gzip.streams[0].member_count);
-  if (prepared_inputs.input_1_actual_was_gzipped) {
-    std::error_code ec;
-    const auto staged_size =
-        std::filesystem::file_size(prepared_inputs.input_path_1, ec);
-    if (!ec) {
-      cp.gzip.streams[0].uncompressed_size = staged_size;
-    }
-  }
-
   // Extract detailed gzip metadata for input 2 (if paired-end)
   if (io_config.paired_end) {
     extract_gzip_detailed_info(
@@ -1075,14 +901,6 @@ void compress_standard(const std::string &temp_dir,
         cp.gzip.streams[1].is_bgzf, cp.gzip.streams[1].bgzf_block_size,
         cp.gzip.streams[1].uncompressed_size,
         cp.gzip.streams[1].compressed_size, cp.gzip.streams[1].member_count);
-    if (prepared_inputs.input_2_actual_was_gzipped) {
-      std::error_code ec;
-      const auto staged_size =
-          std::filesystem::file_size(prepared_inputs.input_path_2, ec);
-      if (!ec) {
-        cp.gzip.streams[1].uncompressed_size = staged_size;
-      }
-    }
   }
 
   if (preserve_quality)
@@ -1094,10 +912,10 @@ void compress_standard(const std::string &temp_dir,
     SPRING_LOG_INFO("FASTA input detected; quality values will not be stored.");
   }
 
-  if (prepared_inputs.input_1_actual_was_gzipped ||
-      prepared_inputs.input_2_actual_was_gzipped) {
-    SPRING_LOG_INFO("Detected gzipped input; decompressing to temporary input "
-                    "files before compression.");
+  if (prepared_inputs.input_1_was_gzipped ||
+      prepared_inputs.input_2_was_gzipped) {
+    SPRING_LOG_INFO("Detected gzipped input; streaming decompression directly "
+                    "into compression without staging full plain FASTQ files.");
   }
 
   SPRING_LOG_DEBUG(

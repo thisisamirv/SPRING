@@ -32,6 +32,10 @@ bool has_non_acgtn_symbol(const std::string &read);
 
 namespace {
 
+bool is_gzip_input_path(const std::string &path) {
+  return has_suffix(path, ".gz");
+}
+
 struct preprocess_paths {
   std::array<std::string, 2> input_paths;
   std::array<std::string, 2> id_output_paths;
@@ -350,14 +354,15 @@ void open_preprocess_streams(
     std::array<std::istream *, 2> &input_streams,
     std::array<std::unique_ptr<gzip_istream>, 2> &gzip_streams,
     const preprocess_paths &paths, const compression_params &compression_params,
-    const bool gzip_enabled) {
+    const std::array<bool, 2> &gzip_enabled) {
   for (int stream_index = 0; stream_index < 2; stream_index++) {
     if (stream_index == 1 && !compression_params.encoding.paired_end)
       continue;
 
     open_input_stream(input_files[stream_index], input_streams[stream_index],
                       gzip_streams[stream_index],
-                      paths.input_paths[stream_index], gzip_enabled);
+                      paths.input_paths[stream_index],
+                      gzip_enabled[stream_index]);
   }
 }
 
@@ -365,13 +370,14 @@ void close_preprocess_streams(
     std::array<std::ifstream, 2> &input_files,
     std::array<std::istream *, 2> &input_streams,
     std::array<std::unique_ptr<gzip_istream>, 2> &gzip_streams,
-    const compression_params &compression_params, const bool gzip_enabled) {
+    const compression_params &compression_params,
+    const std::array<bool, 2> &gzip_enabled) {
   for (int stream_index = 0; stream_index < 2; stream_index++) {
     if (stream_index == 1 && !compression_params.encoding.paired_end)
       continue;
 
     close_input_stream(input_files[stream_index], input_streams[stream_index],
-                       gzip_streams[stream_index], gzip_enabled);
+                       gzip_streams[stream_index], gzip_enabled[stream_index]);
   }
 }
 
@@ -383,7 +389,7 @@ void detect_quality_header_format(
     std::array<std::istream *, 2> &input_streams,
     std::array<std::unique_ptr<gzip_istream>, 2> &gzip_streams,
     const preprocess_paths &paths, const compression_params &compression_params,
-    const bool gzip_enabled,
+    const std::array<bool, 2> &gzip_enabled,
     std::array<bool, 2> &quality_header_has_id_by_stream) {
   if (compression_params.encoding.fasta_mode) {
     quality_header_has_id_by_stream = {false, false};
@@ -415,7 +421,8 @@ void detect_quality_header_format(
 
     reset_input_stream(input_files[stream_index], input_streams[stream_index],
                        gzip_streams[stream_index],
-                       paths.input_paths[stream_index], gzip_enabled);
+                       paths.input_paths[stream_index],
+                       gzip_enabled[stream_index]);
   }
 }
 
@@ -424,7 +431,8 @@ void detect_paired_id_pattern(
     std::array<std::istream *, 2> &input_streams,
     std::array<std::unique_ptr<gzip_istream>, 2> &gzip_streams,
     const preprocess_paths &paths, const compression_params &compression_params,
-    const bool gzip_enabled, uint8_t &paired_id_code, bool &paired_id_match) {
+    const std::array<bool, 2> &gzip_enabled, uint8_t &paired_id_code,
+    bool &paired_id_match) {
   if (!compression_params.encoding.paired_end ||
       !compression_params.encoding.preserve_id)
     return;
@@ -439,7 +447,8 @@ void detect_paired_id_pattern(
   for (int stream_index = 0; stream_index < 2; stream_index++) {
     reset_input_stream(input_files[stream_index], input_streams[stream_index],
                        gzip_streams[stream_index],
-                       paths.input_paths[stream_index], gzip_enabled);
+                       paths.input_paths[stream_index],
+                       gzip_enabled[stream_index]);
   }
 }
 
@@ -517,14 +526,18 @@ void detect_input_properties_in_file(const std::string &path,
                                      const bool fasta_input,
                                      input_detection_summary &summary,
                                      const int stream_index) {
-  std::ifstream input(path, std::ios::binary);
-  if (!input.is_open())
+  std::ifstream file_stream;
+  std::istream *input_stream = nullptr;
+  std::unique_ptr<gzip_istream> gzip_stream;
+  open_input_stream(file_stream, input_stream, gzip_stream, path,
+                    is_gzip_input_path(path));
+  if (input_stream == nullptr)
     throw std::runtime_error("Can't open file for pre-scan: " + path);
 
   std::string line;
   if (fasta_input) {
     uint32_t current_len = 0;
-    while (std::getline(input, line)) {
+    while (std::getline(*input_stream, line)) {
       if (!line.empty() && line.back() == '\r') {
         summary.use_crlf_by_stream[stream_index] = true;
         line.pop_back();
@@ -546,12 +559,12 @@ void detect_input_properties_in_file(const std::string &path,
     return;
   }
 
-  while (std::getline(input, line)) {
+  while (std::getline(*input_stream, line)) {
     if (!line.empty() && line.back() == '\r') {
       summary.use_crlf_by_stream[stream_index] = true;
       line.pop_back();
     }
-    if (!std::getline(input, line)) {
+    if (!std::getline(*input_stream, line)) {
       break;
     }
     if (!line.empty() && line.back() == '\r') {
@@ -564,13 +577,18 @@ void detect_input_properties_in_file(const std::string &path,
     summary.max_read_length =
         std::max(summary.max_read_length, static_cast<uint32_t>(line.length()));
 
-    if (std::getline(input, line) && !line.empty() && line.back() == '\r') {
+    if (std::getline(*input_stream, line) && !line.empty() &&
+        line.back() == '\r') {
       summary.use_crlf_by_stream[stream_index] = true;
     }
-    if (std::getline(input, line) && !line.empty() && line.back() == '\r') {
+    if (std::getline(*input_stream, line) && !line.empty() &&
+        line.back() == '\r') {
       summary.use_crlf_by_stream[stream_index] = true;
     }
   }
+
+  close_input_stream(file_stream, input_stream, gzip_stream,
+                     is_gzip_input_path(path));
 }
 
 } // namespace
@@ -680,6 +698,9 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
       ", fasta_input=" + std::string(fasta_input ? "true" : "false"));
   const preprocess_paths paths =
       build_preprocess_paths(infile_1, infile_2, temp_dir);
+  const std::array<bool, 2> input_gzip_enabled = {
+      is_gzip_input_path(infile_1),
+      cp.encoding.paired_end && is_gzip_input_path(infile_2)};
   std::array<std::ifstream, 2> input_files;
   std::array<std::istream *, 2> input_streams = {nullptr, nullptr};
   std::array<std::unique_ptr<gzip_istream>, 2> gzip_streams{};
@@ -687,7 +708,7 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
   std::array<std::vector<uint32_t>, 2> n_read_orders;
 
   open_preprocess_streams(input_files, input_streams, gzip_streams, paths, cp,
-                          false);
+                          input_gzip_enabled);
 
   // Determine whether poly-A/T tail stripping should be applied.
   // Only active for: short-read, non-preserve_order, rna assay with
@@ -786,14 +807,18 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
         quality_binning_table.data(), cp.quality.bin_thr_thr,
         cp.quality.bin_thr_high, cp.quality.bin_thr_low);
 
-  if (!input_files[0].is_open())
+  if ((input_gzip_enabled[0] &&
+       (!gzip_streams[0] || !gzip_streams[0]->is_open())) ||
+      (!input_gzip_enabled[0] && !input_files[0].is_open()))
     throw std::runtime_error("Error opening input file");
   if (cp.encoding.paired_end) {
-    if (!input_files[1].is_open())
+    if ((input_gzip_enabled[1] &&
+         (!gzip_streams[1] || !gzip_streams[1]->is_open())) ||
+        (!input_gzip_enabled[1] && !input_files[1].is_open()))
       throw std::runtime_error("Error opening input file");
   }
   detect_paired_id_pattern(input_files, input_streams, gzip_streams, paths, cp,
-                           false, paired_id_code, paired_id_match);
+                           input_gzip_enabled, paired_id_code, paired_id_match);
   if (cp.encoding.paired_end && cp.encoding.preserve_id) {
     SPRING_LOG_DEBUG(
         "Paired ID pattern detection: code=" +
@@ -804,7 +829,8 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
   // Detect quality header format ("+ID" vs just "+")
   std::array<bool, 2> quality_header_has_id_by_stream = {false, false};
   detect_quality_header_format(input_files, input_streams, gzip_streams, paths,
-                               cp, false, quality_header_has_id_by_stream);
+                               cp, input_gzip_enabled,
+                               quality_header_has_id_by_stream);
   SPRING_LOG_DEBUG(
       "Quality header formats: stream1=" +
       std::string(quality_header_has_id_by_stream[0] ? "+ID" : "+") +
@@ -1400,7 +1426,8 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
       }
     }
   }
-  close_preprocess_streams(input_files, input_streams, gzip_streams, cp, false);
+  close_preprocess_streams(input_files, input_streams, gzip_streams, cp,
+                           input_gzip_enabled);
   if (num_reads[0] == 0)
     throw std::runtime_error("No reads found.");
 
