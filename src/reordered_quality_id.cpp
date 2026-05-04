@@ -379,55 +379,6 @@ bool should_process_stream(const int stream_index, const bool paired_end,
 // reordered_positions[raw_R1_pos] = corrected_original_R1_index.
 // The sequence stream uses corrected original indices for block assignment
 // (see reorder_compress_streams), so quality blocks must use the same
-// index space.  Corrected index = raw_pos + number of N-reads inserted before
-// raw_pos, which we recover from the n_read_order_path file.
-void generate_order_pe(const std::string &base_dir,
-                       std::vector<uint32_t> &reordered_positions,
-                       const uint32_t num_reads) {
-  const uint32_t spot_count = num_reads / 2;
-  uint32_t corrected = 0;
-  uint32_t orig_spot;
-
-  // 1. Aligned spots
-  std::ifstream aligned_input(base_dir + "/read_order.bin", std::ios::binary);
-  if (aligned_input.is_open()) {
-    while (aligned_input.read(reinterpret_cast<char *>(&orig_spot),
-                              sizeof(uint32_t))) {
-      if (orig_spot < spot_count)
-        reordered_positions[orig_spot] = corrected++;
-    }
-  }
-
-  if (corrected >= spot_count) {
-    return;
-  }
-
-  // 2. Clean unaligned spots (singletons)
-  std::ifstream singleton_input(base_dir + "/read_order.bin.singleton",
-                                std::ios::binary);
-  if (singleton_input.is_open()) {
-    while (singleton_input.read(reinterpret_cast<char *>(&orig_spot),
-                                sizeof(uint32_t))) {
-      if (orig_spot < spot_count)
-        reordered_positions[orig_spot] = corrected++;
-    }
-  }
-
-  if (corrected >= spot_count) {
-    return;
-  }
-
-  // 3. N-read spots
-  std::ifstream n_input(base_dir + "/read_order_N.bin", std::ios::binary);
-  if (n_input.is_open()) {
-    while (
-        n_input.read(reinterpret_cast<char *>(&orig_spot), sizeof(uint32_t))) {
-      if (orig_spot < spot_count)
-        reordered_positions[orig_spot] = corrected++;
-    }
-  }
-}
-
 void generate_order_pe(const std::vector<uint32_t> &read_order_entries,
                        std::vector<uint32_t> &reordered_positions,
                        const uint32_t num_reads) {
@@ -440,52 +391,6 @@ void generate_order_pe(const std::vector<uint32_t> &read_order_entries,
     }
     if (corrected >= spot_count) {
       return;
-    }
-  }
-}
-
-void generate_order_se(const std::string &base_dir,
-                       std::vector<uint32_t> &reordered_positions,
-                       const uint32_t num_reads) {
-  uint32_t corrected = 0;
-  uint32_t orig_pos;
-
-  // 1. Aligned reads: order defined by the reorderer
-  std::ifstream aligned_input(base_dir + "/read_order.bin", std::ios::binary);
-  if (aligned_input.is_open()) {
-    while (aligned_input.read(reinterpret_cast<char *>(&orig_pos),
-                              sizeof(uint32_t))) {
-      if (orig_pos < num_reads)
-        reordered_positions[orig_pos] = corrected++;
-    }
-  }
-
-  if (corrected >= num_reads) {
-    return;
-  }
-
-  // 2. Clean unaligned reads (singletons)
-  std::ifstream singleton_input(base_dir + "/read_order.bin.singleton",
-                                std::ios::binary);
-  if (singleton_input.is_open()) {
-    while (singleton_input.read(reinterpret_cast<char *>(&orig_pos),
-                                sizeof(uint32_t))) {
-      if (orig_pos < num_reads)
-        reordered_positions[orig_pos] = corrected++;
-    }
-  }
-
-  if (corrected >= num_reads) {
-    return;
-  }
-
-  // 3. N-reads
-  std::ifstream n_input(base_dir + "/read_order_N.bin", std::ios::binary);
-  if (n_input.is_open()) {
-    while (
-        n_input.read(reinterpret_cast<char *>(&orig_pos), sizeof(uint32_t))) {
-      if (orig_pos < num_reads)
-        reordered_positions[orig_pos] = corrected++;
     }
   }
 }
