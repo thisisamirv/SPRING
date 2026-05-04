@@ -5,7 +5,6 @@
 #include "progress.h"
 #include <archive.h>
 #include <archive_entry.h>
-#include <cerrno>
 #include <cstring>
 #include <fcntl.h>
 #include <filesystem>
@@ -91,6 +90,164 @@ void write_archive_memory_entry(struct archive *archive_writer,
   }
 
   archive_entry_free(entry);
+}
+
+std::vector<tar_archive_source>
+build_tar_sources_from_directory(const std::string &source_dir,
+                                 uint64_t &archived_total_bytes) {
+  std::vector<tar_archive_source> sources;
+  archived_total_bytes = 0;
+  const std::filesystem::path root(source_dir);
+  for (const auto &dir_entry :
+       std::filesystem::recursive_directory_iterator(root)) {
+    if (!dir_entry.is_regular_file())
+      continue;
+
+    const std::string full_path = dir_entry.path().string();
+    const std::string rel_path =
+        std::filesystem::relative(dir_entry.path(), root).generic_string();
+    std::error_code file_ec;
+    archived_total_bytes +=
+        std::filesystem::file_size(dir_entry.path(), file_ec);
+    if (file_ec) {
+      throw std::runtime_error("Failed to stat archive input '" + full_path +
+                               "': " + file_ec.message());
+    }
+
+    sources.push_back({.archive_path = rel_path,
+                       .disk_path = full_path,
+                       .contents = std::string(),
+                       .from_memory = false});
+  }
+  return sources;
+}
+
+int archive_memory_open_callback(struct archive * /*archive_writer*/,
+                                 void * /*client_data*/) {
+  return ARCHIVE_OK;
+}
+
+la_ssize_t archive_memory_write_callback(struct archive * /*archive_writer*/,
+                                         void *client_data, const void *buffer,
+                                         size_t length) {
+  auto *archive_bytes = static_cast<std::string *>(client_data);
+  archive_bytes->append(static_cast<const char *>(buffer), length);
+  return static_cast<la_ssize_t>(length);
+}
+
+int archive_memory_close_callback(struct archive * /*archive_writer*/,
+                                  void * /*client_data*/) {
+  return ARCHIVE_OK;
+}
+
+std::string create_tar_archive_from_sources_impl(
+    const std::vector<tar_archive_source> &sources, const bool to_memory,
+    const std::string *archive_path) {
+  struct archive *archive_writer = archive_write_new();
+  uint64_t archived_file_count = 0;
+  uint64_t archived_total_bytes = 0;
+  std::string archive_bytes;
+
+  auto close_archive = [&]() noexcept {
+    if (archive_writer != nullptr) {
+      archive_write_close(archive_writer);
+      archive_write_free(archive_writer);
+      archive_writer = nullptr;
+    }
+  };
+
+  try {
+    archive_write_set_format_pax_restricted(archive_writer);
+    if (to_memory) {
+      for (const tar_archive_source &source : sources) {
+        if (source.from_memory) {
+          archived_total_bytes += static_cast<uint64_t>(source.contents.size());
+          continue;
+        }
+
+        std::error_code file_ec;
+        const uint64_t file_size =
+            std::filesystem::file_size(source.disk_path, file_ec);
+        if (file_ec) {
+          throw std::runtime_error("Failed to stat archive input '" +
+                                   source.disk_path +
+                                   "': " + file_ec.message());
+        }
+        archived_total_bytes += file_size;
+      }
+      archive_bytes.reserve(static_cast<size_t>(archived_total_bytes));
+      if (archive_write_open(archive_writer, &archive_bytes,
+                             archive_memory_open_callback,
+                             archive_memory_write_callback,
+                             archive_memory_close_callback) != ARCHIVE_OK) {
+        const char *message = archive_error_string(archive_writer);
+        throw std::runtime_error(
+            "Failed to open archive in memory" +
+            (message ? ": " + std::string(message) : std::string()));
+      }
+    } else {
+      if (archive_write_open_filename(archive_writer, archive_path->c_str()) !=
+          ARCHIVE_OK) {
+        const char *message = archive_error_string(archive_writer);
+        throw std::runtime_error(
+            "Failed to open archive for writing" +
+            (message ? ": " + std::string(message) : std::string()));
+      }
+    }
+
+    archived_total_bytes = 0;
+    for (const tar_archive_source &source : sources) {
+      if (source.from_memory) {
+        write_archive_memory_entry(archive_writer, source.archive_path,
+                                   source.contents);
+        archived_file_count++;
+        archived_total_bytes += static_cast<uint64_t>(source.contents.size());
+        continue;
+      }
+
+      std::ifstream input(source.disk_path, std::ios::binary);
+      if (!input.is_open()) {
+        throw std::runtime_error("Failed to open archive input '" +
+                                 source.disk_path + "'.");
+      }
+
+      std::ostringstream content;
+      content << input.rdbuf();
+      if (!input.good() && !input.eof()) {
+        throw std::runtime_error("Failed reading archive input '" +
+                                 source.disk_path + "'.");
+      }
+
+      const std::string bytes = content.str();
+      write_archive_memory_entry(archive_writer, source.archive_path, bytes);
+      archived_file_count++;
+      archived_total_bytes += static_cast<uint64_t>(bytes.size());
+    }
+
+    if (archive_write_close(archive_writer) != ARCHIVE_OK) {
+      const char *message = archive_error_string(archive_writer);
+      throw std::runtime_error(
+          "Failed to finalize archive" +
+          (message ? ": " + std::string(message) : std::string()));
+    }
+    archive_write_free(archive_writer);
+    archive_writer = nullptr;
+  } catch (...) {
+    close_archive();
+    throw;
+  }
+
+  SPRING_LOG_DEBUG(
+      std::string(to_memory ? "create_tar_archive_from_sources_bytes"
+                            : "create_tar_archive_from_sources") +
+      " complete: files=" + std::to_string(archived_file_count) +
+      ", total_input_bytes=" + std::to_string(archived_total_bytes));
+
+  if (!to_memory) {
+    return {};
+  }
+
+  return archive_bytes;
 }
 
 bool path_is_within_directory(const std::filesystem::path &root,
@@ -292,220 +449,34 @@ bool safe_rename_file(const std::string &old_path,
 
 void create_tar_archive(const std::string &archive_path,
                         const std::string &source_dir) {
-  struct archive *a;
-  struct stat st;
-  constexpr size_t kArchiveBufferSize = 4ULL * 1024 * 1024;
-  std::vector<char> buffer(kArchiveBufferSize);
-  uint64_t archived_file_count = 0;
   uint64_t archived_total_bytes = 0;
-
+  const std::vector<tar_archive_source> sources =
+      build_tar_sources_from_directory(source_dir, archived_total_bytes);
   SPRING_LOG_DEBUG("create_tar_archive start: source_dir=" + source_dir +
                    ", archive_path=" + archive_path);
+  (void)archived_total_bytes;
+  create_tar_archive_from_sources_impl(sources, false, &archive_path);
+}
 
-  a = archive_write_new();
-  archive_write_set_format_pax_restricted(a);
-  auto close_archive = [&]() noexcept {
-    if (a != nullptr) {
-      archive_write_close(a);
-      archive_write_free(a);
-      a = nullptr;
-    }
-  };
-
-  auto close_fd = [](int fd) noexcept {
-#ifdef _WIN32
-    if (fd >= 0)
-      _close(fd);
-#else
-    if (fd >= 0)
-      close(fd);
-#endif
-  };
-
-  auto archive_error = [a](const std::string &prefix) {
-    const char *message = archive_error_string(a);
-    return std::runtime_error(
-        prefix + (message ? ": " + std::string(message) : std::string()));
-  };
-
-  try {
-    if (archive_write_open_filename(a, archive_path.c_str()) != ARCHIVE_OK) {
-      throw archive_error("Failed to open archive for writing");
-    }
-
-    std::filesystem::path root(source_dir);
-    for (const auto &dir_entry :
-         std::filesystem::recursive_directory_iterator(root)) {
-      if (!dir_entry.is_regular_file())
-        continue;
-
-      const std::string full_path = dir_entry.path().string();
-      const std::string rel_path =
-          std::filesystem::relative(dir_entry.path(), root).string();
-
-      if (stat(full_path.c_str(), &st) != 0) {
-        throw std::runtime_error("Failed to stat archive input '" + full_path +
-                                 "': " + std::strerror(errno));
-      }
-
-      struct archive_entry *entry = archive_entry_new();
-      if (entry == nullptr)
-        throw std::runtime_error("Failed to allocate archive entry for: " +
-                                 rel_path);
-      archive_entry_set_pathname(entry, rel_path.c_str());
-      archive_entry_set_size(entry, st.st_size);
-      archive_entry_set_filetype(entry, AE_IFREG);
-      archive_entry_set_perm(entry, 0644);
-      if (archive_write_header(a, entry) != ARCHIVE_OK) {
-        archive_entry_free(entry);
-        throw archive_error("Failed to write archive header for '" + rel_path +
-                            "'");
-      }
-
-      int open_flags = O_RDONLY;
-#if defined(_WIN32) && defined(O_BINARY) && (O_BINARY != 0)
-      open_flags |= O_BINARY;
-#endif
-#if defined(O_CLOEXEC) && (O_CLOEXEC != 0)
-      open_flags |= O_CLOEXEC;
-#endif
-      int fd = -1;
-#ifdef _WIN32
-      if (_sopen_s(&fd, full_path.c_str(), open_flags, _SH_DENYNO, _S_IREAD) !=
-          0) {
-        fd = -1;
-      }
-#else
-      fd = open(full_path.c_str(), open_flags);
-#endif
-      if (fd < 0) {
-        archive_entry_free(entry);
-        throw std::runtime_error("Failed to open archive input '" + full_path +
-                                 "': " + std::strerror(errno));
-      }
-
-      try {
-#ifdef _WIN32
-        int len =
-            _read(fd, buffer.data(), static_cast<unsigned int>(buffer.size()));
-#else
-        ssize_t len = read(fd, buffer.data(), buffer.size());
-#endif
-        while (len > 0) {
-          const la_ssize_t written = archive_write_data(a, buffer.data(), len);
-          if (written < 0 || written != static_cast<la_ssize_t>(len)) {
-            throw archive_error("Failed to write archive data for '" +
-                                rel_path + "'");
-          }
-#ifdef _WIN32
-          len = _read(fd, buffer.data(),
-                      static_cast<unsigned int>(buffer.size()));
-#else
-          len = read(fd, buffer.data(), buffer.size());
-#endif
-        }
-        if (len < 0) {
-          throw std::runtime_error("Failed reading archive input '" +
-                                   full_path + "': " + std::strerror(errno));
-        }
-      } catch (...) {
-        close_fd(fd);
-        archive_entry_free(entry);
-        throw;
-      }
-
-      close_fd(fd);
-      archive_entry_free(entry);
-      archived_file_count++;
-      archived_total_bytes += static_cast<uint64_t>(st.st_size);
-    }
-
-    if (archive_write_close(a) != ARCHIVE_OK) {
-      throw archive_error("Failed to finalize archive");
-    }
-    archive_write_free(a);
-    a = nullptr;
-  } catch (...) {
-    close_archive();
-    throw;
-  }
-
+std::string create_tar_archive_bytes(const std::string &source_dir) {
+  uint64_t archived_total_bytes = 0;
+  const std::vector<tar_archive_source> sources =
+      build_tar_sources_from_directory(source_dir, archived_total_bytes);
   SPRING_LOG_DEBUG(
-      "create_tar_archive complete: files=" +
-      std::to_string(archived_file_count) +
+      "create_tar_archive_bytes start: source_dir=" + source_dir +
       ", total_input_bytes=" + std::to_string(archived_total_bytes));
+  return create_tar_archive_from_sources_impl(sources, true, nullptr);
 }
 
 void create_tar_archive_from_sources(
     const std::string &archive_path,
     const std::vector<tar_archive_source> &sources) {
-  struct archive *archive_writer = archive_write_new();
-  uint64_t archived_file_count = 0;
-  uint64_t archived_total_bytes = 0;
+  create_tar_archive_from_sources_impl(sources, false, &archive_path);
+}
 
-  auto close_archive = [&]() noexcept {
-    if (archive_writer != nullptr) {
-      archive_write_close(archive_writer);
-      archive_write_free(archive_writer);
-      archive_writer = nullptr;
-    }
-  };
-
-  try {
-    archive_write_set_format_pax_restricted(archive_writer);
-    if (archive_write_open_filename(archive_writer, archive_path.c_str()) !=
-        ARCHIVE_OK) {
-      const char *message = archive_error_string(archive_writer);
-      throw std::runtime_error(
-          "Failed to open archive for writing" +
-          (message ? ": " + std::string(message) : std::string()));
-    }
-
-    for (const tar_archive_source &source : sources) {
-      if (source.from_memory) {
-        write_archive_memory_entry(archive_writer, source.archive_path,
-                                   source.contents);
-        archived_file_count++;
-        archived_total_bytes += static_cast<uint64_t>(source.contents.size());
-        continue;
-      }
-
-      std::ifstream input(source.disk_path, std::ios::binary);
-      if (!input.is_open()) {
-        throw std::runtime_error("Failed to open archive input '" +
-                                 source.disk_path + "'.");
-      }
-
-      std::ostringstream content;
-      content << input.rdbuf();
-      if (!input.good() && !input.eof()) {
-        throw std::runtime_error("Failed reading archive input '" +
-                                 source.disk_path + "'.");
-      }
-
-      const std::string bytes = content.str();
-      write_archive_memory_entry(archive_writer, source.archive_path, bytes);
-      archived_file_count++;
-      archived_total_bytes += static_cast<uint64_t>(bytes.size());
-    }
-
-    if (archive_write_close(archive_writer) != ARCHIVE_OK) {
-      const char *message = archive_error_string(archive_writer);
-      throw std::runtime_error(
-          "Failed to finalize archive" +
-          (message ? ": " + std::string(message) : std::string()));
-    }
-    archive_write_free(archive_writer);
-    archive_writer = nullptr;
-  } catch (...) {
-    close_archive();
-    throw;
-  }
-
-  SPRING_LOG_DEBUG(
-      "create_tar_archive_from_sources complete: files=" +
-      std::to_string(archived_file_count) +
-      ", total_input_bytes=" + std::to_string(archived_total_bytes));
+std::string create_tar_archive_from_sources_bytes(
+    const std::vector<tar_archive_source> &sources) {
+  return create_tar_archive_from_sources_impl(sources, true, nullptr);
 }
 
 void extract_tar_archive(const std::string &archive_path,

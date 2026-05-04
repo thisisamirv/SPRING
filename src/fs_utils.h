@@ -27,8 +27,11 @@ void copy_stream_buffered(std::istream &input_stream,
 
 void create_tar_archive(const std::string &archive_path,
                         const std::string &source_dir);
+std::string create_tar_archive_bytes(const std::string &source_dir);
 void create_tar_archive_from_sources(
     const std::string &archive_path,
+    const std::vector<tar_archive_source> &sources);
+std::string create_tar_archive_from_sources_bytes(
     const std::vector<tar_archive_source> &sources);
 void extract_tar_archive(const std::string &archive_path,
                          const std::string &target_dir);

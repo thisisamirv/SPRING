@@ -12,7 +12,6 @@
 #include <algorithm>
 #include <cctype>
 #include <cstring>
-#include <filesystem>
 #include <libdeflate.h>
 #include <mutex>
 #include <stdexcept>
@@ -199,6 +198,57 @@ void append_binary(std::vector<char> &buffer, const T &value) {
   const size_t old_size = buffer.size();
   buffer.resize(old_size + sizeof(T));
   std::memcpy(buffer.data() + old_size, &value, sizeof(T));
+}
+
+template <typename T>
+T read_binary_or_throw(std::string_view bytes, size_t &cursor,
+                       const std::string &label,
+                       const std::string &input_label) {
+  if (cursor + sizeof(T) > bytes.size()) {
+    throw std::runtime_error("Corrupt BSC byte stream for " + input_label +
+                             ": truncated " + label + ".");
+  }
+  T value{};
+  std::memcpy(&value, bytes.data() + cursor, sizeof(T));
+  cursor += sizeof(T);
+  return value;
+}
+
+void write_string_array_bytes_or_throw(const unsigned char *buffer,
+                                       int data_size, std::string *string_array,
+                                       uint32_t size_str_array,
+                                       uint32_t *string_lengths,
+                                       uint32_t &pos_in_str_array,
+                                       uint32_t &pos_in_current_str) {
+  int bytes_read = 0;
+  while (bytes_read < data_size) {
+    if (pos_in_str_array >= size_str_array) {
+      throw std::runtime_error(
+          "BSC decompression error - string array not large enough.");
+    }
+
+    if (pos_in_current_str == string_lengths[pos_in_str_array]) {
+      pos_in_str_array++;
+      pos_in_current_str = 0;
+      continue;
+    }
+
+    if (string_array[pos_in_str_array].size() !=
+        string_lengths[pos_in_str_array]) {
+      string_array[pos_in_str_array].resize(string_lengths[pos_in_str_array]);
+    }
+
+    const uint32_t bytes_remaining_in_string =
+        string_lengths[pos_in_str_array] - pos_in_current_str;
+    const uint32_t bytes_remaining_in_block =
+        static_cast<uint32_t>(data_size - bytes_read);
+    const uint32_t copy_size =
+        (std::min)(bytes_remaining_in_string, bytes_remaining_in_block);
+    std::memcpy(&string_array[pos_in_str_array][pos_in_current_str],
+                buffer + bytes_read, copy_size);
+    pos_in_current_str += copy_size;
+    bytes_read += static_cast<int>(copy_size);
+  }
 }
 
 } // namespace
@@ -755,64 +805,101 @@ void decompress_id_block(const char *input_path, std::string *id_array,
       std::string(input_path) + ", num_ids=" + std::to_string(num_ids) +
       ", pack_only=" + std::string(pack_only ? "true" : "false"));
 
+  std::ifstream input(input_path, std::ios::binary | std::ios::ate);
+  if (!input) {
+    SPRING_LOG_DEBUG("block_id=io-utils:id-decompress, decompress_id_block "
+                     "open failure: path=" +
+                     std::string(input_path) +
+                     ", expected_bytes=1, actual_bytes=0, index=0");
+    throw std::runtime_error(pack_only
+                                 ? "Failed to open raw ID input file."
+                                 : "Failed to open compressed ID input file.");
+  }
+  const size_t input_size = static_cast<size_t>(input.tellg());
+  input.seekg(0, std::ios::beg);
+  std::string input_bytes(input_size, '\0');
+  if (input_size > 0 && !input.read(input_bytes.data(), input_size)) {
+    SPRING_LOG_DEBUG("block_id=io-utils:id-decompress, decompress_id_block "
+                     "read failure: path=" +
+                     std::string(input_path) +
+                     ", expected_bytes=" + std::to_string(input_size) +
+                     ", actual_bytes=" + std::to_string(input.gcount()) +
+                     ", index=0");
+    throw std::runtime_error(pack_only
+                                 ? "Failed to read raw ID input file."
+                                 : "Failed to read compressed ID input file.");
+  }
+
+  decompress_id_block_bytes(input_bytes, input_path, id_array, num_ids,
+                            pack_only);
+}
+
+void decompress_id_block_bytes(std::string_view input_bytes,
+                               std::string_view input_label,
+                               std::string *id_array, const uint32_t &num_ids,
+                               bool pack_only) {
+  if (num_ids == 0)
+    return;
+
+  SPRING_LOG_DEBUG(
+      "block_id=io-utils:id-decompress, decompress_id_block_bytes start: "
+      "input=" +
+      std::string(input_label) + ", num_ids=" + std::to_string(num_ids) +
+      ", pack_only=" + std::string(pack_only ? "true" : "false"));
+
+  std::vector<char> decoded_bytes;
   if (pack_only) {
-    std::ifstream input(input_path, std::ios::binary);
-    if (!input) {
-      SPRING_LOG_DEBUG("block_id=io-utils:id-decompress, decompress_id_block "
-                       "pack-only open failure: path=" +
-                       std::string(input_path) +
-                       ", expected_bytes=1, actual_bytes=0, index=0");
-      throw std::runtime_error("Failed to open raw ID input file.");
-    }
+    decoded_bytes.assign(input_bytes.begin(), input_bytes.end());
+  } else {
+    decoded_bytes = bsc_decompress_bytes(
+        std::vector<char>(input_bytes.begin(), input_bytes.end()));
+  }
+
+  if (pack_only) {
+    size_t line_start = 0;
     for (uint32_t i = 0; i < num_ids; i++) {
-      if (!std::getline(input, id_array[i])) {
-        SPRING_LOG_DEBUG("block_id=io-utils:id-decompress, decompress_id_block "
-                         "pack-only decode failure: path=" +
-                         std::string(input_path) +
+      if (line_start > decoded_bytes.size()) {
+        SPRING_LOG_DEBUG("block_id=io-utils:id-decompress, "
+                         "decompress_id_block_bytes pack-only decode "
+                         "failure: path=" +
+                         std::string(input_label) +
                          ", expected_bytes=" + std::to_string(num_ids) +
                          ", actual_bytes=" + std::to_string(i) +
                          ", index=" + std::to_string(i));
         throw std::runtime_error("Failed to decode raw ID block.");
       }
+      const char *begin = decoded_bytes.data() + line_start;
+      const size_t remaining = decoded_bytes.size() - line_start;
+      const void *newline_ptr = std::memchr(begin, '\n', remaining);
+      if (newline_ptr == nullptr) {
+        if (i + 1 != num_ids) {
+          SPRING_LOG_DEBUG("block_id=io-utils:id-decompress, "
+                           "decompress_id_block_bytes pack-only decode "
+                           "failure: path=" +
+                           std::string(input_label) +
+                           ", expected_bytes=" + std::to_string(num_ids) +
+                           ", actual_bytes=" + std::to_string(i) +
+                           ", index=" + std::to_string(i));
+          throw std::runtime_error("Failed to decode raw ID block.");
+        }
+        id_array[i].assign(begin, remaining);
+        line_start = decoded_bytes.size();
+        continue;
+      }
+      const size_t line_len =
+          static_cast<size_t>(static_cast<const char *>(newline_ptr) - begin);
+      id_array[i].assign(begin, line_len);
+      line_start += line_len + 1;
     }
-    SPRING_LOG_DEBUG("block_id=io-utils:id-decompress, decompress_id_block "
-                     "pack-only done: input=" +
-                     std::string(input_path));
+    SPRING_LOG_DEBUG("block_id=io-utils:id-decompress, "
+                     "decompress_id_block_bytes pack-only done: input=" +
+                     std::string(input_label));
     return;
   }
 
-  std::string temp_id_path;
-  temp_id_path = std::string(input_path) + ".tmp_id_dec";
-  safe_bsc_decompress(input_path, temp_id_path);
-
-  std::ifstream id_in(temp_id_path, std::ios::binary | std::ios::ate);
-  if (!id_in) {
-    SPRING_LOG_DEBUG("block_id=io-utils:id-decompress, decompress_id_block "
-                     "temp open failure: path=" +
-                     temp_id_path +
-                     ", expected_bytes=1, actual_bytes=0, index=0");
-    std::filesystem::remove(temp_id_path);
-    throw std::runtime_error("Failed to open temporary decompressed ID file.");
-  }
-  const size_t r_size = static_cast<size_t>(id_in.tellg());
-  id_in.seekg(0, std::ios::beg);
-  std::vector<uint8_t> buffer(r_size);
-  if (!id_in.read(reinterpret_cast<char *>(buffer.data()), r_size)) {
-    SPRING_LOG_DEBUG(
-        "block_id=io-utils:id-decompress, decompress_id_block temp read "
-        "failure: path=" +
-        temp_id_path + ", expected_bytes=" + std::to_string(r_size) +
-        ", actual_bytes=" + std::to_string(id_in.gcount()) + ", index=0");
-    id_in.close();
-    std::filesystem::remove(temp_id_path);
-    throw std::runtime_error("Failed to read decompressed ID block.");
-  }
-  id_in.close();
-  std::filesystem::remove(temp_id_path);
-
-  const char *curr = reinterpret_cast<const char *>(buffer.data());
-  const char *end = curr + r_size;
-  const std::string block_path = input_path;
+  const char *curr = decoded_bytes.data();
+  const char *end = curr + decoded_bytes.size();
+  const std::string block_path(input_label);
   auto read_u32 = [&]() {
     if (curr + 4 > end) {
       const auto remaining = static_cast<uint64_t>(end - curr);
@@ -1233,6 +1320,146 @@ void safe_bsc_str_array_decompress(const std::string &input_path,
   SPRING_LOG_DEBUG("block_id=io-utils:bsc-array, safe_bsc_str_array_decompress "
                    "done: input=" +
                    input_path);
+}
+
+void safe_bsc_str_array_decompress_bytes(std::string_view input_bytes,
+                                         std::string_view input_label,
+                                         std::string *string_array,
+                                         uint32_t num_strings,
+                                         uint32_t *string_lengths) {
+  SPRING_LOG_DEBUG(
+      "block_id=io-utils:bsc-array, safe_bsc_str_array_decompress_bytes "
+      "start: input=" +
+      std::string(input_label) +
+      ", num_strings=" + std::to_string(num_strings));
+
+  ensure_libbsc_ready();
+
+  size_t cursor = 0;
+  const int nblocks =
+      read_binary_or_throw<int>(input_bytes, cursor, "string-array block count",
+                                std::string(input_label));
+  if (nblocks < 0) {
+    throw std::runtime_error("Corrupt BSC byte stream for " +
+                             std::string(input_label) +
+                             ": invalid block count.");
+  }
+
+  uint32_t pos_in_str_array = 0;
+  uint32_t pos_in_current_str = 0;
+  for (uint32_t string_index = 0; string_index < num_strings; ++string_index) {
+    if (string_lengths[string_index] == 0) {
+      string_array[string_index].clear();
+    }
+  }
+  if (num_strings > 0) {
+    string_array[0].resize(string_lengths[0]);
+  }
+
+  std::vector<unsigned char> buffer;
+  int parsed_blocks = 0;
+  while (cursor < input_bytes.size()) {
+    signed char record_size = read_binary_or_throw<signed char>(
+        input_bytes, cursor, "record size", std::string(input_label));
+    if (record_size < 1) {
+      throw std::runtime_error("Corrupt BSC byte stream for " +
+                               std::string(input_label) +
+                               ": invalid record size.");
+    }
+
+    signed char sorting_contexts = read_binary_or_throw<signed char>(
+        input_bytes, cursor, "sorting contexts", std::string(input_label));
+    if (sorting_contexts != LIBBSC_CONTEXTS_FOLLOWING &&
+        sorting_contexts != LIBBSC_CONTEXTS_PRECEDING) {
+      throw std::runtime_error("Corrupt BSC byte stream for " +
+                               std::string(input_label) +
+                               ": invalid sorting context.");
+    }
+
+    if (cursor + LIBBSC_HEADER_SIZE > input_bytes.size()) {
+      throw std::runtime_error("Corrupt BSC byte stream for " +
+                               std::string(input_label) +
+                               ": truncated libbsc block header.");
+    }
+
+    int block_size = 0;
+    int data_size = 0;
+    if (bsc_block_info(reinterpret_cast<const unsigned char *>(
+                           input_bytes.data() + cursor),
+                       LIBBSC_HEADER_SIZE, &block_size, &data_size,
+                       LIBBSC_DEFAULT_FEATURES) != LIBBSC_NO_ERROR) {
+      throw std::runtime_error("Corrupt BSC byte stream for " +
+                               std::string(input_label) +
+                               ": invalid libbsc block metadata.");
+    }
+    if (block_size < LIBBSC_HEADER_SIZE || data_size < 0) {
+      throw std::runtime_error("Corrupt BSC byte stream for " +
+                               std::string(input_label) +
+                               ": invalid block sizes.");
+    }
+    if (cursor + static_cast<size_t>(block_size) > input_bytes.size()) {
+      throw std::runtime_error("Corrupt BSC byte stream for " +
+                               std::string(input_label) +
+                               ": truncated compressed block.");
+    }
+
+    buffer.resize(static_cast<size_t>((std::max)(block_size, data_size)));
+    std::memcpy(buffer.data(), input_bytes.data() + cursor,
+                static_cast<size_t>(block_size));
+    cursor += static_cast<size_t>(block_size);
+
+    const int decompress_result =
+        bsc_decompress(buffer.data(), block_size, buffer.data(), data_size,
+                       LIBBSC_DEFAULT_FEATURES);
+    if (decompress_result < LIBBSC_NO_ERROR) {
+      throw std::runtime_error("libbsc string-array decompression failed for " +
+                               std::string(input_label) + ".");
+    }
+
+    if (sorting_contexts == LIBBSC_CONTEXTS_PRECEDING) {
+      const int reverse_result =
+          bsc_reverse_block(buffer.data(), data_size, LIBBSC_DEFAULT_FEATURES);
+      if (reverse_result != LIBBSC_NO_ERROR) {
+        throw std::runtime_error(
+            "libbsc reverse-block failed for string-array data: " +
+            std::string(input_label));
+      }
+    }
+
+    if (record_size > 1) {
+      const int reorder_result = bsc_reorder_reverse(
+          buffer.data(), data_size, record_size, LIBBSC_DEFAULT_FEATURES);
+      if (reorder_result != LIBBSC_NO_ERROR) {
+        throw std::runtime_error(
+            "libbsc reorder-reverse failed for string-array data: " +
+            std::string(input_label));
+      }
+    }
+
+    write_string_array_bytes_or_throw(buffer.data(), data_size, string_array,
+                                      num_strings, string_lengths,
+                                      pos_in_str_array, pos_in_current_str);
+    parsed_blocks++;
+  }
+
+  if (parsed_blocks != nblocks) {
+    throw std::runtime_error("Corrupt BSC byte stream for " +
+                             std::string(input_label) +
+                             ": block count does not match archive header.");
+  }
+
+  if (num_strings > 0 &&
+      (pos_in_str_array != num_strings - 1 ||
+       pos_in_current_str != string_lengths[num_strings - 1])) {
+    throw std::runtime_error("Corrupt BSC byte stream for " +
+                             std::string(input_label) +
+                             ": decoded string payload length mismatch.");
+  }
+
+  SPRING_LOG_DEBUG(
+      "block_id=io-utils:bsc-array, safe_bsc_str_array_decompress_bytes "
+      "done: input=" +
+      std::string(input_label));
 }
 
 void generate_illumina_binning_table(char *illumina_binning_table) {

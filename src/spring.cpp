@@ -151,6 +151,25 @@ std::string assay_from_archive_metadata(const std::string &archive_path) {
   return cp.read_info.assay.empty() ? std::string("auto") : cp.read_info.assay;
 }
 
+std::string
+assay_from_archive_metadata_bytes(const std::string &archive_bytes,
+                                  const std::string &archive_label) {
+  auto contents = read_files_from_tar_bytes(archive_bytes, {"cp.bin"});
+  if (!contents.contains("cp.bin")) {
+    throw std::runtime_error("Could not find cp.bin in archive: " +
+                             archive_label);
+  }
+
+  compression_params cp{};
+  std::istringstream input(contents["cp.bin"], std::ios::binary);
+  read_compression_params(input, cp);
+  if (!input.good()) {
+    throw std::runtime_error("Could not parse cp.bin in archive: " +
+                             archive_label);
+  }
+  return cp.read_info.assay.empty() ? std::string("auto") : cp.read_info.assay;
+}
+
 int gzip_output_compression_level(
     const compression_params::GzipMetadata::Stream &stream,
     const int default_level) {
@@ -763,7 +782,8 @@ void compress_standard(const std::string &temp_dir,
                        const bool audit_flag, const std::string &r3_path,
                        const std::string &i1_path, const std::string &i2_path,
                        const std::string &assay_type,
-                       const std::string &cb_source_path, uint32_t cb_len) {
+                       const std::string &cb_source_path, uint32_t cb_len,
+                       std::string *archive_bytes_output = nullptr) {
   const auto compression_start = clock_type::now();
 
   const compression_io_config io_config =
@@ -1060,9 +1080,18 @@ void compress_standard(const std::string &temp_dir,
 
   run_timed_step("Creating tar archive ...", "Tar archive", [&] {
     progress.set_stage("Creating archive", 0.95F, 1.0F);
-    create_tar_archive(io_config.archive_path, temp_dir);
+    if (archive_bytes_output != nullptr) {
+      *archive_bytes_output = create_tar_archive_bytes(temp_dir);
+    } else {
+      create_tar_archive(io_config.archive_path, temp_dir);
+    }
   });
-  SPRING_LOG_DEBUG("Archive created at: " + io_config.archive_path);
+  if (archive_bytes_output != nullptr) {
+    SPRING_LOG_DEBUG("Archive created in memory: bytes=" +
+                     std::to_string(archive_bytes_output->size()));
+  } else {
+    SPRING_LOG_DEBUG("Archive created at: " + io_config.archive_path);
+  }
 
   const auto compression_end = clock_type::now();
   if (Logger::is_info_enabled()) {
@@ -1078,13 +1107,18 @@ void compress_standard(const std::string &temp_dir,
 
   if (Logger::is_info_enabled()) {
     namespace fs = std::filesystem;
-    fs::path archive_file_path{io_config.archive_path};
     std::cout << "\n";
-    std::cout << "Total size: " << std::setw(12)
-              << fs::file_size(archive_file_path) << " bytes\n";
+    if (archive_bytes_output != nullptr) {
+      std::cout << "Total size: " << std::setw(12)
+                << archive_bytes_output->size() << " bytes\n";
+    } else {
+      fs::path archive_file_path{io_config.archive_path};
+      std::cout << "Total size: " << std::setw(12)
+                << fs::file_size(archive_file_path) << " bytes\n";
+    }
   }
 
-  if (audit_flag) {
+  if (audit_flag && archive_bytes_output == nullptr) {
     SPRING_LOG_DEBUG("Running post-compression audit.");
     perform_audit_standard(io_config.archive_path, temp_dir);
   }
@@ -1137,20 +1171,11 @@ void compress(const std::string &temp_dir,
     const std::string read_archive_name = "reads_group.sp";
     const std::string read3_archive_name = "read3_group.sp";
     const std::string index_archive_name = "index_group.sp";
-    const std::string read_archive_path = temp_dir + "/" + read_archive_name;
-    const std::string read3_archive_path = temp_dir + "/" + read3_archive_name;
-    const std::string index_archive_path = temp_dir + "/" + index_archive_name;
     const std::string read_work_dir = temp_dir + "/bundle_read_work";
     const std::string read3_work_dir = temp_dir + "/bundle_read3_work";
     const std::string index_work_dir = temp_dir + "/bundle_index_work";
 
     std::error_code cleanup_ec;
-    std::filesystem::remove(read_archive_path, cleanup_ec);
-    cleanup_ec.clear();
-    std::filesystem::remove(read3_archive_path, cleanup_ec);
-    cleanup_ec.clear();
-    std::filesystem::remove(index_archive_path, cleanup_ec);
-    cleanup_ec.clear();
     std::filesystem::remove_all(read_work_dir, cleanup_ec);
     cleanup_ec.clear();
     std::filesystem::remove_all(read3_work_dir, cleanup_ec);
@@ -1181,15 +1206,21 @@ void compress(const std::string &temp_dir,
     SPRING_LOG_INFO("Detected grouped lanes; compressing as grouped bundle "
                     "(read pair + optional read3 + optional index pair).");
 
+    std::string read_archive_bytes;
+    std::string read3_archive_bytes;
+    std::string index_archive_bytes;
+
     // Compress R1/R2 as a regular SPRING archive.
     // I1 path is passed so CB extraction can use it during preprocessing.
-    compress_standard(read_work_dir, read_inputs, {read_archive_path}, num_thr,
+    compress_standard(read_work_dir, read_inputs, {}, num_thr,
                       pairing_only_flag, no_quality_flag, no_ids_flag,
                       quality_options, compression_level, note, verbosity_level,
-                      audit_flag, "", i1_path, "", assay_type, i1_path, cb_len);
+                      false, "", i1_path, "", assay_type, i1_path, cb_len,
+                      &read_archive_bytes);
 
     const std::string grouped_assay =
-        (assay_type == "auto") ? assay_from_archive_metadata(read_archive_path)
+        (assay_type == "auto") ? assay_from_archive_metadata_bytes(
+                                     read_archive_bytes, read_archive_name)
                                : assay_type;
 
     std::string read3_alias_source;
@@ -1199,23 +1230,23 @@ void compress(const std::string &temp_dir,
       } else if (paths_refer_to_same_file(r3_path, input_paths[1])) {
         read3_alias_source = "R2";
       } else {
-        compress_standard(read3_work_dir, read3_inputs, {read3_archive_path},
-                          num_thr, pairing_only_flag, no_quality_flag,
-                          no_ids_flag, quality_options, compression_level,
+        compress_standard(read3_work_dir, read3_inputs, {}, num_thr,
+                          pairing_only_flag, no_quality_flag, no_ids_flag,
+                          quality_options, compression_level,
                           note.empty() ? std::string("read3-group")
                                        : (note + " | read3-group"),
-                          verbosity_level, audit_flag, "", "", "",
-                          grouped_assay, "", cb_len);
+                          verbosity_level, false, "", "", "", grouped_assay, "",
+                          cb_len, &read3_archive_bytes);
       }
     }
 
     if (has_i1) {
       compress_standard(
-          index_work_dir, index_inputs, {index_archive_path}, num_thr,
-          pairing_only_flag, no_quality_flag, no_ids_flag, quality_options,
-          compression_level,
+          index_work_dir, index_inputs, {}, num_thr, pairing_only_flag,
+          no_quality_flag, no_ids_flag, quality_options, compression_level,
           note.empty() ? std::string("index-group") : (note + " | index-group"),
-          verbosity_level, audit_flag, "", "", "", grouped_assay, "", cb_len);
+          verbosity_level, false, "", "", "", grouped_assay, "", cb_len,
+          &index_archive_bytes);
     }
 
     std::error_code ec;
@@ -1250,20 +1281,20 @@ void compress(const std::string &temp_dir,
                           : std::string()};
     std::vector<tar_archive_source> bundle_sources;
     bundle_sources.push_back({.archive_path = read_archive_name,
-                              .disk_path = read_archive_path,
-                              .contents = std::string(),
-                              .from_memory = false});
+                              .disk_path = std::string(),
+                              .contents = read_archive_bytes,
+                              .from_memory = true});
     if (has_r3 && read3_alias_source.empty()) {
       bundle_sources.push_back({.archive_path = read3_archive_name,
-                                .disk_path = read3_archive_path,
-                                .contents = std::string(),
-                                .from_memory = false});
+                                .disk_path = std::string(),
+                                .contents = read3_archive_bytes,
+                                .from_memory = true});
     }
     if (has_i1) {
       bundle_sources.push_back({.archive_path = index_archive_name,
-                                .disk_path = index_archive_path,
-                                .contents = std::string(),
-                                .from_memory = false});
+                                .disk_path = std::string(),
+                                .contents = index_archive_bytes,
+                                .from_memory = true});
     }
     bundle_sources.push_back({.archive_path = kBundleManifestName,
                               .disk_path = std::string(),
@@ -1275,14 +1306,6 @@ void compress(const std::string &temp_dir,
       create_tar_archive_from_sources(output_archive_path, bundle_sources);
     });
     SPRING_LOG_DEBUG("Grouped archive created at: " + output_archive_path);
-
-    safe_remove_file(read_archive_path);
-    if (has_r3 && read3_alias_source.empty()) {
-      safe_remove_file(read3_archive_path);
-    }
-    if (has_i1) {
-      safe_remove_file(index_archive_path);
-    }
 
     if (audit_flag) {
       SPRING_LOG_DEBUG("Running post-compression audit for grouped archive.");

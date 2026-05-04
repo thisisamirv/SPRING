@@ -16,7 +16,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string_view>
@@ -35,7 +34,6 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
-
 
 namespace spring {
 
@@ -68,50 +66,6 @@ std::vector<char> read_binary_file(const std::string &path) {
     throw std::runtime_error("Failed to read binary input: " + path);
   }
   return bytes;
-}
-
-void write_binary_bytes(const std::string &path, const std::string &bytes) {
-  std::ofstream output(path, std::ios::binary | std::ios::trunc);
-  if (!output.is_open()) {
-    throw std::runtime_error("Failed to open binary output: " + path);
-  }
-  if (!bytes.empty()) {
-    output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-  }
-}
-
-std::string sanitize_scratch_member_name(const std::string &member_name) {
-  std::string sanitized = member_name;
-  std::replace(sanitized.begin(), sanitized.end(), '/', '_');
-  std::replace(sanitized.begin(), sanitized.end(), '\\', '_');
-  return sanitized;
-}
-
-std::string
-materialize_archive_member(const decompression_archive_artifact &artifact,
-                           const std::string &member_name) {
-  if (artifact.scratch_dir.empty()) {
-    throw std::runtime_error("Archive scratch directory is not configured.");
-  }
-  std::filesystem::create_directories(artifact.scratch_dir);
-  const std::string output_path =
-      artifact.scratch_dir + "/" + sanitize_scratch_member_name(member_name);
-  write_binary_bytes(output_path, artifact.require(member_name));
-  return output_path;
-}
-
-std::string
-materialize_archive_bytes(const decompression_archive_artifact &artifact,
-                          const std::string &member_name,
-                          const std::string &contents) {
-  if (artifact.scratch_dir.empty()) {
-    throw std::runtime_error("Archive scratch directory is not configured.");
-  }
-  std::filesystem::create_directories(artifact.scratch_dir);
-  const std::string output_path =
-      artifact.scratch_dir + "/" + sanitize_scratch_member_name(member_name);
-  write_binary_bytes(output_path, contents);
-  return output_path;
 }
 
 std::vector<char>
@@ -1070,20 +1024,17 @@ void decompress_short(const decompression_archive_artifact &artifact,
               const std::string quality_member =
                   input_quality_paths[stream_index] + "." +
                   std::to_string(block_num);
-              const std::string quality_path =
-                  materialize_archive_member(artifact, quality_member);
               if (stream_index == 0) {
-                safe_bsc_str_array_decompress(
-                    quality_path, quality_buffer.data() + buffer_offset,
-                    thread_read_count,
+                safe_bsc_str_array_decompress_bytes(
+                    artifact.require(quality_member), quality_member,
+                    quality_buffer.data() + buffer_offset, thread_read_count,
                     read_lengths_buffer_1.data() + buffer_offset);
               } else {
-                safe_bsc_str_array_decompress(
-                    quality_path, quality_buffer.data() + buffer_offset,
-                    thread_read_count,
+                safe_bsc_str_array_decompress_bytes(
+                    artifact.require(quality_member), quality_member,
+                    quality_buffer.data() + buffer_offset, thread_read_count,
                     read_lengths_buffer_2.data() + buffer_offset);
               }
-              safe_remove_file(quality_path);
             }
 
             if (!preserve_id) {
@@ -1105,18 +1056,15 @@ void decompress_short(const decompression_archive_artifact &artifact,
             } else {
               const std::string id_member = input_id_paths[stream_index] + "." +
                                             std::to_string(block_num);
-              std::string id_path;
+              std::string_view id_bytes;
               if (monolithic_id[stream_index]) {
-                id_path = materialize_archive_bytes(
-                    artifact, id_member,
-                    monolithic_id_blocks[stream_index][block_num]);
+                id_bytes = monolithic_id_blocks[stream_index][block_num];
               } else {
-                id_path = materialize_archive_member(artifact, id_member);
+                id_bytes = artifact.require(id_member);
               }
-              decompress_id_block(id_path.c_str(),
-                                  id_buffer.data() + buffer_offset,
-                                  thread_read_count, false);
-              safe_remove_file(id_path);
+              decompress_id_block_bytes(id_bytes, id_member,
+                                        id_buffer.data() + buffer_offset,
+                                        thread_read_count, false);
             }
           }
         } catch (...) {
@@ -1372,19 +1320,15 @@ void decompress_long(const decompression_archive_artifact &artifact,
               const std::string raw_member =
                   block_file_path(input_id_paths[stream_index], block_num);
               const std::string compressed_member = raw_member + ".bsc";
-              std::string id_path;
-              bool pack_only = false;
               if (artifact.contains(compressed_member)) {
-                id_path =
-                    materialize_archive_member(artifact, compressed_member);
+                decompress_id_block_bytes(
+                    artifact.require(compressed_member), compressed_member,
+                    id_buffer.data() + buffer_offset, thread_read_count, false);
               } else {
-                id_path = materialize_archive_member(artifact, raw_member);
-                pack_only = true;
+                decompress_id_block_bytes(
+                    artifact.require(raw_member), raw_member,
+                    id_buffer.data() + buffer_offset, thread_read_count, true);
               }
-              decompress_id_block(id_path.c_str(),
-                                  id_buffer.data() + buffer_offset,
-                                  thread_read_count, pack_only);
-              safe_remove_file(id_path);
             }
           }
         } catch (...) {

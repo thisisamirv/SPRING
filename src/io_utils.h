@@ -6,6 +6,7 @@
 #include <istream>
 #include <streambuf>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <zlib.h>
 
@@ -106,6 +107,10 @@ void compress_id_block(const char *output_path, std::string *id_array,
 
 void decompress_id_block(const char *input_path, std::string *id_array,
                          const uint32_t &num_ids, bool pack_only = false);
+void decompress_id_block_bytes(std::string_view input_bytes,
+                               std::string_view input_label,
+                               std::string *id_array, const uint32_t &num_ids,
+                               bool pack_only = false);
 
 // Quality helpers.
 void quantize_quality(std::string *quality_array, const uint32_t &num_lines,
@@ -133,6 +138,11 @@ void safe_bsc_str_array_decompress(const std::string &input_path,
                                    std::string *string_array,
                                    uint32_t num_strings,
                                    uint32_t *string_lengths);
+void safe_bsc_str_array_decompress_bytes(std::string_view input_bytes,
+                                         std::string_view input_label,
+                                         std::string *string_array,
+                                         uint32_t num_strings,
+                                         uint32_t *string_lengths);
 
 // Detailed Gzip probing.
 void extract_gzip_detailed_info(const std::string &path, bool &is_gzipped,
