@@ -225,32 +225,6 @@ void decode_unaligned_reads(const std::vector<char> &encoded,
   }
 }
 
-std::vector<uint32_t> load_read_order_entries(const std::string &order_path,
-                                              const uint32_t expected_reads) {
-  std::ifstream order_input(order_path, std::ios::binary | std::ios::ate);
-  if (!order_input.is_open()) {
-    throw std::runtime_error("Failed to open reordered read order file: " +
-                             order_path);
-  }
-
-  const std::streamsize file_size = order_input.tellg();
-  const std::streamsize expected_size =
-      static_cast<std::streamsize>(expected_reads * sizeof(uint32_t));
-  if (file_size != expected_size) {
-    throw std::runtime_error(
-        "Corruption in read order stream: unexpected file size.");
-  }
-
-  order_input.seekg(0);
-  std::vector<uint32_t> read_orders(expected_reads);
-  if (!order_input.read(reinterpret_cast<char *>(read_orders.data()),
-                        expected_size)) {
-    throw std::runtime_error("Failed to read reordered read order file: " +
-                             order_path);
-  }
-  return read_orders;
-}
-
 void write_noise_for_read(std::vector<char> &noise_output,
                           std::vector<char> &noise_position_output,
                           const std::vector<char> &noise_codes,
@@ -347,9 +321,10 @@ void compress_output_block(const output_block_buffers &block_buffers,
 
 } // namespace
 
-void reorder_compress_streams(const std::string &temp_dir,
-                              const compression_params &cp,
-                              const reordered_stream_artifact &artifact) {
+void reorder_compress_streams(
+    const std::string &temp_dir, const compression_params &cp,
+    const reordered_stream_artifact &artifact,
+    const std::vector<uint32_t> *read_order_override) {
   const reordered_stream_paths paths = build_reordered_stream_paths(temp_dir);
   SPRING_LOG_DEBUG(
       "reorder_compress_streams start: temp_dir=" + temp_dir +
@@ -378,14 +353,9 @@ void reorder_compress_streams(const std::string &temp_dir,
   const std::vector<uint64_t> &position_entries = artifact.position_entries;
   const std::vector<uint16_t> &read_length_entries =
       artifact.read_length_entries;
-  std::vector<uint32_t> read_order_entries_storage;
   const std::vector<uint32_t> *read_order_entries =
-      &artifact.read_order_entries;
-  if (paired_end && !preserve_order) {
-    read_order_entries_storage =
-        load_read_order_entries(paths.order_path, num_reads);
-    read_order_entries = &read_order_entries_storage;
-  }
+      read_order_override != nullptr ? read_order_override
+                                     : &artifact.read_order_entries;
   const std::vector<char> &noise_serialized = artifact.noise_serialized;
   const std::vector<uint16_t> &noise_positions = artifact.noise_positions;
 

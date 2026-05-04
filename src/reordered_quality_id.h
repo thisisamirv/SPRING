@@ -6,6 +6,7 @@
 
 #include <array>
 #include <string>
+#include <vector>
 
 namespace spring {
 
@@ -25,7 +26,8 @@ capture_post_encode_side_streams(const std::string &temp_dir,
 // Reorder preserved ids and qualities to match the post-reorder read layout.
 void reorder_compress_quality_id(
     const std::string &temp_dir,
-    const post_encode_side_stream_artifact &artifact, compression_params &cp);
+    const post_encode_side_stream_artifact &artifact,
+    const std::vector<uint32_t> &read_order_entries, compression_params &cp);
 
 } // namespace spring
 

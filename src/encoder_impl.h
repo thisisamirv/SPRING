@@ -80,9 +80,9 @@ inline bool read_buffer_record(const std::string &buffer, size_t &offset,
 
 template <size_t bitset_size>
 uint32_t write_unaligned_range(
-    std::ofstream &order_output, reordered_stream_artifact &artifact,
-    const std::bitset<bitset_size> *reads, const uint32_t *read_orders,
-    const uint16_t *read_lengths, const bool *remaining_reads,
+    reordered_stream_artifact &artifact, const std::bitset<bitset_size> *reads,
+    const uint32_t *read_orders, const uint16_t *read_lengths,
+    const bool *remaining_reads,
     const encoder_global_b<bitset_size> &encoder_bits,
     const uint32_t begin_read_index, const uint32_t end_read_index,
     uint64_t &unaligned_length, const encoder_global &eg) {
@@ -95,7 +95,6 @@ uint32_t write_unaligned_range(
     aligned_read_count++;
     const std::string unaligned_read = bitsettostring<bitset_size>(
         reads[read_index], read_lengths[read_index], encoder_bits);
-    order_output.write(byte_ptr(&read_orders[read_index]), sizeof(uint32_t));
     artifact.read_order_entries.push_back(read_orders[read_index]);
     artifact.read_length_entries.push_back(read_lengths[read_index]);
     const uint32_t unaligned_size =
@@ -724,8 +723,6 @@ encoder_main(const std::string &temp_dir,
                       corrected_reorder_artifact, eg, egb);
 
   reordered_stream_artifact artifact;
-  std::ofstream order_output(eg.infile_order,
-                             std::ios::out | std::ios::binary | std::ios::app);
 
   // Cleanup state arrays and locks (OmpLock destructors handle locks)
   // remaining_reads_storage will be freed automatically
@@ -772,26 +769,17 @@ encoder_main(const std::string &temp_dir,
     artifact.read_order_entries.insert(artifact.read_order_entries.end(),
                                        thread_output.read_order_entries.begin(),
                                        thread_output.read_order_entries.end());
-    if (!thread_output.read_order_entries.empty()) {
-      order_output.write(
-          byte_ptr(thread_output.read_order_entries.data()),
-          static_cast<std::streamsize>(thread_output.read_order_entries.size() *
-                                       sizeof(uint32_t)));
-    }
   }
 
   uint64_t len_unaligned = 0;
 
   const uint32_t remaining_singleton_reads = detail::write_unaligned_range(
-      order_output, artifact, read.data(), order_s.data(),
-      read_lengths_s.data(), remaining_reads, egb, 0, eg.numreads_s,
-      len_unaligned, eg);
+      artifact, read.data(), order_s.data(), read_lengths_s.data(),
+      remaining_reads, egb, 0, eg.numreads_s, len_unaligned, eg);
   const uint32_t remaining_n_reads = detail::write_unaligned_range(
-      order_output, artifact, read.data(), order_s.data(),
-      read_lengths_s.data(), remaining_reads, egb, eg.numreads_s,
-      eg.numreads_s + eg.numreads_N, len_unaligned, eg);
-
-  order_output.close();
+      artifact, read.data(), order_s.data(), read_lengths_s.data(),
+      remaining_reads, egb, eg.numreads_s, eg.numreads_s + eg.numreads_N,
+      len_unaligned, eg);
   artifact.unaligned_char_count = len_unaligned;
   SPRING_LOG_DEBUG(
       "block_id=enc-main, Encoder residual unaligned writes: singleton_reads=" +

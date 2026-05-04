@@ -412,6 +412,22 @@ void generate_order_pe(const std::string &base_dir,
   }
 }
 
+void generate_order_pe(const std::vector<uint32_t> &read_order_entries,
+                       std::vector<uint32_t> &reordered_positions,
+                       const uint32_t num_reads) {
+  const uint32_t spot_count = num_reads / 2;
+  uint32_t corrected = 0;
+
+  for (const uint32_t orig_spot : read_order_entries) {
+    if (orig_spot < spot_count) {
+      reordered_positions[orig_spot] = corrected++;
+    }
+    if (corrected >= spot_count) {
+      return;
+    }
+  }
+}
+
 void generate_order_se(const std::string &base_dir,
                        std::vector<uint32_t> &reordered_positions,
                        const uint32_t num_reads) {
@@ -454,6 +470,20 @@ void generate_order_se(const std::string &base_dir,
         n_input.read(reinterpret_cast<char *>(&orig_pos), sizeof(uint32_t))) {
       if (orig_pos < num_reads)
         reordered_positions[orig_pos] = corrected++;
+    }
+  }
+}
+
+void generate_order_se(const std::vector<uint32_t> &read_order_entries,
+                       std::vector<uint32_t> &reordered_positions,
+                       const uint32_t num_reads) {
+  uint32_t corrected = 0;
+  for (const uint32_t orig_pos : read_order_entries) {
+    if (orig_pos < num_reads) {
+      reordered_positions[orig_pos] = corrected++;
+    }
+    if (corrected >= num_reads) {
+      return;
     }
   }
 }
@@ -576,7 +606,8 @@ capture_post_encode_side_streams(const std::string &temp_dir,
 
 void reorder_compress_quality_id(
     const std::string &temp_dir,
-    const post_encode_side_stream_artifact &artifact, compression_params &cp) {
+    const post_encode_side_stream_artifact &artifact,
+    const std::vector<uint32_t> &read_order_entries, compression_params &cp) {
   const uint32_t num_reads = cp.read_info.num_reads;
   const int num_thr = cp.encoding.num_thr;
   const bool preserve_id = cp.encoding.preserve_id;
@@ -597,13 +628,21 @@ void reorder_compress_quality_id(
   std::vector<uint32_t> reordered_positions;
   if (paired_end) {
     reordered_positions.resize(num_reads / 2);
-    generate_order_pe(base_dir, reordered_positions, num_reads);
+    if (read_order_entries.size() != num_reads) {
+      throw std::runtime_error(
+          "Corruption in read order stream: entry count does not match reads.");
+    }
+    generate_order_pe(read_order_entries, reordered_positions, num_reads);
     SPRING_LOG_DEBUG("block_id=reorder-map-pe, Quality/ID reorder map "
                      "generated for paired-end reads: spots=" +
                      std::to_string(reordered_positions.size()));
   } else {
     reordered_positions.resize(num_reads);
-    generate_order_se(base_dir, reordered_positions, num_reads);
+    if (read_order_entries.size() != num_reads) {
+      throw std::runtime_error(
+          "Corruption in read order stream: entry count does not match reads.");
+    }
+    generate_order_se(read_order_entries, reordered_positions, num_reads);
     SPRING_LOG_DEBUG("block_id=reorder-map-se, Quality/ID reorder map "
                      "generated for single-end reads: reads=" +
                      std::to_string(reordered_positions.size()));

@@ -1204,23 +1204,27 @@ void compress_standard(const std::string &temp_dir,
       run_timed_step("Reordering and compressing quality and/or ids ...",
                      "Reordering and compressing quality and/or ids", [&] {
                        reorder_compress_quality_id(
-                           temp_dir, post_encode_side_streams, cp);
+                           temp_dir, post_encode_side_streams,
+                           reordered_streams_artifact.read_order_entries, cp);
                      });
       print_temp_dir_size(temp_dir);
     }
 
     if (!preserve_order && io_config.paired_end) {
       run_timed_step("Encoding pairing information ...",
-                     "Encoding pairing information",
-                     [&] { pe_encode(temp_dir, cp); });
+                     "Encoding pairing information", [&] {
+                       pe_encode(reordered_streams_artifact.read_order_entries,
+                                 cp);
+                     });
       print_temp_dir_size(temp_dir);
     }
 
     run_timed_step("Reordering and compressing streams ...",
                    "Reordering and compressing streams", [&] {
                      progress.set_stage("Compressing streams", 0.85F, 0.95F);
-                     reorder_compress_streams(temp_dir, cp,
-                                              reordered_streams_artifact);
+                     reorder_compress_streams(
+                         temp_dir, cp, reordered_streams_artifact,
+                         &reordered_streams_artifact.read_order_entries);
                    });
     print_temp_dir_size(temp_dir);
   }

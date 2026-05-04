@@ -4,14 +4,15 @@
 #ifndef SPRING_PAIRED_END_ORDER_H_
 #define SPRING_PAIRED_END_ORDER_H_
 
-#include <string>
+#include <vector>
 
 namespace spring {
 
 struct compression_params;
 
 // Rewrite paired-end read order so mate pairs land in decompression order.
-void pe_encode(const std::string &temp_dir, const compression_params &cp);
+void pe_encode(std::vector<uint32_t> &read_order_entries,
+               const compression_params &cp);
 
 } // namespace spring
 
