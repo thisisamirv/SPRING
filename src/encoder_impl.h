@@ -2,10 +2,8 @@
 #define SPRING_ENCODER_IMPL_H_
 
 #include "bitset_dictionary.h"
-#include "core_utils.h"
 #include "dna_utils.h"
 #include "encoder.h"
-#include "fs_utils.h"
 #include "progress.h"
 #include <algorithm>
 #include <array>

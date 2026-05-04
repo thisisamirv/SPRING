@@ -1483,16 +1483,10 @@ void compress(const std::string &temp_dir,
                     cb_source_path, cb_len);
 }
 
-void decompress_standard(const std::string &temp_dir,
-                         const std::vector<std::string> &input_paths,
-                         const std::vector<std::string> &output_paths,
-                         const int num_thr, const int /*compression_level*/,
-                         const log_level /*verbosity_level*/,
-                         const bool unzip_flag, const bool untar_first = true) {
-  if (untar_first) {
-    std::filesystem::create_directories(temp_dir);
-    extract_tar_archive(input_paths[0], temp_dir);
-  }
+void decompress_extracted_archive(const std::string &temp_dir,
+                                  const std::vector<std::string> &input_paths,
+                                  const std::vector<std::string> &output_paths,
+                                  const int num_thr, const bool unzip_flag) {
   const auto decompression_start = clock_type::now();
   auto *progress_ptr = ProgressBar::GlobalInstance();
   ProgressBar dummy_progress(true);
@@ -1621,24 +1615,55 @@ void decompress_standard(const std::string &temp_dir,
   }
 }
 
-void materialize_aliased_group_output(
-    const std::string &temp_dir, const std::string &read_archive_path,
-    const std::string &alias_source, const std::string &alias_output_path,
-    const int num_thr, const int compression_level,
-    const log_level verbosity_level, const bool unzip_flag) {
+void decompress_standard(const std::string &temp_dir,
+                         const std::vector<std::string> &input_paths,
+                         const std::vector<std::string> &output_paths,
+                         const int num_thr, const int /*compression_level*/,
+                         const log_level /*verbosity_level*/,
+                         const bool unzip_flag, const bool untar_first = true) {
+  if (untar_first) {
+    std::filesystem::create_directories(temp_dir);
+    extract_tar_archive(input_paths[0], temp_dir);
+  }
+  decompress_extracted_archive(temp_dir, input_paths, output_paths, num_thr,
+                               unzip_flag);
+}
+
+void decompress_standard_from_memory(
+    const std::string &temp_dir, const std::string &archive_contents,
+    const std::string &archive_label,
+    const std::vector<std::string> &output_paths, const int num_thr,
+    const int compression_level, const log_level verbosity_level,
+    const bool unzip_flag) {
+  (void)compression_level;
+  (void)verbosity_level;
+  std::filesystem::create_directories(temp_dir);
+  extract_tar_archive_from_memory(archive_contents, temp_dir);
+  decompress_extracted_archive(temp_dir, {archive_label}, output_paths, num_thr,
+                               unzip_flag);
+}
+
+void materialize_aliased_group_output_from_memory(
+    const std::string &temp_dir, const std::string &read_archive_contents,
+    const std::string &read_archive_label, const std::string &alias_source,
+    const std::string &alias_output_path, const int num_thr,
+    const int compression_level, const log_level verbosity_level,
+    const bool unzip_flag) {
   const std::string alias_temp_dir = temp_dir + "/decompress_read3_alias";
   const std::string unused_output =
       alias_temp_dir +
       (alias_source == "R2" ? "/unused_R1.fastq" : "/unused_R2.fastq");
 
   if (alias_source == "R2") {
-    decompress_standard(alias_temp_dir, {read_archive_path},
-                        {unused_output, alias_output_path}, num_thr,
-                        compression_level, verbosity_level, unzip_flag);
+    decompress_standard_from_memory(
+        alias_temp_dir, read_archive_contents, read_archive_label,
+        {unused_output, alias_output_path}, num_thr, compression_level,
+        verbosity_level, unzip_flag);
   } else {
-    decompress_standard(alias_temp_dir, {read_archive_path},
-                        {alias_output_path, unused_output}, num_thr,
-                        compression_level, verbosity_level, unzip_flag);
+    decompress_standard_from_memory(
+        alias_temp_dir, read_archive_contents, read_archive_label,
+        {alias_output_path, unused_output}, num_thr, compression_level,
+        verbosity_level, unzip_flag);
   }
 
   safe_remove_file(unused_output);
@@ -1662,14 +1687,11 @@ void decompress(const std::string &temp_dir,
   if (input_paths.size() != 1)
     throw std::runtime_error("Number of input files not equal to 1");
 
-  run_timed_step("Untarring tar archive ...", "Untarring archive", [&] {
-    progress.set_stage("Untarring", 0.0F, 0.10F);
-    extract_tar_archive(input_paths[0], temp_dir);
-  });
-
-  const std::string manifest_path = temp_dir + "/" + kBundleManifestName;
-  if (std::filesystem::exists(manifest_path)) {
-    const bundle_manifest manifest = read_bundle_manifest(manifest_path);
+  const auto manifest_contents =
+      read_files_from_tar_memory(input_paths[0], {kBundleManifestName});
+  if (manifest_contents.contains(kBundleManifestName)) {
+    const bundle_manifest manifest = read_bundle_manifest_from_string(
+        manifest_contents.at(kBundleManifestName));
     SPRING_LOG_INFO("Detected grouped bundle archive (reads + optional read3 + "
                     "optional index reads).");
 
@@ -1703,54 +1725,83 @@ void decompress(const std::string &temp_dir,
     }
     validate_output_targets(input_paths[0], resolved_outputs);
 
-    const std::string read_archive_path =
-        temp_dir + "/" + manifest.read_archive_name;
-    const std::string read3_archive_path =
-        (manifest.has_r3 && manifest.read3_alias_source.empty())
-            ? (temp_dir + "/" + manifest.read3_archive_name)
-            : std::string();
-    const std::string index_archive_path =
-        manifest.has_index ? (temp_dir + "/" + manifest.index_archive_name)
-                           : std::string();
+    std::vector<std::string> member_names = {manifest.read_archive_name};
+    if (manifest.has_r3 && manifest.read3_alias_source.empty()) {
+      member_names.push_back(manifest.read3_archive_name);
+    }
+    if (manifest.has_index) {
+      member_names.push_back(manifest.index_archive_name);
+    }
 
-    decompress_standard(temp_dir + "/decompress_reads", {read_archive_path},
-                        {resolved_outputs[0], resolved_outputs[1]}, num_thr,
-                        compression_level, verbosity_level, unzip_flag);
+    std::unordered_map<std::string, std::string> grouped_archives;
+    run_timed_step(
+        "Loading grouped bundle archive ...", "Loading grouped archive", [&] {
+          progress.set_stage("Loading grouped archive", 0.0F, 0.10F);
+          grouped_archives =
+              read_files_from_tar_memory(input_paths[0], member_names);
+        });
+
+    auto require_group_member =
+        [&](const std::string &member_name) -> const std::string & {
+      auto it = grouped_archives.find(member_name);
+      if (it == grouped_archives.end()) {
+        throw std::runtime_error("Grouped archive is missing member: " +
+                                 member_name);
+      }
+      return it->second;
+    };
+
+    const std::string &read_archive_contents =
+        require_group_member(manifest.read_archive_name);
+
+    decompress_standard_from_memory(
+        temp_dir + "/decompress_reads", read_archive_contents,
+        manifest.read_archive_name, {resolved_outputs[0], resolved_outputs[1]},
+        num_thr, compression_level, verbosity_level, unzip_flag);
 
     size_t next_output_index = 2;
     if (manifest.has_r3) {
       if (!manifest.read3_alias_source.empty()) {
-        materialize_aliased_group_output(
-            temp_dir, read_archive_path, manifest.read3_alias_source,
-            resolved_outputs[next_output_index], num_thr, compression_level,
-            verbosity_level, unzip_flag);
+        materialize_aliased_group_output_from_memory(
+            temp_dir, read_archive_contents, manifest.read_archive_name,
+            manifest.read3_alias_source, resolved_outputs[next_output_index],
+            num_thr, compression_level, verbosity_level, unzip_flag);
       } else {
-        decompress_standard(temp_dir + "/decompress_read3",
-                            {read3_archive_path},
-                            {resolved_outputs[next_output_index]}, num_thr,
-                            compression_level, verbosity_level, unzip_flag);
+        decompress_standard_from_memory(
+            temp_dir + "/decompress_read3",
+            require_group_member(manifest.read3_archive_name),
+            manifest.read3_archive_name, {resolved_outputs[next_output_index]},
+            num_thr, compression_level, verbosity_level, unzip_flag);
       }
       next_output_index++;
     }
 
     if (manifest.has_index) {
+      const std::string &index_archive_contents =
+          require_group_member(manifest.index_archive_name);
       if (manifest.has_i2) {
-        decompress_standard(
-            temp_dir + "/decompress_index", {index_archive_path},
+        decompress_standard_from_memory(
+            temp_dir + "/decompress_index", index_archive_contents,
+            manifest.index_archive_name,
             {resolved_outputs[next_output_index],
              resolved_outputs[next_output_index + 1]},
             num_thr, compression_level, verbosity_level, unzip_flag);
       } else {
-        decompress_standard(temp_dir + "/decompress_index",
-                            {index_archive_path},
-                            {resolved_outputs[next_output_index]}, num_thr,
-                            compression_level, verbosity_level, unzip_flag);
+        decompress_standard_from_memory(
+            temp_dir + "/decompress_index", index_archive_contents,
+            manifest.index_archive_name, {resolved_outputs[next_output_index]},
+            num_thr, compression_level, verbosity_level, unzip_flag);
       }
     }
 
     ProgressBar::SetGlobalInstance(nullptr);
     return;
   }
+
+  run_timed_step("Untarring tar archive ...", "Untarring archive", [&] {
+    progress.set_stage("Untarring", 0.0F, 0.10F);
+    extract_tar_archive(input_paths[0], temp_dir);
+  });
 
   decompress_standard(temp_dir, input_paths, output_paths, num_thr,
                       compression_level, verbosity_level, unzip_flag, false);

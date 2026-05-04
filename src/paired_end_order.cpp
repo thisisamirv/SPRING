@@ -1,6 +1,8 @@
 // Reorders paired-end mate indices to match Spring's reordered read layout
 // while preserving pair relationships for later reconstruction.
 
+#include <cstdint>
+#include <stdexcept>
 #include <vector>
 
 #include "paired_end_order.h"

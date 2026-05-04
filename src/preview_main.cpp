@@ -272,262 +272,260 @@ void preview(const std::string &archive_path, bool audit_only,
     const bundle_manifest manifest =
         read_bundle_manifest_from_string(contents[kBundleManifestName]);
 
-    const std::filesystem::path temp_dir = create_preview_temp_dir(working_dir);
-    try {
-      extract_tar_archive(archive_path, temp_dir.generic_string());
+    std::vector<std::string> member_names = {manifest.read_archive_name};
+    if (manifest.has_r3 && manifest.read3_alias_source.empty()) {
+      member_names.push_back(manifest.read3_archive_name);
+    }
+    if (manifest.has_index) {
+      member_names.push_back(manifest.index_archive_name);
+    }
 
-      // Read metadata from the main reads archive
-      auto read_contents = read_files_from_tar_memory(
-          (temp_dir / manifest.read_archive_name).generic_string(), {"cp.bin"});
-      if (!read_contents.contains("cp.bin")) {
-        throw std::runtime_error("Could not find cp.bin in reads archive.");
+    const auto grouped_archives =
+        read_files_from_tar_memory(archive_path, member_names);
+    auto require_group_member =
+        [&](const std::string &member_name) -> const std::string & {
+      auto it = grouped_archives.find(member_name);
+      if (it == grouped_archives.end()) {
+        throw std::runtime_error("Grouped archive is missing member: " +
+                                 member_name);
       }
-      compression_params cp_reads{};
-      std::istringstream in_reads(read_contents["cp.bin"], std::ios::binary);
-      read_compression_params(in_reads, cp_reads);
-      if (!in_reads.good()) {
-        throw std::runtime_error("Could not parse cp.bin in reads archive.");
-      }
+      return it->second;
+    };
 
-      // Read metadata from R3 archive if present
-      compression_params cp_r3{};
-      if (manifest.has_r3 && manifest.read3_alias_source.empty()) {
-        auto r3_contents = read_files_from_tar_memory(
-            (temp_dir / manifest.read3_archive_name).generic_string(),
-            {"cp.bin"});
-        if (r3_contents.contains("cp.bin")) {
-          std::istringstream in_r3(r3_contents["cp.bin"], std::ios::binary);
-          read_compression_params(in_r3, cp_r3);
-          if (!in_r3.good()) {
-            throw std::runtime_error(
-                "Could not parse cp.bin in read3 archive.");
-          }
+    // Read metadata from the main reads archive
+    auto read_contents = read_files_from_tar_bytes(
+        require_group_member(manifest.read_archive_name), {"cp.bin"});
+    if (!read_contents.contains("cp.bin")) {
+      throw std::runtime_error("Could not find cp.bin in reads archive.");
+    }
+    compression_params cp_reads{};
+    std::istringstream in_reads(read_contents["cp.bin"], std::ios::binary);
+    read_compression_params(in_reads, cp_reads);
+    if (!in_reads.good()) {
+      throw std::runtime_error("Could not parse cp.bin in reads archive.");
+    }
+
+    // Read metadata from R3 archive if present
+    compression_params cp_r3{};
+    if (manifest.has_r3 && manifest.read3_alias_source.empty()) {
+      auto r3_contents = read_files_from_tar_bytes(
+          require_group_member(manifest.read3_archive_name), {"cp.bin"});
+      if (r3_contents.contains("cp.bin")) {
+        std::istringstream in_r3(r3_contents["cp.bin"], std::ios::binary);
+        read_compression_params(in_r3, cp_r3);
+        if (!in_r3.good()) {
+          throw std::runtime_error("Could not parse cp.bin in read3 archive.");
         }
       }
+    }
 
-      // Read metadata from index archive if present
-      compression_params cp_index{};
-      if (manifest.has_index) {
-        auto index_contents = read_files_from_tar_memory(
-            (temp_dir / manifest.index_archive_name).generic_string(),
-            {"cp.bin"});
-        if (index_contents.contains("cp.bin")) {
-          std::istringstream in_index(index_contents["cp.bin"],
-                                      std::ios::binary);
-          read_compression_params(in_index, cp_index);
-          if (!in_index.good()) {
-            throw std::runtime_error(
-                "Could not parse cp.bin in index archive.");
-          }
+    // Read metadata from index archive if present
+    compression_params cp_index{};
+    if (manifest.has_index) {
+      auto index_contents = read_files_from_tar_bytes(
+          require_group_member(manifest.index_archive_name), {"cp.bin"});
+      if (index_contents.contains("cp.bin")) {
+        std::istringstream in_index(index_contents["cp.bin"], std::ios::binary);
+        read_compression_params(in_index, cp_index);
+        if (!in_index.good()) {
+          throw std::runtime_error("Could not parse cp.bin in index archive.");
         }
       }
+    }
 
-      // Display unified metadata
-      std::cout << "\nSPRING2 Archive Metadata Preview:\n";
-      std::cout << "--------------------------------\n";
-      if (!cp_reads.read_info.compressor_version.empty()) {
-        std::cout << "Compressor Version: "
-                  << cp_reads.read_info.compressor_version << "\n";
-      }
-      if (!cp_reads.read_info.note.empty()) {
-        std::cout << "Note:              " << cp_reads.read_info.note << "\n";
-      }
-      std::cout << "Original Input 1:  " << manifest.r1_name << "\n";
-      std::cout << "Original Input 2:  " << manifest.r2_name << "\n";
-      if (manifest.has_r3) {
-        std::cout << "Original Input 3:  " << manifest.r3_name << "\n";
-      }
-      if (manifest.has_index) {
-        std::cout << "Original Input I1: " << manifest.i1_name << "\n";
-      }
-      if (manifest.has_index && manifest.has_i2) {
-        std::cout << "Original Input I2: " << manifest.i2_name << "\n";
-      }
+    // Display unified metadata
+    std::cout << "\nSPRING2 Archive Metadata Preview:\n";
+    std::cout << "--------------------------------\n";
+    if (!cp_reads.read_info.compressor_version.empty()) {
+      std::cout << "Compressor Version: "
+                << cp_reads.read_info.compressor_version << "\n";
+    }
+    if (!cp_reads.read_info.note.empty()) {
+      std::cout << "Note:              " << cp_reads.read_info.note << "\n";
+    }
+    std::cout << "Original Input 1:  " << manifest.r1_name << "\n";
+    std::cout << "Original Input 2:  " << manifest.r2_name << "\n";
+    if (manifest.has_r3) {
+      std::cout << "Original Input 3:  " << manifest.r3_name << "\n";
+    }
+    if (manifest.has_index) {
+      std::cout << "Original Input I1: " << manifest.i1_name << "\n";
+    }
+    if (manifest.has_index && manifest.has_i2) {
+      std::cout << "Original Input I2: " << manifest.i2_name << "\n";
+    }
 
-      uint64_t archive_size = std::filesystem::file_size(archive_path);
-      std::cout << "Assay Type:        "
-                << (!cp_reads.read_info.assay.empty() ? cp_reads.read_info.assay
-                                                      : "auto");
-      if (!cp_reads.read_info.assay_confidence.empty() &&
-          cp_reads.read_info.assay_confidence != "N/A") {
-        std::cout << " (" << cp_reads.read_info.assay_confidence << ")";
+    uint64_t archive_size = std::filesystem::file_size(archive_path);
+    std::cout << "Assay Type:        "
+              << (!cp_reads.read_info.assay.empty() ? cp_reads.read_info.assay
+                                                    : "auto");
+    if (!cp_reads.read_info.assay_confidence.empty() &&
+        cp_reads.read_info.assay_confidence != "N/A") {
+      std::cout << " (" << cp_reads.read_info.assay_confidence << ")";
+    }
+    std::cout << "\n";
+    if (cp_reads.encoding.cb_prefix_stripped) {
+      std::cout << "CB Prefix:         Extracted ("
+                << cp_reads.encoding.cb_prefix_len
+                << " bp from R1 single-cell prefix)\n";
+    }
+    if (manifest.has_index && cp_index.encoding.index_id_suffix_reconstructed) {
+      std::cout << "Index IDs:         Reconstructed trailing I1/I2 token "
+                   "from index reads\n";
+    }
+    if (cp_reads.encoding.atac_adapter_stripped) {
+      std::cout << "ATAC Adapters:     Stripped terminal Tn5/Nextera "
+                   "read-through\n";
+    }
+    if (cp_reads.encoding.barcode_sort) {
+      std::cout << "Barcode Sort:      Yes (CB: R1 prefix or I1 lane, "
+                << cp_reads.encoding.cb_len << " bp) [Legacy]\n";
+    }
+    const uint32_t input_1_total_reads = cp_reads.encoding.paired_end
+                                             ? cp_reads.read_info.num_reads / 2
+                                             : cp_reads.read_info.num_reads;
+    const uint32_t input_2_total_reads =
+        cp_reads.encoding.paired_end ? cp_reads.read_info.num_reads / 2 : 0;
+    const uint32_t input_1_non_clean_reads =
+        input_1_total_reads >= cp_reads.read_info.num_reads_clean[0]
+            ? input_1_total_reads - cp_reads.read_info.num_reads_clean[0]
+            : 0;
+    const uint32_t input_2_non_clean_reads =
+        input_2_total_reads >= cp_reads.read_info.num_reads_clean[1]
+            ? input_2_total_reads - cp_reads.read_info.num_reads_clean[1]
+            : 0;
+    std::cout << "Mode:              Grouped (R + I lanes), "
+              << (cp_reads.encoding.paired_end ? "Paired-end" : "Single-end")
+              << "\n";
+    std::cout << "Total Read Records:" << std::setw(4) << " "
+              << cp_reads.read_info.num_reads << "\n";
+    if (cp_reads.encoding.paired_end) {
+      std::cout << "Clean Reads:       Input 1: "
+                << cp_reads.read_info.num_reads_clean[0];
+      if (input_1_non_clean_reads > 0) {
+        std::cout << " (+ " << input_1_non_clean_reads << " non-clean)";
       }
       std::cout << "\n";
-      if (cp_reads.encoding.cb_prefix_stripped) {
-        std::cout << "CB Prefix:         Extracted ("
-                  << cp_reads.encoding.cb_prefix_len
-                  << " bp from R1 single-cell prefix)\n";
+      std::cout << "                   Input 2: "
+                << cp_reads.read_info.num_reads_clean[1];
+      if (input_2_non_clean_reads > 0) {
+        std::cout << " (+ " << input_2_non_clean_reads << " non-clean)";
       }
-      if (manifest.has_index &&
-          cp_index.encoding.index_id_suffix_reconstructed) {
-        std::cout << "Index IDs:         Reconstructed trailing I1/I2 token "
-                     "from index reads\n";
-      }
-      if (cp_reads.encoding.atac_adapter_stripped) {
-        std::cout << "ATAC Adapters:     Stripped terminal Tn5/Nextera "
-                     "read-through\n";
-      }
-      if (cp_reads.encoding.barcode_sort) {
-        std::cout << "Barcode Sort:      Yes (CB: R1 prefix or I1 lane, "
-                  << cp_reads.encoding.cb_len << " bp) [Legacy]\n";
-      }
-      const uint32_t input_1_total_reads =
-          cp_reads.encoding.paired_end ? cp_reads.read_info.num_reads / 2
-                                       : cp_reads.read_info.num_reads;
-      const uint32_t input_2_total_reads =
-          cp_reads.encoding.paired_end ? cp_reads.read_info.num_reads / 2 : 0;
-      const uint32_t input_1_non_clean_reads =
-          input_1_total_reads >= cp_reads.read_info.num_reads_clean[0]
-              ? input_1_total_reads - cp_reads.read_info.num_reads_clean[0]
-              : 0;
-      const uint32_t input_2_non_clean_reads =
-          input_2_total_reads >= cp_reads.read_info.num_reads_clean[1]
-              ? input_2_total_reads - cp_reads.read_info.num_reads_clean[1]
-              : 0;
-      std::cout << "Mode:              Grouped (R + I lanes), "
-                << (cp_reads.encoding.paired_end ? "Paired-end" : "Single-end")
-                << "\n";
-      std::cout << "Total Read Records:" << std::setw(4) << " "
-                << cp_reads.read_info.num_reads << "\n";
-      if (cp_reads.encoding.paired_end) {
-        std::cout << "Clean Reads:       Input 1: "
-                  << cp_reads.read_info.num_reads_clean[0];
-        if (input_1_non_clean_reads > 0) {
-          std::cout << " (+ " << input_1_non_clean_reads << " non-clean)";
-        }
-        std::cout << "\n";
-        std::cout << "                   Input 2: "
-                  << cp_reads.read_info.num_reads_clean[1];
-        if (input_2_non_clean_reads > 0) {
-          std::cout << " (+ " << input_2_non_clean_reads << " non-clean)";
-        }
-        std::cout << "\n";
-      }
-
-      uint64_t total_orig_compressed_size =
-          cp_reads.gzip.streams[0].compressed_size;
-      if (cp_reads.encoding.paired_end) {
-        total_orig_compressed_size += cp_reads.gzip.streams[1].compressed_size;
-      }
-      if (manifest.has_r3 && manifest.read3_alias_source.empty()) {
-        total_orig_compressed_size += cp_r3.gzip.streams[0].compressed_size;
-      }
-      if (manifest.has_index) {
-        total_orig_compressed_size += cp_index.gzip.streams[0].compressed_size;
-        if (manifest.has_i2 && cp_index.encoding.paired_end) {
-          total_orig_compressed_size +=
-              cp_index.gzip.streams[1].compressed_size;
-        }
-      }
-      if (total_orig_compressed_size > 0) {
-        double to_mb_factor = 1024.0 * 1024.0;
-        double overall_ratio =
-            (double)total_orig_compressed_size / archive_size;
-        std::cout << "Compression Ratio: " << std::fixed << std::setprecision(2)
-                  << overall_ratio << "x ("
-                  << (uint64_t)(total_orig_compressed_size / to_mb_factor)
-                  << " / " << (uint64_t)(archive_size / to_mb_factor)
-                  << " MB)\n";
-      }
-      std::cout << "Max Read Length:   " << cp_reads.read_info.max_readlen
-                << " (using "
-                << (cp_reads.encoding.long_flag ? "long" : "short")
-                << "-read encoder)\n";
-      std::cout << "Preserve Order:    "
-                << (cp_reads.encoding.preserve_order ? "Yes" : "No") << "\n";
-      std::cout << "Preserve IDs:      "
-                << (cp_reads.encoding.preserve_id ? "Yes" : "No") << "\n";
-      std::cout << "Preserve Quality:  "
-                << (cp_reads.encoding.preserve_quality ? "Yes" : "No") << "\n";
-      if (cp_reads.encoding.preserve_quality) {
-        std::cout << "Quality Mode:      ";
-        if (cp_reads.quality.qvz_flag)
-          std::cout << "QVZ (ratio: " << cp_reads.quality.qvz_ratio << ")";
-        else if (cp_reads.quality.ill_bin_flag)
-          std::cout << "Illumina 8-level binning";
-        else if (cp_reads.quality.bin_thr_flag)
-          std::cout << "Binary binning (thr: " << cp_reads.quality.bin_thr_thr
-                    << ")";
-        else
-          std::cout << "Lossless";
-        std::cout << "\n";
-      }
-      std::cout << "Compression Level: " << cp_reads.encoding.compression_level
-                << "\n";
-      std::cout << "Use CRLF:          "
-                << (cp_reads.encoding.use_crlf ? "Yes" : "No") << "\n";
-
-      // Display compression reports for each input file
-      print_gzip_compression_info(
-          1, manifest.r1_name, cp_reads.gzip.streams[0].was_gzipped,
-          cp_reads.gzip.streams[0].flg, cp_reads.gzip.streams[0].mtime,
-          cp_reads.gzip.streams[0].xfl, cp_reads.gzip.streams[0].os,
-          cp_reads.gzip.streams[0].name, cp_reads.gzip.streams[0].is_bgzf,
-          cp_reads.gzip.streams[0].bgzf_block_size,
-          cp_reads.gzip.streams[0].uncompressed_size,
-          cp_reads.gzip.streams[0].compressed_size,
-          cp_reads.gzip.streams[0].member_count);
-
-      if (cp_reads.encoding.paired_end) {
-        print_gzip_compression_info(
-            2, manifest.r2_name, cp_reads.gzip.streams[1].was_gzipped,
-            cp_reads.gzip.streams[1].flg, cp_reads.gzip.streams[1].mtime,
-            cp_reads.gzip.streams[1].xfl, cp_reads.gzip.streams[1].os,
-            cp_reads.gzip.streams[1].name, cp_reads.gzip.streams[1].is_bgzf,
-            cp_reads.gzip.streams[1].bgzf_block_size,
-            cp_reads.gzip.streams[1].uncompressed_size,
-            cp_reads.gzip.streams[1].compressed_size,
-            cp_reads.gzip.streams[1].member_count);
-      }
-
-      if (manifest.has_r3) {
-        if (!manifest.read3_alias_source.empty()) {
-          std::cout << "--------------------------------\n";
-          std::cout << manifest.r3_name << " (aliased to "
-                    << manifest.read3_alias_source << ", no extra payload)\n";
-        } else {
-          print_gzip_compression_info(
-              3, manifest.r3_name, cp_r3.gzip.streams[0].was_gzipped,
-              cp_r3.gzip.streams[0].flg, cp_r3.gzip.streams[0].mtime,
-              cp_r3.gzip.streams[0].xfl, cp_r3.gzip.streams[0].os,
-              cp_r3.gzip.streams[0].name, cp_r3.gzip.streams[0].is_bgzf,
-              cp_r3.gzip.streams[0].bgzf_block_size,
-              cp_r3.gzip.streams[0].uncompressed_size,
-              cp_r3.gzip.streams[0].compressed_size,
-              cp_r3.gzip.streams[0].member_count);
-        }
-      }
-
-      if (manifest.has_index) {
-        print_gzip_compression_info(
-            4, manifest.i1_name, cp_index.gzip.streams[0].was_gzipped,
-            cp_index.gzip.streams[0].flg, cp_index.gzip.streams[0].mtime,
-            cp_index.gzip.streams[0].xfl, cp_index.gzip.streams[0].os,
-            cp_index.gzip.streams[0].name, cp_index.gzip.streams[0].is_bgzf,
-            cp_index.gzip.streams[0].bgzf_block_size,
-            cp_index.gzip.streams[0].uncompressed_size,
-            cp_index.gzip.streams[0].compressed_size,
-            cp_index.gzip.streams[0].member_count);
-
-        if (manifest.has_i2 && cp_index.encoding.paired_end) {
-          print_gzip_compression_info(
-              5, manifest.i2_name, cp_index.gzip.streams[1].was_gzipped,
-              cp_index.gzip.streams[1].flg, cp_index.gzip.streams[1].mtime,
-              cp_index.gzip.streams[1].xfl, cp_index.gzip.streams[1].os,
-              cp_index.gzip.streams[1].name, cp_index.gzip.streams[1].is_bgzf,
-              cp_index.gzip.streams[1].bgzf_block_size,
-              cp_index.gzip.streams[1].uncompressed_size,
-              cp_index.gzip.streams[1].compressed_size,
-              cp_index.gzip.streams[1].member_count);
-        }
-      }
-    } catch (...) {
-      std::error_code ec;
-      std::filesystem::remove_all(temp_dir, ec);
-      throw;
+      std::cout << "\n";
     }
-    std::error_code ec;
-    std::filesystem::remove_all(temp_dir, ec);
+
+    uint64_t total_orig_compressed_size =
+        cp_reads.gzip.streams[0].compressed_size;
+    if (cp_reads.encoding.paired_end) {
+      total_orig_compressed_size += cp_reads.gzip.streams[1].compressed_size;
+    }
+    if (manifest.has_r3 && manifest.read3_alias_source.empty()) {
+      total_orig_compressed_size += cp_r3.gzip.streams[0].compressed_size;
+    }
+    if (manifest.has_index) {
+      total_orig_compressed_size += cp_index.gzip.streams[0].compressed_size;
+      if (manifest.has_i2 && cp_index.encoding.paired_end) {
+        total_orig_compressed_size += cp_index.gzip.streams[1].compressed_size;
+      }
+    }
+    if (total_orig_compressed_size > 0) {
+      double to_mb_factor = 1024.0 * 1024.0;
+      double overall_ratio = (double)total_orig_compressed_size / archive_size;
+      std::cout << "Compression Ratio: " << std::fixed << std::setprecision(2)
+                << overall_ratio << "x ("
+                << (uint64_t)(total_orig_compressed_size / to_mb_factor)
+                << " / " << (uint64_t)(archive_size / to_mb_factor) << " MB)\n";
+    }
+    std::cout << "Max Read Length:   " << cp_reads.read_info.max_readlen
+              << " (using " << (cp_reads.encoding.long_flag ? "long" : "short")
+              << "-read encoder)\n";
+    std::cout << "Preserve Order:    "
+              << (cp_reads.encoding.preserve_order ? "Yes" : "No") << "\n";
+    std::cout << "Preserve IDs:      "
+              << (cp_reads.encoding.preserve_id ? "Yes" : "No") << "\n";
+    std::cout << "Preserve Quality:  "
+              << (cp_reads.encoding.preserve_quality ? "Yes" : "No") << "\n";
+    if (cp_reads.encoding.preserve_quality) {
+      std::cout << "Quality Mode:      ";
+      if (cp_reads.quality.qvz_flag)
+        std::cout << "QVZ (ratio: " << cp_reads.quality.qvz_ratio << ")";
+      else if (cp_reads.quality.ill_bin_flag)
+        std::cout << "Illumina 8-level binning";
+      else if (cp_reads.quality.bin_thr_flag)
+        std::cout << "Binary binning (thr: " << cp_reads.quality.bin_thr_thr
+                  << ")";
+      else
+        std::cout << "Lossless";
+      std::cout << "\n";
+    }
+    std::cout << "Compression Level: " << cp_reads.encoding.compression_level
+              << "\n";
+    std::cout << "Use CRLF:          "
+              << (cp_reads.encoding.use_crlf ? "Yes" : "No") << "\n";
+
+    print_gzip_compression_info(
+        1, manifest.r1_name, cp_reads.gzip.streams[0].was_gzipped,
+        cp_reads.gzip.streams[0].flg, cp_reads.gzip.streams[0].mtime,
+        cp_reads.gzip.streams[0].xfl, cp_reads.gzip.streams[0].os,
+        cp_reads.gzip.streams[0].name, cp_reads.gzip.streams[0].is_bgzf,
+        cp_reads.gzip.streams[0].bgzf_block_size,
+        cp_reads.gzip.streams[0].uncompressed_size,
+        cp_reads.gzip.streams[0].compressed_size,
+        cp_reads.gzip.streams[0].member_count);
+
+    if (cp_reads.encoding.paired_end) {
+      print_gzip_compression_info(
+          2, manifest.r2_name, cp_reads.gzip.streams[1].was_gzipped,
+          cp_reads.gzip.streams[1].flg, cp_reads.gzip.streams[1].mtime,
+          cp_reads.gzip.streams[1].xfl, cp_reads.gzip.streams[1].os,
+          cp_reads.gzip.streams[1].name, cp_reads.gzip.streams[1].is_bgzf,
+          cp_reads.gzip.streams[1].bgzf_block_size,
+          cp_reads.gzip.streams[1].uncompressed_size,
+          cp_reads.gzip.streams[1].compressed_size,
+          cp_reads.gzip.streams[1].member_count);
+    }
+
+    if (manifest.has_r3) {
+      if (!manifest.read3_alias_source.empty()) {
+        std::cout << "--------------------------------\n";
+        std::cout << manifest.r3_name << " (aliased to "
+                  << manifest.read3_alias_source << ", no extra payload)\n";
+      } else {
+        print_gzip_compression_info(
+            3, manifest.r3_name, cp_r3.gzip.streams[0].was_gzipped,
+            cp_r3.gzip.streams[0].flg, cp_r3.gzip.streams[0].mtime,
+            cp_r3.gzip.streams[0].xfl, cp_r3.gzip.streams[0].os,
+            cp_r3.gzip.streams[0].name, cp_r3.gzip.streams[0].is_bgzf,
+            cp_r3.gzip.streams[0].bgzf_block_size,
+            cp_r3.gzip.streams[0].uncompressed_size,
+            cp_r3.gzip.streams[0].compressed_size,
+            cp_r3.gzip.streams[0].member_count);
+      }
+    }
+
+    if (manifest.has_index) {
+      print_gzip_compression_info(
+          4, manifest.i1_name, cp_index.gzip.streams[0].was_gzipped,
+          cp_index.gzip.streams[0].flg, cp_index.gzip.streams[0].mtime,
+          cp_index.gzip.streams[0].xfl, cp_index.gzip.streams[0].os,
+          cp_index.gzip.streams[0].name, cp_index.gzip.streams[0].is_bgzf,
+          cp_index.gzip.streams[0].bgzf_block_size,
+          cp_index.gzip.streams[0].uncompressed_size,
+          cp_index.gzip.streams[0].compressed_size,
+          cp_index.gzip.streams[0].member_count);
+
+      if (manifest.has_i2 && cp_index.encoding.paired_end) {
+        print_gzip_compression_info(
+            5, manifest.i2_name, cp_index.gzip.streams[1].was_gzipped,
+            cp_index.gzip.streams[1].flg, cp_index.gzip.streams[1].mtime,
+            cp_index.gzip.streams[1].xfl, cp_index.gzip.streams[1].os,
+            cp_index.gzip.streams[1].name, cp_index.gzip.streams[1].is_bgzf,
+            cp_index.gzip.streams[1].bgzf_block_size,
+            cp_index.gzip.streams[1].uncompressed_size,
+            cp_index.gzip.streams[1].compressed_size,
+            cp_index.gzip.streams[1].member_count);
+      }
+    }
     return;
   }
 

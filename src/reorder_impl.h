@@ -4,7 +4,6 @@
 #include "bitset_dictionary.h"
 #include "core_utils.h"
 #include "dna_utils.h"
-#include "fs_utils.h"
 #include "params.h"
 #include "progress.h"
 #include "raii.h"

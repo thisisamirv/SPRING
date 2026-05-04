@@ -9,6 +9,8 @@
 #include <cstring>
 #include <fcntl.h>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <sys/stat.h>
 #include <system_error>
 #include <vector>
@@ -545,9 +547,115 @@ void extract_tar_archive(const std::string &archive_path,
                    std::to_string(extracted_entry_count) +
                    ", extracted_bytes=" + std::to_string(extracted_data_bytes));
 }
+
+void extract_tar_archive_from_memory(const std::string &archive_contents,
+                                     const std::string &target_dir) {
+  struct archive *a;
+  struct archive *ext;
+  struct archive_entry *entry;
+  int flags;
+  int r;
+  uint64_t extracted_entry_count = 0;
+  uint64_t extracted_data_bytes = 0;
+
+  SPRING_LOG_DEBUG(
+      "extract_tar_archive_from_memory start: target_dir=" + target_dir +
+      ", archive_bytes=" + std::to_string(archive_contents.size()));
+
+  flags = ARCHIVE_EXTRACT_PERM;
+  flags |= ARCHIVE_EXTRACT_SECURE_NODOTDOT;
+  flags |= ARCHIVE_EXTRACT_SECURE_SYMLINKS;
+
+  a = archive_read_new();
+  archive_read_support_filter_gzip(a);
+  archive_read_support_filter_xz(a);
+  archive_read_support_filter_zstd(a);
+  archive_read_support_filter_none(a);
+  archive_read_support_format_tar(a);
+  archive_read_support_format_empty(a);
+
+  ext = archive_write_disk_new();
+  archive_write_disk_set_options(ext, flags);
+
+  auto close_archives = [&]() noexcept {
+    if (a != nullptr) {
+      archive_read_close(a);
+      archive_read_free(a);
+      a = nullptr;
+    }
+    if (ext != nullptr) {
+      archive_write_close(ext);
+      archive_write_free(ext);
+      ext = nullptr;
+    }
+  };
+
+  try {
+    r = archive_read_open_memory(a, archive_contents.data(),
+                                 archive_contents.size());
+    if (r != ARCHIVE_OK) {
+      throw std::runtime_error(
+          "Failed to open in-memory archive for reading: " +
+          std::string(archive_error_string(a)));
+    }
+
+    std::filesystem::create_directories(target_dir);
+    const std::filesystem::path target_root =
+        std::filesystem::weakly_canonical(std::filesystem::path(target_dir));
+
+    for (;;) {
+      r = archive_read_next_header(a, &entry);
+      if (r == ARCHIVE_EOF)
+        break;
+      if (r < ARCHIVE_WARN) {
+        throw std::runtime_error("Error reading archive header: " +
+                                 std::string(archive_error_string(a)));
+      }
+
+      const std::filesystem::path dest_path =
+          validated_archive_entry_destination(target_root,
+                                              archive_entry_pathname(entry));
+      archive_entry_set_pathname(entry, dest_path.string().c_str());
+
+      r = archive_write_header(ext, entry);
+      extracted_entry_count++;
+      if (r >= ARCHIVE_OK && archive_entry_size(entry) > 0) {
+        const void *buff;
+        size_t size;
+        la_int64_t offset;
+        while (true) {
+          r = archive_read_data_block(a, &buff, &size, &offset);
+          if (r == ARCHIVE_EOF)
+            break;
+          if (r < ARCHIVE_OK)
+            throw std::runtime_error("Error reading archive data: " +
+                                     std::string(archive_error_string(a)));
+          r = archive_write_data_block(ext, buff, size, offset);
+          extracted_data_bytes += static_cast<uint64_t>(size);
+          if (r < ARCHIVE_OK)
+            throw std::runtime_error("Error writing disk data: " +
+                                     std::string(archive_error_string(ext)));
+        }
+      }
+      r = archive_write_finish_entry(ext);
+      if (r < ARCHIVE_OK)
+        throw std::runtime_error("Error finishing disk entry: " +
+                                 std::string(archive_error_string(ext)));
+    }
+
+    close_archives();
+  } catch (...) {
+    close_archives();
+    throw;
+  }
+  SPRING_LOG_DEBUG("extract_tar_archive_from_memory complete: entries=" +
+                   std::to_string(extracted_entry_count) +
+                   ", extracted_bytes=" + std::to_string(extracted_data_bytes));
+}
+
 std::unordered_map<std::string, std::string>
-read_files_from_tar_memory(const std::string &archive_path,
-                           const std::vector<std::string> &target_filenames) {
+read_files_from_tar_bytes(const std::string &archive_contents,
+                          const std::vector<std::string> &target_filenames) {
   struct archive *a;
   struct archive_entry *entry;
   int r;
@@ -561,7 +669,8 @@ read_files_from_tar_memory(const std::string &archive_path,
   archive_read_support_format_tar(a);
   archive_read_support_format_empty(a);
 
-  r = archive_read_open_filename(a, archive_path.c_str(), 10240);
+  r = archive_read_open_memory(a, archive_contents.data(),
+                               archive_contents.size());
   if (r != ARCHIVE_OK) {
     archive_read_free(a);
     return contents;
@@ -608,6 +717,23 @@ read_files_from_tar_memory(const std::string &archive_path,
   archive_read_close(a);
   archive_read_free(a);
   return contents;
+}
+
+std::unordered_map<std::string, std::string>
+read_files_from_tar_memory(const std::string &archive_path,
+                           const std::vector<std::string> &target_filenames) {
+  std::ifstream input(archive_path, std::ios::binary);
+  if (!input.is_open()) {
+    return {};
+  }
+
+  std::ostringstream contents;
+  contents << input.rdbuf();
+  if (!input.good() && !input.eof()) {
+    return {};
+  }
+
+  return read_files_from_tar_bytes(contents.str(), target_filenames);
 }
 
 } // namespace spring

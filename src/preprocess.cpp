@@ -1402,7 +1402,8 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
             output_artifact.post_encode_side_streams
                 .compressed_atac_adapter_streams[stream_index];
         if (adapter_bytes.empty()) {
-          std::ofstream(adapter_path, std::ios::binary | std::ios::trunc);
+          std::ofstream adapter_out(adapter_path,
+                                    std::ios::binary | std::ios::trunc);
           continue;
         }
         std::ofstream adapter_out(adapter_path + ".bsc",

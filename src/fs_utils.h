@@ -32,10 +32,15 @@ void create_tar_archive_from_sources(
     const std::vector<tar_archive_source> &sources);
 void extract_tar_archive(const std::string &archive_path,
                          const std::string &target_dir);
+void extract_tar_archive_from_memory(const std::string &archive_contents,
+                                     const std::string &target_dir);
 
 std::unordered_map<std::string, std::string>
 read_files_from_tar_memory(const std::string &archive_path,
                            const std::vector<std::string> &target_filenames);
+std::unordered_map<std::string, std::string>
+read_files_from_tar_bytes(const std::string &archive_contents,
+                          const std::vector<std::string> &target_filenames);
 
 } // namespace spring
 

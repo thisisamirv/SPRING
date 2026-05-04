@@ -4,6 +4,7 @@
 #ifndef SPRING_PAIRED_END_ORDER_H_
 #define SPRING_PAIRED_END_ORDER_H_
 
+#include <cstdint>
 #include <vector>
 
 namespace spring {

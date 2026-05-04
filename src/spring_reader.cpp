@@ -187,23 +187,25 @@ public:
     }
     std::filesystem::create_directories(temp_dir_);
 
-    extract_tar_archive(archive_path_, temp_dir_);
-
     archive_root_ = temp_dir_;
-    const std::string manifest_path = temp_dir_ + "/" + kBundleManifestName;
-    if (std::filesystem::exists(manifest_path)) {
-      const bundle_manifest manifest = read_bundle_manifest(manifest_path);
-
-      const std::string read_archive_path =
-          temp_dir_ + "/" + manifest.read_archive_name;
-      if (!std::filesystem::exists(read_archive_path)) {
+    const auto manifest_contents =
+        read_files_from_tar_memory(archive_path_, {kBundleManifestName});
+    if (manifest_contents.contains(kBundleManifestName)) {
+      const bundle_manifest manifest = read_bundle_manifest_from_string(
+          manifest_contents.at(kBundleManifestName));
+      const auto grouped_archives = read_files_from_tar_memory(
+          archive_path_, {manifest.read_archive_name});
+      auto read_archive_it = grouped_archives.find(manifest.read_archive_name);
+      if (read_archive_it == grouped_archives.end()) {
         throw std::runtime_error(
             "Failed to read grouped archive metadata: read archive not found.");
       }
 
       archive_root_ = temp_dir_ + "/reads_member";
       std::filesystem::create_directories(archive_root_);
-      extract_tar_archive(read_archive_path, archive_root_);
+      extract_tar_archive_from_memory(read_archive_it->second, archive_root_);
+    } else {
+      extract_tar_archive(archive_path_, temp_dir_);
     }
 
     std::string cp_path = archive_root_ + "/cp.bin";

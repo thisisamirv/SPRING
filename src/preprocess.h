@@ -12,7 +12,6 @@
 #include <cstdint>
 #include <stdexcept>
 #include <string>
-#include <vector>
 
 namespace spring {
 
