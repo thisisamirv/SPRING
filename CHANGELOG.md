@@ -32,6 +32,8 @@
 - Changed gzipped input staging to use the vendored rapidgzip library in-process instead of spawning a separate helper executable, so rapidgzip support is embedded directly into `spring2` rather than relying on a sibling runtime tool.
 - Changed compression startup to reuse one shared 10,000-fragment sample for assay detection plus initial read-length, newline, and non-ACGTN analysis instead of running separate startup passes; sampled-long inputs still take the existing full prescan, while sampled-short inputs defer full validation to preprocessing.
 - Changed the short-read post-encode stream handoff to keep encoder metadata streams in memory until final archive block generation: `call_encoder()` now returns a `reordered_stream_artifact`, `reorder_compress_streams()` consumes that artifact directly instead of rereading temporary shard files, and final `.bsc` side-stream blocks are compressed directly from in-memory buffers rather than through intermediate uncompressed block files.
+- Changed the short-read reorder-to-encoder boundary to keep reorder shard outputs in memory: reorder now returns a `reorder_encoder_artifact`, encoder consumes aligned and singleton shard buffers directly instead of reopening `temp.dna.*`, `read_order.bin.*`, and related temporary files, and corrected read ordering is applied to the in-memory shard metadata before encoding.
+- Changed sampled short-read startup detection so preprocessing now validates sampled max-read-length, CRLF, and non-ACGTN assumptions while streaming input, retries once from a clean workdir when later data changes those properties, and escalates to the long-read path with a full prescan when late reads prove the sample was not representative.
 - Vendored NASM and Ninja for easier development.
 
 ### Fixed
@@ -45,6 +47,7 @@
 - Fixed grouped decompression when `R3` is stored as an alias of `R1` or `R2`: aliased outputs are now materialized through the normal decompression path so the requested target format is preserved instead of inheriting the source mate's on-disk representation.
 - Fixed `SpringReader` so it can stream grouped bundle archives by resolving `bundle.meta`, extracting the primary read member archive, and reading `cp.bin` plus decode streams from that nested archive instead of assuming a flat top-level layout.
 - Fixed paired gzip output reconstruction so each mate preserves its own compression behavior during decompression; SPRING2 no longer collapses both output streams to one archive-wide gzip level.
+- Fixed sorted-output quality and ID reordering after the in-memory reorder-to-encoder refactor by making downstream order-map generation stop once `read_order.bin` already covers all output positions, preventing stale singleton or N-order side files from corrupting reordered streams.
 - Fixed archive extraction in `src/fs_utils.cpp` to reject absolute or escaping tar entry paths, preventing crafted archives from writing outside the requested extraction directory during preview, audit, decompression, or `SpringReader` setup.
 - Fixed decompression output validation so SPRING2 now rejects colliding output paths and refuses to overwrite the input archive when reconstructing reads.
 - Fixed grouped bundle decompression defaults so duplicate original lane basenames are deterministically disambiguated with role-based suffixes (`.R1`, `.R2`, `.R3`, `.I1`, `.I2`) instead of still colliding after a single `.index` suffix pass.
@@ -58,15 +61,12 @@
 - Fixed `SpringReader::get_digests()` so library callers can retrieve the actual computed sequence, quality, and ID CRCs after fully consuming an archive, instead of always receiving zeroed outputs.
 - Fixed paired-end preprocess cleanup so merged mate-side `input_N.dna.2`, `read_order_N.bin.2`, and redundant mate-ID intermediates are closed before deletion and removed with the safe filesystem helper; this prevents stale raw temporary files from being packaged into `.sp` archives on Windows and reduces final archive size.
 - Fixed release/install packaging drift so fresh self-contained builds no longer install vendored dependency artifacts or a standalone `rapidgzip` tool; Windows now defaults to static runtime linking, and a clean install produces a single `spring2.exe` instead of extra dependency binaries and headers.
-- Fixed sampled short-read startup detection so preprocessing now validates sampled max-read-length, CRLF, and non-ACGTN assumptions while streaming input, retries once from a clean workdir when later data changes those properties, and escalates to the long-read path with a full prescan when late reads prove the sample was not representative.
 
 ## V1.0.0-beta
 
 ### Added
 
-- Implemented **Archive Integrity Auditing**: Added record-level CRC32 digests (Sequence, ID, Quality) to archive metadata to guarantee 100% data fidelity for lossless archives.
-- Integrated mandatory integrity verification for all standard decompression operations.
-- Added the `-a, --audit` optional flag to `spring2` (for post-compression verification) and `spring2-preview` (for high-speed dry-run auditing).
+- Implemented **Archive Integrity Auditing**: Added record-lditing).
 - Added `tests/integrity_test.cpp` to validate end-to-end data fidelity and corruption detection.
 - Expanded the `SpringReader` API with `get_digests()` to enable programmatic integrity verification for library consumers.
 - Implemented a public library-style **Streaming Decompression API** (`SpringReader`) for SPRING2 archives, enabling external tools to consume genomic records programmatically without intermediate file I/O.

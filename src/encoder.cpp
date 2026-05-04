@@ -454,25 +454,22 @@ void writecontig(const std::string &ref,
   return;
 }
 
-void getDataParams(encoder_global &eg, const compression_params &cp) {
+void getDataParams(encoder_global &eg, const compression_params &cp,
+                   const reorder_encoder_artifact &reorder_artifact) {
   uint32_t clean_read_count;
   uint32_t total_read_count;
   clean_read_count =
       cp.read_info.num_reads_clean[0] + cp.read_info.num_reads_clean[1];
   total_read_count = cp.read_info.num_reads;
 
-  std::ifstream singleton_count_input(eg.infile + ".singleton" + ".count",
-                                      std::ifstream::in | std::ios::binary);
-  singleton_count_input.read(byte_ptr(&eg.numreads_s), sizeof(uint32_t));
-  singleton_count_input.close();
-  const std::string singleton_count_path = eg.infile + ".singleton.count";
-  safe_remove_file(singleton_count_path);
+  eg.numreads_s = reorder_artifact.singleton_count;
   eg.numreads = clean_read_count - eg.numreads_s;
   eg.numreads_N = total_read_count - clean_read_count;
   eg.bisulfite_ternary = cp.encoding.bisulfite_ternary;
 }
 
-void correct_order(uint32_t *order_s, const encoder_global &eg) {
+void correct_order(uint32_t *order_s, const encoder_global &eg,
+                   reorder_encoder_artifact &reorder_artifact) {
   uint32_t total_read_count = eg.numreads + eg.numreads_s + eg.numreads_N;
   std::vector<uint8_t> is_n_read(total_read_count, 0);
   for (uint32_t i = 0; i < eg.numreads_N; i++) {
@@ -494,9 +491,18 @@ void correct_order(uint32_t *order_s, const encoder_global &eg) {
   for (uint32_t i = 0; i < eg.numreads_s; i++)
     order_s[i] += cumulative_N_reads[order_s[i]];
 
-  for (int thread_id = 0; thread_id < eg.num_thr; thread_id++) {
-    rewrite_thread_order_file(thread_file_path(eg.infile_order, thread_id),
-                              cumulative_N_reads);
+  for (reorder_encoder_shard &shard : reorder_artifact.aligned_shards) {
+    for (size_t offset = 0; offset < shard.order_bytes.size();
+         offset += sizeof(uint32_t)) {
+      uint32_t read_position = 0;
+      std::memcpy(&read_position, shard.order_bytes.data() + offset,
+                  sizeof(uint32_t));
+      if (read_position < cumulative_N_reads.size()) {
+        read_position += cumulative_N_reads[read_position];
+        std::memcpy(shard.order_bytes.data() + offset, &read_position,
+                    sizeof(uint32_t));
+      }
+    }
   }
   safe_remove_file(eg.infile_order_N);
   return;

@@ -5,7 +5,6 @@
 #include "core_utils.h"
 #include "dna_utils.h"
 #include "fs_utils.h"
-#include "io_utils.h"
 #include "params.h"
 #include "progress.h"
 #include "raii.h"
@@ -97,6 +96,17 @@ append_file_to_stream(std::ofstream &output_stream,
   std::ifstream input_stream(input_path, mode);
   output_stream << input_stream.rdbuf();
   output_stream.clear();
+}
+
+template <typename T>
+inline void append_binary(std::string &buffer, const T &value) {
+  buffer.append(reinterpret_cast<const char *>(&value), sizeof(T));
+}
+
+inline void append_encoded_read(std::string &buffer, const char *read_chars,
+                                const uint32_t read_length) {
+  append_binary(buffer, read_length);
+  buffer.append(read_chars, read_length);
 }
 
 } // namespace detail
@@ -454,6 +464,7 @@ bool search_match(const std::bitset<bitset_size> &ref,
 template <size_t bitset_size>
 void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
              uint16_t *read_lengths, const reorder_global<bitset_size> &rg,
+             reorder_encoder_artifact &artifact,
              const bool deterministic_mode) {
   const uint32_t num_locks = NUM_LOCKS_REORDER;
   std::vector<OmpLock> dict_locks(num_locks);
@@ -478,12 +489,14 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
   uint32_t first_read = 0;
   SPRING_LOG_INFO("Reordering reads");
   std::vector<uint32_t> unmatched_counts(static_cast<size_t>(rg.num_thr));
-  std::vector<std::string> open_stream_errors(static_cast<size_t>(rg.num_thr));
+  std::vector<std::string> singleton_order_buffers(
+      static_cast<size_t>(rg.num_thr));
+  artifact.aligned_shards.assign(static_cast<size_t>(rg.num_thr), {});
 #pragma omp parallel default(none)                                             \
     shared(rg, read, read_lengths, dict, dict_locks, read_locks,               \
                remaining_read_lock, length_masks_ptrs, index_masks,            \
-               remaining_reads, unmatched_counts, open_stream_errors,          \
-               std::cerr, std::cout, first_read, deterministic_mode)
+               remaining_reads, unmatched_counts, singleton_order_buffers,     \
+               artifact, std::cerr, std::cout, first_read, deterministic_mode)
   {
     bool done = false;
     int thread_id = omp_get_thread_num();
@@ -491,32 +504,12 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
     int64_t remaining_read_scan = rg.numreads - 1 - thread_id;
     if (remaining_read_scan < 0)
       remaining_read_scan = -1;
-    std::ofstream orientation_output(
-        detail::thread_output_path(rg.outfileRC, thread_id), std::ios::binary);
-    std::ofstream flag_output(
-        detail::thread_output_path(rg.outfileflag, thread_id),
-        std::ios::binary);
-    std::ofstream position_output(
-        detail::thread_output_path(rg.outfilepos, thread_id), std::ios::binary);
-    std::ofstream order_output(
-        detail::thread_output_path(rg.outfileorder, thread_id),
-        std::ios::binary);
-    std::ofstream singleton_order_output(
-        detail::thread_singleton_output_path(rg.outfileorder, thread_id),
-        std::ios::binary);
-    std::ofstream read_length_output(
-        detail::thread_output_path(rg.outfilereadlength, thread_id),
-        std::ios::binary);
-    if (!orientation_output.is_open() || !flag_output.is_open() ||
-        !position_output.is_open() || !order_output.is_open() ||
-        !singleton_order_output.is_open() || !read_length_output.is_open()) {
-      std::string error_msg = "Thread " + std::to_string(thread_id) +
-                              ": Failed to open one or more temporary "
-                              "files in reorder. Working directory: " +
-                              rg.basedir;
-      open_stream_errors[static_cast<size_t>(thread_id)] = error_msg;
-      done = true;
-    }
+    std::string orientation_output;
+    std::string flag_output;
+    std::string position_output;
+    std::string order_output;
+    std::string singleton_order_output;
+    std::string read_length_output;
 
     // Deterministic mode serializes match selection to thread 0 while still
     // materializing empty per-thread shard files for downstream stages.
@@ -718,21 +711,22 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
                                    reference_length;
             }
             if (previous_read_unmatched == true) {
-              orientation_output.put('d');
-              order_output.write(byte_ptr(&previous_read_id), sizeof(uint32_t));
-              flag_output.put('0');
+              orientation_output.push_back('d');
+              detail::append_binary(order_output,
+                                    static_cast<uint32_t>(previous_read_id));
+              flag_output.push_back('0');
               int64_t zero = 0;
-              position_output.write(byte_ptr(&zero), sizeof(int64_t));
-              read_length_output.write(
-                  byte_ptr(&read_lengths[previous_read_id]), sizeof(uint16_t));
+              detail::append_binary(position_output, zero);
+              detail::append_binary(read_length_output,
+                                    read_lengths[previous_read_id]);
             }
-            orientation_output.put(left_search ? 'r' : 'd');
-            order_output.write(byte_ptr(&current_read_id), sizeof(uint32_t));
-            flag_output.put('1');
-            position_output.write(byte_ptr(&current_read_position),
-                                  sizeof(int64_t));
-            read_length_output.write(byte_ptr(&read_lengths[current_read_id]),
-                                     sizeof(uint16_t));
+            orientation_output.push_back(left_search ? 'r' : 'd');
+            detail::append_binary(order_output,
+                                  static_cast<uint32_t>(current_read_id));
+            flag_output.push_back('1');
+            detail::append_binary(position_output, current_read_position);
+            detail::append_binary(read_length_output,
+                                  read_lengths[current_read_id]);
 
             previous_read_unmatched = false;
             break;
@@ -765,21 +759,22 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
             if (previous_read_unmatched ==
                 true) // prev read not singleton, write it now
             {
-              orientation_output.put('d');
-              order_output.write(byte_ptr(&previous_read_id), sizeof(uint32_t));
-              flag_output.put('0');
+              orientation_output.push_back('d');
+              detail::append_binary(order_output,
+                                    static_cast<uint32_t>(previous_read_id));
+              flag_output.push_back('0');
               int64_t zero = 0;
-              position_output.write(byte_ptr(&zero), sizeof(int64_t));
-              read_length_output.write(
-                  byte_ptr(&read_lengths[previous_read_id]), sizeof(uint16_t));
+              detail::append_binary(position_output, zero);
+              detail::append_binary(read_length_output,
+                                    read_lengths[previous_read_id]);
             }
-            orientation_output.put(left_search ? 'd' : 'r');
-            order_output.write(byte_ptr(&current_read_id), sizeof(uint32_t));
-            flag_output.put('1');
-            position_output.write(byte_ptr(&current_read_position),
-                                  sizeof(int64_t));
-            read_length_output.write(byte_ptr(&read_lengths[current_read_id]),
-                                     sizeof(uint16_t));
+            orientation_output.push_back(left_search ? 'd' : 'r');
+            detail::append_binary(order_output,
+                                  static_cast<uint32_t>(current_read_id));
+            flag_output.push_back('1');
+            detail::append_binary(position_output, current_read_position);
+            detail::append_binary(read_length_output,
+                                  read_lengths[current_read_id]);
 
             previous_read_unmatched = false;
             break;
@@ -822,8 +817,8 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
           }
           if (found_match == 0) {
             if (previous_read_unmatched == true) {
-              singleton_order_output.write(byte_ptr(&previous_read_id),
-                                           sizeof(uint32_t));
+              detail::append_binary(singleton_order_output,
+                                    static_cast<uint32_t>(previous_read_id));
             }
             done = 1;
           } else {
@@ -834,8 +829,8 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
             reference_position = 0;
             current_read_position = 0;
             if (previous_read_unmatched == true) {
-              singleton_order_output.write(byte_ptr(&previous_read_id),
-                                           sizeof(uint32_t));
+              detail::append_binary(singleton_order_output,
+                                    static_cast<uint32_t>(previous_read_id));
             }
             previous_read_unmatched = true;
             seed_read_id = current_read_id;
@@ -844,26 +839,28 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
         }
       }
     }
-
-    orientation_output.close();
-    order_output.close();
-    flag_output.close();
-    position_output.close();
-    singleton_order_output.close();
-    read_length_output.close();
+    artifact.aligned_shards[static_cast<size_t>(thread_id)].orientation_bytes =
+        std::move(orientation_output);
+    artifact.aligned_shards[static_cast<size_t>(thread_id)].flag_bytes =
+        std::move(flag_output);
+    artifact.aligned_shards[static_cast<size_t>(thread_id)].position_bytes =
+        std::move(position_output);
+    artifact.aligned_shards[static_cast<size_t>(thread_id)].order_bytes =
+        std::move(order_output);
+    artifact.aligned_shards[static_cast<size_t>(thread_id)].read_length_bytes =
+        std::move(read_length_output);
+    singleton_order_buffers[static_cast<size_t>(thread_id)] =
+        std::move(singleton_order_output);
     // base_counts_storage RAII will free the per-thread buffers
   }
   // Safety net: any reads still marked remaining were never emitted by worker
   // threads. Append them as singletons so downstream stages see all reads.
   uint32_t recovered_singletons = 0;
   {
-    std::ofstream recovered_singleton_output(
-        detail::thread_singleton_output_path(rg.outfileorder, 0),
-        std::ios::binary | std::ios::app);
     for (uint32_t read_id = 0; read_id < rg.numreads; read_id++) {
       if (!remaining_reads[read_id])
         continue;
-      recovered_singleton_output.write(byte_ptr(&read_id), sizeof(uint32_t));
+      detail::append_binary(singleton_order_buffers[0], read_id);
       remaining_reads[read_id] = false;
       recovered_singletons++;
     }
@@ -875,11 +872,12 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
                      std::to_string(recovered_singletons));
   }
 
-  for (const std::string &error_msg : open_stream_errors) {
-    if (!error_msg.empty()) {
-      std::cerr << error_msg << std::endl;
-    }
+  artifact.singleton_order_bytes.clear();
+  for (std::string &singleton_orders : singleton_order_buffers) {
+    artifact.singleton_order_bytes.append(singleton_orders);
   }
+  artifact.singleton_count = static_cast<uint32_t>(
+      artifact.singleton_order_bytes.size() / sizeof(uint32_t));
   // remaining_reads_storage RAII will free the remaining_reads buffer
   SPRING_LOG_INFO("Reordering done, " +
                   std::to_string(std::accumulate(unmatched_counts.begin(),
@@ -892,106 +890,70 @@ void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
 template <size_t bitset_size>
 void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
                  reorder_global<bitset_size> &rg,
+                 reorder_encoder_artifact &artifact,
                  const bool deterministic_mode) {
-  std::vector<uint32_t> numreads_s_thr(rg.num_thr, 0);
-  // Each thread materializes its reordered reads before the singleton merge
-  // step.
-#pragma omp parallel default(none)                                             \
-    shared(rg, read, read_lengths, numreads_s_thr, std::cerr, std::cout,       \
-               deterministic_mode)
-  {
-    int tid = omp_get_thread_num();
-    std::ofstream fout(detail::thread_output_path(rg.outfile, tid),
-                       std::ofstream::out | std::ios::binary);
-    std::ofstream fout_s(detail::thread_singleton_output_path(rg.outfile, tid),
-                         std::ofstream::out | std::ios::binary);
-    gzip_istream inRC(detail::thread_output_path(rg.outfileRC, tid));
-    std::ifstream finorder(detail::thread_output_path(rg.outfileorder, tid),
-                           std::ifstream::in | std::ios::binary);
-    std::ifstream finorder_s(
-        detail::thread_singleton_output_path(rg.outfileorder, tid),
-        std::ifstream::in | std::ios::binary);
+  std::vector<std::string> write_errors(static_cast<size_t>(rg.num_thr));
+  artifact.singleton_read_bytes.clear();
+
+#pragma omp parallel for schedule(static)
+  for (int tid = 0; tid < rg.num_thr; tid++) {
+    reorder_encoder_shard &shard =
+        artifact.aligned_shards[static_cast<size_t>(tid)];
+    const size_t aligned_count = shard.orientation_bytes.size();
+    if (shard.order_bytes.size() != aligned_count * sizeof(uint32_t)) {
+      write_errors[static_cast<size_t>(tid)] =
+          "Reorder shard order/orientation size mismatch.";
+      continue;
+    }
+
+    std::string encoded_reads;
     char s[MAX_READ_LEN + 1], s1[MAX_READ_LEN + 1];
-    uint32_t current;
-    SPRING_LOG_DEBUG("writetofile: thread " + std::to_string(tid) +
-                     " starting...");
-    if (!(deterministic_mode && tid != 0)) {
-      char c;
-      uint32_t reads_written = 0;
-      while (inRC.get(c)) {
-        finorder.read(byte_ptr(&current), sizeof(uint32_t));
-        if (current >= rg.numreads) {
-          SPRING_LOG_DEBUG(
-              "writetofile ERROR: thread " + std::to_string(tid) +
-              " read_id out of bounds: " + std::to_string(current) +
-              " >= " + std::to_string(rg.numreads));
-          break;
-        }
-        bitsettostring<bitset_size>(read[current], s, read_lengths[current],
-                                    rg);
-        if (c == 'd') {
-          write_dna_in_bits(s, fout);
-        } else {
-          reverse_complement(s, s1, read_lengths[current]);
-          write_dna_in_bits(s1, fout);
-        }
-        reads_written++;
-        if (reads_written % 100000 == 0) {
-          SPRING_LOG_DEBUG("writetofile: thread " + std::to_string(tid) +
-                           " wrote " + std::to_string(reads_written) +
-                           " reads");
-        }
+    for (size_t read_index = 0; read_index < aligned_count; ++read_index) {
+      uint32_t current = 0;
+      std::memcpy(&current,
+                  shard.order_bytes.data() + read_index * sizeof(uint32_t),
+                  sizeof(uint32_t));
+      if (current >= rg.numreads) {
+        write_errors[static_cast<size_t>(tid)] =
+            "Reorder shard read id out of bounds.";
+        break;
       }
-      finorder_s.read(byte_ptr(&current), sizeof(uint32_t));
-      while (!finorder_s.eof()) {
-        numreads_s_thr[tid]++;
-        bitsettostring<bitset_size>(read[current], s, read_lengths[current],
-                                    rg);
-        write_dnaN_in_bits(s, fout_s);
-        finorder_s.read(byte_ptr(&current), sizeof(uint32_t));
+      bitsettostring<bitset_size>(read[current], s, read_lengths[current], rg);
+      if (shard.orientation_bytes[read_index] == 'd') {
+        detail::append_encoded_read(encoded_reads, s, read_lengths[current]);
+      } else {
+        reverse_complement(s, s1, read_lengths[current]);
+        detail::append_encoded_read(encoded_reads, s1, read_lengths[current]);
       }
     }
-    fout.close();
-    fout_s.close();
-    inRC.close();
-    finorder.close();
-    finorder_s.close();
+    shard.read_bytes = std::move(encoded_reads);
   }
 
-  uint32_t numreads_s = 0;
-  for (int i = 0; i < rg.num_thr; i++)
-    numreads_s += numreads_s_thr[i];
-  // write numreads_s to a file
-  std::ofstream fout_s_count(rg.outfile + ".singleton" + ".count",
-                             std::ios::out | std::ios::binary);
-  fout_s_count.write(byte_ptr(&numreads_s), sizeof(uint32_t));
-  fout_s_count.close();
-
-  std::ofstream fout_s(rg.outfile + ".singleton",
-                       std::ofstream::out | std::ios::binary);
-  std::ofstream foutorder_s(rg.outfileorder + ".singleton",
-                            std::ofstream::out | std::ios::binary);
-  for (int tid = 0; tid < rg.num_thr; tid++) {
-    const std::string singleton_read_path =
-        detail::thread_singleton_output_path(rg.outfile, tid);
-    const std::string singleton_order_path =
-        detail::thread_singleton_output_path(rg.outfileorder, tid);
-
-    detail::append_file_to_stream(fout_s, singleton_read_path,
-                                  std::ios::binary);
-    detail::append_file_to_stream(foutorder_s, singleton_order_path,
-                                  std::ios::binary);
-
-    safe_remove_file(singleton_read_path);
-    safe_remove_file(singleton_order_path);
+  for (const std::string &write_error : write_errors) {
+    if (!write_error.empty()) {
+      throw std::runtime_error(write_error);
+    }
   }
-  fout_s.close();
-  foutorder_s.close();
-  return;
+
+  for (size_t read_index = 0;
+       read_index < artifact.singleton_order_bytes.size();
+       read_index += sizeof(uint32_t)) {
+    uint32_t current = 0;
+    std::memcpy(&current, artifact.singleton_order_bytes.data() + read_index,
+                sizeof(uint32_t));
+    if (current >= rg.numreads) {
+      throw std::runtime_error("Reorder singleton read id out of bounds.");
+    }
+    char s[MAX_READ_LEN + 1];
+    bitsettostring<bitset_size>(read[current], s, read_lengths[current], rg);
+    detail::append_encoded_read(artifact.singleton_read_bytes, s,
+                                read_lengths[current]);
+  }
 }
 
 template <size_t bitset_size>
-void reorder_main(const std::string &temp_dir, const compression_params &cp) {
+reorder_encoder_artifact reorder_main(const std::string &temp_dir,
+                                      const compression_params &cp) {
   reorder_global<bitset_size> rg(cp.read_info.max_readlen);
   rg.paired_end = cp.encoding.paired_end;
   rg.depleted_base = cp.encoding.depleted_base;
@@ -1029,6 +991,7 @@ void reorder_main(const std::string &temp_dir, const compression_params &cp) {
   setglobalarrays(rg);
   std::vector<std::bitset<bitset_size>> read;
   std::vector<uint16_t> read_lengths;
+  reorder_encoder_artifact artifact;
   read.resize(static_cast<size_t>(rg.numreads));
   read_lengths.resize(static_cast<size_t>(rg.numreads));
   SPRING_LOG_INFO("Reading file");
@@ -1042,11 +1005,19 @@ void reorder_main(const std::string &temp_dir, const compression_params &cp) {
   }
   SPRING_LOG_INFO("Reordering reads");
   reorder<bitset_size>(read.data(), dict.data(), read_lengths.data(), rg,
-                       deterministic_mode);
+                       artifact, deterministic_mode);
   SPRING_LOG_INFO("Writing to file");
-  writetofile<bitset_size>(read.data(), read_lengths.data(), rg,
+  writetofile<bitset_size>(read.data(), read_lengths.data(), rg, artifact,
                            deterministic_mode);
+  {
+    std::ofstream singleton_order_output(rg.outfileorder + ".singleton",
+                                         std::ios::binary | std::ios::trunc);
+    singleton_order_output.write(
+        artifact.singleton_order_bytes.data(),
+        static_cast<std::streamsize>(artifact.singleton_order_bytes.size()));
+  }
   SPRING_LOG_INFO("Done!");
+  return artifact;
 }
 
 } // namespace spring

@@ -6,6 +6,7 @@
 
 #include <string>
 
+#include "reorder.h"
 #include "reordered_streams.h"
 
 namespace spring {
@@ -14,9 +15,11 @@ struct compression_params;
 
 // Bridge runtime read lengths to the explicitly instantiated template entry
 // points used by reorder and encoder.
-void call_reorder(const std::string &temp_dir, compression_params &cp);
+reorder_encoder_artifact call_reorder(const std::string &temp_dir,
+                                      compression_params &cp);
 
 reordered_stream_artifact call_encoder(const std::string &temp_dir,
+                                       const reorder_encoder_artifact &artifact,
                                        compression_params &cp);
 
 } // namespace spring

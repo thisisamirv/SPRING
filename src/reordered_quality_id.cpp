@@ -300,6 +300,10 @@ void generate_order_pe(const std::string &base_dir,
     }
   }
 
+  if (corrected >= spot_count) {
+    return;
+  }
+
   // 2. Clean unaligned spots (singletons)
   std::ifstream singleton_input(base_dir + "/read_order.bin.singleton",
                                 std::ios::binary);
@@ -309,6 +313,10 @@ void generate_order_pe(const std::string &base_dir,
       if (orig_spot < spot_count)
         reordered_positions[orig_spot] = corrected++;
     }
+  }
+
+  if (corrected >= spot_count) {
+    return;
   }
 
   // 3. N-read spots
@@ -338,6 +346,10 @@ void generate_order_se(const std::string &base_dir,
     }
   }
 
+  if (corrected >= num_reads) {
+    return;
+  }
+
   // 2. Clean unaligned reads (singletons)
   std::ifstream singleton_input(base_dir + "/read_order.bin.singleton",
                                 std::ios::binary);
@@ -347,6 +359,10 @@ void generate_order_se(const std::string &base_dir,
       if (orig_pos < num_reads)
         reordered_positions[orig_pos] = corrected++;
     }
+  }
+
+  if (corrected >= num_reads) {
+    return;
   }
 
   // 3. N-reads

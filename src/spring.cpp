@@ -1174,19 +1174,20 @@ void compress_standard(const std::string &temp_dir,
   print_temp_dir_size(temp_dir);
 
   if (!long_flag) {
+    reorder_encoder_artifact reorder_artifact;
     reordered_stream_artifact reordered_streams_artifact;
 
     // Run overlap-based reordering for all assays.
     run_timed_step("Reordering ...", "Reordering", [&] {
       progress.set_stage("Reordering", 0.25F, 0.50F);
-      call_reorder(temp_dir, cp);
+      reorder_artifact = call_reorder(temp_dir, cp);
     });
 
     print_temp_dir_size(temp_dir, "temp_dir size");
 
     run_timed_step("Encoding ...", "Encoding", [&] {
       progress.set_stage("Encoding", 0.50F, 0.85F);
-      reordered_streams_artifact = call_encoder(temp_dir, cp);
+      reordered_streams_artifact = call_encoder(temp_dir, reorder_artifact, cp);
     });
 
     print_temp_dir_size(temp_dir);

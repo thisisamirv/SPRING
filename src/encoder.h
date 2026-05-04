@@ -3,6 +3,7 @@
 
 #include "params.h"
 #include "raii.h"
+#include "reorder.h"
 #include "reordered_streams.h"
 #include <bitset>
 #include <cstdint>
@@ -77,9 +78,11 @@ void pack_compress_seq(const encoder_global &encoder_state,
 void calculate_sequence_lengths(const encoder_global &encoder_state,
                                 uint64_t *thread_sequence_lengths);
 
-void getDataParams(encoder_global &eg, const compression_params &cp);
+void getDataParams(encoder_global &eg, const compression_params &cp,
+                   const reorder_encoder_artifact &reorder_artifact);
 
-void correct_order(uint32_t *order_s, const encoder_global &eg);
+void correct_order(uint32_t *order_s, const encoder_global &eg,
+                   reorder_encoder_artifact &reorder_artifact);
 
 // Template interface (definitions in encoder_impl.h)
 template <size_t bitset_size>
@@ -91,19 +94,24 @@ template <size_t bitset_size>
 void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
             uint32_t *read_orders, uint16_t *read_lengths,
             bool *remaining_reads, OmpLock *read_locks,
-            OmpLock *dictionary_locks, const encoder_global &eg,
-            const encoder_global_b<bitset_size> &egb);
+            OmpLock *dictionary_locks,
+            std::vector<encoded_metadata_buffer> &thread_metadata_outputs,
+            const reorder_encoder_artifact &reorder_artifact,
+            const encoder_global &eg, const encoder_global_b<bitset_size> &egb);
 
 template <size_t bitset_size>
 void setglobalarrays(encoder_global &eg, encoder_global_b<bitset_size> &egb);
 
 template <size_t bitset_size>
 void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
-                    uint16_t *read_lengths_s, const encoder_global &eg,
+                    uint16_t *read_lengths_s,
+                    const reorder_encoder_artifact &reorder_artifact,
+                    const encoder_global &eg,
                     const encoder_global_b<bitset_size> &egb);
 
 template <size_t bitset_size>
 reordered_stream_artifact encoder_main(const std::string &temp_dir,
+                                       const reorder_encoder_artifact &artifact,
                                        compression_params &cp);
 
 } // namespace spring

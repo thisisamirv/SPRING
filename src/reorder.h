@@ -8,8 +8,25 @@
 #include <bitset>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace spring {
+
+struct reorder_encoder_shard {
+  std::string read_bytes;
+  std::string orientation_bytes;
+  std::string flag_bytes;
+  std::string position_bytes;
+  std::string order_bytes;
+  std::string read_length_bytes;
+};
+
+struct reorder_encoder_artifact {
+  std::vector<reorder_encoder_shard> aligned_shards;
+  std::string singleton_read_bytes;
+  std::string singleton_order_bytes;
+  uint32_t singleton_count = 0;
+};
 
 // Forward declarations to keep this header thin.
 struct compression_params;
@@ -31,15 +48,17 @@ void readDnaFile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
 template <size_t bitset_size>
 void reorder(std::bitset<bitset_size> *read, bbhashdict *dict,
              uint16_t *read_lengths, const reorder_global<bitset_size> &rg,
-             const bool deterministic_mode);
+             reorder_encoder_artifact &artifact, const bool deterministic_mode);
 
 template <size_t bitset_size>
 void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
                  reorder_global<bitset_size> &rg,
+                 reorder_encoder_artifact &artifact,
                  const bool deterministic_mode);
 
 template <size_t bitset_size>
-void reorder_main(const std::string &temp_dir, const compression_params &cp);
+reorder_encoder_artifact reorder_main(const std::string &temp_dir,
+                                      const compression_params &cp);
 
 } // namespace spring
 

@@ -53,6 +53,31 @@ inline void cleanup_thread_encoder_inputs(const encoder_global &encoder_state,
   safe_remove_file(encoder_state.infile + '.' + std::to_string(thread_id));
 }
 
+template <typename T>
+inline bool read_buffer_value(const std::string &buffer, size_t &offset,
+                              T &value) {
+  if (offset + sizeof(T) > buffer.size()) {
+    return false;
+  }
+  std::memcpy(&value, buffer.data() + offset, sizeof(T));
+  offset += sizeof(T);
+  return true;
+}
+
+inline bool read_buffer_record(const std::string &buffer, size_t &offset,
+                               std::string &value) {
+  uint32_t record_size = 0;
+  if (!read_buffer_value(buffer, offset, record_size)) {
+    return false;
+  }
+  if (offset + record_size > buffer.size()) {
+    return false;
+  }
+  value.assign(buffer.data() + offset, record_size);
+  offset += record_size;
+  return true;
+}
+
 template <size_t bitset_size>
 uint32_t write_unaligned_range(
     std::ofstream &order_output, reordered_stream_artifact &artifact,
@@ -137,6 +162,7 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
             bool *remaining_reads, OmpLock *read_locks,
             OmpLock *dictionary_locks,
             std::vector<encoded_metadata_buffer> &thread_metadata_outputs,
+            const reorder_encoder_artifact &reorder_artifact,
             const encoder_global &eg,
             const encoder_global_b<bitset_size> &egb) {
   static const int thresh_s = THRESH_ENCODER;
@@ -170,62 +196,35 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
     int thread_id = omp_get_thread_num();
     const std::string block_id =
         std::string("enc-thread-") + std::to_string(thread_id);
-    const std::string read_path = eg.infile + '.' + std::to_string(thread_id);
-    const std::string flag_path =
-        eg.infile_flag + '.' + std::to_string(thread_id);
-    const std::string pos_path =
-        eg.infile_pos + '.' + std::to_string(thread_id);
-    const std::string order_in_path =
-        eg.infile_order + '.' + std::to_string(thread_id);
-    const std::string orientation_in_path =
-        eg.infile_RC + '.' + std::to_string(thread_id);
-    const std::string read_len_in_path =
-        eg.infile_readlength + '.' + std::to_string(thread_id);
     const std::string seq_out_path =
         eg.outfile_seq + '.' + std::to_string(thread_id);
-
-    std::ifstream read_input(read_path, std::ios::binary);
-    std::ifstream flag_stream(flag_path, std::ios::binary);
-    std::ifstream position_stream(pos_path, std::ios::binary);
-    std::ifstream order_input(order_in_path, std::ios::binary);
-    std::ifstream orientation_stream(orientation_in_path, std::ios::binary);
-    std::ifstream read_length_stream(read_len_in_path, std::ios::binary);
     std::ofstream sequence_output(seq_out_path, std::ios::binary);
     encoded_metadata_buffer thread_metadata;
-    // Check if any streams failed to open.
-    if (!read_input.is_open() || !flag_stream.is_open() ||
-        !position_stream.is_open() || !order_input.is_open() ||
-        !orientation_stream.is_open() || !read_length_stream.is_open() ||
-        !sequence_output.is_open()) {
-      const std::string first_failed_path =
-          !read_input.is_open()           ? read_path
-          : !flag_stream.is_open()        ? flag_path
-          : !position_stream.is_open()    ? pos_path
-          : !order_input.is_open()        ? order_in_path
-          : !orientation_stream.is_open() ? orientation_in_path
-          : !read_length_stream.is_open() ? read_len_in_path
-          : !sequence_output.is_open()    ? seq_out_path
-                                          : "";
-      const int open_stream_count = (read_input.is_open() ? 1 : 0) +
-                                    (flag_stream.is_open() ? 1 : 0) +
-                                    (position_stream.is_open() ? 1 : 0) +
-                                    (order_input.is_open() ? 1 : 0) +
-                                    (orientation_stream.is_open() ? 1 : 0) +
-                                    (read_length_stream.is_open() ? 1 : 0) +
-                                    (sequence_output.is_open() ? 1 : 0);
+    if (!sequence_output.is_open()) {
       std::string error_msg = std::string("Thread ") +
                               std::to_string(thread_id) +
-                              ": Failed to open one or more temporary "
-                              "files in encoder. Working directory: " +
+                              ": Failed to open sequence output in encoder. "
+                              "Working directory: " +
                               eg.basedir;
-      SPRING_LOG_DEBUG(
-          "block_id=" + block_id + ", Encoder stream open failure: path=" +
-          first_failed_path + ", expected_bytes=13, actual_bytes=" +
-          std::to_string(open_stream_count) +
-          ", index=" + std::to_string(thread_id));
       open_stream_errors[static_cast<size_t>(thread_id)] = error_msg;
       done = true;
     }
+    if (!done && static_cast<size_t>(thread_id) >=
+                     reorder_artifact.aligned_shards.size()) {
+      open_stream_errors[static_cast<size_t>(thread_id)] =
+          std::string("Thread ") + std::to_string(thread_id) +
+          ": Missing in-memory reorder shard.";
+      done = true;
+    }
+    const reorder_encoder_shard *input_shard =
+        done ? nullptr
+             : &reorder_artifact.aligned_shards[static_cast<size_t>(thread_id)];
+    size_t read_cursor = 0;
+    size_t flag_cursor = 0;
+    size_t position_cursor = 0;
+    size_t order_cursor = 0;
+    size_t orientation_cursor = 0;
+    size_t read_length_cursor = 0;
     int64_t bucket_range[2];
     uint64_t bucket_start_index;
     uint64_t lookup_key;
@@ -245,46 +244,39 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
 
     static std::atomic<uint32_t> total_reads_encoded{0};
     while (!done) {
-      if (!flag_stream.get(read_flag)) {
+      if (flag_cursor >= input_shard->flag_bytes.size()) {
         done = true;
+      } else {
+        read_flag = input_shard->flag_bytes[flag_cursor++];
       }
       if (!done) {
         contig_read_count++;
-        read_dna_from_bits(current_read, read_input);
-        if (!orientation_stream.get(orientation)) {
-          SPRING_LOG_DEBUG("block_id=" + block_id +
-                           ", Encoder orientation read failure: path=" +
-                           orientation_in_path +
-                           ", expected_bytes=1, actual_bytes=0" +
-                           ", index=" + std::to_string(contig_read_count));
+        if (!detail::read_buffer_record(input_shard->read_bytes, read_cursor,
+                                        current_read)) {
           throw std::runtime_error(
-              "Failed to read orientation from stream at read count " +
+              "Failed to read reordered read shard at read count " +
               std::to_string(contig_read_count));
         }
-        if (!position_stream.read(byte_ptr(&relative_position),
-                                  sizeof(int64_t))) {
-          SPRING_LOG_DEBUG(
-              "block_id=" + block_id +
-              ", Encoder position read failure: path=" + pos_path +
-              ", expected_bytes=" + std::to_string(sizeof(int64_t)) +
-              ", actual_bytes=" + std::to_string(position_stream.gcount()) +
-              ", index=" + std::to_string(contig_read_count));
+        if (orientation_cursor >= input_shard->orientation_bytes.size()) {
           throw std::runtime_error(
-              "Failed to read position from stream at read count " +
+              "Failed to read orientation from in-memory shard at read count " +
               std::to_string(contig_read_count));
         }
-        if (!order_input.read(byte_ptr(&read_order), sizeof(uint32_t))) {
-          SPRING_LOG_DEBUG(
-              "block_id=" + block_id +
-              ", Encoder order read failure: path=" + order_in_path +
-              ", expected_bytes=" + std::to_string(sizeof(uint32_t)) +
-              ", actual_bytes=" + std::to_string(order_input.gcount()) +
-              ", index=" + std::to_string(contig_read_count));
+        orientation = input_shard->orientation_bytes[orientation_cursor++];
+        if (!detail::read_buffer_value(input_shard->position_bytes,
+                                       position_cursor, relative_position)) {
           throw std::runtime_error(
-              "Failed to read order from stream at read count " +
+              "Failed to read position from in-memory shard at read count " +
               std::to_string(contig_read_count));
         }
-        if (read_length_stream.read(byte_ptr(&read_length), sizeof(uint16_t))) {
+        if (!detail::read_buffer_value(input_shard->order_bytes, order_cursor,
+                                       read_order)) {
+          throw std::runtime_error(
+              "Failed to read order from in-memory shard at read count " +
+              std::to_string(contig_read_count));
+        }
+        if (detail::read_buffer_value(input_shard->read_length_bytes,
+                                      read_length_cursor, read_length)) {
           uint32_t total = ++total_reads_encoded;
           if (total % 100000 == 0) {
             if (auto *progress = ProgressBar::GlobalInstance()) {
@@ -292,14 +284,8 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
             }
           }
         } else {
-          SPRING_LOG_DEBUG(
-              "block_id=" + block_id +
-              ", Encoder read-length read failure: path=" + read_len_in_path +
-              ", expected_bytes=" + std::to_string(sizeof(uint16_t)) +
-              ", actual_bytes=" + std::to_string(read_length_stream.gcount()) +
-              ", index=" + std::to_string(contig_read_count));
           throw std::runtime_error(
-              "Failed to read length from stream at read count " +
+              "Failed to read length from in-memory shard at read count " +
               std::to_string(contig_read_count));
         }
       }
@@ -522,16 +508,9 @@ void encode(std::bitset<bitset_size> *reads, bbhashdict *dictionaries,
         contig_read_count++;
       }
     }
-    read_input.close();
-    flag_stream.close();
-    position_stream.close();
-    order_input.close();
-    orientation_stream.close();
-    read_length_stream.close();
     sequence_output.close();
     thread_metadata_outputs[static_cast<size_t>(thread_id)] =
         std::move(thread_metadata);
-    detail::cleanup_thread_encoder_inputs(eg, thread_id);
     SPRING_LOG_DEBUG(
         "block_id=" + block_id + ", Encoder thread " +
         std::to_string(thread_id) + " summary: contig_flushes=" +
@@ -599,24 +578,25 @@ void setglobalarrays(encoder_global &eg, encoder_global_b<bitset_size> &egb) {
 
 template <size_t bitset_size>
 void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
-                    uint16_t *read_lengths_s, const encoder_global &eg,
+                    uint16_t *read_lengths_s,
+                    const reorder_encoder_artifact &reorder_artifact,
+                    const encoder_global &eg,
                     const encoder_global_b<bitset_size> &egb) {
-  std::ifstream f(eg.infile + ".singleton",
-                  std::ifstream::in | std::ios::binary);
-  std::vector<char> singleton_io_buffer(1 << 20);
-  f.rdbuf()->pubsetbuf(singleton_io_buffer.data(), singleton_io_buffer.size());
   std::string s;
   s.reserve(static_cast<size_t>(eg.max_readlen));
   auto **const basemask_ptrs =
       const_cast<std::bitset<bitset_size> **>(egb.basemask_ptrs.data());
+  size_t singleton_cursor = 0;
   for (uint32_t i = 0; i < eg.numreads_s; i++) {
-    read_dnaN_from_bits(s, f);
+    if (!detail::read_buffer_record(reorder_artifact.singleton_read_bytes,
+                                    singleton_cursor, s)) {
+      throw std::runtime_error(
+          "Failed reading singleton read from in-memory reorder artifact.");
+    }
     read_lengths_s[i] = static_cast<uint16_t>(s.size());
     stringtobitset<bitset_size>(s, read_lengths_s[i], read[i], basemask_ptrs);
   }
-  f.close();
-  safe_remove_file(eg.infile + ".singleton");
-  f.open(eg.infile_N, std::ios::binary);
+  std::ifstream f(eg.infile_N, std::ios::binary);
   std::vector<char> singleton_n_io_buffer(1 << 20);
   f.rdbuf()->pubsetbuf(singleton_n_io_buffer.data(),
                        singleton_n_io_buffer.size());
@@ -652,11 +632,14 @@ void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
     read_lengths_s[i] = readlen;
     stringtobitset<bitset_size>(s, readlen, read[i], basemask_ptrs);
   }
-  std::ifstream f_order_s(eg.infile_order + ".singleton", std::ios::binary);
-  for (uint32_t i = 0; i < eg.numreads_s; i++)
-    f_order_s.read(byte_ptr(&order_s[i]), sizeof(uint32_t));
-  f_order_s.close();
-  safe_remove_file(eg.infile_order + ".singleton");
+  size_t singleton_order_cursor = 0;
+  for (uint32_t i = 0; i < eg.numreads_s; i++) {
+    if (!detail::read_buffer_value(reorder_artifact.singleton_order_bytes,
+                                   singleton_order_cursor, order_s[i])) {
+      throw std::runtime_error(
+          "Failed reading singleton order from in-memory reorder artifact.");
+    }
+  }
   std::ifstream f_order_N(eg.infile_order_N, std::ios::binary);
   for (uint32_t i = eg.numreads_s; i < eg.numreads_s + eg.numreads_N; i++)
     f_order_N.read(byte_ptr(&order_s[i]), sizeof(uint32_t));
@@ -664,8 +647,10 @@ void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
 }
 
 template <size_t bitset_size>
-reordered_stream_artifact encoder_main(const std::string &temp_dir,
-                                       compression_params &cp) {
+reordered_stream_artifact
+encoder_main(const std::string &temp_dir,
+             const reorder_encoder_artifact &reorder_artifact,
+             compression_params &cp) {
   if (cp.encoding.num_thr >
       static_cast<int>(compression_params::ReadMetadata::kFileLenThrSize)) {
     throw std::runtime_error(
@@ -695,7 +680,7 @@ reordered_stream_artifact encoder_main(const std::string &temp_dir,
   eg.num_thr = cp.encoding.num_thr;
 
   omp_set_num_threads(eg.num_thr);
-  getDataParams(eg, cp); // populate numreads
+  getDataParams(eg, cp, reorder_artifact); // populate numreads
   setglobalarrays<bitset_size>(eg, egb);
   const uint32_t singleton_pool_size = eg.numreads_s + eg.numreads_N;
   eg.numdict_s = (singleton_pool_size < DICT_SINGLE_STAGE_READ_THRESHOLD)
@@ -715,7 +700,7 @@ reordered_stream_artifact encoder_main(const std::string &temp_dir,
   read_lengths_s.resize(static_cast<size_t>(singleton_pool_size));
   SPRING_LOG_INFO("Reading singletons...");
   readsingletons<bitset_size>(read.data(), order_s.data(),
-                              read_lengths_s.data(), eg, egb);
+                              read_lengths_s.data(), reorder_artifact, eg, egb);
   SPRING_LOG_DEBUG(
       "block_id=enc-main, Singleton read pools loaded: clean_singletons=" +
       std::to_string(eg.numreads_s) +
@@ -723,7 +708,8 @@ reordered_stream_artifact encoder_main(const std::string &temp_dir,
 
   safe_remove_file(eg.infile_N);
   SPRING_LOG_INFO("Correcting order...");
-  correct_order(order_s.data(), eg);
+  reorder_encoder_artifact corrected_reorder_artifact = reorder_artifact;
+  correct_order(order_s.data(), eg, corrected_reorder_artifact);
 
   std::array<bbhashdict, NUM_DICT_ENCODER> dict;
   initialize_encoder_dict_ranges(dict, eg.max_readlen);
@@ -747,8 +733,8 @@ reordered_stream_artifact encoder_main(const std::string &temp_dir,
 
   encode<bitset_size>(read.data(), dict.data(), order_s.data(),
                       read_lengths_s.data(), remaining_reads, read_locks.data(),
-                      dictionary_locks.data(), thread_metadata_outputs, eg,
-                      egb);
+                      dictionary_locks.data(), thread_metadata_outputs,
+                      corrected_reorder_artifact, eg, egb);
 
   reordered_stream_artifact artifact;
   std::ofstream order_output(eg.infile_order,
