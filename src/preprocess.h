@@ -5,6 +5,7 @@
 #define SPRING_PREPROCESS_H_
 
 #include "params.h"
+#include "reordered_quality_id.h"
 
 #include <array>
 #include <cstdint>
@@ -44,10 +45,11 @@ private:
 };
 
 // Normalize input reads into Spring's temporary block files and side streams.
-void preprocess(const std::string &infile_1, const std::string &infile_2,
-                const std::string &temp_dir, compression_params &cp,
-                const bool &fasta_input, ProgressBar *progress = nullptr,
-                const input_detection_summary *expected_summary = nullptr);
+post_encode_side_stream_artifact
+preprocess(const std::string &infile_1, const std::string &infile_2,
+           const std::string &temp_dir, compression_params &cp,
+           const bool &fasta_input, ProgressBar *progress = nullptr,
+           const input_detection_summary *expected_summary = nullptr);
 
 input_detection_summary detect_input_properties(const std::string &infile_1,
                                                 const std::string &infile_2,

@@ -1119,6 +1119,7 @@ void compress_standard(const std::string &temp_dir,
   input_detection_summary preprocess_seed_summary = detected_input;
   const bool validate_sample_during_preprocess =
       !startup_sample.input_summary.requires_long_mode();
+  post_encode_side_stream_artifact preprocess_side_streams;
 
   for (int preprocess_attempt = 0;; ++preprocess_attempt) {
     compression_params attempt_cp = preprocess_seed_cp;
@@ -1134,10 +1135,11 @@ void compress_standard(const std::string &temp_dir,
     try {
       run_timed_step("Preprocessing ...", "Preprocessing", [&] {
         progress.set_stage("Preprocessing", 0.0F, 0.25F);
-        preprocess(prepared_inputs.input_path_1, prepared_inputs.input_path_2,
-                   temp_dir, attempt_cp, fasta_input, &progress,
-                   validate_sample_during_preprocess ? &preprocess_seed_summary
-                                                     : nullptr);
+        preprocess_side_streams = preprocess(
+            prepared_inputs.input_path_1, prepared_inputs.input_path_2,
+            temp_dir, attempt_cp, fasta_input, &progress,
+            validate_sample_during_preprocess ? &preprocess_seed_summary
+                                              : nullptr);
       });
       cp = std::move(attempt_cp);
       long_flag = cp.encoding.long_flag;
@@ -1182,7 +1184,7 @@ void compress_standard(const std::string &temp_dir,
         (preserve_quality || preserve_id || cp.encoding.poly_at_stripped ||
          cp.encoding.atac_adapter_stripped);
     if (needs_post_encode_side_streams) {
-      post_encode_side_streams = capture_post_encode_side_streams(temp_dir, cp);
+      post_encode_side_streams = std::move(preprocess_side_streams);
     }
 
     // Run overlap-based reordering for all assays.

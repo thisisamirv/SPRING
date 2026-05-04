@@ -7,6 +7,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -233,8 +234,8 @@ void append_encoded_dna_n_bits(std::string &buffer, const std::string &read) {
 uint32_t flush_short_read_thread_buffers(
     const std::vector<short_read_thread_buffers> &thread_buffers,
     std::ofstream &clean_output, std::ofstream &n_read_output,
-    std::ofstream &n_read_order_output, std::ofstream *tail_output,
-    std::ofstream *atac_adapter_output) {
+    std::ofstream &n_read_order_output, std::string *tail_output,
+    std::string *atac_adapter_output) {
   uint32_t clean_read_count = 0;
   for (const short_read_thread_buffers &thread_buffer : thread_buffers) {
     if (!thread_buffer.clean_read_bytes.empty()) {
@@ -254,19 +255,41 @@ uint32_t flush_short_read_thread_buffers(
                                        sizeof(uint32_t)));
     }
     if (tail_output && !thread_buffer.tail_info_bytes.empty()) {
-      tail_output->write(
-          thread_buffer.tail_info_bytes.data(),
-          static_cast<std::streamsize>(thread_buffer.tail_info_bytes.size()));
+      tail_output->append(thread_buffer.tail_info_bytes);
     }
     if (atac_adapter_output && !thread_buffer.atac_adapter_bytes.empty()) {
-      atac_adapter_output->write(thread_buffer.atac_adapter_bytes.data(),
-                                 static_cast<std::streamsize>(
-                                     thread_buffer.atac_adapter_bytes.size()));
+      atac_adapter_output->append(thread_buffer.atac_adapter_bytes);
     }
     clean_read_count += thread_buffer.clean_read_count;
   }
 
   return clean_read_count;
+}
+
+std::vector<char> build_raw_string_block_bytes(std::string *strings,
+                                               const uint32_t string_count,
+                                               const uint32_t *string_lengths) {
+  size_t total_size = 0;
+  for (uint32_t i = 0; i < string_count; i++) {
+    total_size += string_lengths[i];
+  }
+
+  std::vector<char> output_bytes;
+  output_bytes.reserve(total_size);
+  for (uint32_t i = 0; i < string_count; i++) {
+    output_bytes.insert(output_bytes.end(), strings[i].begin(),
+                        strings[i].begin() + string_lengths[i]);
+  }
+  return output_bytes;
+}
+
+std::vector<char> build_read_length_block_bytes(const uint32_t *read_lengths,
+                                                const uint32_t read_count) {
+  std::vector<char> output_bytes(read_count * sizeof(uint32_t));
+  if (read_count > 0) {
+    std::memcpy(output_bytes.data(), read_lengths, output_bytes.size());
+  }
+  return output_bytes;
 }
 
 void write_raw_string_block(const std::string &output_path,
@@ -375,14 +398,6 @@ void open_preprocess_streams(
                                       std::ios::binary);
     n_read_order_outputs[stream_index].open(
         paths.n_read_order_paths[stream_index], std::ios::binary);
-    if (!compression_params.encoding.preserve_order) {
-      if (compression_params.encoding.preserve_id)
-        id_outputs[stream_index].open(paths.id_output_paths[stream_index],
-                                      std::ios::binary);
-      if (compression_params.encoding.preserve_quality)
-        quality_outputs[stream_index].open(
-            paths.quality_output_paths[stream_index], std::ios::binary);
-    }
   }
 }
 
@@ -408,12 +423,6 @@ void close_preprocess_streams(
     clean_outputs[stream_index].close();
     n_read_outputs[stream_index].close();
     n_read_order_outputs[stream_index].close();
-    if (!compression_params.encoding.preserve_order) {
-      if (compression_params.encoding.preserve_id)
-        id_outputs[stream_index].close();
-      if (compression_params.encoding.preserve_quality)
-        quality_outputs[stream_index].close();
-    }
   }
 }
 
@@ -708,10 +717,12 @@ uint32_t detect_max_read_length(const std::string &infile_1,
   return summary.max_read_length;
 }
 
-void preprocess(const std::string &infile_1, const std::string &infile_2,
-                const std::string &temp_dir, compression_params &cp,
-                const bool &fasta_input, ProgressBar *progress,
-                const input_detection_summary *expected_summary) {
+post_encode_side_stream_artifact
+preprocess(const std::string &infile_1, const std::string &infile_2,
+           const std::string &temp_dir, compression_params &cp,
+           const bool &fasta_input, ProgressBar *progress,
+           const input_detection_summary *expected_summary) {
+  post_encode_side_stream_artifact side_stream_artifact;
   SPRING_LOG_DEBUG(
       "Preprocess start: temp_dir=" + temp_dir + ", input1=" + infile_1 +
       (cp.encoding.paired_end ? (", input2=" + infile_2) : std::string()) +
@@ -762,33 +773,12 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
   bool atac_adapter_strip_active = false;
   bool atac_adapter_strip_decided = !maybe_apply_atac_adapter_strip;
 
-  std::array<std::ofstream, 2> tail_outputs;
   if (apply_poly_at) {
-    tail_outputs[0].open(temp_dir + "/tail_1.bin", std::ios::binary);
-    if (!tail_outputs[0])
-      throw std::runtime_error("Failed to open tail_1.bin for writing");
-    if (cp.encoding.paired_end) {
-      tail_outputs[1].open(temp_dir + "/tail_2.bin", std::ios::binary);
-      if (!tail_outputs[1])
-        throw std::runtime_error("Failed to open tail_2.bin for writing");
-    }
     SPRING_LOG_DEBUG("poly-A/T tail stripping enabled (min run length > " +
                      std::to_string(POLY_AT_TAIL_MIN_LEN) + " bp)");
   }
 
-  std::array<std::ofstream, 2> atac_adapter_outputs;
   if (maybe_apply_atac_adapter_strip) {
-    atac_adapter_outputs[0].open(temp_dir + "/atac_adapter_1.bin",
-                                 std::ios::binary);
-    if (!atac_adapter_outputs[0])
-      throw std::runtime_error("Failed to open atac_adapter_1.bin for writing");
-    if (cp.encoding.paired_end) {
-      atac_adapter_outputs[1].open(temp_dir + "/atac_adapter_2.bin",
-                                   std::ios::binary);
-      if (!atac_adapter_outputs[1])
-        throw std::runtime_error(
-            "Failed to open atac_adapter_2.bin for writing");
-    }
     SPRING_LOG_DEBUG("ATAC adapter stripping enabled (min overlap >= " +
                      std::to_string(ATAC_ADAPTER_MIN_MATCH) + " bp)");
   }
@@ -1205,13 +1195,13 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
               }
             }
           } else {
-            std::string read_length_input_path = block_file_path(
-                paths.read_length_paths[stream_index], block_num);
             std::string read_length_output_path = compressed_block_file_path(
                 paths.read_length_paths[stream_index], block_num);
-            bsc::BSC_compress(read_length_input_path.c_str(),
-                              read_length_output_path.c_str());
-            remove(read_length_input_path.c_str());
+            write_binary_file(
+                read_length_output_path,
+                bsc_compress_bytes(build_read_length_block_bytes(
+                    read_lengths_array.data() + thread_id * num_reads_per_block,
+                    thread_read_count)));
             if (cp.encoding.preserve_id) {
               std::string output_path = compressed_block_file_path(
                   paths.id_output_paths[stream_index], block_num);
@@ -1223,27 +1213,23 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
             if (cp.encoding.preserve_quality) {
               std::string output_path = block_file_path(
                   paths.quality_output_paths[stream_index], block_num);
-              std::string raw_quality_path = output_path + ".raw";
-              write_raw_string_block(
-                  raw_quality_path,
-                  quality_array.data() + thread_id * num_reads_per_block,
-                  thread_read_count,
-                  read_lengths_array.data() + thread_id * num_reads_per_block);
-              bsc::BSC_compress(raw_quality_path.c_str(), output_path.c_str());
-              remove(raw_quality_path.c_str());
+              write_binary_file(
+                  output_path,
+                  bsc_compress_bytes(build_raw_string_block_bytes(
+                      quality_array.data() + thread_id * num_reads_per_block,
+                      thread_read_count,
+                      read_lengths_array.data() +
+                          thread_id * num_reads_per_block)));
             }
-            std::string output_path = block_file_path(
+            std::string output_path = compressed_block_file_path(
                 paths.read_block_paths[stream_index], block_num);
-            std::string compressed_output_path = compressed_block_file_path(
-                paths.read_block_paths[stream_index], block_num);
-            write_raw_string_block(
+            write_binary_file(
                 output_path,
-                read_array.data() + thread_id * num_reads_per_block,
-                thread_read_count,
-                read_lengths_array.data() + thread_id * num_reads_per_block);
-            bsc::BSC_compress(output_path.c_str(),
-                              compressed_output_path.c_str());
-            remove(output_path.c_str());
+                bsc_compress_bytes(build_raw_string_block_bytes(
+                    read_array.data() + thread_id * num_reads_per_block,
+                    thread_read_count,
+                    read_lengths_array.data() +
+                        thread_id * num_reads_per_block)));
           }
         }
       }
@@ -1343,9 +1329,12 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
         num_reads_clean[stream_index] += flush_short_read_thread_buffers(
             short_read_buffers, clean_outputs[stream_index],
             n_read_outputs[stream_index], n_read_order_outputs[stream_index],
-            apply_poly_at ? &tail_outputs[stream_index] : nullptr,
-            atac_adapter_strip_active ? &atac_adapter_outputs[stream_index]
-                                      : nullptr);
+            apply_poly_at ? &side_stream_artifact.raw_tail_streams[stream_index]
+                          : nullptr,
+            atac_adapter_strip_active
+                ? &side_stream_artifact
+                       .compressed_atac_adapter_streams[stream_index]
+                : nullptr);
         if (!cp.encoding.preserve_order) {
           quality_chunk.clear();
           id_chunk.clear();
@@ -1359,17 +1348,15 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
             quality_chunk.append(quality_array[read_index]);
             quality_chunk.push_back('\n');
           }
-          quality_outputs[stream_index].write(
-              quality_chunk.data(),
-              static_cast<std::streamsize>(quality_chunk.size()));
+          side_stream_artifact.raw_quality_streams[stream_index].append(
+              quality_chunk);
 
           for (uint32_t read_index = 0; read_index < reads_in_step;
                read_index++) {
             id_chunk.append(id_array[read_index]);
             id_chunk.push_back('\n');
           }
-          id_outputs[stream_index].write(
-              id_chunk.data(), static_cast<std::streamsize>(id_chunk.size()));
+          side_stream_artifact.raw_id_streams[stream_index].append(id_chunk);
         }
       }
       num_reads[stream_index] += reads_in_step;
@@ -1413,23 +1400,56 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
     for (int stream_index = 0; stream_index < 2; ++stream_index) {
       if (stream_index == 1 && !cp.encoding.paired_end)
         continue;
-      if (atac_adapter_outputs[stream_index].is_open())
-        atac_adapter_outputs[stream_index].close();
-
-      const std::string adapter_path = temp_dir + "/atac_adapter_" +
-                                       std::to_string(stream_index + 1) +
-                                       ".bin";
-      const std::string adapter_compressed = adapter_path + ".bsc";
       if (!cp.encoding.atac_adapter_stripped) {
-        if (std::filesystem::exists(adapter_path))
-          remove(adapter_path.c_str());
-        if (std::filesystem::exists(adapter_compressed))
-          remove(adapter_compressed.c_str());
+        side_stream_artifact.compressed_atac_adapter_streams[stream_index]
+            .clear();
         continue;
       }
-      if (std::filesystem::exists(adapter_path)) {
-        bsc::BSC_compress(adapter_path.c_str(), adapter_compressed.c_str());
-        remove(adapter_path.c_str());
+      std::string &adapter_bytes =
+          side_stream_artifact.compressed_atac_adapter_streams[stream_index];
+      if (!adapter_bytes.empty()) {
+        const std::vector<char> compressed_adapter_bytes = bsc_compress_bytes(
+            std::vector<char>(adapter_bytes.begin(), adapter_bytes.end()));
+        adapter_bytes.assign(compressed_adapter_bytes.begin(),
+                             compressed_adapter_bytes.end());
+      }
+    }
+  }
+
+  if (cp.encoding.preserve_order) {
+    if (cp.encoding.poly_at_stripped) {
+      for (int stream_index = 0; stream_index < 2; ++stream_index) {
+        if (stream_index == 1 && !cp.encoding.paired_end)
+          continue;
+        std::ofstream tail_out(temp_dir + "/tail_" +
+                                   std::to_string(stream_index + 1) + ".bin",
+                               std::ios::binary | std::ios::trunc);
+        const std::string &tail_bytes =
+            side_stream_artifact.raw_tail_streams[stream_index];
+        if (!tail_bytes.empty()) {
+          tail_out.write(tail_bytes.data(),
+                         static_cast<std::streamsize>(tail_bytes.size()));
+        }
+      }
+    }
+
+    if (cp.encoding.atac_adapter_stripped) {
+      for (int stream_index = 0; stream_index < 2; ++stream_index) {
+        if (stream_index == 1 && !cp.encoding.paired_end)
+          continue;
+        const std::string adapter_path = temp_dir + "/atac_adapter_" +
+                                         std::to_string(stream_index + 1) +
+                                         ".bin";
+        const std::string &adapter_bytes =
+            side_stream_artifact.compressed_atac_adapter_streams[stream_index];
+        if (adapter_bytes.empty()) {
+          std::ofstream(adapter_path, std::ios::binary | std::ios::trunc);
+          continue;
+        }
+        std::ofstream adapter_out(adapter_path + ".bsc",
+                                  std::ios::binary | std::ios::trunc);
+        adapter_out.write(adapter_bytes.data(),
+                          static_cast<std::streamsize>(adapter_bytes.size()));
       }
     }
   }
@@ -1496,6 +1516,8 @@ void preprocess(const std::string &infile_1, const std::string &infile_2,
     SPRING_LOG_INFO("Paired id match code: " +
                     std::to_string((int)cp.read_info.paired_id_code));
   }
+
+  return side_stream_artifact;
 }
 
 } // namespace spring

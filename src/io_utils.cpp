@@ -710,38 +710,33 @@ void compress_id_block(const char *output_path, std::string *id_array,
                   new_alpha_cols[i].end());
   }
 
-  {
-    const std::string temp_id_path = std::string(output_path) + ".tmp_id_enc";
-    std::ofstream out(temp_id_path, std::ios::binary);
+  try {
+    const std::vector<char> compressed_bytes = bsc_compress_bytes(buffer);
+    std::ofstream out(output_path, std::ios::binary | std::ios::trunc);
     if (!out) {
-      SPRING_LOG_DEBUG("block_id=io-utils:id-compress, compress_id_block temp "
-                       "open failure: path=" +
-                       temp_id_path +
+      SPRING_LOG_DEBUG("block_id=io-utils:id-compress, compress_id_block open "
+                       "failure: path=" +
+                       std::string(output_path) +
                        ", expected_bytes=1, actual_bytes=0, index=0");
-      throw std::runtime_error("Failed to open temporary ID encoding file.");
+      throw std::runtime_error("Failed to open compressed ID output file.");
     }
-    out.write(reinterpret_cast<const char *>(buffer.data()), buffer.size());
+    if (!compressed_bytes.empty()) {
+      out.write(compressed_bytes.data(),
+                static_cast<std::streamsize>(compressed_bytes.size()));
+    }
     out.close();
-
-    try {
-      bsc::BSC_compress(temp_id_path.c_str(), output_path);
-    } catch (const std::exception &e) {
-      SPRING_LOG_DEBUG("block_id=io-utils:id-compress, compress_id_block bsc "
-                       "failure: input_path=" +
-                       temp_id_path +
-                       ", output_path=" + std::string(output_path) +
-                       ", encoded_bytes=" + std::to_string(buffer.size()));
-      std::filesystem::remove(temp_id_path);
-      throw std::runtime_error(std::string("BSC compression failed: ") +
-                               e.what());
-    }
-    const uint64_t output_size = std::filesystem::file_size(output_path);
     SPRING_LOG_DEBUG(
         "block_id=io-utils:id-compress, compress_id_block bsc done: output=" +
         std::string(output_path) +
         ", encoded_bytes=" + std::to_string(buffer.size()) +
-        ", compressed_bytes=" + std::to_string(output_size));
-    std::filesystem::remove(temp_id_path);
+        ", compressed_bytes=" + std::to_string(compressed_bytes.size()));
+  } catch (const std::exception &e) {
+    SPRING_LOG_DEBUG("block_id=io-utils:id-compress, compress_id_block bsc "
+                     "failure: output_path=" +
+                     std::string(output_path) +
+                     ", encoded_bytes=" + std::to_string(buffer.size()));
+    throw std::runtime_error(std::string("BSC compression failed: ") +
+                             e.what());
   }
 }
 
