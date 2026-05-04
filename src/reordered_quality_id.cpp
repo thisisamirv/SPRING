@@ -15,7 +15,7 @@
 #include "fs_utils.h"
 #include "io_utils.h"
 #include "libbsc/bsc.h"
-#include "parse_utils.h"
+#include "params.h"
 #include "progress.h"
 #include "reordered_quality_id.h"
 #include "reordered_streams.h"
@@ -38,14 +38,6 @@ struct batch_record {
   uint32_t relative_position;
   uint32_t string_length;
 };
-
-struct batch_partition_file {
-  std::string path;
-  std::ofstream output;
-  std::string buffer;
-};
-
-constexpr size_t kBatchIoBufferSize = 1 << 20;
 
 void write_binary_file(const std::string &path,
                        const std::vector<char> &bytes) {
@@ -88,78 +80,6 @@ uint32_t block_read_count(const uint64_t block_begin,
 uint32_t batch_count_for_reads(const uint32_t total_reads,
                                const uint32_t batch_size) {
   return (total_reads + batch_size - 1) / batch_size;
-}
-
-std::string batch_temp_path(const std::string &input_path,
-                            const uint32_t batch_index) {
-  return input_path + ".batch." + std::to_string(batch_index);
-}
-
-void flush_batch_partition_file(batch_partition_file &batch_file) {
-  if (batch_file.buffer.empty()) {
-    return;
-  }
-
-  batch_file.output.write(
-      batch_file.buffer.data(),
-      static_cast<std::streamsize>(batch_file.buffer.size()));
-  batch_file.buffer.clear();
-}
-
-void append_batch_record(batch_partition_file &batch_file,
-                         const batch_record &record, const std::string &value) {
-  const char *record_bytes = byte_ptr(&record);
-  batch_file.buffer.append(record_bytes, sizeof(batch_record));
-  batch_file.buffer.append(value);
-
-  if (batch_file.buffer.size() >= kBatchIoBufferSize) {
-    flush_batch_partition_file(batch_file);
-  }
-}
-
-void partition_reordered_batches(
-    const std::string &input_path,
-    const std::vector<uint32_t> &reordered_positions, const uint32_t batch_size,
-    std::vector<std::string> &batch_paths) {
-  const uint32_t num_batches = batch_count_for_reads(
-      static_cast<uint32_t>(reordered_positions.size()), batch_size);
-  SPRING_LOG_DEBUG(
-      "block_id=reorder-partition, Partitioning reordered stream: path=" +
-      input_path + ", reads=" + std::to_string(reordered_positions.size()) +
-      ", batch_size=" + std::to_string(batch_size) +
-      ", num_batches=" + std::to_string(num_batches));
-  batch_paths.resize(num_batches);
-  std::vector<batch_partition_file> batch_files;
-  batch_files.reserve(num_batches);
-
-  for (uint32_t batch_index = 0; batch_index < num_batches; batch_index++) {
-    batch_paths[batch_index] = batch_temp_path(input_path, batch_index);
-    batch_files.push_back(
-        {.path = batch_paths[batch_index],
-         .output = std::ofstream(batch_paths[batch_index], std::ios::binary),
-         .buffer = {}});
-    batch_files.back().buffer.reserve(kBatchIoBufferSize);
-  }
-
-  std::ifstream input_stream(input_path);
-  std::string current_string;
-  for (uint32_t read_index = 0; read_index < reordered_positions.size();
-       read_index++) {
-    std::getline(input_stream, current_string);
-    remove_CR_from_end(current_string);
-
-    const uint32_t reordered_position = reordered_positions[read_index];
-    const uint32_t batch_index = reordered_position / batch_size;
-    batch_record record{.relative_position = reordered_position % batch_size,
-                        .string_length =
-                            static_cast<uint32_t>(current_string.size())};
-    append_batch_record(batch_files[batch_index], record, current_string);
-  }
-
-  for (batch_partition_file &batch_file : batch_files) {
-    flush_batch_partition_file(batch_file);
-    batch_file.output.close();
-  }
 }
 
 void partition_reordered_batches_from_buffer(
@@ -215,35 +135,6 @@ void partition_reordered_batches_from_buffer(
 void load_partitioned_batch_from_bytes(
     const std::string &batch_bytes, const uint32_t reads_in_batch,
     std::vector<std::string> &reordered_strings) {
-  const char *cursor = batch_bytes.data();
-  const char *end = cursor + batch_bytes.size();
-  while (cursor < end) {
-    batch_record record;
-    std::memcpy(&record, cursor, sizeof(batch_record));
-    cursor += sizeof(batch_record);
-    reordered_strings[record.relative_position].assign(cursor,
-                                                       record.string_length);
-    cursor += record.string_length;
-  }
-
-  for (uint32_t read_index = reads_in_batch;
-       read_index < reordered_strings.size(); read_index++) {
-    reordered_strings[read_index].clear();
-  }
-}
-
-void load_partitioned_batch(const std::string &batch_path,
-                            const uint32_t reads_in_batch,
-                            std::vector<std::string> &reordered_strings) {
-  std::ifstream batch_input(batch_path, std::ios::binary | std::ios::ate);
-  const std::streamsize batch_size = batch_input.tellg();
-  batch_input.seekg(0, std::ios::beg);
-
-  std::vector<char> batch_bytes(static_cast<size_t>(batch_size));
-  if (batch_size > 0) {
-    batch_input.read(batch_bytes.data(), batch_size);
-  }
-
   const char *cursor = batch_bytes.data();
   const char *end = cursor + batch_bytes.size();
   while (cursor < end) {

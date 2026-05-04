@@ -5,6 +5,7 @@
 #define SPRING_REORDERED_QUALITY_ID_H_
 
 #include <array>
+#include <cstdint>
 #include <string>
 #include <vector>
 
