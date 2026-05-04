@@ -34,9 +34,6 @@ namespace {
 
 struct preprocess_paths {
   std::array<std::string, 2> input_paths;
-  std::array<std::string, 2> clean_read_paths;
-  std::array<std::string, 2> n_read_paths;
-  std::array<std::string, 2> n_read_order_paths;
   std::array<std::string, 2> id_output_paths;
   std::array<std::string, 2> quality_output_paths;
   std::array<std::string, 2> read_block_paths;
@@ -233,26 +230,21 @@ void append_encoded_dna_n_bits(std::string &buffer, const std::string &read) {
 
 uint32_t flush_short_read_thread_buffers(
     const std::vector<short_read_thread_buffers> &thread_buffers,
-    std::ofstream &clean_output, std::ofstream &n_read_output,
-    std::ofstream &n_read_order_output, std::string *tail_output,
+    std::string &clean_output, std::string &n_read_output,
+    std::vector<uint32_t> &n_read_order_output, std::string *tail_output,
     std::string *atac_adapter_output) {
   uint32_t clean_read_count = 0;
   for (const short_read_thread_buffers &thread_buffer : thread_buffers) {
     if (!thread_buffer.clean_read_bytes.empty()) {
-      clean_output.write(
-          thread_buffer.clean_read_bytes.data(),
-          static_cast<std::streamsize>(thread_buffer.clean_read_bytes.size()));
+      clean_output.append(thread_buffer.clean_read_bytes);
     }
     if (!thread_buffer.n_read_bytes.empty()) {
-      n_read_output.write(
-          thread_buffer.n_read_bytes.data(),
-          static_cast<std::streamsize>(thread_buffer.n_read_bytes.size()));
+      n_read_output.append(thread_buffer.n_read_bytes);
     }
     if (!thread_buffer.n_read_positions.empty()) {
-      n_read_order_output.write(
-          byte_ptr(thread_buffer.n_read_positions.data()),
-          static_cast<std::streamsize>(thread_buffer.n_read_positions.size() *
-                                       sizeof(uint32_t)));
+      n_read_order_output.insert(n_read_order_output.end(),
+                                 thread_buffer.n_read_positions.begin(),
+                                 thread_buffer.n_read_positions.end());
     }
     if (tail_output && !thread_buffer.tail_info_bytes.empty()) {
       tail_output->append(thread_buffer.tail_info_bytes);
@@ -349,11 +341,6 @@ preprocess_paths build_preprocess_paths(const std::string &input_path_1,
                                         const std::string &temp_dir) {
   preprocess_paths paths;
   paths.input_paths = {input_path_1, input_path_2};
-  paths.clean_read_paths = {temp_dir + "/input_clean_1.dna",
-                            temp_dir + "/input_clean_2.dna"};
-  paths.n_read_paths = {temp_dir + "/input_N.dna", temp_dir + "/input_N.dna.2"};
-  paths.n_read_order_paths = {temp_dir + "/read_order_N.bin",
-                              temp_dir + "/read_order_N.bin.2"};
   paths.id_output_paths = {temp_dir + "/id_1", temp_dir + "/id_2"};
   paths.quality_output_paths = {temp_dir + "/quality_1",
                                 temp_dir + "/quality_2"};
@@ -373,11 +360,6 @@ uint32_t reads_for_thread_step(const uint32_t reads_in_step,
 
 void open_preprocess_streams(
     std::array<std::ifstream, 2> &input_files,
-    std::array<std::ofstream, 2> &clean_outputs,
-    std::array<std::ofstream, 2> &n_read_outputs,
-    std::array<std::ofstream, 2> &n_read_order_outputs,
-    std::array<std::ofstream, 2> &id_outputs,
-    std::array<std::ofstream, 2> &quality_outputs,
     std::array<std::istream *, 2> &input_streams,
     std::array<std::unique_ptr<gzip_istream>, 2> &gzip_streams,
     const preprocess_paths &paths, const compression_params &compression_params,
@@ -389,25 +371,11 @@ void open_preprocess_streams(
     open_input_stream(input_files[stream_index], input_streams[stream_index],
                       gzip_streams[stream_index],
                       paths.input_paths[stream_index], gzip_enabled);
-    if (compression_params.encoding.long_flag)
-      continue;
-
-    clean_outputs[stream_index].open(paths.clean_read_paths[stream_index],
-                                     std::ios::binary);
-    n_read_outputs[stream_index].open(paths.n_read_paths[stream_index],
-                                      std::ios::binary);
-    n_read_order_outputs[stream_index].open(
-        paths.n_read_order_paths[stream_index], std::ios::binary);
   }
 }
 
 void close_preprocess_streams(
     std::array<std::ifstream, 2> &input_files,
-    std::array<std::ofstream, 2> &clean_outputs,
-    std::array<std::ofstream, 2> &n_read_outputs,
-    std::array<std::ofstream, 2> &n_read_order_outputs,
-    std::array<std::ofstream, 2> &id_outputs,
-    std::array<std::ofstream, 2> &quality_outputs,
     std::array<std::istream *, 2> &input_streams,
     std::array<std::unique_ptr<gzip_istream>, 2> &gzip_streams,
     const compression_params &compression_params, const bool gzip_enabled) {
@@ -417,12 +385,6 @@ void close_preprocess_streams(
 
     close_input_stream(input_files[stream_index], input_streams[stream_index],
                        gzip_streams[stream_index], gzip_enabled);
-    if (compression_params.encoding.long_flag)
-      continue;
-
-    clean_outputs[stream_index].close();
-    n_read_outputs[stream_index].close();
-    n_read_order_outputs[stream_index].close();
   }
 }
 
@@ -494,35 +456,29 @@ void detect_paired_id_pattern(
   }
 }
 
-void merge_paired_n_reads(const preprocess_paths &paths,
+void merge_paired_n_reads(std::array<std::string, 2> &n_read_streams,
+                          std::array<std::vector<uint32_t>, 2> &n_read_orders,
                           const std::array<uint64_t, 2> &num_reads,
                           const std::array<uint64_t, 2> &num_reads_clean) {
-  std::ofstream merged_n_read_output(paths.n_read_paths[0],
-                                     std::ios::app | std::ios::binary);
-  std::ifstream mate_n_read_input(paths.n_read_paths[1], std::ios::binary);
-  merged_n_read_output << mate_n_read_input.rdbuf();
-  mate_n_read_input.close();
-  merged_n_read_output.close();
-  spring::safe_remove_file(paths.n_read_paths[1]);
+  n_read_streams[0].append(n_read_streams[1]);
+  n_read_streams[1].clear();
 
-  std::ofstream merged_n_read_order_output(paths.n_read_order_paths[0],
-                                           std::ios::app | std::ios::binary);
-  std::ifstream mate_n_read_order_input(paths.n_read_order_paths[1],
-                                        std::ios::binary);
-  const uint32_t mate_n_read_count = num_reads[1] - num_reads_clean[1];
-  if (mate_n_read_count > 0) {
-    std::vector<uint32_t> n_read_orders(mate_n_read_count);
-    mate_n_read_order_input.read(byte_ptr(n_read_orders.data()),
-                                 mate_n_read_count * sizeof(uint32_t));
-    for (uint32_t &n_read_order : n_read_orders) {
-      n_read_order += num_reads[0];
-    }
-    merged_n_read_order_output.write(byte_ptr(n_read_orders.data()),
-                                     mate_n_read_count * sizeof(uint32_t));
+  for (uint32_t &n_read_order : n_read_orders[1]) {
+    n_read_order += static_cast<uint32_t>(num_reads[0]);
   }
-  mate_n_read_order_input.close();
-  merged_n_read_order_output.close();
-  spring::safe_remove_file(paths.n_read_order_paths[1]);
+  n_read_orders[0].insert(n_read_orders[0].end(), n_read_orders[1].begin(),
+                          n_read_orders[1].end());
+  n_read_orders[1].clear();
+}
+
+void append_n_order_bytes(std::string &output_bytes,
+                          const std::vector<uint32_t> &positions) {
+  const size_t old_size = output_bytes.size();
+  output_bytes.resize(old_size + positions.size() * sizeof(uint32_t));
+  if (!positions.empty()) {
+    std::memcpy(output_bytes.data() + old_size, positions.data(),
+                positions.size() * sizeof(uint32_t));
+  }
 }
 
 void remove_redundant_mate_ids(const preprocess_paths &paths,
@@ -717,12 +673,12 @@ uint32_t detect_max_read_length(const std::string &infile_1,
   return summary.max_read_length;
 }
 
-post_encode_side_stream_artifact
+preprocess_artifact
 preprocess(const std::string &infile_1, const std::string &infile_2,
            const std::string &temp_dir, compression_params &cp,
            const bool &fasta_input, ProgressBar *progress,
            const input_detection_summary *expected_summary) {
-  post_encode_side_stream_artifact side_stream_artifact;
+  preprocess_artifact output_artifact;
   SPRING_LOG_DEBUG(
       "Preprocess start: temp_dir=" + temp_dir + ", input1=" + infile_1 +
       (cp.encoding.paired_end ? (", input2=" + infile_2) : std::string()) +
@@ -738,17 +694,13 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
   const preprocess_paths paths =
       build_preprocess_paths(infile_1, infile_2, temp_dir);
   std::array<std::ifstream, 2> input_files;
-  std::array<std::ofstream, 2> clean_outputs;
-  std::array<std::ofstream, 2> n_read_outputs;
-  std::array<std::ofstream, 2> n_read_order_outputs;
-  std::array<std::ofstream, 2> id_outputs;
-  std::array<std::ofstream, 2> quality_outputs;
   std::array<std::istream *, 2> input_streams = {nullptr, nullptr};
   std::array<std::unique_ptr<gzip_istream>, 2> gzip_streams{};
+  std::array<std::string, 2> n_read_streams;
+  std::array<std::vector<uint32_t>, 2> n_read_orders;
 
-  open_preprocess_streams(input_files, clean_outputs, n_read_outputs,
-                          n_read_order_outputs, id_outputs, quality_outputs,
-                          input_streams, gzip_streams, paths, cp, false);
+  open_preprocess_streams(input_files, input_streams, gzip_streams, paths, cp,
+                          false);
 
   // Determine whether poly-A/T tail stripping should be applied.
   // Only active for: short-read, non-preserve_order, rna assay with
@@ -1327,12 +1279,14 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
         }
 
         num_reads_clean[stream_index] += flush_short_read_thread_buffers(
-            short_read_buffers, clean_outputs[stream_index],
-            n_read_outputs[stream_index], n_read_order_outputs[stream_index],
-            apply_poly_at ? &side_stream_artifact.raw_tail_streams[stream_index]
+            short_read_buffers,
+            output_artifact.reorder_inputs.clean_read_streams[stream_index],
+            n_read_streams[stream_index], n_read_orders[stream_index],
+            apply_poly_at ? &output_artifact.post_encode_side_streams
+                                 .raw_tail_streams[stream_index]
                           : nullptr,
             atac_adapter_strip_active
-                ? &side_stream_artifact
+                ? &output_artifact.post_encode_side_streams
                        .compressed_atac_adapter_streams[stream_index]
                 : nullptr);
         if (!cp.encoding.preserve_order) {
@@ -1348,15 +1302,17 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
             quality_chunk.append(quality_array[read_index]);
             quality_chunk.push_back('\n');
           }
-          side_stream_artifact.raw_quality_streams[stream_index].append(
-              quality_chunk);
+          output_artifact.post_encode_side_streams
+              .raw_quality_streams[stream_index]
+              .append(quality_chunk);
 
           for (uint32_t read_index = 0; read_index < reads_in_step;
                read_index++) {
             id_chunk.append(id_array[read_index]);
             id_chunk.push_back('\n');
           }
-          side_stream_artifact.raw_id_streams[stream_index].append(id_chunk);
+          output_artifact.post_encode_side_streams.raw_id_streams[stream_index]
+              .append(id_chunk);
         }
       }
       num_reads[stream_index] += reads_in_step;
@@ -1401,12 +1357,14 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
       if (stream_index == 1 && !cp.encoding.paired_end)
         continue;
       if (!cp.encoding.atac_adapter_stripped) {
-        side_stream_artifact.compressed_atac_adapter_streams[stream_index]
+        output_artifact.post_encode_side_streams
+            .compressed_atac_adapter_streams[stream_index]
             .clear();
         continue;
       }
       std::string &adapter_bytes =
-          side_stream_artifact.compressed_atac_adapter_streams[stream_index];
+          output_artifact.post_encode_side_streams
+              .compressed_atac_adapter_streams[stream_index];
       if (!adapter_bytes.empty()) {
         const std::vector<char> compressed_adapter_bytes = bsc_compress_bytes(
             std::vector<char>(adapter_bytes.begin(), adapter_bytes.end()));
@@ -1424,8 +1382,8 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
         std::ofstream tail_out(temp_dir + "/tail_" +
                                    std::to_string(stream_index + 1) + ".bin",
                                std::ios::binary | std::ios::trunc);
-        const std::string &tail_bytes =
-            side_stream_artifact.raw_tail_streams[stream_index];
+        const std::string &tail_bytes = output_artifact.post_encode_side_streams
+                                            .raw_tail_streams[stream_index];
         if (!tail_bytes.empty()) {
           tail_out.write(tail_bytes.data(),
                          static_cast<std::streamsize>(tail_bytes.size()));
@@ -1441,7 +1399,8 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
                                          std::to_string(stream_index + 1) +
                                          ".bin";
         const std::string &adapter_bytes =
-            side_stream_artifact.compressed_atac_adapter_streams[stream_index];
+            output_artifact.post_encode_side_streams
+                .compressed_atac_adapter_streams[stream_index];
         if (adapter_bytes.empty()) {
           std::ofstream(adapter_path, std::ios::binary | std::ios::trunc);
           continue;
@@ -1453,17 +1412,20 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
       }
     }
   }
-  close_preprocess_streams(input_files, clean_outputs, n_read_outputs,
-                           n_read_order_outputs, id_outputs, quality_outputs,
-                           input_streams, gzip_streams, cp, false);
+  close_preprocess_streams(input_files, input_streams, gzip_streams, cp, false);
   if (num_reads[0] == 0)
     throw std::runtime_error("No reads found.");
 
   if (!cp.encoding.long_flag && cp.encoding.paired_end) {
     // Shift mate-2 N-read positions by file-1 length before merging the
     // streams.
-    merge_paired_n_reads(paths, num_reads, num_reads_clean);
+    merge_paired_n_reads(n_read_streams, n_read_orders, num_reads,
+                         num_reads_clean);
   }
+
+  output_artifact.reorder_inputs.n_read_bytes = std::move(n_read_streams[0]);
+  append_n_order_bytes(output_artifact.reorder_inputs.n_read_order_bytes,
+                       n_read_orders[0]);
 
   remove_redundant_mate_ids(paths, cp, paired_id_match, num_reads,
                             num_reads_per_block);
@@ -1517,7 +1479,7 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
                     std::to_string((int)cp.read_info.paired_id_code));
   }
 
-  return side_stream_artifact;
+  return output_artifact;
 }
 
 } // namespace spring

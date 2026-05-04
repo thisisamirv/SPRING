@@ -41,18 +41,6 @@ template <size_t bitset_size> struct encoder_global_b {
 
 namespace detail {
 
-inline void cleanup_thread_encoder_inputs(const encoder_global &encoder_state,
-                                          const int thread_id) {
-  safe_remove_file(encoder_state.infile_order + '.' +
-                   std::to_string(thread_id));
-  safe_remove_file(encoder_state.infile_readlength + '.' +
-                   std::to_string(thread_id));
-  safe_remove_file(encoder_state.infile_RC + '.' + std::to_string(thread_id));
-  safe_remove_file(encoder_state.infile_flag + '.' + std::to_string(thread_id));
-  safe_remove_file(encoder_state.infile_pos + '.' + std::to_string(thread_id));
-  safe_remove_file(encoder_state.infile + '.' + std::to_string(thread_id));
-}
-
 template <typename T>
 inline bool read_buffer_value(const std::string &buffer, size_t &offset,
                               T &value) {
@@ -582,17 +570,15 @@ void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
     read_lengths_s[i] = static_cast<uint16_t>(s.size());
     stringtobitset<bitset_size>(s, read_lengths_s[i], read[i], basemask_ptrs);
   }
-  std::ifstream f(eg.infile_N, std::ios::binary);
-  std::vector<char> singleton_n_io_buffer(1 << 20);
-  f.rdbuf()->pubsetbuf(singleton_n_io_buffer.data(),
-                       singleton_n_io_buffer.size());
   static constexpr std::array<char, 16> int_to_dna_n = {
       'A', 'G', 'C', 'T', 'N', 'N', 'N', 'N',
       'N', 'N', 'N', 'N', 'N', 'N', 'N', 'N'};
   uint8_t encoded_read_bytes[256];
+  size_t n_read_cursor = 0;
   for (uint32_t i = eg.numreads_s; i < eg.numreads_s + eg.numreads_N; i++) {
     uint16_t readlen = 0;
-    if (!f.read(byte_ptr(&readlen), sizeof(uint16_t))) {
+    if (!detail::read_buffer_value(reorder_artifact.n_read_bytes, n_read_cursor,
+                                   readlen)) {
       throw std::runtime_error("Failed reading readlen from DNA+N stream.");
     }
 
@@ -602,10 +588,15 @@ void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
       throw std::runtime_error(
           "Corrupted DNA+N stream: record length exceeds decoder buffer.");
     }
-    if (!f.read(byte_ptr(encoded_read_bytes), encoded_byte_count)) {
+    if (n_read_cursor + encoded_byte_count >
+        reorder_artifact.n_read_bytes.size()) {
       throw std::runtime_error(
           "Failed reading encoded DNA+N payload from stream.");
     }
+    std::memcpy(encoded_read_bytes,
+                reorder_artifact.n_read_bytes.data() + n_read_cursor,
+                encoded_byte_count);
+    n_read_cursor += encoded_byte_count;
 
     s.resize(readlen);
     for (uint16_t base_index = 0; base_index < readlen; ++base_index) {
@@ -626,10 +617,14 @@ void readsingletons(std::bitset<bitset_size> *read, uint32_t *order_s,
           "Failed reading singleton order from in-memory reorder artifact.");
     }
   }
-  std::ifstream f_order_N(eg.infile_order_N, std::ios::binary);
-  for (uint32_t i = eg.numreads_s; i < eg.numreads_s + eg.numreads_N; i++)
-    f_order_N.read(byte_ptr(&order_s[i]), sizeof(uint32_t));
-  f_order_N.close();
+  size_t n_order_cursor = 0;
+  for (uint32_t i = eg.numreads_s; i < eg.numreads_s + eg.numreads_N; i++) {
+    if (!detail::read_buffer_value(reorder_artifact.n_read_order_bytes,
+                                   n_order_cursor, order_s[i])) {
+      throw std::runtime_error(
+          "Failed reading N-read order from in-memory reorder artifact.");
+    }
+  }
 }
 
 template <size_t bitset_size>
@@ -648,14 +643,6 @@ encoder_main(const std::string &temp_dir,
   encoder_global eg;
 
   eg.basedir = temp_dir;
-  eg.infile = eg.basedir + "/temp.dna";
-  eg.infile_flag = eg.basedir + "/tempflag.txt";
-  eg.infile_pos = eg.basedir + "/temppos.txt";
-  eg.infile_RC = eg.basedir + "/read_rev.txt";
-  eg.infile_readlength = eg.basedir + "/read_lengths.bin";
-  eg.infile_order = eg.basedir + "/read_order.bin";
-  eg.infile_N = eg.basedir + "/input_N.dna";
-  eg.infile_order_N = eg.basedir + "/read_order_N.bin";
   eg.outfile_seq = eg.basedir + "/read_seq.bin";
   eg.outfile_pos = eg.basedir + "/read_pos.bin";
   eg.outfile_noise = eg.basedir + "/read_noise.txt";
@@ -692,7 +679,6 @@ encoder_main(const std::string &temp_dir,
       std::to_string(eg.numreads_s) +
       ", N_reads=" + std::to_string(eg.numreads_N));
 
-  safe_remove_file(eg.infile_N);
   SPRING_LOG_INFO("Correcting order...");
   reorder_encoder_artifact corrected_reorder_artifact = reorder_artifact;
   correct_order(order_s.data(), eg, corrected_reorder_artifact);

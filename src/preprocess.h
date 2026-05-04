@@ -5,12 +5,14 @@
 #define SPRING_PREPROCESS_H_
 
 #include "params.h"
+#include "reorder.h"
 #include "reordered_quality_id.h"
 
 #include <array>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace spring {
 
@@ -44,8 +46,13 @@ private:
   input_detection_summary updated_summary_;
 };
 
+struct preprocess_artifact {
+  reorder_input_artifact reorder_inputs;
+  post_encode_side_stream_artifact post_encode_side_streams;
+};
+
 // Normalize input reads into Spring's temporary block files and side streams.
-post_encode_side_stream_artifact
+preprocess_artifact
 preprocess(const std::string &infile_1, const std::string &infile_2,
            const std::string &temp_dir, compression_params &cp,
            const bool &fasta_input, ProgressBar *progress = nullptr,

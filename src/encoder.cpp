@@ -433,7 +433,6 @@ void correct_order(uint32_t *order_s, const encoder_global &eg,
       }
     }
   }
-  safe_remove_file(eg.infile_order_N);
   return;
 }
 

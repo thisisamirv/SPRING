@@ -16,6 +16,7 @@ struct compression_params;
 // Bridge runtime read lengths to the explicitly instantiated template entry
 // points used by reorder and encoder.
 reorder_encoder_artifact call_reorder(const std::string &temp_dir,
+                                      const reorder_input_artifact &artifact,
                                       compression_params &cp);
 
 reordered_stream_artifact call_encoder(const std::string &temp_dir,

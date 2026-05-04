@@ -5,12 +5,19 @@
 #ifndef SPRING_REORDER_H_
 #define SPRING_REORDER_H_
 
+#include <array>
 #include <bitset>
 #include <cstdint>
 #include <string>
 #include <vector>
 
 namespace spring {
+
+struct reorder_input_artifact {
+  std::array<std::string, 2> clean_read_streams;
+  std::string n_read_bytes;
+  std::string n_read_order_bytes;
+};
 
 struct reorder_encoder_shard {
   std::string read_bytes;
@@ -25,6 +32,8 @@ struct reorder_encoder_artifact {
   std::vector<reorder_encoder_shard> aligned_shards;
   std::string singleton_read_bytes;
   std::string singleton_order_bytes;
+  std::string n_read_bytes;
+  std::string n_read_order_bytes;
   uint32_t singleton_count = 0;
 };
 
@@ -43,6 +52,7 @@ void setglobalarrays(reorder_global<bitset_size> &rg);
 
 template <size_t bitset_size>
 void readDnaFile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
+                 const reorder_input_artifact &input_artifact,
                  const reorder_global<bitset_size> &rg);
 
 template <size_t bitset_size>
@@ -58,6 +68,7 @@ void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
 
 template <size_t bitset_size>
 reorder_encoder_artifact reorder_main(const std::string &temp_dir,
+                                      const reorder_input_artifact &artifact,
                                       const compression_params &cp);
 
 } // namespace spring

@@ -46,13 +46,6 @@ template <size_t bitset_size> struct reorder_global {
   int numdict;
 
   std::string basedir;
-  std::string infile[2];
-  std::string outfile;
-  std::string outfileRC;
-  std::string outfileflag;
-  std::string outfilepos;
-  std::string outfileorder;
-  std::string outfilereadlength;
 
   bool paired_end;
   std::bitset<bitset_size> mask64;
@@ -312,25 +305,52 @@ void updaterefcount(std::bitset<bitset_size> &current_read,
 
 template <size_t bitset_size>
 void readDnaFile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
+                 const reorder_input_artifact &input_artifact,
                  const reorder_global<bitset_size> &rg) {
-  std::ifstream f(rg.infile[0], std::ifstream::in | std::ios::binary);
+  size_t cursor = 0;
   for (uint32_t i = 0; i < rg.numreads_array[0]; i++) {
-    f.read(byte_ptr(&read_lengths[i]), sizeof(uint16_t));
+    if (cursor + sizeof(uint16_t) >
+        input_artifact.clean_read_streams[0].size()) {
+      throw std::runtime_error("Truncated clean read stream for mate 1.");
+    }
+    std::memcpy(&read_lengths[i],
+                input_artifact.clean_read_streams[0].data() + cursor,
+                sizeof(uint16_t));
+    cursor += sizeof(uint16_t);
     uint16_t num_bytes_to_read = ((uint32_t)read_lengths[i] + 4 - 1) / 4;
-    f.read(byte_ptr(&read[i]), num_bytes_to_read);
+    if (cursor + num_bytes_to_read >
+        input_artifact.clean_read_streams[0].size()) {
+      throw std::runtime_error(
+          "Truncated encoded clean read payload for mate 1.");
+    }
+    std::memcpy(byte_ptr(&read[i]),
+                input_artifact.clean_read_streams[0].data() + cursor,
+                num_bytes_to_read);
+    cursor += num_bytes_to_read;
   }
-  f.close();
-  safe_remove_file(rg.infile[0]);
   if (rg.paired_end) {
-    std::ifstream f(rg.infile[1], std::ifstream::in | std::ios::binary);
+    cursor = 0;
     for (uint32_t i = rg.numreads_array[0];
          i < rg.numreads_array[0] + rg.numreads_array[1]; i++) {
-      f.read(byte_ptr(&read_lengths[i]), sizeof(uint16_t));
+      if (cursor + sizeof(uint16_t) >
+          input_artifact.clean_read_streams[1].size()) {
+        throw std::runtime_error("Truncated clean read stream for mate 2.");
+      }
+      std::memcpy(&read_lengths[i],
+                  input_artifact.clean_read_streams[1].data() + cursor,
+                  sizeof(uint16_t));
+      cursor += sizeof(uint16_t);
       uint16_t num_bytes_to_read = ((uint32_t)read_lengths[i] + 4 - 1) / 4;
-      f.read(byte_ptr(&read[i]), num_bytes_to_read);
+      if (cursor + num_bytes_to_read >
+          input_artifact.clean_read_streams[1].size()) {
+        throw std::runtime_error(
+            "Truncated encoded clean read payload for mate 2.");
+      }
+      std::memcpy(byte_ptr(&read[i]),
+                  input_artifact.clean_read_streams[1].data() + cursor,
+                  num_bytes_to_read);
+      cursor += num_bytes_to_read;
     }
-    f.close();
-    safe_remove_file(rg.infile[1]);
   }
   return;
 }
@@ -952,20 +972,14 @@ void writetofile(std::bitset<bitset_size> *read, uint16_t *read_lengths,
 }
 
 template <size_t bitset_size>
-reorder_encoder_artifact reorder_main(const std::string &temp_dir,
-                                      const compression_params &cp) {
+reorder_encoder_artifact
+reorder_main(const std::string &temp_dir,
+             const reorder_input_artifact &input_artifact,
+             const compression_params &cp) {
   reorder_global<bitset_size> rg(cp.read_info.max_readlen);
   rg.paired_end = cp.encoding.paired_end;
   rg.depleted_base = cp.encoding.depleted_base;
   rg.basedir = temp_dir;
-  rg.infile[0] = rg.basedir + "/input_clean_1.dna";
-  rg.infile[1] = rg.basedir + "/input_clean_2.dna";
-  rg.outfile = rg.basedir + "/temp.dna";
-  rg.outfileRC = rg.basedir + "/read_rev.txt";
-  rg.outfileflag = rg.basedir + "/tempflag.txt";
-  rg.outfilepos = rg.basedir + "/temppos.txt";
-  rg.outfileorder = rg.basedir + "/read_order.bin";
-  rg.outfilereadlength = rg.basedir + "/read_lengths.bin";
 
   rg.max_readlen = cp.read_info.max_readlen;
   rg.num_thr = cp.encoding.num_thr;
@@ -995,7 +1009,8 @@ reorder_encoder_artifact reorder_main(const std::string &temp_dir,
   read.resize(static_cast<size_t>(rg.numreads));
   read_lengths.resize(static_cast<size_t>(rg.numreads));
   SPRING_LOG_INFO("Reading file");
-  readDnaFile<bitset_size>(read.data(), read_lengths.data(), rg);
+  readDnaFile<bitset_size>(read.data(), read_lengths.data(), input_artifact,
+                           rg);
 
   if (rg.numreads > 0) {
     SPRING_LOG_INFO("Constructing dictionaries");
@@ -1009,13 +1024,8 @@ reorder_encoder_artifact reorder_main(const std::string &temp_dir,
   SPRING_LOG_INFO("Writing to file");
   writetofile<bitset_size>(read.data(), read_lengths.data(), rg, artifact,
                            deterministic_mode);
-  {
-    std::ofstream singleton_order_output(rg.outfileorder + ".singleton",
-                                         std::ios::binary | std::ios::trunc);
-    singleton_order_output.write(
-        artifact.singleton_order_bytes.data(),
-        static_cast<std::streamsize>(artifact.singleton_order_bytes.size()));
-  }
+  artifact.n_read_bytes = input_artifact.n_read_bytes;
+  artifact.n_read_order_bytes = input_artifact.n_read_order_bytes;
   SPRING_LOG_INFO("Done!");
   return artifact;
 }

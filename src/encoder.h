@@ -26,20 +26,11 @@ struct encoder_global {
   int max_readlen, num_thr;
 
   std::string basedir;
-  std::string infile;
-  std::string infile_flag;
-  std::string infile_pos;
-  std::string infile_seq;
-  std::string infile_RC;
-  std::string infile_readlength;
-  std::string infile_N;
   std::string outfile_unaligned;
   std::string outfile_seq;
   std::string outfile_pos;
   std::string outfile_noise;
   std::string outfile_noisepos;
-  std::string infile_order;
-  std::string infile_order_N;
 
   char enc_noise[128][128];
   bool bisulfite_ternary = false;
