@@ -35,6 +35,10 @@ jobs:
                       name: windows
                       arch: x86_64
                       artifact_name: spring2-windows-x86_64.exe
+                    - os: windows-11-arm
+                      name: windows
+                      arch: arm64
+                      artifact_name: spring2-windows-arm64.exe
         name: Build / ${{ matrix.name }} (${{ matrix.arch }})
         runs-on: ${{ matrix.os }}
 
@@ -130,7 +134,7 @@ jobs:
                   echo "$CMAKE_VENV/bin" >> "$GITHUB_PATH"
 
             - name: Install native MinGW-w64 toolchain (winlibs) and tools
-              if: matrix.name == 'windows'
+              if: matrix.name == 'windows' && matrix.arch == 'x86_64'
               shell: powershell
               run: |
                   $wingetFlags = @(
@@ -164,6 +168,12 @@ jobs:
                     throw 'Unable to locate gcc.exe after WinLibs installation'
                   }
 
+                  $vendoredNasmDir = Join-Path $env:GITHUB_WORKSPACE 'tools/host/nasm/win64'
+                  if (Test-Path (Join-Path $vendoredNasmDir 'nasm.exe')) {
+                    Add-Content -Path $env:GITHUB_PATH -Value $vendoredNasmDir
+                    Write-Host "Using vendored NASM directory: $vendoredNasmDir"
+                  }
+
                   Add-Content -Path $env:GITHUB_PATH -Value $gcc.DirectoryName
 
                   # Install pinned CMake in a Python virtualenv and prepend it to PATH.
@@ -173,6 +183,53 @@ jobs:
                   & "$cmakeVenv\Scripts\python.exe" -m pip install "cmake==4.2.0"
                   Add-Content -Path $env:GITHUB_PATH -Value "$cmakeVenv\Scripts"
                   & "$cmakeVenv\Scripts\cmake.exe" --version
+
+            - name: Install CMake on Windows arm64
+              if: matrix.name == 'windows' && matrix.arch == 'arm64'
+              shell: powershell
+              run: |
+                  $cmakeVenv = Join-Path $env:RUNNER_TEMP 'cmake-venv'
+                  py -3 -m venv $cmakeVenv
+                  & "$cmakeVenv\Scripts\python.exe" -m pip install --upgrade pip
+                  & "$cmakeVenv\Scripts\python.exe" -m pip install "cmake==4.2.0"
+                  Add-Content -Path $env:GITHUB_PATH -Value "$cmakeVenv\Scripts"
+                  & "$cmakeVenv\Scripts\cmake.exe" --version
+
+            - name: Resolve Visual Studio generator for Windows arm64
+              if: matrix.name == 'windows' && matrix.arch == 'arm64'
+              shell: powershell
+              run: |
+                  $vsWhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+                  if (-not (Test-Path $vsWhere)) {
+                    throw 'Unable to locate vswhere.exe to detect installed Visual Studio versions'
+                  }
+
+                  $candidates = @(
+                    @{ Version = '[18.0,19.0)'; Generator = 'Visual Studio 18 2026' },
+                    @{ Version = '[17.0,18.0)'; Generator = 'Visual Studio 17 2022' }
+                  )
+
+                  $selectedGenerator = $null
+                  foreach ($candidate in $candidates) {
+                    $vsWhereArgs = @(
+                      '-version', $candidate.Version,
+                      '-products', '*',
+                      '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.ARM64',
+                      '-property', 'installationPath'
+                    )
+                    $installationPath = & $vsWhere @vsWhereArgs | Select-Object -First 1
+                    if ($LASTEXITCODE -eq 0 -and $installationPath) {
+                      $selectedGenerator = $candidate.Generator
+                      break
+                    }
+                  }
+
+                  if (-not $selectedGenerator) {
+                    throw 'Unable to find a supported Visual Studio ARM64 installation'
+                  }
+
+                  Add-Content -Path $env:GITHUB_ENV -Value "SPRING_VS_GENERATOR=$selectedGenerator"
+                  Write-Host "Using Visual Studio generator: $selectedGenerator"
 
             # Build jobs (Non-Windows)
             - name: Configure (macOS)
@@ -200,7 +257,7 @@ jobs:
                   fi
 
             - name: Configure (Windows)
-              if: matrix.name == 'windows'
+              if: matrix.name == 'windows' && matrix.arch == 'x86_64'
               shell: powershell
               run: |
                   $env:CC="gcc"
@@ -225,13 +282,24 @@ jobs:
                     throw 'Unable to locate a working ninja.exe for CMake'
                   }
                   $ninjaExe = $ninjaExe -replace '\\','/'
+                  Write-Host "Using Ninja executable: $ninjaExe"
+                  $nasmCommand = Get-Command nasm.exe -ErrorAction SilentlyContinue
+                  if ($nasmCommand) {
+                    Write-Host "NASM visible on PATH: $($nasmCommand.Source)"
+                  }
                   cmake -S . -B out/build `
                     -G Ninja `
                     -DCMAKE_MAKE_PROGRAM="$ninjaExe" `
                     -DSPRING_STATIC_RUNTIMES=ON
 
+            - name: Configure (Windows arm64)
+              if: matrix.name == 'windows' && matrix.arch == 'arm64'
+              shell: powershell
+              run: |
+                  cmake -S . -B out/build -G "$env:SPRING_VS_GENERATOR" -A ARM64
+
             - name: Build (Windows)
-              if: matrix.name == 'windows'
+              if: matrix.name == 'windows' && matrix.arch == 'x86_64'
               shell: powershell
               run: |
                   magick docs/assets/icons/logo.png `
@@ -242,6 +310,16 @@ jobs:
                   cmake --build out/build --parallel
                   cmake --install out/build --prefix dist
                   strip dist/bin/spring2.exe
+
+            - name: Build (Windows arm64)
+              if: matrix.name == 'windows' && matrix.arch == 'arm64'
+              shell: powershell
+              run: |
+                  magick docs/assets/icons/logo.png `
+                    -define icon:auto-resize=16,32,48,64,128,256 `
+                    docs/assets/icons/logo.ico
+                  cmake --build out/build --config Release --parallel
+                  cmake --install out/build --config Release --prefix dist
 
             - name: Prepare Artifact (Windows)
               if: matrix.name == 'windows'

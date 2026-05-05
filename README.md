@@ -39,7 +39,7 @@ SPRING2 is built and validated on:
 
 - **Linux**: x86_64, ARM64
 - **macOS**: Universal (Intel/Apple Silicon)
-- **Windows**: Native via MinGW-w64
+- **Windows**: Native via MinGW-w64, Native ARM64 via MSVC
 
 ## Documentation
 
