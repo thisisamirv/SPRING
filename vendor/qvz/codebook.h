@@ -68,12 +68,12 @@ get_cond_quantizer_indexed(struct cond_quantizer_list_t *list, uint32_t column,
                            uint32_t index);
 struct quantizer_t *get_cond_quantizer(struct cond_quantizer_list_t *list,
                                        uint32_t column, symbol_t prev);
-void store_cond_quantizers(struct quantizer_t *restrict lo,
-                           struct quantizer_t *restrict hi, double ratio,
-                           struct cond_quantizer_list_t *list, uint32_t column,
-                           symbol_t prev);
-void store_cond_quantizers_indexed(struct quantizer_t *restrict lo,
-                                   struct quantizer_t *restrict hi,
+void store_cond_quantizers(struct quantizer_t *SPRING_QVZ_RESTRICT lo,
+                           struct quantizer_t *SPRING_QVZ_RESTRICT hi,
+                           double ratio, struct cond_quantizer_list_t *list,
+                           uint32_t column, symbol_t prev);
+void store_cond_quantizers_indexed(struct quantizer_t *SPRING_QVZ_RESTRICT lo,
+                                   struct quantizer_t *SPRING_QVZ_RESTRICT hi,
                                    double ratio,
                                    struct cond_quantizer_list_t *list,
                                    uint32_t column, uint32_t index);

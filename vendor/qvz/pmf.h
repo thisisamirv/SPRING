@@ -61,8 +61,8 @@ void alphabet_compute_index(struct alphabet_t *);
 uint32_t alphabet_contains(const struct alphabet_t *alphabet, symbol_t symbol);
 uint32_t get_symbol_index(const struct alphabet_t *alphabet, symbol_t symbol);
 
-void alphabet_union(const struct alphabet_t *restrict a,
-                    const struct alphabet_t *restrict b,
+void alphabet_union(const struct alphabet_t *SPRING_QVZ_RESTRICT a,
+                    const struct alphabet_t *SPRING_QVZ_RESTRICT b,
                     struct alphabet_t *result);
 
 void print_alphabet(const struct alphabet_t *);

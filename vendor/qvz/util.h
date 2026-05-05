@@ -15,12 +15,12 @@
 #define _alloca alloca
 #endif
 
-#ifndef restrict
 #if defined(_MSC_VER)
-#define restrict __restrict
+#define SPRING_QVZ_RESTRICT __restrict
+#elif defined(__GNUC__) || defined(__clang__)
+#define SPRING_QVZ_RESTRICT __restrict__
 #else
-#define restrict __restrict__
-#endif
+#define SPRING_QVZ_RESTRICT
 #endif
 
 namespace spring {

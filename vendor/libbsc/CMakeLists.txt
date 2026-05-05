@@ -26,3 +26,9 @@ if(WIN32 AND CMAKE_C_COMPILER_ID STREQUAL "Clang"
          OR CMAKE_C_SIMULATE_ID STREQUAL "MSVC"))
     target_compile_options(libbsc PRIVATE -Wno-unused-variable)
 endif()
+
+# Workaround for MSVC ARM64 internal compiler error in libsais.c
+# Use /Od to avoid compiler bug (OpenMP is disabled globally for MSVC ARM64)
+if(MSVC AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(ARM64|aarch64)$")
+    set_source_files_properties(libsais.c PROPERTIES COMPILE_OPTIONS "/Od")
+endif()

@@ -1,4 +1,5 @@
-﻿#include <limits>
+﻿#include <cstdlib>
+#include <limits>
 #include <stdio.h>
 #include <string.h>
 
@@ -24,9 +25,10 @@ void free_quantizer(struct quantizer_t *q) {
   free(q);
 }
 
-struct quantizer_t *generate_quantizer(struct pmf_t *restrict pmf,
-                                       struct distortion_t *restrict dist,
-                                       uint32_t states) {
+struct quantizer_t *
+generate_quantizer(struct pmf_t *SPRING_QVZ_RESTRICT pmf,
+                   struct distortion_t *SPRING_QVZ_RESTRICT dist,
+                   uint32_t states) {
   struct quantizer_t *q = alloc_quantizer(pmf->alphabet);
   uint32_t changed = 1;
   uint32_t iter = 0;
@@ -170,9 +172,9 @@ struct quantizer_t *generate_quantizer(struct pmf_t *restrict pmf,
   return q;
 }
 
-struct pmf_t *apply_quantizer(struct quantizer_t *restrict q,
-                              struct pmf_t *restrict pmf,
-                              struct pmf_t *restrict output) {
+struct pmf_t *apply_quantizer(struct quantizer_t *SPRING_QVZ_RESTRICT q,
+                              struct pmf_t *SPRING_QVZ_RESTRICT pmf,
+                              struct pmf_t *SPRING_QVZ_RESTRICT output) {
   uint32_t i;
 
   if (!pmf->pmf_ready)

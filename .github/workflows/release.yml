@@ -188,6 +188,12 @@ jobs:
               if: matrix.name == 'windows' && matrix.arch == 'arm64'
               shell: powershell
               run: |
+                  $vendoredNasmDir = Join-Path $env:GITHUB_WORKSPACE 'tools/host/nasm/win64'
+                  if (Test-Path (Join-Path $vendoredNasmDir 'nasm.exe')) {
+                    Add-Content -Path $env:GITHUB_PATH -Value $vendoredNasmDir
+                    Write-Host "Using vendored NASM directory: $vendoredNasmDir"
+                  }
+
                   $cmakeVenv = Join-Path $env:RUNNER_TEMP 'cmake-venv'
                   py -3 -m venv $cmakeVenv
                   & "$cmakeVenv\Scripts\python.exe" -m pip install --upgrade pip
@@ -195,7 +201,7 @@ jobs:
                   Add-Content -Path $env:GITHUB_PATH -Value "$cmakeVenv\Scripts"
                   & "$cmakeVenv\Scripts\cmake.exe" --version
 
-            - name: Resolve Visual Studio generator for Windows arm64
+            - name: Resolve Visual Studio environment for Windows arm64
               if: matrix.name == 'windows' && matrix.arch == 'arm64'
               shell: powershell
               run: |
@@ -210,6 +216,7 @@ jobs:
                   )
 
                   $selectedGenerator = $null
+                  $installationPath = $null
                   foreach ($candidate in $candidates) {
                     $vsWhereArgs = @(
                       '-version', $candidate.Version,
@@ -217,19 +224,38 @@ jobs:
                       '-requires', 'Microsoft.VisualStudio.Component.VC.Tools.ARM64',
                       '-property', 'installationPath'
                     )
-                    $installationPath = & $vsWhere @vsWhereArgs | Select-Object -First 1
-                    if ($LASTEXITCODE -eq 0 -and $installationPath) {
+                    $resolvedInstallationPath = & $vsWhere @vsWhereArgs | Select-Object -First 1
+                    if ($LASTEXITCODE -eq 0 -and $resolvedInstallationPath) {
                       $selectedGenerator = $candidate.Generator
+                      $installationPath = $resolvedInstallationPath
                       break
                     }
                   }
 
-                  if (-not $selectedGenerator) {
+                  if (-not $selectedGenerator -or -not $installationPath) {
                     throw 'Unable to find a supported Visual Studio ARM64 installation'
                   }
 
-                  Add-Content -Path $env:GITHUB_ENV -Value "SPRING_VS_GENERATOR=$selectedGenerator"
-                  Write-Host "Using Visual Studio generator: $selectedGenerator"
+                  $vsDevCmd = Join-Path $installationPath 'Common7\Tools\VsDevCmd.bat'
+                  if (-not (Test-Path $vsDevCmd)) {
+                    throw "Unable to locate VsDevCmd.bat under $installationPath"
+                  }
+
+                  $vendoredNinja = Join-Path $env:GITHUB_WORKSPACE 'tools/host/ninja/winarm64/ninja.exe'
+                  $vendoredNasm = Join-Path $env:GITHUB_WORKSPACE 'tools/host/nasm/win64/nasm.exe'
+                  if (-not (Test-Path $vendoredNinja)) {
+                    throw "Unable to locate vendored Ninja for Windows arm64 at $vendoredNinja"
+                  }
+                  if (-not (Test-Path $vendoredNasm)) {
+                    throw "Unable to locate vendored NASM at $vendoredNasm"
+                  }
+
+                  Add-Content -Path $env:GITHUB_ENV -Value "SPRING_VSDEVCMD=$vsDevCmd"
+                  Add-Content -Path $env:GITHUB_ENV -Value "SPRING_WINDOWS_NINJA=$vendoredNinja"
+                  Add-Content -Path $env:GITHUB_ENV -Value "SPRING_WINDOWS_NASM=$vendoredNasm"
+                  Write-Host "Using Visual Studio environment: $vsDevCmd"
+                  Write-Host "Using vendored Ninja executable: $vendoredNinja"
+                  Write-Host "Using vendored NASM executable: $vendoredNasm"
 
             # Build jobs (Non-Windows)
             - name: Configure (macOS)
@@ -263,6 +289,7 @@ jobs:
                   $env:CC="gcc"
                   $env:CXX="g++"
                   $vendoredNinja = Join-Path $env:GITHUB_WORKSPACE 'tools/host/ninja/win/ninja.exe'
+                  $vendoredNasm = Join-Path $env:GITHUB_WORKSPACE 'tools/host/nasm/win64/nasm.exe'
                   $ninjaExe = $null
                   if (Test-Path $vendoredNinja) {
                     try {
@@ -282,21 +309,28 @@ jobs:
                     throw 'Unable to locate a working ninja.exe for CMake'
                   }
                   $ninjaExe = $ninjaExe -replace '\\','/'
-                  Write-Host "Using Ninja executable: $ninjaExe"
-                  $nasmCommand = Get-Command nasm.exe -ErrorAction SilentlyContinue
-                  if ($nasmCommand) {
-                    Write-Host "NASM visible on PATH: $($nasmCommand.Source)"
+                  if (-not (Test-Path $vendoredNasm)) {
+                    throw 'Unable to locate vendored nasm.exe for CMake'
                   }
+                  $vendoredNasm = $vendoredNasm -replace '\\','/'
+                  Write-Host "Using Ninja executable: $ninjaExe"
+                  Write-Host "Using vendored NASM executable: $vendoredNasm"
                   cmake -S . -B out/build `
                     -G Ninja `
                     -DCMAKE_MAKE_PROGRAM="$ninjaExe" `
+                    -DSPRING_NASM_EXECUTABLE="$vendoredNasm" `
                     -DSPRING_STATIC_RUNTIMES=ON
 
             - name: Configure (Windows arm64)
               if: matrix.name == 'windows' && matrix.arch == 'arm64'
               shell: powershell
               run: |
-                  cmake -S . -B out/build -G "$env:SPRING_VS_GENERATOR" -A ARM64
+                  $vsDevCmd = $env:SPRING_VSDEVCMD
+                  $ninjaExe = $env:SPRING_WINDOWS_NINJA -replace '\\','/'
+                  $nasmExe = $env:SPRING_WINDOWS_NASM -replace '\\','/'
+                  $configureCommand = "call `"$vsDevCmd`" -no_logo -arch=arm64 -host_arch=arm64 && set CC=cl && set CXX=cl && cmake -S . -B out/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_MAKE_PROGRAM=`"$ninjaExe`" -DSPRING_NASM_EXECUTABLE=`"$nasmExe`""
+                  cmd /c $configureCommand
+                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
             - name: Build (Windows)
               if: matrix.name == 'windows' && matrix.arch == 'x86_64'
@@ -315,11 +349,18 @@ jobs:
               if: matrix.name == 'windows' && matrix.arch == 'arm64'
               shell: powershell
               run: |
-                  magick docs/assets/icons/logo.png `
-                    -define icon:auto-resize=16,32,48,64,128,256 `
-                    docs/assets/icons/logo.ico
-                  cmake --build out/build --config Release --parallel
-                  cmake --install out/build --config Release --prefix dist
+                  $magickExists = Get-Command magick -ErrorAction SilentlyContinue
+                  if ($magickExists) {
+                    magick docs/assets/icons/logo.png `
+                      -define icon:auto-resize=16,32,48,64,128,256 `
+                      docs/assets/icons/logo.ico
+                  } else {
+                    Write-Host "ImageMagick not available; skipping icon generation"
+                  }
+                  $vsDevCmd = $env:SPRING_VSDEVCMD
+                  $buildCommand = "call `"$vsDevCmd`" -no_logo -arch=arm64 -host_arch=arm64 && cmake --build out/build --parallel && cmake --install out/build --prefix dist"
+                  cmd /c $buildCommand
+                  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
             - name: Prepare Artifact (Windows)
               if: matrix.name == 'windows'
