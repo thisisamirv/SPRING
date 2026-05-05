@@ -251,6 +251,93 @@ jobs:
                   Write-Host ("Valgrind is not available on GitHub-hosted Windows " + `
                               "runners; skipping.")
 
+    additional-arch-builds:
+        name: Build Only / ${{ matrix.name }}
+        runs-on: ${{ matrix.os }}
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - os: ubuntu-24.04-arm
+                      name: Linux arm64
+                      ninja_path: tools/host/ninja/linux-aarch64/ninja
+                    - os: macos-latest
+                      name: macOS arm64
+                      ninja_path: tools/host/ninja/mac/ninja
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Ensure vendored tools are executable
+              shell: bash
+              run: |
+                  chmod +x tools/host/ninja/linux/ninja tools/host/ninja/linux-aarch64/ninja tools/host/ninja/mac/ninja
+                  chmod +x tools/host/nasm/linux/nasm tools/host/nasm/macosx/nasm
+
+            - name: Install Linux arm64 dependencies
+              if: matrix.name == 'Linux arm64'
+              shell: bash
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y \
+                    build-essential \
+                    ccache \
+                    libomp-dev \
+                    lld \
+                    mold \
+                    python3 \
+                    python3-pip \
+                    python3-venv
+
+            - name: Install macOS arm64 dependencies
+              if: matrix.name == 'macOS arm64'
+              shell: bash
+              run: |
+                  brew update
+                  brew install ccache libomp lld llvm python
+                  echo "MACOS_LIBOMP_PREFIX=$(brew --prefix libomp)" >> "$GITHUB_ENV"
+
+            - name: Install CMake
+              shell: bash
+              run: |
+                  CMAKE_VENV="$RUNNER_TEMP/cmake-venv"
+                  python3 -m venv "$CMAKE_VENV"
+                  "$CMAKE_VENV/bin/python" -m pip install --upgrade pip
+                  "$CMAKE_VENV/bin/python" -m pip install "cmake==4.2.0"
+                  echo "$CMAKE_VENV/bin" >> "$GITHUB_PATH"
+                  "$CMAKE_VENV/bin/cmake" --version
+
+            - name: Configure Linux arm64
+              if: matrix.name == 'Linux arm64'
+              shell: bash
+              env:
+                  CC: gcc
+                  CXX: g++
+              run: |
+                  cmake -S . -B out/build-${{ matrix.os }} -G Ninja \
+                    -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/${{ matrix.ninja_path }}" \
+                    -DLIBRAPIDARCHIVE_WITH_ISAL=OFF \
+                    -DCMAKE_C_FLAGS='-march=armv8-a+crc' \
+                    -DCMAKE_CXX_FLAGS='-march=armv8-a+crc' \
+                    -DSPRING_ENABLE_IPO=OFF
+
+            - name: Configure macOS arm64
+              if: matrix.name == 'macOS arm64'
+              shell: bash
+              env:
+                  CC: clang
+                  CXX: clang++
+              run: |
+                  cmake -S . -B out/build-${{ matrix.os }} -G Ninja \
+                    -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/${{ matrix.ninja_path }}" \
+                    -DOpenMP_ROOT="$MACOS_LIBOMP_PREFIX"
+
+            - name: Build additional architecture target
+              shell: bash
+              run: |
+                  cmake --build out/build-${{ matrix.os }} --parallel
+
     compiler-compatibility-builds:
         name: Compiler Compatibility / ${{ matrix.name }}
         runs-on: ${{ matrix.os }}
