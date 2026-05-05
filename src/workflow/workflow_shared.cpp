@@ -483,8 +483,7 @@ void merge_archive_members(
     std::unordered_map<std::string, std::string> &archive_members,
     std::unordered_map<std::string, std::string> new_members) {
   for (auto &entry : new_members) {
-    archive_members.insert_or_assign(std::move(entry.first),
-                                     std::move(entry.second));
+    archive_members.insert_or_assign(entry.first, std::move(entry.second));
   }
 }
 

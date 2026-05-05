@@ -35,6 +35,13 @@ $PTHASH_INCLUDE_DIR = Join-Path $ROOT_DIR "vendor/pthash"
 
 $EXTRA_INCLUDES = @(
     (Join-Path $ROOT_DIR "src"),
+    (Join-Path $ROOT_DIR "src/common"),
+    (Join-Path $ROOT_DIR "src/assays"),
+    (Join-Path $ROOT_DIR "src/decompress"),
+    (Join-Path $ROOT_DIR "src/encode"),
+    (Join-Path $ROOT_DIR "src/preprocess"),
+    (Join-Path $ROOT_DIR "src/reorder"),
+    (Join-Path $ROOT_DIR "src/workflow"),
     $VENDOR_ROOT,
     $ZSTD_INCLUDE_DIR,
     $LIBBSC_INCLUDE_DIR,

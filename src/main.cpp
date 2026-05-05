@@ -167,7 +167,9 @@ std::string build_options_description() {
       << "  -i [ --input ] arg              input archive file (.sp)\n"
       << "                                  or pass <archive.sp> positionally\n"
       << "  -a [ --audit ]                  perform full archive integrity\n"
-      << "                                  check without decompression";
+      << "                                  check without decompression\n\n"
+      << "For full documentation and examples see: "
+         "https://spring2.readthedocs.io/";
   return options.str();
 }
 

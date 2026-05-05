@@ -18,19 +18,20 @@
 SPRING2 is a compressor for FASTQ and FASTA sequencing data, including paired-end data and gzipped FASTQ inputs. It is built on top of the original **[SPRING](https://github.com/shubhamchandak94/SPRING)** project and represents a substantial modernization of that codebase.
 
 > [!TIP]
-> This revision is a substantial modernization of the original SPRING codebase. In brief, it upgrades the build baseline to C++20 and CMake 4.2, removes the remaining Boost dependency, adds cross-platform build and CI support including Windows via MSYS2 UCRT64, auto-detects FASTA and gzipped compression inputs, infers gzipped decompression output from the output filename, adds the `--memory` safety knob, and introduces cleaner developer tooling and benchmark scripts alongside broader portability, lint, and reliability fixes.
+> This revision substantially modernizes the original SPRING codebase. It upgrades the build system to C++20 and CMake 4.2, removes the remaining Boost dependency, adds first-class cross-platform support for Linux, macOS, and native Windows builds, and expands the runtime to cover grouped lane archives, assay-aware compression behavior, preview and audit workflows, richer gzip metadata preservation, and cleaner developer and benchmarking tooling.
 
 ## Features
 
-- Near-optimal compression ratios for single-end and paired-end datasets
-- Fast and memory-efficient decompression
-- Lossless compression of reads, quality scores, and read identifiers
-- Optional quality quantization using [QVZ](https://github.com/mikelhernaez/qvz/), [Illumina 8-level binning](https://www.illumina.com/documents/products/whitepapers/whitepaper_datacompression.pdf), or binary thresholding
-- Automatic FASTQ versus FASTA input detection
-- Gzipped FASTQ input support and gzip output on decompression based on output filename
+- Near-optimal compression for single-end, paired-end, and grouped multi-lane sequencing datasets
+- Lossless preservation of reads, quality scores, and identifiers, with reversible assay-aware transforms where applicable
+- Optional lossy quality compression using [QVZ](https://github.com/mikelhernaez/qvz/), [Illumina 8-level binning](https://www.illumina.com/documents/products/whitepapers/whitepaper_datacompression.pdf), or binary thresholding
+- Automatic FASTQ versus FASTA detection, plain-text versus gzipped input handling, and gzip-aware output restoration
+- Support for grouped archives with `R1`/`R2` plus optional `R3`, `I1`, and `I2` lanes
+- Automatic and explicit assay handling for `dna`, `rna`, `atac`, `bisulfite`, `sc-rna`, `sc-atac`, and `sc-bisulfite`
+- Preview mode for archive inspection and audit mode for dry-run integrity verification without full decompression
+- Record-level CRC32 verification for lossless archives during decompression and optional post-compression auditing
+- Cross-platform builds and CI coverage for Linux, macOS, and native Windows toolchains
 - Free for non-profit research and educational use
-- Automatic detection of short-read (up to 511 bases) and long-read modes
-- Record-level CRC32 verification ensures 100% data fidelity for lossless archives.
 
 ## Platform Support
 
@@ -42,18 +43,9 @@ SPRING2 is built and validated on:
 
 ## Documentation
 
-Detailed documentation is available in the `docs/` directory:
-
-- **[User Docs Index](docs/user/README.md)**: Top-level map of build, usage, and feature guides.
-- **[Installation & Building](docs/user/BUILDING.md)**: Build overview, requirements, and platform guide links.
-- **[Usage Guide](docs/user/USAGE.md)**: Quick start and task-based runtime guide index.
-- **[End-to-End Examples](docs/user/EXAMPLES.md)**: Common assay pipelines with complete compression, inspection, and restoration commands.
-- **[Compression Guide](docs/user/COMPRESSION.md)**: Archive creation, grouped lanes, performance knobs, and logging.
-- **[Decompression Guide](docs/user/DECOMPRESSION.md)**: Output naming, gzip behavior, grouped restoration, and verification.
-- **[Archive Inspection](docs/user/ARCHIVE_INSPECTION.md)**: Preview mode, audit mode, notes, and metadata interpretation.
-- **[Assays & Quality Modes](docs/user/ASSAYS_AND_QUALITY.md)**: Assay selection, single-cell barcode handling, lossy quality options, and `--strip`.
-- **[CLI Reference](docs/user/CLI_REFERENCE.md)**: Flag-by-flag command reference.
-- **[Development & Maintenance](docs/dev/DEVELOPMENT.md)**: Information for contributors on project structure, linting, and internal architecture.
+> [!NOTE]
+> 📚 Published documentation, with tips, examples, and full reference is available at:
+> <https://spring2.readthedocs.io/>
 
 ## Installation
 

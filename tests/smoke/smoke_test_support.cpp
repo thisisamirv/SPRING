@@ -398,9 +398,9 @@ SmokeWorkspace::SmokeWorkspace(const std::string &name) {
 
   const fs::path root = default_output_root();
   fs::create_directories(root);
-  dir = dir = (root / (sanitize_name(name) + "." +
-                       std::to_string(counter.fetch_add(1))))
-                  .string();
+  dir = (root /
+         (sanitize_name(name) + "." + std::to_string(counter.fetch_add(1))))
+            .string();
 
   std::error_code ec;
   fs::remove_all(fs::path(dir), ec);
