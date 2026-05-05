@@ -1060,11 +1060,15 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
                           "RNA tail stripping exceeded available quality "
                           "length");
                     }
-                    thread_buffer.tail_info_bytes.append(
-                        qual, qual.size() - tail_len, tail_len);
-                    qual.resize(qual.size() - tail_len);
+                    const auto tail_begin =
+                        qual.end() - static_cast<std::ptrdiff_t>(tail_len);
+                    thread_buffer.tail_info_bytes.append(tail_begin,
+                                                         qual.end());
+                    qual.erase(tail_begin, qual.end());
                   } else {
-                    thread_buffer.tail_info_bytes.append(tail_len, 'I');
+                    for (uint32_t index = 0; index < tail_len; ++index) {
+                      thread_buffer.tail_info_bytes.push_back('I');
+                    }
                   }
                 } else {
                   append_uint16(thread_buffer.tail_info_bytes, 0);
@@ -1089,11 +1093,15 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
                           "ATAC adapter stripping exceeded available "
                           "quality length");
                     }
-                    thread_buffer.atac_adapter_bytes.append(
-                        qual, qual.size() - strip_len, strip_len);
-                    qual.resize(qual.size() - strip_len);
+                    const auto strip_begin =
+                        qual.end() - static_cast<std::ptrdiff_t>(strip_len);
+                    thread_buffer.atac_adapter_bytes.append(strip_begin,
+                                                            qual.end());
+                    qual.erase(strip_begin, qual.end());
                   } else {
-                    thread_buffer.atac_adapter_bytes.append(strip_len, 'I');
+                    for (uint32_t index = 0; index < strip_len; ++index) {
+                      thread_buffer.atac_adapter_bytes.push_back('I');
+                    }
                   }
                 } else {
                   thread_buffer.atac_adapter_bytes.push_back('\0');
