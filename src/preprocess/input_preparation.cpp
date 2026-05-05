@@ -1050,14 +1050,22 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
                 info = step_tail_info[read_index];
                 const uint32_t tail_len = info >> 1;
                 if (tail_len > 0) {
-                  // Also strip quality and record it.
-                  std::string &qual = quality_array[read_index];
-                  const std::string tail_qual =
-                      qual.substr(qual.size() - tail_len);
-                  qual.resize(qual.size() - tail_len);
-
                   append_uint16(thread_buffer.tail_info_bytes, info);
-                  thread_buffer.tail_info_bytes.append(tail_qual);
+                  if (!quality_array.empty()) {
+                    // Preserve stripped tail quality bytes so decompression can
+                    // consume the side stream consistently.
+                    std::string &qual = quality_array[read_index];
+                    if (tail_len > qual.size()) {
+                      throw std::runtime_error(
+                          "RNA tail stripping exceeded available quality "
+                          "length");
+                    }
+                    thread_buffer.tail_info_bytes.append(
+                        qual, qual.size() - tail_len, tail_len);
+                    qual.resize(qual.size() - tail_len);
+                  } else {
+                    thread_buffer.tail_info_bytes.append(tail_len, 'I');
+                  }
                 } else {
                   append_uint16(thread_buffer.tail_info_bytes, 0);
                 }
@@ -1070,15 +1078,23 @@ preprocess(const std::string &infile_1, const std::string &infile_2,
               if (read_contains_N_array[read_index] == 0 &&
                   !step_atac_adapter_info.empty()) {
                 info = step_atac_adapter_info[read_index];
-                std::string &qual = quality_array[read_index];
                 const uint32_t strip_len = info >> 1;
                 if (strip_len > 0) {
-                  const std::string adapter_qual =
-                      qual.substr(qual.size() - strip_len);
-                  qual.resize(qual.size() - strip_len);
                   thread_buffer.atac_adapter_bytes.push_back(
                       static_cast<char>(info));
-                  thread_buffer.atac_adapter_bytes.append(adapter_qual);
+                  if (!quality_array.empty()) {
+                    std::string &qual = quality_array[read_index];
+                    if (strip_len > qual.size()) {
+                      throw std::runtime_error(
+                          "ATAC adapter stripping exceeded available "
+                          "quality length");
+                    }
+                    thread_buffer.atac_adapter_bytes.append(
+                        qual, qual.size() - strip_len, strip_len);
+                    qual.resize(qual.size() - strip_len);
+                  } else {
+                    thread_buffer.atac_adapter_bytes.append(strip_len, 'I');
+                  }
                 } else {
                   thread_buffer.atac_adapter_bytes.push_back('\0');
                 }
