@@ -1,0 +1,230 @@
+#include "integration_test_support.h"
+
+#include "common/fs_utils.h"
+#include "decompress/archive_stream_reader.h"
+
+#include <filesystem>
+#include <fstream>
+
+namespace fs = std::filesystem;
+using namespace spring;
+using namespace integration_test_support;
+
+namespace {
+
+TEST_CASE("Archive Integrity Verification Test") {
+  std::string test_dir = "integrity_test_tmp";
+  fs::create_directories(test_dir);
+
+  std::string input_fastq = test_dir + "/input.fastq";
+  std::string archive_sp = test_dir + "/test.sp";
+
+  create_dummy_fastq(input_fastq, 100);
+
+  std::string compress_cmd = std::string(SPRING2_EXECUTABLE) + " -c -a --R1 " +
+                             input_fastq + " -o " + archive_sp + " -t 1";
+  REQUIRE(std::system(compress_cmd.c_str()) == 0);
+
+  std::string spring2_path = SPRING2_EXECUTABLE;
+  std::string audit_cmd = spring2_path + " -p -a " + archive_sp;
+  CHECK(std::system(audit_cmd.c_str()) == 0);
+
+  std::string corrupt_dir = test_dir + "/corrupt_work";
+  fs::create_directories(corrupt_dir);
+  REQUIRE(std::system(
+              ("tar -xf " + archive_sp + " -C " + corrupt_dir).c_str()) == 0);
+
+  const fs::path cp_path = fs::path(corrupt_dir) / "cp.bin";
+  REQUIRE(fs::exists(cp_path));
+  const auto cp_size = fs::file_size(cp_path);
+  REQUIRE(cp_size > 16);
+  fs::resize_file(cp_path, cp_size / 2);
+
+  std::string corrupted_sp = test_dir + "/corrupted.sp";
+  std::string retar_cmd =
+      "cd " + corrupt_dir + " && tar -cf ../../" + corrupted_sp + " *";
+  REQUIRE(std::system(retar_cmd.c_str()) == 0);
+
+  std::string audit_log = test_dir + "/corrupt_audit.log";
+  std::string audit_corrupt_cmd =
+      spring2_path + " -p -a " + corrupted_sp + " > " + audit_log + " 2>&1";
+  int ret = std::system(audit_corrupt_cmd.c_str());
+
+  bool audit_detected_corruption = (ret != 0);
+  if (!audit_detected_corruption) {
+    std::ifstream ifs(audit_log, std::ios::binary);
+    std::string output((std::istreambuf_iterator<char>(ifs)),
+                       std::istreambuf_iterator<char>());
+    audit_detected_corruption =
+        output.find("Original Input 1:  input.fastq") == std::string::npos;
+  }
+  CHECK(audit_detected_corruption);
+
+  fs::remove_all(test_dir);
+}
+
+TEST_CASE("Archive extraction rejects absolute paths") {
+  const std::string test_dir = "archive_path_escape_test_tmp";
+  fs::create_directories(test_dir);
+
+  const std::string archive_path = test_dir + "/malicious.tar";
+  const std::string target_dir = test_dir + "/extract";
+  const std::string outside_path =
+      fs::absolute(fs::path(test_dir) / "outside.txt").generic_string();
+
+  create_tar_with_entry(archive_path, outside_path, "blocked");
+
+  CHECK_THROWS_AS(extract_tar_archive(archive_path, target_dir),
+                  std::runtime_error);
+  CHECK_FALSE(fs::exists(outside_path));
+
+  fs::remove_all(test_dir);
+}
+
+TEST_CASE("Corrupt long-read archive reports a normal decompression error") {
+  const std::string test_dir = "long_read_error_test_tmp";
+  fs::create_directories(test_dir);
+
+  const std::string input_fastq = test_dir + "/input.fastq";
+  const std::string archive_path = test_dir + "/long_reads.sp";
+  const std::string corrupt_dir = test_dir + "/corrupt_extract";
+  const std::string corrupted_archive = test_dir + "/corrupted.sp";
+  const std::string output_fastq = test_dir + "/restored.fastq";
+  const std::string decompress_log = test_dir + "/decompress.log";
+  const std::string corrupted_archive_tar_path =
+      fs::absolute(corrupted_archive).generic_string();
+
+  create_custom_fastq(input_fastq, 128, false, false, 700);
+
+  const std::string compress_cmd = std::string(SPRING2_EXECUTABLE) +
+                                   " -c --R1 " + input_fastq + " -o " +
+                                   archive_path + " -t 1";
+  REQUIRE(std::system(compress_cmd.c_str()) == 0);
+
+  fs::create_directories(corrupt_dir);
+  REQUIRE(std::system(
+              ("tar -xf " + archive_path + " -C " + corrupt_dir).c_str()) == 0);
+
+  const fs::path read_length_block =
+      fs::path(corrupt_dir) / "readlength_1.0.bsc";
+  REQUIRE(fs::exists(read_length_block));
+  const auto block_size = fs::file_size(read_length_block);
+  REQUIRE(block_size > 8);
+  fs::resize_file(read_length_block, block_size / 2);
+
+  REQUIRE(std::system(("cd " + corrupt_dir + " && tar -cf \"" +
+                       corrupted_archive_tar_path + "\" *")
+                          .c_str()) == 0);
+
+  const std::string decompress_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -d -i " + corrupted_archive + " -o " +
+      output_fastq + " > " + decompress_log + " 2>&1";
+  CHECK(std::system(decompress_cmd.c_str()) != 0);
+
+  const std::string output = read_file_binary(decompress_log);
+  CHECK(output.find("Program terminated unexpectedly") != std::string::npos);
+
+  fs::remove_all(test_dir);
+}
+
+TEST_CASE("Preview and SpringReader reject truncated metadata") {
+  const std::string test_dir = "truncated_metadata_preview_test_tmp";
+  fs::create_directories(test_dir);
+
+  const std::string input_fastq = test_dir + "/input.fastq";
+  const std::string archive_path = test_dir + "/test.sp";
+  const std::string corrupt_dir = test_dir + "/extract";
+  const std::string corrupted_archive = test_dir + "/corrupted.sp";
+  const std::string preview_log = test_dir + "/preview.log";
+  const std::string corrupted_archive_tar_path =
+      fs::absolute(corrupted_archive).generic_string();
+
+  create_dummy_fastq(input_fastq, 200);
+
+  const std::string compress_cmd = std::string(SPRING2_EXECUTABLE) +
+                                   " -c --R1 " + input_fastq + " -o " +
+                                   archive_path + " -t 1";
+  REQUIRE(std::system(compress_cmd.c_str()) == 0);
+
+  fs::create_directories(corrupt_dir);
+  REQUIRE(std::system(
+              ("tar -xf " + archive_path + " -C " + corrupt_dir).c_str()) == 0);
+
+  const fs::path cp_path = fs::path(corrupt_dir) / "cp.bin";
+  REQUIRE(fs::exists(cp_path));
+  const auto cp_size = fs::file_size(cp_path);
+  REQUIRE(cp_size > 16);
+  fs::resize_file(cp_path, cp_size / 2);
+
+  REQUIRE(std::system(("cd " + corrupt_dir + " && tar -cf \"" +
+                       corrupted_archive_tar_path + "\" *")
+                          .c_str()) == 0);
+
+  const std::string preview_cmd = std::string(SPRING2_EXECUTABLE) + " -p " +
+                                  corrupted_archive + " > " + preview_log +
+                                  " 2>&1";
+  CHECK(std::system(preview_cmd.c_str()) != 0);
+  CHECK_THROWS_AS(SpringReader(corrupted_archive, 1), std::runtime_error);
+
+  fs::remove_all(test_dir);
+}
+
+TEST_CASE("Decompression rejects colliding output paths") {
+  const std::string test_dir = "decompress_output_collision_test_tmp";
+  fs::create_directories(test_dir);
+
+  const std::string r1_fastq = test_dir + "/input_R1.fastq";
+  const std::string r2_fastq = test_dir + "/input_R2.fastq";
+  const std::string paired_archive = test_dir + "/paired.sp";
+  const std::string single_archive = test_dir + "/single.sp";
+  const std::string duplicate_output = test_dir + "/duplicate.fastq";
+  const std::string duplicate_log = test_dir + "/duplicate.log";
+  const std::string overwrite_log = test_dir + "/overwrite.log";
+
+  create_dummy_fastq(r1_fastq, 180);
+  create_dummy_fastq(r2_fastq, 180);
+
+  REQUIRE(
+      std::system((std::string(SPRING2_EXECUTABLE) + " -c --R1 " + r1_fastq +
+                   " --R2 " + r2_fastq + " -o " + paired_archive + " -t 1")
+                      .c_str()) == 0);
+  REQUIRE(std::system((std::string(SPRING2_EXECUTABLE) + " -c --R1 " +
+                       r1_fastq + " -o " + single_archive + " -t 1")
+                          .c_str()) == 0);
+
+  const std::string duplicate_cmd = std::string(SPRING2_EXECUTABLE) +
+                                    " -d -i " + paired_archive + " -o " +
+                                    duplicate_output + " " + duplicate_output +
+                                    " -t 1 > " + duplicate_log + " 2>&1";
+  const std::string overwrite_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -d -i " + single_archive + " -o " +
+      single_archive + " -t 1 > " + overwrite_log + " 2>&1";
+
+  CHECK(std::system(duplicate_cmd.c_str()) != 0);
+  CHECK(std::system(overwrite_cmd.c_str()) != 0);
+
+  fs::remove_all(test_dir);
+}
+
+TEST_CASE("Compression rejects archive paths that overwrite inputs") {
+  const std::string test_dir = "compression_output_collision_test_tmp";
+  fs::create_directories(test_dir);
+
+  const std::string input_fastq = test_dir + "/input.fastq";
+  const std::string collision_log = test_dir + "/collision.log";
+
+  create_dummy_fastq(input_fastq, 160);
+
+  const std::string compress_cmd =
+      std::string(SPRING2_EXECUTABLE) + " -c --R1 " + input_fastq + " -o " +
+      input_fastq + " -t 1 > " + collision_log + " 2>&1";
+  CHECK(std::system(compress_cmd.c_str()) != 0);
+
+  const std::string log_output = read_file_binary(collision_log);
+  CHECK(log_output.find("must not overwrite an input file") !=
+        std::string::npos);
+
+  fs::remove_all(test_dir);
+}
+
+} // namespace

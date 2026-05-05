@@ -29,8 +29,8 @@ jobs:
             - name: Ensure vendored tools are executable
               shell: bash
               run: |
-                  chmod +x dev/ninja/linux/ninja dev/ninja/linux-aarch64/ninja
-                  chmod +x dev/nasm/linux/nasm
+                  chmod +x tools/host/ninja/linux/ninja tools/host/ninja/linux-aarch64/ninja
+                  chmod +x tools/host/nasm/linux/nasm
 
             - name: Install Linux dependencies
               run: |
@@ -57,13 +57,13 @@ jobs:
                   CC: gcc
                   CXX: g++
               run: |
-                  cmake -S . -B build -G Ninja \
-                    -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/dev/ninja/linux/ninja"
+                  cmake -S . -B out/build -G Ninja \
+                      -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/tools/host/ninja/linux/ninja"
 
             - name: Build and install
               run: |
-                  cmake --build build --parallel
-                  cmake --install build --prefix spring2
+                  cmake --build out/build --parallel
+                  cmake --install out/build --prefix dist
 
             - name: Install mamba
               uses: conda-incubator/setup-miniconda@v3
@@ -81,5 +81,5 @@ jobs:
             - name: Run comparison benchmark
               shell: bash -el {0}
               run: |
-                  chmod +x tests/comparison_bench.sh
-                  tests/comparison_bench.sh --no_debug
+                  chmod +x tests/bench/comparison_bench.sh
+                  tests/bench/comparison_bench.sh --no_debug

@@ -69,6 +69,8 @@ Thumbs.db
 *.pyc
 *.patch
 *.diff
-tests/output/
+out/tests/
+dist/
 spring2/
 plan.md
+tests/fixtures/

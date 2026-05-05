@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/icons/logo.png" alt="SPRING2 logo" width="128" />
+  <img src="data/assets/icons/logo.png" alt="SPRING2 logo" width="128" />
 </p>
 
 > **LICENSE RESTRICTION NOTICE**
@@ -44,9 +44,9 @@ SPRING2 is built and validated on:
 
 Detailed documentation is available in the `docs/` directory:
 
-- **[Installation & Building](docs/BUILDING.md)**: System requirements and platform-specific build instructions.
-- **[Usage Guide](docs/USAGE.md)**: Command-line options, configuration, and practical examples.
-- **[Development & Maintenance](docs/DEVELOPMENT.md)**: Information for contributors on project structure, linting, and internal architecture.
+- **[Installation & Building](docs/user/BUILDING.md)**: System requirements and platform-specific build instructions.
+- **[Usage Guide](docs/user/USAGE.md)**: Command-line options, configuration, and practical examples.
+- **[Development & Maintenance](docs/dev/DEVELOPMENT.md)**: Information for contributors on project structure, linting, and internal architecture.
 
 ## Installation
 
@@ -158,7 +158,7 @@ Input 1 Original Compression:
 --------------------------------
 ```
 
-For a comprehensive list of all options, quality modes, and multi-threaded examples, see the **[Usage Guide](docs/USAGE.md)**.
+For a comprehensive list of all options, quality modes, and multi-threaded examples, see the **[Usage Guide](docs/user/USAGE.md)**.
 
 ## Related
 

@@ -5,7 +5,7 @@ name: CI
     push:
     pull_request:
         branches:
-            - master
+            - main
     workflow_dispatch:
 
 permissions:
@@ -34,8 +34,8 @@ jobs:
               if: runner.os != 'Windows'
               shell: bash
               run: |
-                  chmod +x dev/ninja/linux/ninja dev/ninja/linux-aarch64/ninja dev/ninja/mac/ninja
-                  chmod +x dev/nasm/linux/nasm dev/nasm/macosx/nasm
+                  chmod +x tools/host/ninja/linux/ninja tools/host/ninja/linux-aarch64/ninja tools/host/ninja/mac/ninja
+                  chmod +x tools/host/nasm/linux/nasm tools/host/nasm/macosx/nasm
 
             - name: Install Linux dependencies
               if: runner.os == 'Linux'
@@ -126,8 +126,8 @@ jobs:
                   CC: gcc
                   CXX: g++
               run: |
-                  cmake -S . -B build -G Ninja \
-                    -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/dev/ninja/linux/ninja"
+                  cmake -S . -B out/build -G Ninja \
+                    -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/tools/host/ninja/linux/ninja"
 
             - name: Configure on macOS
               if: runner.os == 'macOS'
@@ -136,8 +136,8 @@ jobs:
                   CC: clang
                   CXX: clang++
               run: |
-                  cmake -S . -B build -G Ninja \
-                    -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/dev/ninja/mac/ninja" \
+                  cmake -S . -B out/build -G Ninja \
+                    -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/tools/host/ninja/mac/ninja" \
                     -DOpenMP_ROOT="$MACOS_LIBOMP_PREFIX"
 
             - name: Configure on Windows
@@ -146,7 +146,7 @@ jobs:
               run: |
                   $env:CC="gcc"
                   $env:CXX="g++"
-                  $vendoredNinja = Join-Path $env:GITHUB_WORKSPACE 'dev/ninja/win/ninja.exe'
+                  $vendoredNinja = Join-Path $env:GITHUB_WORKSPACE 'tools/host/ninja/win/ninja.exe'
                   $ninjaExe = $null
                   if (Test-Path $vendoredNinja) {
                     try {
@@ -166,34 +166,34 @@ jobs:
                     throw 'Unable to locate a working ninja.exe for CMake'
                   }
                   $ninjaExe = $ninjaExe -replace '\\','/'
-                  cmake -S . -B build -G Ninja -DCMAKE_MAKE_PROGRAM="$ninjaExe"
+                  cmake -S . -B out/build -G Ninja -DCMAKE_MAKE_PROGRAM="$ninjaExe"
 
             - name: Build on Linux and macOS
               if: runner.os != 'Windows'
               run: |
-                  cmake --build build --parallel
-                  cmake --install build --prefix spring2
+                  cmake --build out/build --parallel
+                  cmake --install out/build --prefix dist
 
             - name: Build on Windows
               if: runner.os == 'Windows'
               shell: powershell
               run: |
-                  magick assets/icons/logo.png `
+                  magick data/assets/icons/logo.png `
                     -define icon:auto-resize=16,32,48,64,128,256 `
-                    assets/icons/logo.ico
+                    data/assets/icons/logo.ico
                   $env:CC="gcc"
                   $env:CXX="g++"
-                  cmake --build build --parallel
-                  cmake --install build --prefix spring2
+                  cmake --build out/build --parallel
+                  cmake --install out/build --prefix dist
 
             - name: Run all tests (Unit + Smoke) on Linux and macOS
               if: runner.os != 'Windows'
-              run: ctest --test-dir build --output-on-failure --verbose
+              run: ctest --test-dir out/build --output-on-failure --verbose
 
             - name: Run all tests (Unit + Smoke) on Windows
               if: runner.os == 'Windows'
               shell: powershell
-              run: ctest --test-dir build --output-on-failure --verbose
+              run: ctest --test-dir out/build --output-on-failure --verbose
 
             - name: Set up MSYS2 analysis environment
               if: runner.os == 'Windows'
@@ -215,27 +215,27 @@ jobs:
 
             - name: Run lint on Linux
               if: runner.os == 'Linux'
-              run: ./dev/lint.sh
+              run: ./scripts/lint/lint.sh
 
             - name: Run lint on macOS
               if: runner.os == 'macOS'
               shell: bash
               run: |
                   export PATH="$HOMEBREW_LLVM_BIN:$PATH"
-                  ./dev/lint.sh
+                  ./scripts/lint/lint.sh
 
             - name: Run lint on Windows
               if: runner.os == 'Windows'
               shell: powershell
-              run: .\dev\lint.ps1
+              run: .\scripts\lint\lint.ps1
 
             - name: Run cppcheck on Linux and macOS
               if: runner.os != 'Windows'
-              run: ./dev/cppcheck.sh
+              run: ./scripts/lint/cppcheck.sh
 
             - name: Run valgrind smoke test
               if: runner.os == 'Linux'
-              run: ./dev/valgrind-smoke.sh
+              run: ./scripts/smoke/valgrind-smoke.sh
 
             - name: Skip valgrind on macOS
               if: runner.os == 'macOS'
@@ -259,19 +259,19 @@ jobs:
                 include:
                     - os: ubuntu-latest
                       name: Linux Clang
-                      build_dir: build-linux-clang
+                      build_dir: out/build-linux-clang
                     - os: ubuntu-latest
                       name: Linux IntelLLVM
-                      build_dir: build-linux-intelllvm
+                      build_dir: out/build-linux-intelllvm
                     - os: windows-latest
                       name: Windows MSVC
-                      build_dir: build-windows-msvc
+                      build_dir: out/build-windows-msvc
                     - os: windows-latest
                       name: Windows Clang
-                      build_dir: build-windows-clang
+                      build_dir: out/build-windows-clang
                     - os: windows-latest
                       name: Windows ClangCL
-                      build_dir: build-windows-clangcl
+                      build_dir: out/build-windows-clangcl
 
         steps:
             - name: Checkout repository
@@ -281,8 +281,8 @@ jobs:
               if: runner.os != 'Windows'
               shell: bash
               run: |
-                  chmod +x dev/ninja/linux/ninja dev/ninja/linux-aarch64/ninja dev/ninja/mac/ninja
-                  chmod +x dev/nasm/linux/nasm dev/nasm/macosx/nasm
+                  chmod +x tools/host/ninja/linux/ninja tools/host/ninja/linux-aarch64/ninja tools/host/ninja/mac/ninja
+                  chmod +x tools/host/nasm/linux/nasm tools/host/nasm/macosx/nasm
 
             - name: Install Linux Clang dependencies
               if: matrix.name == 'Linux Clang'
@@ -334,7 +334,7 @@ jobs:
                   CXX: clang++
               run: |
                   cmake -S . -B ${{ matrix.build_dir }} -G Ninja \
-                    -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/dev/ninja/linux/ninja"
+                    -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/tools/host/ninja/linux/ninja"
 
             - name: Build Linux Clang target
               if: matrix.name == 'Linux Clang'
@@ -348,7 +348,7 @@ jobs:
                   icx --version
                   icpx --version
                   CC=icx CXX=icpx cmake -S . -B ${{ matrix.build_dir }} -G Ninja \
-                    -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/dev/ninja/linux/ninja"
+                    -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/tools/host/ninja/linux/ninja"
 
             - name: Build Linux IntelLLVM target
               if: matrix.name == 'Linux IntelLLVM'
@@ -392,7 +392,7 @@ jobs:
               run: |
                   $env:CC='clang'
                   $env:CXX='clang++'
-                  $vendoredNinja = Join-Path $env:GITHUB_WORKSPACE 'dev/ninja/win/ninja.exe'
+                  $vendoredNinja = Join-Path $env:GITHUB_WORKSPACE 'tools/host/ninja/win/ninja.exe'
                   $ninjaExe = $null
                   if (Test-Path $vendoredNinja) {
                     try {
@@ -418,9 +418,9 @@ jobs:
               if: matrix.name == 'Windows Clang'
               shell: powershell
               run: |
-                  magick assets/icons/logo.png `
+                  magick data/assets/icons/logo.png `
                     -define icon:auto-resize=16,32,48,64,128,256 `
-                    assets/icons/logo.ico
+                    data/assets/icons/logo.ico
                   $env:CC='clang'
                   $env:CXX='clang++'
                   cmake --build ${{ matrix.build_dir }} --parallel
@@ -477,18 +477,18 @@ jobs:
               if: matrix.name == 'Windows MSVC'
               shell: powershell
               run: |
-                  magick assets/icons/logo.png `
+                  magick data/assets/icons/logo.png `
                     -define icon:auto-resize=16,32,48,64,128,256 `
-                    assets/icons/logo.ico
+                    data/assets/icons/logo.ico
                   cmake --build ${{ matrix.build_dir }} --config Release --parallel
 
             - name: Build Windows ClangCL target
               if: matrix.name == 'Windows ClangCL'
               shell: powershell
               run: |
-                  magick assets/icons/logo.png `
+                  magick data/assets/icons/logo.png `
                     -define icon:auto-resize=16,32,48,64,128,256 `
-                    assets/icons/logo.ico
+                    data/assets/icons/logo.ico
                   cmake --build ${{ matrix.build_dir }} --config Release --parallel
 
     sanitizers:
@@ -500,16 +500,16 @@ jobs:
                 sanitizer: [ asan_ubsan, tsan ]
                 include:
                     - sanitizer: asan_ubsan
-                      build_dir: build-asan
+                      build_dir: out/build-asan
                       san_flags: "-g -O1 -fno-omit-frame-pointer -fsanitize=address,undefined"
                       ld_flags: "-fsanitize=address,undefined"
                       options: "ASAN_OPTIONS=detect_leaks=1:abort_on_error=1"
                     - sanitizer: tsan
-                      build_dir: build-tsan
+                      build_dir: out/build-tsan
                       san_flags: "-g -O1 -fno-omit-frame-pointer -fsanitize=thread"
                       ld_flags: "-fsanitize=thread"
                       options: "TSAN_OPTIONS=halt_on_error=1:suppressions=${{ github.workspace
-                          }}/tests/tsan.supp"
+                          }}/tests/support/tsan.supp"
         env:
             BUILD_DIR: ${{ matrix.build_dir }}
         steps:
@@ -518,8 +518,8 @@ jobs:
 
             - name: Ensure vendored tools are executable
               run: |
-                  chmod +x dev/ninja/linux/ninja dev/ninja/linux-aarch64/ninja
-                  chmod +x dev/nasm/linux/nasm
+                  chmod +x tools/host/ninja/linux/ninja tools/host/ninja/linux-aarch64/ninja
+                  chmod +x tools/host/nasm/linux/nasm
 
             - name: Install build dependencies
               run: |
@@ -536,12 +536,12 @@ jobs:
             - name: Configure CMake with sanitizer flags
               run: |
                   if [ "${{ matrix.sanitizer }}" = "tsan" ]; then
-                    echo "TSAN_OPTIONS=halt_on_error=1:suppressions=$GITHUB_WORKSPACE/tests/tsan.supp" >> $GITHUB_ENV
+                    echo "TSAN_OPTIONS=halt_on_error=1:suppressions=$GITHUB_WORKSPACE/tests/support/tsan.supp" >> $GITHUB_ENV
                   else
                     echo "${{ matrix.options }}" >> $GITHUB_ENV
                   fi
                   cmake -S . -B $BUILD_DIR -G Ninja \
-                    -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/dev/ninja/linux/ninja" \
+                    -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/tools/host/ninja/linux/ninja" \
                     -DCMAKE_BUILD_TYPE=Debug \
                     -DCMAKE_C_FLAGS="${{ matrix.san_flags }}" -DCMAKE_CXX_FLAGS="${{ matrix.san_flags }}" \
                     -DCMAKE_EXE_LINKER_FLAGS="${{ matrix.ld_flags }}" -DCMAKE_SHARED_LINKER_FLAGS="${{ matrix.ld_flags }}"

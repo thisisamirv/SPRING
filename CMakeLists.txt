@@ -378,15 +378,16 @@ endif()
 if(NOT CLANGD_CONTENT STREQUAL EXISTING_CLANGD_CONTENT)
     file(WRITE "${CMAKE_SOURCE_DIR}/.clangd" "${CLANGD_CONTENT}")
 endif()
-# Keep compile_commands.json in the source tree as a regular file copy.
+# Keep a workspace-stable compile_commands.json copy under out/clangd.
 # This avoids symlink permission/portability issues across platforms.
 if(CMAKE_GENERATOR MATCHES "^(Ninja|Unix Makefiles|MinGW Makefiles|MSYS Makefiles)$")
+    file(MAKE_DIRECTORY "${CMAKE_SOURCE_DIR}/out/clangd")
     add_custom_target(copy_compile_commands ALL
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_BINARY_DIR}/compile_commands.json" "${CMAKE_SOURCE_DIR}/compile_commands.json"
-        COMMENT "Copying compile_commands.json into source tree"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_BINARY_DIR}/compile_commands.json" "${CMAKE_SOURCE_DIR}/out/clangd/compile_commands.json"
+        COMMENT "Copying compile_commands.json into out/clangd"
     )
 else()
-    message(NOTICE "Skipping compile_commands.json source-tree copy for generator: ${CMAKE_GENERATOR}")
+    message(NOTICE "Skipping compile_commands.json out/clangd copy for generator: ${CMAKE_GENERATOR}")
 endif()
 
 # message(NOTICE "** CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
@@ -468,10 +469,10 @@ add_custom_command(
     OUTPUT ${REFERENCE_GENERATED}
     COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_SOURCE_DIR}/cmake/embed_reference.py
-    ${CMAKE_SOURCE_DIR}/reference/ref_hg38_gencode49.fa
+    ${CMAKE_SOURCE_DIR}/data/reference/ref_hg38_gencode49.fa
     ${REFERENCE_GENERATED}
     DEPENDS
-    ${CMAKE_SOURCE_DIR}/reference/ref_hg38_gencode49.fa
+    ${CMAKE_SOURCE_DIR}/data/reference/ref_hg38_gencode49.fa
     ${CMAKE_SOURCE_DIR}/cmake/embed_reference.py
     COMMENT "Embedding reference data into binary"
 )
@@ -528,20 +529,22 @@ set(spring_vendor_src_include_dirs
 
 
 # Convenience targets for repository development checks.
-function(add_dev_script_target target_name script_name)
-    add_custom_target(${target_name}
-        COMMAND ${CMAKE_SOURCE_DIR}/dev/${script_name}
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        USES_TERMINAL
-    )
+function(add_dev_script_target target_name script_path)
+    if(EXISTS "${CMAKE_SOURCE_DIR}/${script_path}")
+        add_custom_target(${target_name}
+            COMMAND ${CMAKE_SOURCE_DIR}/${script_path}
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            USES_TERMINAL
+        )
+    endif()
 endfunction()
 
 set(win_resources "")
 if(WIN32)
-    if(EXISTS "${CMAKE_SOURCE_DIR}/assets/icons/logo.ico")
+    if(EXISTS "${CMAKE_SOURCE_DIR}/data/assets/icons/logo.ico")
         set(win_resources ${source_dir}/spring2.rc)
     else()
-        message(NOTICE "logo.ico not found in assets/icons, skipping Windows icon resource")
+        message(NOTICE "logo.ico not found in data/assets/icons, skipping Windows icon resource")
     endif()
 endif()
 
@@ -774,21 +777,27 @@ if(WIN32 AND NOT SPRING_STATIC_RUNTIMES)
     endforeach()
 endif()
 
-add_dev_script_target(dev-lint lint.sh)
-add_dev_script_target(dev-cppcheck cppcheck.sh)
-add_dev_script_target(dev-cbindgen-check cbindgen-check.sh)
-add_dev_script_target(dev-valgrind-smoke valgrind-smoke.sh)
+add_dev_script_target(dev-lint scripts/lint/lint.sh)
+add_dev_script_target(dev-cppcheck scripts/lint/cppcheck.sh)
+add_dev_script_target(dev-cbindgen-check scripts/lint/cbindgen-check.sh)
+add_dev_script_target(dev-valgrind-smoke scripts/smoke/valgrind-smoke.sh)
 
 add_dependencies(dev-lint spring2)
 add_dependencies(dev-valgrind-smoke spring2)
 
 # Unit testing integration using doctest.
 enable_testing()
-add_executable(spring2-tests tests/unit_tests.cpp ${core_source_files})
+set(unit_test_sources
+    tests/unit/unit_tests.cpp
+    tests/unit/dna_parse_unit_tests.cpp
+    tests/unit/assay_detector_unit_tests.cpp
+    tests/unit/assay_detector_real_data_unit_tests.cpp
+)
+add_executable(spring2-tests ${unit_test_sources} ${core_source_files})
 if(SPRING_ENABLE_PRECOMPILED_HEADERS)
     target_precompile_headers(spring2-tests PRIVATE ${source_dir}/pch.h)
 endif()
-target_include_directories(spring2-tests PRIVATE ${include_dir} ${vendor_dir} tests ${spring_src_include_dirs})
+target_include_directories(spring2-tests PRIVATE ${include_dir} ${vendor_dir} ${CMAKE_SOURCE_DIR}/tests/support ${spring_src_include_dirs})
 if(WIN32)
     target_compile_definitions(spring2-tests PRIVATE LIBARCHIVE_STATIC)
 endif()
@@ -801,11 +810,20 @@ if(SPRING_OPENMP_INCLUDE_DIRS)
 endif()
 add_test(NAME unit_tests COMMAND spring2-tests)
 
-add_executable(integration-tests tests/integration_tests.cpp ${core_source_files})
+set(integration_test_sources
+    tests/integration/integration_tests.cpp
+    tests/integration/integration_test_support.cpp
+    tests/integration/archive_integration_tests.cpp
+    tests/integration/reader_integration_tests.cpp
+    tests/integration/workflow_metadata_integration_tests.cpp
+    tests/integration/assay_integration_tests.cpp
+    tests/integration/grouped_archive_integration_tests.cpp
+)
+add_executable(integration-tests ${integration_test_sources} ${core_source_files})
 if(SPRING_ENABLE_PRECOMPILED_HEADERS)
     target_precompile_headers(integration-tests PRIVATE ${source_dir}/pch.h)
 endif()
-target_include_directories(integration-tests PRIVATE ${include_dir} ${vendor_dir} tests ${spring_src_include_dirs})
+target_include_directories(integration-tests PRIVATE ${include_dir} ${vendor_dir} ${CMAKE_SOURCE_DIR}/tests/support ${spring_src_include_dirs})
 if(WIN32)
     target_compile_definitions(integration-tests PRIVATE LIBARCHIVE_STATIC)
 endif()
@@ -819,25 +837,33 @@ endif()
 target_compile_definitions(integration-tests PRIVATE SPRING2_EXECUTABLE=\"$<TARGET_FILE:spring2>\")
 add_test(NAME integration_tests COMMAND integration-tests)
 
+set(smoke_test_sources
+    tests/smoke/smoke_tests.cpp
+    tests/smoke/smoke_test_support.cpp
+    tests/smoke/basic_roundtrip_smoke_tests.cpp
+    tests/smoke/grouped_roundtrip_smoke_tests.cpp
+    tests/smoke/gzip_roundtrip_smoke_tests.cpp
+    tests/smoke/cli_mode_smoke_tests.cpp
+)
+add_executable(smoke-tests ${smoke_test_sources})
+add_dependencies(smoke-tests spring2)
+target_include_directories(smoke-tests PRIVATE ${include_dir} ${vendor_dir} ${CMAKE_SOURCE_DIR}/tests/support ${spring_src_include_dirs})
+target_link_libraries(smoke-tests PRIVATE ${spring_libs})
+if(TARGET OpenMP::OpenMP_CXX)
+    target_link_libraries(smoke-tests PRIVATE OpenMP::OpenMP_CXX)
+endif()
+if(SPRING_OPENMP_INCLUDE_DIRS)
+    target_include_directories(smoke-tests SYSTEM PRIVATE ${SPRING_OPENMP_INCLUDE_DIRS})
+endif()
+target_compile_definitions(smoke-tests PRIVATE
+    SPRING2_EXECUTABLE="$<TARGET_FILE:spring2>"
+    SMOKE_TEST_ASSET_DIR="${CMAKE_SOURCE_DIR}/data/samples"
+    SMOKE_TEST_OUTPUT_ROOT="${CMAKE_SOURCE_DIR}/out/tests/smoke"
+)
+add_test(NAME smoke_tests COMMAND smoke-tests)
+
 if(WIN32)
     target_link_libraries(spring2-tests PRIVATE ws2_32 psapi)
     target_link_libraries(integration-tests PRIVATE ws2_32 psapi)
-endif()
-
-# Integrated Smoke Tests
-if(WIN32)
-    # Windows: Use PowerShell version
-    find_program(POWERSHELL_PATH NAMES pwsh powershell)
-    if(POWERSHELL_PATH)
-        add_test(NAME smoke_tests COMMAND ${POWERSHELL_PATH} -ExecutionPolicy Bypass -File ${CMAKE_CURRENT_SOURCE_DIR}/tests/smoke_test.ps1)
-        set_tests_properties(smoke_tests PROPERTIES
-            ENVIRONMENT "SPRING_BIN=$<TARGET_FILE:spring2>;SPRING_PREVIEW_BIN=$<TARGET_FILE:spring2>"
-        )
-    endif()
-else()
-    # Linux/macOS: Use Bash version
-    add_test(NAME smoke_tests COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/smoke_test.sh)
-    set_tests_properties(smoke_tests PROPERTIES
-        ENVIRONMENT "SPRING_BIN=$<TARGET_FILE:spring2>;SPRING_PREVIEW_BIN=$<TARGET_FILE:spring2>"
-    )
+    target_link_libraries(smoke-tests PRIVATE ws2_32 psapi)
 endif()

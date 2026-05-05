@@ -46,8 +46,8 @@ jobs:
               if: matrix.name != 'windows'
               shell: bash
               run: |
-                  chmod +x dev/ninja/linux/ninja dev/ninja/linux-aarch64/ninja dev/ninja/mac/ninja
-                  chmod +x dev/nasm/linux/nasm dev/nasm/macosx/nasm
+                  chmod +x tools/host/ninja/linux/ninja tools/host/ninja/linux-aarch64/ninja tools/host/ninja/mac/ninja
+                  chmod +x tools/host/nasm/linux/nasm tools/host/nasm/macosx/nasm
 
             - name: Build Linux (Docker)
               if: matrix.name == 'linux'
@@ -78,21 +78,21 @@ jobs:
                     source /opt/rh/gcc-toolset-12/enable && \
                     python3.9 -m venv .cmake-venv && \
                     . .cmake-venv/bin/activate && \
-                    NINJA_PATH=/work/dev/ninja/linux/ninja && \
+                    NINJA_PATH=/work/tools/host/ninja/linux/ninja && \
                     if [ "\$ARCH_SUFFIX" = "aarch64" ]; then \
-                      NINJA_PATH=/work/dev/ninja/linux-aarch64/ninja; \
+                      NINJA_PATH=/work/tools/host/ninja/linux-aarch64/ninja; \
                     fi && \
-                    chmod +x \$NINJA_PATH /work/dev/nasm/linux/nasm && \
+                    chmod +x \$NINJA_PATH /work/tools/host/nasm/linux/nasm && \
                     python3.9 -m pip install 'cmake==4.2.0' && \
-                    cmake -S . -B build -G Ninja \
+                    cmake -S . -B out/build -G Ninja \
                       -DCMAKE_MAKE_PROGRAM=\$NINJA_PATH \
                       -DLIBRAPIDARCHIVE_WITH_ISAL=OFF \
                       \$CMAKE_EXTRA_FLAGS && \
-                    cmake --build build --parallel && \
-                    cmake --install build --prefix spring2 && \
-                    tar -czf spring2-linux-${{ matrix.arch }}.tar.gz spring2 && \
-                    file spring2/bin/spring2 && \
-                    ldd spring2/bin/spring2 && \
+                    cmake --build out/build --parallel && \
+                    cmake --install out/build --prefix dist && \
+                    tar -czf spring2-linux-${{ matrix.arch }}.tar.gz dist && \
+                    file dist/bin/spring2 && \
+                    ldd dist/bin/spring2 && \
                     export LINUXDEPLOY_DEBUG=1 && \
                     URL='https://github.com/linuxdeploy/linuxdeploy/' && \
                     URL=\"\${URL}releases/download/continuous/\" && \
@@ -107,10 +107,10 @@ jobs:
                     echo 'Categories=Science;Biology;' >> logo.desktop && \
                     echo 'Terminal=true' >> logo.desktop && \
                     export EXTRA_QT_PLUGINS= && \
-                    cp assets/icons/logo.png logo.png && \
+                    cp data/assets/icons/logo.png logo.png && \
                     ./linuxdeploy --appimage-extract-and-run \
                       --appdir AppDir \
-                      --executable spring2/bin/spring2 \
+                      --executable dist/bin/spring2 \
                       --desktop-file logo.desktop \
                       --icon-file logo.png \
                       --output appimage \
@@ -178,15 +178,15 @@ jobs:
             - name: Configure (macOS)
               if: matrix.name == 'macos'
               run: |
-                  cmake -S . -B build -G Ninja \
-                    -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/dev/ninja/mac/ninja"
+                  cmake -S . -B out/build -G Ninja \
+                    -DCMAKE_MAKE_PROGRAM="$GITHUB_WORKSPACE/tools/host/ninja/mac/ninja"
 
             - name: Build and Strip (macOS)
               if: matrix.name == 'macos'
               run: |
-                  cmake --build build --parallel
-                  cmake --install build --prefix spring2
-                  strip spring2/bin/spring2
+                  cmake --build out/build --parallel
+                  cmake --install out/build --prefix dist
+                  strip dist/bin/spring2
 
             - name: Prepare Artifacts (Linux/macOS)
               if: matrix.name != 'windows'
@@ -196,7 +196,7 @@ jobs:
                     cp spring2-linux-${{ matrix.arch }}.AppImage release/
                     cp spring2-linux-${{ matrix.arch }}.tar.gz release/
                   else
-                    cp spring2/bin/spring2 "release/${{ matrix.artifact_name }}"
+                    cp dist/bin/spring2 "release/${{ matrix.artifact_name }}"
                   fi
 
             - name: Configure (Windows)
@@ -205,7 +205,7 @@ jobs:
               run: |
                   $env:CC="gcc"
                   $env:CXX="g++"
-                  $vendoredNinja = Join-Path $env:GITHUB_WORKSPACE 'dev/ninja/win/ninja.exe'
+                  $vendoredNinja = Join-Path $env:GITHUB_WORKSPACE 'tools/host/ninja/win/ninja.exe'
                   $ninjaExe = $null
                   if (Test-Path $vendoredNinja) {
                     try {
@@ -225,7 +225,7 @@ jobs:
                     throw 'Unable to locate a working ninja.exe for CMake'
                   }
                   $ninjaExe = $ninjaExe -replace '\\','/'
-                  cmake -S . -B build `
+                  cmake -S . -B out/build `
                     -G Ninja `
                     -DCMAKE_MAKE_PROGRAM="$ninjaExe" `
                     -DSPRING_STATIC_RUNTIMES=ON
@@ -234,14 +234,14 @@ jobs:
               if: matrix.name == 'windows'
               shell: powershell
               run: |
-                  magick assets/icons/logo.png `
+                  magick data/assets/icons/logo.png `
                     -define icon:auto-resize=16,32,48,64,128,256 `
-                    assets/icons/logo.ico
+                    data/assets/icons/logo.ico
                   $env:CC="gcc"
                   $env:CXX="g++"
-                  cmake --build build --parallel
-                  cmake --install build --prefix spring2
-                  strip spring2/bin/spring2.exe
+                  cmake --build out/build --parallel
+                  cmake --install out/build --prefix dist
+                  strip dist/bin/spring2.exe
 
             - name: Prepare Artifact (Windows)
               if: matrix.name == 'windows'
@@ -250,7 +250,7 @@ jobs:
                   if (!(Test-Path release)) {
                     New-Item -ItemType Directory -Path release
                   }
-                  Copy-Item spring2/bin/spring2.exe "release/${{ matrix.artifact_name }}"
+                  Copy-Item dist/bin/spring2.exe "release/${{ matrix.artifact_name }}"
 
             - name: Upload binary for universalizing
               if: matrix.name == 'macos'
@@ -258,7 +258,7 @@ jobs:
               with:
                   name: ${{ matrix.artifact_name }}
                   path: |
-                      spring2/bin/spring2
+                      dist/bin/spring2
                   retention-days: 1
 
             - name: Upload Artifact to Release
@@ -303,18 +303,18 @@ jobs:
             - name: Generate macOS Icon
               run: |
                   mkdir spring2.iconset
-                  sips -z 16 16     assets/icons/logo.png --out spring2.iconset/icon_16x16.png
-                  sips -z 32 32     assets/icons/logo.png --out spring2.iconset/icon_16x16@2x.png
-                  sips -z 32 32     assets/icons/logo.png --out spring2.iconset/icon_32x32.png
-                  sips -z 64 64     assets/icons/logo.png --out spring2.iconset/icon_32x32@2x.png
-                  sips -z 128 128   assets/icons/logo.png --out spring2.iconset/icon_128x128.png
-                  sips -z 256 256   assets/icons/logo.png \
+                  sips -z 16 16     data/assets/icons/logo.png --out spring2.iconset/icon_16x16.png
+                  sips -z 32 32     data/assets/icons/logo.png --out spring2.iconset/icon_16x16@2x.png
+                  sips -z 32 32     data/assets/icons/logo.png --out spring2.iconset/icon_32x32.png
+                  sips -z 64 64     data/assets/icons/logo.png --out spring2.iconset/icon_32x32@2x.png
+                  sips -z 128 128   data/assets/icons/logo.png --out spring2.iconset/icon_128x128.png
+                  sips -z 256 256   data/assets/icons/logo.png \
                     --out spring2.iconset/icon_128x128@2x.png
-                  sips -z 256 256   assets/icons/logo.png --out spring2.iconset/icon_256x256.png
-                  sips -z 512 512   assets/icons/logo.png \
+                  sips -z 256 256   data/assets/icons/logo.png --out spring2.iconset/icon_256x256.png
+                  sips -z 512 512   data/assets/icons/logo.png \
                     --out spring2.iconset/icon_256x256@2x.png
-                  sips -z 512 512   assets/icons/logo.png --out spring2.iconset/icon_512x512.png
-                  cp assets/icons/logo.png spring2.iconset/icon_512x512@2x.png
+                  sips -z 512 512   data/assets/icons/logo.png --out spring2.iconset/icon_512x512.png
+                  cp data/assets/icons/logo.png spring2.iconset/icon_512x512@2x.png
                   iconutil -c icns spring2.iconset
                   rm -rf spring2.iconset
 
