@@ -541,10 +541,10 @@ endfunction()
 
 set(win_resources "")
 if(WIN32)
-    if(EXISTS "${CMAKE_SOURCE_DIR}/data/assets/icons/logo.ico")
+    if(EXISTS "${CMAKE_SOURCE_DIR}/docs/assets/icons/logo.ico")
         set(win_resources ${source_dir}/spring2.rc)
     else()
-        message(NOTICE "logo.ico not found in data/assets/icons, skipping Windows icon resource")
+        message(NOTICE "logo.ico not found in docs/assets/icons, skipping Windows icon resource")
     endif()
 endif()
 

@@ -8,14 +8,33 @@ docs_dir: .
 
 theme:
   name: material
+  logo: assets/icons/logo.png
+  favicon: assets/icons/logo.ico
+  palette:
+    - scheme: default
+      primary: white
+      accent: blue
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: black
+      accent: blue
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
   features:
     - navigation.instant
     - navigation.sections
     - navigation.expand
     - navigation.top
     - navigation.tracking
+    - navigation.tabs
+    - navigation.indexes
+    - header.autohide
     - search.highlight
     - search.suggest
+    - search.share
     - content.code.copy
     - toc.follow
   icon:

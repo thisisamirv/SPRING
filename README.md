@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="data/assets/icons/logo.png" alt="SPRING2 logo" width="128" />
+  <img src="docs/assets/icons/logo.png" alt="SPRING2 logo" width="128" />
 </p>
 
 > **LICENSE RESTRICTION NOTICE**

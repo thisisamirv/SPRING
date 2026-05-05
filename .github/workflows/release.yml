@@ -107,7 +107,7 @@ jobs:
                     echo 'Categories=Science;Biology;' >> logo.desktop && \
                     echo 'Terminal=true' >> logo.desktop && \
                     export EXTRA_QT_PLUGINS= && \
-                    cp data/assets/icons/logo.png logo.png && \
+                    cp docs/assets/icons/logo.png logo.png && \
                     ./linuxdeploy --appimage-extract-and-run \
                       --appdir AppDir \
                       --executable dist/bin/spring2 \
@@ -234,9 +234,9 @@ jobs:
               if: matrix.name == 'windows'
               shell: powershell
               run: |
-                  magick data/assets/icons/logo.png `
+                  magick docs/assets/icons/logo.png `
                     -define icon:auto-resize=16,32,48,64,128,256 `
-                    data/assets/icons/logo.ico
+                    docs/assets/icons/logo.ico
                   $env:CC="gcc"
                   $env:CXX="g++"
                   cmake --build out/build --parallel
@@ -303,18 +303,18 @@ jobs:
             - name: Generate macOS Icon
               run: |
                   mkdir spring2.iconset
-                  sips -z 16 16     data/assets/icons/logo.png --out spring2.iconset/icon_16x16.png
-                  sips -z 32 32     data/assets/icons/logo.png --out spring2.iconset/icon_16x16@2x.png
-                  sips -z 32 32     data/assets/icons/logo.png --out spring2.iconset/icon_32x32.png
-                  sips -z 64 64     data/assets/icons/logo.png --out spring2.iconset/icon_32x32@2x.png
-                  sips -z 128 128   data/assets/icons/logo.png --out spring2.iconset/icon_128x128.png
-                  sips -z 256 256   data/assets/icons/logo.png \
+                  sips -z 16 16     docs/assets/icons/logo.png --out spring2.iconset/icon_16x16.png
+                  sips -z 32 32     docs/assets/icons/logo.png --out spring2.iconset/icon_16x16@2x.png
+                  sips -z 32 32     docs/assets/icons/logo.png --out spring2.iconset/icon_32x32.png
+                  sips -z 64 64     docs/assets/icons/logo.png --out spring2.iconset/icon_32x32@2x.png
+                  sips -z 128 128   docs/assets/icons/logo.png --out spring2.iconset/icon_128x128.png
+                  sips -z 256 256   docs/assets/icons/logo.png \
                     --out spring2.iconset/icon_128x128@2x.png
-                  sips -z 256 256   data/assets/icons/logo.png --out spring2.iconset/icon_256x256.png
-                  sips -z 512 512   data/assets/icons/logo.png \
+                  sips -z 256 256   docs/assets/icons/logo.png --out spring2.iconset/icon_256x256.png
+                  sips -z 512 512   docs/assets/icons/logo.png \
                     --out spring2.iconset/icon_256x256@2x.png
-                  sips -z 512 512   data/assets/icons/logo.png --out spring2.iconset/icon_512x512.png
-                  cp data/assets/icons/logo.png spring2.iconset/icon_512x512@2x.png
+                  sips -z 512 512   docs/assets/icons/logo.png --out spring2.iconset/icon_512x512.png
+                  cp docs/assets/icons/logo.png spring2.iconset/icon_512x512@2x.png
                   iconutil -c icns spring2.iconset
                   rm -rf spring2.iconset
 

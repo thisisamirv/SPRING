@@ -30,12 +30,13 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@v4
 
-            - name: Ensure vendored tools are executable on Unix
+            - name: Ensure vendored tools and scripts are executable on Unix
               if: runner.os != 'Windows'
               shell: bash
               run: |
                   chmod +x tools/host/ninja/linux/ninja tools/host/ninja/linux-aarch64/ninja tools/host/ninja/mac/ninja
                   chmod +x tools/host/nasm/linux/nasm tools/host/nasm/macosx/nasm
+                  chmod +x scripts/common/common.sh scripts/lint/lint.sh scripts/lint/cppcheck.sh scripts/smoke/valgrind-smoke.sh
 
             - name: Install Linux dependencies
               if: runner.os == 'Linux'
@@ -178,9 +179,9 @@ jobs:
               if: runner.os == 'Windows'
               shell: powershell
               run: |
-                  magick data/assets/icons/logo.png `
+                  magick docs/assets/icons/logo.png `
                     -define icon:auto-resize=16,32,48,64,128,256 `
-                    data/assets/icons/logo.ico
+                    docs/assets/icons/logo.ico
                   $env:CC="gcc"
                   $env:CXX="g++"
                   cmake --build out/build --parallel
@@ -418,9 +419,9 @@ jobs:
               if: matrix.name == 'Windows Clang'
               shell: powershell
               run: |
-                  magick data/assets/icons/logo.png `
+                  magick docs/assets/icons/logo.png `
                     -define icon:auto-resize=16,32,48,64,128,256 `
-                    data/assets/icons/logo.ico
+                    docs/assets/icons/logo.ico
                   $env:CC='clang'
                   $env:CXX='clang++'
                   cmake --build ${{ matrix.build_dir }} --parallel
@@ -477,18 +478,18 @@ jobs:
               if: matrix.name == 'Windows MSVC'
               shell: powershell
               run: |
-                  magick data/assets/icons/logo.png `
+                  magick docs/assets/icons/logo.png `
                     -define icon:auto-resize=16,32,48,64,128,256 `
-                    data/assets/icons/logo.ico
+                    docs/assets/icons/logo.ico
                   cmake --build ${{ matrix.build_dir }} --config Release --parallel
 
             - name: Build Windows ClangCL target
               if: matrix.name == 'Windows ClangCL'
               shell: powershell
               run: |
-                  magick data/assets/icons/logo.png `
+                  magick docs/assets/icons/logo.png `
                     -define icon:auto-resize=16,32,48,64,128,256 `
-                    data/assets/icons/logo.ico
+                    docs/assets/icons/logo.ico
                   cmake --build ${{ matrix.build_dir }} --config Release --parallel
 
     sanitizers:

@@ -85,18 +85,8 @@ fs::path preview_binary_path() {
   return path;
 }
 
+#ifndef _WIN32
 std::string quote_shell_arg(const std::string &value) {
-#ifdef _WIN32
-  std::string quoted = "\"";
-  for (const char ch : value) {
-    if (ch == '"') {
-      quoted.push_back('\\');
-    }
-    quoted.push_back(ch);
-  }
-  quoted.push_back('"');
-  return quoted;
-#else
   std::string quoted = "'";
   for (const char ch : value) {
     if (ch == '\'') {
@@ -107,8 +97,8 @@ std::string quote_shell_arg(const std::string &value) {
   }
   quoted.push_back('\'');
   return quoted;
-#endif
 }
+#endif
 
 std::vector<std::string> split_simple_args(const std::string &value) {
   std::istringstream stream(value);
