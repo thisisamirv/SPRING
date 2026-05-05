@@ -44,8 +44,15 @@ SPRING2 is built and validated on:
 
 Detailed documentation is available in the `docs/` directory:
 
-- **[Installation & Building](docs/user/BUILDING.md)**: System requirements and platform-specific build instructions.
-- **[Usage Guide](docs/user/USAGE.md)**: Command-line options, configuration, and practical examples.
+- **[User Docs Index](docs/user/README.md)**: Top-level map of build, usage, and feature guides.
+- **[Installation & Building](docs/user/BUILDING.md)**: Build overview, requirements, and platform guide links.
+- **[Usage Guide](docs/user/USAGE.md)**: Quick start and task-based runtime guide index.
+- **[End-to-End Examples](docs/user/EXAMPLES.md)**: Common assay pipelines with complete compression, inspection, and restoration commands.
+- **[Compression Guide](docs/user/COMPRESSION.md)**: Archive creation, grouped lanes, performance knobs, and logging.
+- **[Decompression Guide](docs/user/DECOMPRESSION.md)**: Output naming, gzip behavior, grouped restoration, and verification.
+- **[Archive Inspection](docs/user/ARCHIVE_INSPECTION.md)**: Preview mode, audit mode, notes, and metadata interpretation.
+- **[Assays & Quality Modes](docs/user/ASSAYS_AND_QUALITY.md)**: Assay selection, single-cell barcode handling, lossy quality options, and `--strip`.
+- **[CLI Reference](docs/user/CLI_REFERENCE.md)**: Flag-by-flag command reference.
 - **[Development & Maintenance](docs/dev/DEVELOPMENT.md)**: Information for contributors on project structure, linting, and internal architecture.
 
 ## Installation
@@ -158,7 +165,7 @@ Input 1 Original Compression:
 --------------------------------
 ```
 
-For a comprehensive list of all options, quality modes, and multi-threaded examples, see the **[Usage Guide](docs/user/USAGE.md)**.
+For a comprehensive list of all options, quality modes, and multi-threaded examples, see the **[Usage Guide](docs/user/USAGE.md)** and **[CLI Reference](docs/user/CLI_REFERENCE.md)**.
 
 ## Related
 

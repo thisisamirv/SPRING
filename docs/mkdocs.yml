@@ -1,0 +1,58 @@
+site_name: SPRING2
+site_description: User and developer documentation for SPRING2.
+repo_url: https://github.com/thisisamirv/SPRING2
+repo_name: thisisamirv/SPRING2
+edit_uri: edit/main/docs/
+site_dir: ../site
+docs_dir: .
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search:
+      lang: en
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - User Docs:
+      - Overview: user/README.md
+      - Building: user/BUILDING.md
+      - Platform Build Commands: user/BUILDING_PLATFORMS.md
+      - Usage: user/USAGE.md
+      - End-to-End Examples: user/EXAMPLES.md
+      - Compression: user/COMPRESSION.md
+      - Decompression: user/DECOMPRESSION.md
+      - Archive Inspection: user/ARCHIVE_INSPECTION.md
+      - Assays and Quality Modes: user/ASSAYS_AND_QUALITY.md
+      - CLI Reference: user/CLI_REFERENCE.md
+  - Developer Docs:
+      - Development Guide: dev/DEVELOPMENT.md
+  - Assay Docs:
+      - Assay Reference: assays/ASSAY_REFERENCE.md

@@ -1,30 +1,47 @@
-# Default behavior: handle as text and normalize (LF in repo, OS-default in working copy)
+# Default behavior: normalize text files while letting Git detect binaries.
 * text=auto
 
-# Source code and config always normalized
-*.cpp text
-*.h text
-*.txt text
-*.cmake text
-CMakeLists.txt text
-.gitignore text
-.gitattributes text
+# Source, build, and documentation files stored with LF in the repo.
+*.c text eol=lf
+*.cc text eol=lf
+*.cpp text eol=lf
+*.cxx text eol=lf
+*.h text eol=lf
+*.hh text eol=lf
+*.hpp text eol=lf
+*.inl text eol=lf
+*.txt text eol=lf
+*.md text eol=lf
+*.cmake text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.py text eol=lf
+*.rc text eol=lf
+CMakeLists.txt text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
 
-# Unix Shell scripts: always LF in repo and working copy
+# Sequencing/reference assets kept as plain text.
+*.fa text eol=lf
+*.fai text eol=lf
+*.fasta text eol=lf
+*.fastq text eol=lf
+*.metadata text eol=lf
+
+# Shell scripts are always LF.
 *.sh text eol=lf
 
-# Windows-specific scripts: always CRLF in working copy
+# Windows scripts use CRLF in the working copy.
 *.ps1 text eol=crlf
 *.bat text eol=crlf
 
-# Binary files
+# Binary assets and archives.
 *.png binary
-*.jpg binary
-*.jpeg binary
-*.gif binary
+*.ico binary
 *.gz binary
-*.tar.xz binary
-*.pdf binary
+*.xz binary
+*.zip binary
 *.exe binary
 *.dll binary
 *.so binary

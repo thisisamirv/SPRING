@@ -1,37 +1,24 @@
-# Prerequisites
 *.d
-
-# Compiled Object files
 *.slo
 *.lo
 *.o
 *.obj
-
-# Precompiled Headers
 *.gch
 *.pch
-
-# Compiled Dynamic libraries
 *.so
 *.dylib
 *.dll
-
-# Fortran module files
 *.mod
 *.smod
-
-# Compiled Static libraries
 *.lai
 *.la
 *.a
 *.lib
-
-# Executables
 *.exe
 *.out
 *.app
 
-# IDEs and editors
+# Editor and IDE state
 .vscode/
 !.vscode/launch.json
 !.vscode/tasks.json
@@ -42,19 +29,16 @@
 .settings/
 .cproject
 
-# Build and IDE artifacts
+# Local build outputs and tool state
 out/
 build/
-build-linux/
-build-macos/
-build-windows/
+dist/
 CMakeUserPresets.json
-.vscode/clangd_compat/
 .clangd
 compile_commands.json
-scratch/
+.vscode/clangd_compat/
 
-# OS generated files
+# OS-generated files
 .DS_Store
 .DS_Store?
 ._*
@@ -63,14 +47,14 @@ scratch/
 ehthumbs.db
 Thumbs.db
 
-# Project-specific
-.tmp/
-**/__pycache__/
+# Local benchmark fixtures and helper artifacts
+tests/fixtures/
+plan.md
+
+# Python helpers
+__pycache__/
 *.pyc
+
+# Patch artifacts
 *.patch
 *.diff
-out/tests/
-dist/
-spring2/
-plan.md
-tests/fixtures/
